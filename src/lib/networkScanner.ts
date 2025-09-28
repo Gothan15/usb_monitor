@@ -1,0 +1,240 @@
+import os from "os";
+import { exec } from "child_process";
+import util from "util";
+import { db } from "@/lib/db";
+
+const execAsync = util.promisify(exec);
+
+export interface HostScanResult {
+  ip: string;
+  alive: boolean;
+  serviceInstalled?: boolean;
+  serviceRunning?: boolean;
+  lastServiceCheck?: Date;
+  error?: string;
+}
+
+function getLocalCIDR(): string | null {
+  const ifaces = os.networkInterfaces();
+  for (const name of Object.keys(ifaces)) {
+    for (const net of ifaces[name] || []) {
+      if (net.family === "IPv4" && !net.internal) {
+        // Asumimos máscara 24 si no la tenemos (común en LANs pequeñas)
+        return `${net.address}/24`;
+      }
+    }
+  }
+  return null;
+}
+
+function ipRangeFromCIDR(cidr: string): string[] {
+  const [base, maskStr] = cidr.split("/");
+  const mask = parseInt(maskStr, 10);
+  if (mask !== 24) return [base];
+  const octets = base.split(".").map(Number);
+  const prefix = `${octets[0]}.${octets[1]}.${octets[2]}`;
+  const ips: string[] = [];
+  for (let i = 1; i < 255; i++) ips.push(`${prefix}.${i}`);
+  return ips;
+}
+
+async function pingHost(ip: string, timeoutMs = 800): Promise<boolean> {
+  try {
+    // -n 1 un eco, -w timeout en ms (Windows). Ajustar si se despliega en Linux.
+    await execAsync(`ping -n 1 -w ${timeoutMs} ${ip}`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function checkService(
+  ip: string,
+  serverBase: string
+): Promise<
+  Pick<
+    HostScanResult,
+    "serviceInstalled" | "serviceRunning" | "lastServiceCheck"
+  >
+> {
+  // Estrategia inicial: intentar llamar a un endpoint futuro que expondrá el agente.
+  // Por ahora hacemos un HEAD/GET hacia http://ip:5001/health (puede ajustarse) usando fetch.
+  const result: Pick<
+    HostScanResult,
+    "serviceInstalled" | "serviceRunning" | "lastServiceCheck"
+  > = {
+    serviceInstalled: false,
+    serviceRunning: false,
+    lastServiceCheck: new Date(),
+  };
+  try {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), 1500);
+    const res = await fetch(`http://${ip}:5001/health`, {
+      method: "GET",
+      signal: controller.signal,
+    }).catch(() => undefined);
+    clearTimeout(t);
+    if (res && res.ok) {
+      result.serviceInstalled = true;
+      result.serviceRunning = true; // asume que responde => activo
+    }
+  } catch {
+    // No responde, se queda en false.
+  }
+  return result;
+}
+
+// Simple cache
+let lastScan: {
+  cidr: string;
+  timestamp: number;
+  results: HostScanResult[];
+} | null = null;
+const CACHE_TTL_MS = 60_000; // 60s
+
+// Jobs async
+interface ScanJob {
+  id: string;
+  cidr: string;
+  started: number;
+  finished?: number;
+  progress: number;
+  results: HostScanResult[];
+  status: "running" | "finished" | "error";
+  error?: string;
+}
+const jobs: Record<string, ScanJob> = {};
+function newJobId() {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+export function getScanJob(jobId: string) {
+  return jobs[jobId];
+}
+
+export async function scanNetwork(
+  cidr?: string,
+  options?: { force?: boolean }
+): Promise<HostScanResult[]> {
+  const net = cidr || getLocalCIDR();
+  if (!net) throw new Error("No se pudo determinar la red local");
+  if (
+    !options?.force &&
+    lastScan &&
+    lastScan.cidr === net &&
+    Date.now() - lastScan.timestamp < CACHE_TTL_MS
+  ) {
+    return lastScan.results;
+  }
+  const ips = ipRangeFromCIDR(net);
+  const concurrency = 30;
+  const results: HostScanResult[] = [];
+  let index = 0;
+  async function worker() {
+    while (index < ips.length) {
+      const i = index++;
+      const ip = ips[i];
+      const host: HostScanResult = { ip, alive: false };
+      try {
+        const isUp = await pingHost(ip);
+        host.alive = isUp;
+        if (isUp) {
+          const svc = await checkService(ip, "");
+          Object.assign(host, svc);
+          // Actualizar/crear en DB (best-effort)
+          await (db as any).computer.upsert({
+            where: { name: ip },
+            // Cast a any debido a posible desincronización temporal del cliente Prisma
+            update: {
+              ipAddress: ip,
+              lastSeen: new Date(),
+              isActive: isUp,
+              // Campos extra añadidos recientemente al modelo Computer
+              serviceInstalled: (svc as any).serviceInstalled ?? false,
+              serviceRunning: (svc as any).serviceRunning ?? false,
+              lastServiceCheck: (svc as any).lastServiceCheck,
+            } as any,
+            create: {
+              name: ip,
+              ipAddress: ip,
+              lastSeen: new Date(),
+              isActive: isUp,
+              serviceInstalled: (svc as any).serviceInstalled ?? false,
+              serviceRunning: (svc as any).serviceRunning ?? false,
+              lastServiceCheck: (svc as any).lastServiceCheck,
+            } as any,
+          });
+        }
+      } catch (e: any) {
+        host.error = e.message;
+      }
+      results.push(host);
+    }
+  }
+  const workers = Array.from({ length: concurrency }, () => worker());
+  await Promise.all(workers);
+  lastScan = { cidr: net, timestamp: Date.now(), results };
+  return results;
+}
+
+export async function remoteInstallAndStart(
+  ip: string
+): Promise<{ success: boolean; message: string }> {
+  // Placeholder: se necesitará WinRM, SSH o un agente preinstalado. Aquí devolvemos no implementado.
+  return {
+    success: false,
+    message:
+      "Instalación remota no implementada aún. Requiere canal seguro (WinRM/SSH/Agent).",
+  };
+}
+
+export function startScanJob(cidr?: string): ScanJob {
+  const net = cidr || getLocalCIDR();
+  if (!net) throw new Error("No se pudo determinar la red local");
+  const job: ScanJob = {
+    id: newJobId(),
+    cidr: net,
+    started: Date.now(),
+    progress: 0,
+    results: [],
+    status: "running",
+  };
+  jobs[job.id] = job;
+  const ips = ipRangeFromCIDR(net);
+  const total = ips.length;
+  const concurrency = 30;
+  let index = 0;
+  const runWorker = async () => {
+    while (index < ips.length && job.status === "running") {
+      const i = index++;
+      const ip = ips[i];
+      try {
+        const alive = await pingHost(ip);
+        let svc: any = {};
+        if (alive) svc = await checkService(ip, "");
+        const host: HostScanResult = { ip, alive, ...svc };
+        job.results.push(host);
+      } catch (e: any) {
+        job.results.push({ ip, alive: false, error: e.message });
+      }
+      job.progress = job.results.length / total;
+    }
+  };
+  Promise.all(Array.from({ length: concurrency }, () => runWorker()))
+    .then(() => {
+      job.status = "finished";
+      job.finished = Date.now();
+      lastScan = {
+        cidr: job.cidr,
+        timestamp: Date.now(),
+        results: job.results,
+      };
+    })
+    .catch((e) => {
+      job.status = "error";
+      job.error = e.message;
+      job.finished = Date.now();
+    });
+  return job;
+}

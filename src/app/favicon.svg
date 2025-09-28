@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+    <!-- Fondo blanco redondeado (adaptable a dark mode si se invierte mediante prefers-color-scheme) -->
+    <rect width="64" height="64" rx="16" fill="#ffffff" />
+    <!-- Plug USB estilizado monocromo -->
+    <g stroke="#111" stroke-linejoin="round">
+        <!-- Cuerpo principal -->
+        <rect x="22" y="12" width="20" height="32" rx="8" fill="#111" />
+        <!-- Ventana interna (representa puerto / canal) -->
+        <rect x="26" y="20" width="12" height="8" rx="2" fill="#fff" stroke="#111" stroke-width="1.5" />
+        <!-- Pin vertical / señal -->
+        <rect x="31" y="30" width="2" height="10" rx="1" fill="#fff" stroke="#111" stroke-width="1.2" />
+        <!-- Conector inferior -->
+        <rect x="28" y="44" width="8" height="6" rx="2" fill="#111" />
+        <!-- Punta -->
+        <rect x="30" y="50" width="4" height="6" rx="1.2" fill="#444" />
+        <!-- Líneas de señal / telemetría -->
+        <path d="M32 8v4" stroke="#111" stroke-width="2.4" stroke-linecap="round" />
+        <path d="M32 56v-4" stroke="#111" stroke-width="2.4" stroke-linecap="round" />
+    </g>
+    <!-- Versión invertible: se puede invertir colores vía CSS si se desea modo oscuro -->
+</svg>

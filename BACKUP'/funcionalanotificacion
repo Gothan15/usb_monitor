@@ -1,0 +1,201 @@
+"""USB Monitor Windows Service
+
+Este script implementa un servicio de Windows que detecta la conexión de unidades
+USB y envía una notificación HTTP POST al backend de Monitor_USB.
+
+Requisitos:
+    pip install pywin32 wmi requests
+
+Uso:
+    python usb_monitor_service.py install   # Instala el servicio
+    python usb_monitor_service.py start     # Inicia el servicio
+    python usb_monitor_service.py stop      # Detiene el servicio
+    python usb_monitor_service.py remove    # Elimina el servicio
+    python usb_monitor_service.py debug     # Ejecuta en modo consola (debug)
+
+Variables de entorno opcionales:
+    USB_MONITOR_SERVER_HOST  -> host del backend (por defecto 172.20.10.12)
+    USB_MONITOR_SERVER_PORT  -> puerto del backend (por defecto 3000)
+    USB_MONITOR_ENDPOINT     -> ruta del endpoint (por defecto /api/usb-event)
+    USB_MONITOR_LOG_PATH     -> ruta del archivo de log
+
+"""
+from __future__ import annotations
+
+import getpass
+import json
+import logging
+import os
+import socket
+import sys
+import time
+from pathlib import Path
+from typing import Any, Dict
+
+import pythoncom  # type: ignore
+import requests
+import win32event  # type: ignore
+import win32service  # type: ignore
+import win32serviceutil  # type: ignore
+import servicemanager  # type: ignore
+import wmi  # type: ignore
+
+
+DEFAULT_HOST = "172.20.10.12"
+DEFAULT_PORT = 3000
+DEFAULT_ENDPOINT = "/api/usb-event"
+DEFAULT_LOG_PATH = Path("D:/Monitor_USB/usb_monitor.log")
+
+
+def resolve_log_path() -> Path:
+    custom_path = os.environ.get("USB_MONITOR_LOG_PATH")
+    if custom_path:
+        path = Path(custom_path)
+        if path.suffix:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            return path
+        path.mkdir(parents=True, exist_ok=True)
+        return path / "usb_monitor.log"
+
+    DEFAULT_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    return DEFAULT_LOG_PATH
+
+
+def get_logger() -> logging.Logger:
+    """Configura y devuelve un logger compartido."""
+    log_file = resolve_log_path()
+    logger = logging.getLogger("usb_monitor_service")
+    if not logger.handlers:
+        logger.setLevel(logging.INFO)
+        handler = logging.FileHandler(log_file, encoding="utf-8")
+        formatter = logging.Formatter(
+            "%(asctime)s | %(levelname)s | %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        if len(sys.argv) > 1 and sys.argv[1].lower() == "debug":
+            stream_handler = logging.StreamHandler()
+            stream_handler.setFormatter(formatter)
+            logger.addHandler(stream_handler)
+    return logger
+
+
+LOGGER = get_logger()
+
+
+def resolve_ip() -> str:
+    """Obtiene la IP más razonable asociada al host local."""
+    try:
+        hostname = socket.gethostname()
+        addresses = socket.gethostbyname_ex(hostname)[2]
+        for addr in addresses:
+            if not addr.startswith("127."):
+                return addr
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            return s.getsockname()[0]
+    except Exception as exc:
+        LOGGER.warning("No se pudo resolver IP local: %s", exc)
+        return "0.0.0.0"
+
+
+def build_payload(event: Any) -> Dict[str, Any]:
+    drive = "Unknown"
+    for attr in ("DriveName", "VolumeName", "DeviceID"):
+        value = getattr(event, attr, None)
+        if value:
+            drive = str(value)
+            break
+    return {
+        "pc_name": socket.gethostname(),
+        "pc_ip": resolve_ip(),
+        "pc_user": getpass.getuser(),
+        "event": f"USB inserted: {drive}",
+    }
+
+
+def send_event(payload: Dict[str, Any]) -> None:
+    host = os.environ.get("USB_MONITOR_SERVER_HOST", DEFAULT_HOST)
+    try:
+        port = int(os.environ.get("USB_MONITOR_SERVER_PORT", str(DEFAULT_PORT)))
+    except ValueError:
+        LOGGER.warning(
+            "Valor inválido para USB_MONITOR_SERVER_PORT, usando puerto por defecto %s",
+            DEFAULT_PORT,
+        )
+        port = DEFAULT_PORT
+    endpoint = os.environ.get("USB_MONITOR_ENDPOINT", DEFAULT_ENDPOINT)
+    url = f"http://{host}:{port}{endpoint}"
+
+    try:
+        response = requests.post(url, json=payload, timeout=10)
+        response.raise_for_status()
+        LOGGER.info("Evento USB enviado correctamente: %s", json.dumps(payload))
+    except Exception as exc:
+        LOGGER.error("Error al enviar evento USB: %s", exc)
+
+
+class USBMonitorService(win32serviceutil.ServiceFramework):
+    _svc_name_ = "USBMonitorService"
+    _svc_display_name_ = "USB Monitor Service"
+    _svc_description_ = (
+        "Monitorea conexiones de dispositivos USB y notifica al servidor Monitor_USB"
+    )
+
+    def __init__(self, args):
+        win32serviceutil.ServiceFramework.__init__(self, args)
+        self.stop_event = win32event.CreateEvent(None, 0, 0, None)
+        self.stopped = False
+
+    def SvcStop(self) -> None:
+        self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
+        win32event.SetEvent(self.stop_event)
+        self.stopped = True
+        LOGGER.info("Solicitud de parada recibida")
+
+    def SvcDoRun(self) -> None:
+        LOGGER.info("Servicio iniciado")
+        servicemanager.LogInfoMsg("USBMonitorService - iniciado")
+        self.main()
+
+    def main(self) -> None:
+        pythoncom.CoInitialize()
+        try:
+            c = wmi.WMI()
+            watcher = c.watch_for(
+                notification_type="Creation",
+                wmi_class="Win32_VolumeChangeEvent",
+                EventType=2,  # 2 => Device arrival
+            )
+        except Exception as exc:
+            LOGGER.error("No se pudo inicializar WMI: %s", exc)
+            pythoncom.CoUninitialize()
+            return
+
+        while not self.stopped:
+            rc = win32event.WaitForSingleObject(self.stop_event, 500)
+            if rc == win32event.WAIT_OBJECT_0:
+                break
+
+            try:
+                event = watcher(timeout_ms=2000)
+                if event:
+                    payload = build_payload(event)
+                    LOGGER.info("Evento USB detectado: %s", payload["event"])
+                    send_event(payload)
+            except wmi.x_wmi_timed_out:
+                continue
+            except Exception as exc:
+                LOGGER.error("Error en el loop principal: %s", exc)
+                time.sleep(5)
+
+        pythoncom.CoUninitialize()
+        LOGGER.info("Servicio detenido")
+
+
+if __name__ == "__main__":
+    if len(sys.argv) == 1:
+        print(__doc__)
+    else:
+        win32serviceutil.HandleCommandLine(USBMonitorService)

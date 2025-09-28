@@ -1,0 +1,214 @@
+2025-09-27 11:50:45 | INFO | Servicio iniciado
+2025-09-27 11:51:39 | INFO | Evento USB detectado: USB inserted: E:
+2025-09-27 11:51:39 | INFO | Evento USB enviado correctamente: {"pc_name": "Gwintbleidd", "pc_ip": "192.168.42.1", "pc_user": "GWINTBLEIDD$", "event": "USB inserted: E:"}
+2025-09-27 12:07:46 | INFO | Solicitud de parada recibida
+2025-09-27 12:07:46 | INFO | Servicio detenido
+2025-09-27 12:13:00 | INFO | Servicio iniciado
+2025-09-27 12:13:18 | INFO | Evento USB detectado: USB inserted: E:
+2025-09-27 12:13:18 | ERROR | Error al enviar evento USB: HTTPConnectionPool(host='172.20.10.12', port=3000): Max retries exceeded with url: /api/usb-event (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x00000207A0242CF0>: Failed to establish a new connection: [WinError 10013] Intento de acceso a un socket no permitido por sus permisos de acceso'))
+2025-09-27 12:13:19 | INFO | Unidad E: establecida en modo solo lectura. Salida: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+DISKPART> 
+El volumen 5 es el volumen seleccionado.
+
+DISKPART> 
+Error del Servicio de disco virtual:
+No se admite la operaci¢n en medios extra¡bles.
+
+
+DISKPART> 
+Saliendo de DiskPart...
+2025-09-27 12:14:42 | INFO | Evento USB detectado: USB inserted: E:
+2025-09-27 12:14:42 | INFO | Evento USB enviado correctamente: {"pc_name": "Gwintbleidd", "pc_ip": "192.168.42.1", "pc_user": "GWINTBLEIDD$", "event": "USB inserted: E:"}
+2025-09-27 12:14:43 | INFO | Unidad E: establecida en modo solo lectura. Salida: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+DISKPART> 
+El volumen 5 es el volumen seleccionado.
+
+DISKPART> 
+Error del Servicio de disco virtual:
+No se admite la operaci¢n en medios extra¡bles.
+
+
+DISKPART> 
+Saliendo de DiskPart...
+2025-09-27 12:35:58 | INFO | Solicitud de parada recibida
+2025-09-27 12:35:58 | INFO | Servicio detenido
+2025-09-27 12:36:10 | INFO | Servicio iniciado
+2025-09-27 12:36:58 | INFO | Evento USB detectado: USB inserted: E:
+2025-09-27 12:36:58 | ERROR | Error al enviar evento USB: HTTPConnectionPool(host='172.20.10.12', port=3000): Max retries exceeded with url: /api/usb-event (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x00000172D46A2CF0>: Failed to establish a new connection: [WinError 10013] Intento de acceso a un socket no permitido por sus permisos de acceso'))
+2025-09-27 12:36:58 | ERROR | diskpart devolvió código 2147755354 al establecer E: solo lectura. Stdout: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El volumen 5 es el volumen seleccionado.
+
+Error del Servicio de disco virtual:
+No se admite la operaci¢n en medios extra¡bles. | Stderr: 
+2025-09-27 12:36:58 | WARNING | No se pudo resolver el número de disco para la unidad E: _wmi_object.associators() got an unexpected keyword argument 'result_class'. Did you mean 'wmi_result_class'?
+2025-09-27 12:36:58 | WARNING | No se pudo establecer la unidad E: en solo lectura ni resolver su disco asociado
+2025-09-27 12:37:26 | INFO | Evento USB detectado: USB inserted: E:
+2025-09-27 12:37:26 | INFO | Evento USB enviado correctamente: {"pc_name": "Gwintbleidd", "pc_ip": "192.168.42.1", "pc_user": "GWINTBLEIDD$", "event": "USB inserted: E:"}
+2025-09-27 12:37:26 | ERROR | diskpart devolvió código 2147755354 al establecer E: solo lectura. Stdout: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El volumen 5 es el volumen seleccionado.
+
+Error del Servicio de disco virtual:
+No se admite la operaci¢n en medios extra¡bles. | Stderr: 
+2025-09-27 12:37:26 | WARNING | No se pudo resolver el número de disco para la unidad E: _wmi_object.associators() got an unexpected keyword argument 'result_class'. Did you mean 'wmi_result_class'?
+2025-09-27 12:37:26 | WARNING | No se pudo establecer la unidad E: en solo lectura ni resolver su disco asociado
+2025-09-27 12:41:39 | INFO | Evento USB detectado: USB inserted: E:
+2025-09-27 12:41:39 | ERROR | Error al enviar evento USB: HTTPConnectionPool(host='172.20.10.12', port=3000): Max retries exceeded with url: /api/usb-event (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x00000172D46AAFD0>: Failed to establish a new connection: [WinError 10013] Intento de acceso a un socket no permitido por sus permisos de acceso'))
+2025-09-27 12:41:39 | ERROR | diskpart devolvió código 2147755354 al establecer E: solo lectura. Stdout: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El volumen 5 es el volumen seleccionado.
+
+Error del Servicio de disco virtual:
+No se admite la operaci¢n en medios extra¡bles. | Stderr: 
+2025-09-27 12:41:39 | WARNING | No se pudo resolver el número de disco para la unidad E: _wmi_object.associators() got an unexpected keyword argument 'result_class'. Did you mean 'wmi_result_class'?
+2025-09-27 12:41:39 | WARNING | No se pudo establecer la unidad E: en solo lectura ni resolver su disco asociado
+2025-09-27 12:45:45 | INFO | Solicitud de parada recibida
+2025-09-27 12:45:45 | INFO | Servicio detenido
+2025-09-27 12:46:05 | INFO | Servicio iniciado
+2025-09-27 12:46:23 | ERROR | diskpart devolvió código 2147755354 al establecer E: solo lectura. Stdout: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El volumen 5 es el volumen seleccionado.
+
+Error del Servicio de disco virtual:
+No se admite la operaci¢n en medios extra¡bles. | Stderr: 
+2025-09-27 12:46:23 | WARNING | No se pudo resolver el número de disco para la unidad E: _wmi_object.associators() got an unexpected keyword argument 'result_class'. Did you mean 'wmi_result_class'?
+2025-09-27 12:46:23 | WARNING | No se pudo establecer la unidad E: en solo lectura ni resolver el disco
+2025-09-27 12:46:23 | INFO | Evento USB detectado: USB inserted: E: | No se pudo establecer la unidad E: en solo lectura ni resolver el disco
+2025-09-27 12:46:23 | INFO | Evento USB enviado correctamente: {"pc_name": "Gwintbleidd", "pc_ip": "192.168.42.1", "pc_user": "GWINTBLEIDD$", "event": "USB inserted: E: | No se pudo establecer la unidad E: en solo lectura ni resolver el disco"}
+2025-09-27 12:46:53 | WARNING | La unidad E: no parece montada; se intenta igualmente aplicar solo lectura
+2025-09-27 12:46:54 | ERROR | diskpart devolvió código 2147755354 al establecer E: solo lectura. Stdout: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El volumen 5 es el volumen seleccionado.
+
+Error del Servicio de disco virtual:
+No se admite la operaci¢n en medios extra¡bles. | Stderr: 
+2025-09-27 12:46:54 | WARNING | No se pudo resolver el número de disco para la unidad E: _wmi_object.associators() got an unexpected keyword argument 'result_class'. Did you mean 'wmi_result_class'?
+2025-09-27 12:46:54 | WARNING | No se pudo establecer la unidad E: en solo lectura ni resolver el disco
+2025-09-27 12:46:54 | INFO | Evento USB detectado: USB inserted: E: | No se pudo establecer la unidad E: en solo lectura ni resolver el disco
+2025-09-27 12:46:54 | INFO | Evento USB enviado correctamente: {"pc_name": "Gwintbleidd", "pc_ip": "192.168.42.1", "pc_user": "GWINTBLEIDD$", "event": "USB inserted: E: | No se pudo establecer la unidad E: en solo lectura ni resolver el disco"}
+2025-09-27 12:46:54 | ERROR | diskpart devolvió código 2147755354 al establecer E: solo lectura. Stdout: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El volumen 5 es el volumen seleccionado.
+
+Error del Servicio de disco virtual:
+No se admite la operaci¢n en medios extra¡bles. | Stderr: 
+2025-09-27 12:46:54 | WARNING | No se pudo resolver el número de disco para la unidad E: _wmi_object.associators() got an unexpected keyword argument 'result_class'. Did you mean 'wmi_result_class'?
+2025-09-27 12:46:54 | WARNING | No se pudo establecer la unidad E: en solo lectura ni resolver el disco
+2025-09-27 12:46:54 | INFO | Evento USB detectado: USB inserted: E: | No se pudo establecer la unidad E: en solo lectura ni resolver el disco
+2025-09-27 12:46:54 | INFO | Evento USB enviado correctamente: {"pc_name": "Gwintbleidd", "pc_ip": "192.168.42.1", "pc_user": "GWINTBLEIDD$", "event": "USB inserted: E: | No se pudo establecer la unidad E: en solo lectura ni resolver el disco"}
+2025-09-27 12:47:14 | ERROR | diskpart devolvió código 2147755354 al establecer E: solo lectura. Stdout: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El volumen 5 es el volumen seleccionado.
+
+Error del Servicio de disco virtual:
+No se admite la operaci¢n en medios extra¡bles. | Stderr: 
+2025-09-27 12:47:14 | WARNING | No se pudo resolver el número de disco para la unidad E: _wmi_object.associators() got an unexpected keyword argument 'result_class'. Did you mean 'wmi_result_class'?
+2025-09-27 12:47:14 | WARNING | No se pudo establecer la unidad E: en solo lectura ni resolver el disco
+2025-09-27 12:47:14 | INFO | Evento USB detectado: USB inserted: E: | No se pudo establecer la unidad E: en solo lectura ni resolver el disco
+2025-09-27 12:47:14 | INFO | Evento USB enviado correctamente: {"pc_name": "Gwintbleidd", "pc_ip": "192.168.42.1", "pc_user": "GWINTBLEIDD$", "event": "USB inserted: E: | No se pudo establecer la unidad E: en solo lectura ni resolver el disco"}
+2025-09-27 12:53:06 | INFO | Solicitud de parada recibida
+2025-09-27 12:53:06 | INFO | Servicio detenido
+2025-09-27 12:53:17 | INFO | Servicio iniciado
+2025-09-27 12:53:34 | ERROR | diskpart devolvió código 2147755354 al establecer E: solo lectura. Stdout: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El volumen 5 es el volumen seleccionado.
+
+Error del Servicio de disco virtual:
+No se admite la operaci¢n en medios extra¡bles. | Stderr: 
+2025-09-27 12:53:34 | INFO | Disco 2 (para unidad E:) establecido en modo solo lectura. Salida: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El disco 2 es ahora el disco seleccionado.
+
+Atributos de disco establecidos correctamente.
+
+Saliendo de DiskPart...
+2025-09-27 12:53:34 | INFO | Evento USB detectado: USB inserted: E: | readonly aplicado al disco 2 (unidad E:)
+2025-09-27 12:53:34 | INFO | Evento USB enviado correctamente: {"pc_name": "Gwintbleidd", "pc_ip": "192.168.42.1", "pc_user": "GWINTBLEIDD$", "event": "USB inserted: E: | readonly aplicado al disco 2 (unidad E:)"}
+2025-09-27 13:45:20 | INFO | Solicitud de parada recibida
+2025-09-27 13:45:20 | INFO | Servicio detenido
+2025-09-27 13:45:36 | INFO | Servicio iniciado
+2025-09-27 13:45:36 | WARNING | USB_MONITOR_API_KEY no está configurada; no se consultarán autorizaciones remotas
+2025-09-27 13:45:53 | ERROR | diskpart devolvió código 2147755354 al establecer E: solo lectura. Stdout: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El volumen 5 es el volumen seleccionado.
+
+Error del Servicio de disco virtual:
+No se admite la operaci¢n en medios extra¡bles. | Stderr: 
+2025-09-27 13:45:53 | INFO | Disco 2 (para unidad E:) establecido en modo solo lectura. Salida: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El disco 2 es ahora el disco seleccionado.
+
+Atributos de disco establecidos correctamente.
+
+Saliendo de DiskPart...
+2025-09-27 13:45:53 | INFO | Evento USB detectado: USB inserted: E: | readonly aplicado al disco 2 (unidad E:)
+2025-09-27 13:45:53 | INFO | Evento USB enviado correctamente: {"pc_name": "Gwintbleidd", "pc_ip": "192.168.42.1", "pc_user": "GWINTBLEIDD$", "drive_letter": "E:", "readonly_status": "readonly aplicado al disco 2 (unidad E:)", "event": "USB inserted: E: | readonly aplicado al disco 2 (unidad E:)"}
+2025-09-27 14:01:37 | INFO | Solicitud de parada recibida
+2025-09-27 14:01:37 | INFO | Servicio detenido
+2025-09-27 14:06:52 | INFO | Servicio iniciado
+2025-09-27 14:06:53 | WARNING | USB_MONITOR_API_KEY no está configurada; no se consultarán autorizaciones remotas
+2025-09-27 14:07:02 | ERROR | diskpart devolvió código 2147755354 al establecer E: solo lectura. Stdout: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El volumen 5 es el volumen seleccionado.
+
+Error del Servicio de disco virtual:
+No se admite la operaci¢n en medios extra¡bles. | Stderr: 
+2025-09-27 14:07:02 | INFO | Disco 2 (para unidad E:) establecido en modo solo lectura. Salida: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El disco 2 es ahora el disco seleccionado.
+
+Atributos de disco establecidos correctamente.
+
+Saliendo de DiskPart...
+2025-09-27 14:07:02 | INFO | Evento USB detectado: USB inserted: E: | readonly aplicado al disco 2 (unidad E:)
+2025-09-27 14:07:03 | INFO | Evento USB enviado correctamente: {"pc_name": "GWINTBLEIDD", "pc_ip": "192.168.42.1", "pc_user": "GWINTBLEIDD$", "drive_letter": "E:", "readonly_status": "readonly aplicado al disco 2 (unidad E:)", "event": "USB inserted: E: | readonly aplicado al disco 2 (unidad E:)"}
+2025-09-27 14:09:15 | INFO | Solicitud de parada recibida
+2025-09-27 14:09:16 | INFO | Servicio detenido
