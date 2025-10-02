@@ -69,7 +69,23 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
       window.location.href = "/login";
     }
     if (status === "ok" && window.location.pathname === "/login") {
-      window.location.href = "/";
+      // Verificar rol antes de redirigir
+      fetch("/api/auth/session", { credentials: "include" })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.ok && data.user) {
+            if (data.user.role === "user") {
+              window.location.href = "/unlocked";
+            } else {
+              window.location.href = "/";
+            }
+          } else {
+            window.location.href = "/";
+          }
+        })
+        .catch(() => {
+          window.location.href = "/";
+        });
     }
   }, [status]);
 
@@ -94,6 +110,6 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     return <FullscreenSpinner label="Redirigiendo" />;
   }
 
-  // Estado ok -> mostrar la app.
+  // Estado ok -> mostrar la app (incluyendo /unlocked para usuarios normales).
   return <>{children}</>;
 }

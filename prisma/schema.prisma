@@ -48,8 +48,22 @@ model User {
   username     String    @unique
   passwordHash String
   apiKey       String    @unique
+  role         String    @default("user") // "admin" o "user"
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   failedAttempts Int      @default(0)
   lockedUntil   DateTime?
+}
+
+model PendingUnlock {
+  id          String   @id @default(cuid())
+  pcName      String
+  driveLetter String
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime
+  unlocked    Boolean  @default(false)
+  
+  @@map("pending_unlocks")
+  @@index([pcName, unlocked])
+  @@index([expiresAt])
 }

@@ -424,12 +424,17 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                 event = watcher(timeout_ms=2000)
                 if event:
                     drive_letter = resolve_drive_letter(event, c)
+                    
+                    # 1. Proteger USB con readonly
                     letter_used, readonly_ok, readonly_msg = protect_usb_media(
                         drive_letter, c
                     )
+                    
+                    # 2. Enviar evento al backend
                     payload = build_payload(event, letter_used, readonly_msg)
                     LOGGER.info("Evento USB detectado: %s", payload["event"])
                     send_event(payload)
+                    
             except wmi.x_wmi_timed_out:
                 continue
             except Exception as exc:

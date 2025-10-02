@@ -114,7 +114,7 @@ export async function POST(req: Request) {
     if (isProd) cookieFlags.push("Secure");
     const response = NextResponse.json({
       ok: true,
-      user: { id: user.id, username: user.username },
+      user: { id: user.id, username: user.username, role: user.role },
       // Frontend ya no necesita guardar nada; token sólo en cookie
     });
     response.headers.append(

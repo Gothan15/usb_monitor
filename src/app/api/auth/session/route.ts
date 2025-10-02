@@ -5,6 +5,7 @@ import {
   renewSessionToken,
   createSessionToken,
 } from "@/lib/auth";
+import { db } from "@/lib/db";
 
 export async function GET(req: Request) {
   const auth = await authenticateRequest(req);
@@ -13,6 +14,13 @@ export async function GET(req: Request) {
       { ok: false, error: { code: "UNAUTHORIZED", message: "No autenticado" } },
       { status: 401 }
     );
+
+  // Obtener información del usuario para incluir el rol
+  const user = await (db as any).user.findUnique({
+    where: { id: auth.userId },
+    select: { username: true, role: true },
+  });
+
   // Renovar cookie de sesión (opcional sliding)
   const cookieHeader = req.headers.get("cookie") || "";
   const cookies = Object.fromEntries(
@@ -31,7 +39,15 @@ export async function GET(req: Request) {
       const isProd = process.env.NODE_ENV === "production";
       const flags = ["Path=/", "HttpOnly", "SameSite=Strict", "Max-Age=3600"];
       if (isProd) flags.push("Secure");
-      const res = NextResponse.json({ ok: true, user: auth, renewed: true });
+      const res = NextResponse.json({
+        ok: true,
+        user: {
+          id: auth.userId,
+          username: user?.username,
+          role: user?.role,
+        },
+        renewed: true,
+      });
       res.headers.append(
         "Set-Cookie",
         `session=${renewed}; ${flags.join("; ")}`
@@ -39,5 +55,13 @@ export async function GET(req: Request) {
       return res;
     }
   }
-  return NextResponse.json({ ok: true, user: auth, renewed: refreshed });
+  return NextResponse.json({
+    ok: true,
+    user: {
+      id: auth.userId,
+      username: user?.username,
+      role: user?.role,
+    },
+    renewed: refreshed,
+  });
 }

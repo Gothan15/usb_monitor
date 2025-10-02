@@ -215,3 +215,35 @@ export async function simulatePasswordCheckDelay() {
 // Helpers exportados para rutas específicas
 // Export utilidades mínimas para rutas
 export const sessionInternal = { verifySession, renewSessionToken };
+
+/**
+ * Verifica sesión desde un Request y devuelve información del usuario
+ */
+export async function verifySessionFromRequest(
+  req: Request
+): Promise<{ username: string; role: string } | null> {
+  const cookieHeader = req.headers.get("cookie") || "";
+  if (!cookieHeader) return null;
+
+  const cookies = Object.fromEntries(
+    cookieHeader
+      .split(/; */)
+      .filter(Boolean)
+      .map((c) => {
+        const [k, ...r] = c.split("=");
+        return [decodeURIComponent(k), decodeURIComponent(r.join("="))];
+      })
+  );
+
+  if (!cookies.session) return null;
+
+  const payload = verifySession(cookies.session);
+  if (!payload) return null;
+
+  const user = await (db as any).user.findUnique({
+    where: { id: payload.uid },
+    select: { username: true, role: true },
+  });
+
+  return user;
+}

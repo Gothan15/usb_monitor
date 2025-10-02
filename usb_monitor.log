@@ -212,3 +212,360 @@ Saliendo de DiskPart...
 2025-09-27 14:07:03 | INFO | Evento USB enviado correctamente: {"pc_name": "GWINTBLEIDD", "pc_ip": "192.168.42.1", "pc_user": "GWINTBLEIDD$", "drive_letter": "E:", "readonly_status": "readonly aplicado al disco 2 (unidad E:)", "event": "USB inserted: E: | readonly aplicado al disco 2 (unidad E:)"}
 2025-09-27 14:09:15 | INFO | Solicitud de parada recibida
 2025-09-27 14:09:16 | INFO | Servicio detenido
+2025-09-28 17:13:42 | INFO | Servicio iniciado
+2025-09-28 17:15:28 | ERROR | diskpart devolvió código 2147755354 al establecer E: solo lectura. Stdout: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El volumen 5 es el volumen seleccionado.
+
+Error del Servicio de disco virtual:
+No se admite la operaci¢n en medios extra¡bles. | Stderr: 
+2025-09-28 17:15:28 | INFO | Disco 2 (para unidad E:) establecido en modo solo lectura. Salida: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El disco 2 es ahora el disco seleccionado.
+
+Atributos de disco establecidos correctamente.
+
+Saliendo de DiskPart...
+2025-09-28 17:15:28 | INFO | Evento USB detectado: USB inserted: E: | readonly aplicado al disco 2 (unidad E:)
+2025-09-28 17:15:28 | INFO | Evento USB enviado correctamente: {"pc_name": "GWINTBLEIDD", "pc_ip": "192.168.42.1", "pc_user": "GWINTBLEIDD$", "drive_letter": "E:", "readonly_status": "readonly aplicado al disco 2 (unidad E:)", "event": "USB inserted: E: | readonly aplicado al disco 2 (unidad E:)", "readonly_success": true}
+2025-09-28 17:15:28 | INFO | Solicitando credenciales al usuario para la unidad E:
+2025-09-28 17:15:28 | WARNING | El formulario de credenciales terminó con código 2 para la unidad E:
+2025-09-28 17:15:28 | INFO | Autorización no concedida para la unidad E:
+2025-09-28 17:15:28 | INFO | USB permanece protegida: E: | Autorización no concedida para la unidad E:
+2025-09-28 17:15:29 | INFO | Evento USB enviado correctamente: {"pc_name": "GWINTBLEIDD", "pc_ip": "192.168.42.1", "pc_user": "GWINTBLEIDD$", "drive_letter": "E:", "readonly_status": "Autorizaci\u00f3n no concedida para la unidad E:", "event": "USB permanece protegida: E: | Autorizaci\u00f3n no concedida para la unidad E:", "unlock_granted": false}
+2025-09-28 17:16:47 | INFO | Solicitud de parada recibida
+2025-09-28 17:16:49 | INFO | Servicio detenido
+2025-09-28 17:51:39 | INFO | Servicio iniciado
+2025-09-28 17:53:20 | ERROR | diskpart devolvió código 2147755354 al establecer E: solo lectura. Stdout: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El volumen 5 es el volumen seleccionado.
+
+Error del Servicio de disco virtual:
+No se admite la operaci¢n en medios extra¡bles. | Stderr: 
+2025-09-28 17:53:21 | INFO | Disco 2 (para unidad E:) establecido en modo solo lectura. Salida: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El disco 2 es ahora el disco seleccionado.
+
+Atributos de disco establecidos correctamente.
+
+Saliendo de DiskPart...
+2025-09-28 17:53:21 | INFO | Evento USB detectado: USB inserted: E: | readonly aplicado al disco 2 (unidad E:)
+2025-09-28 17:53:21 | INFO | Evento USB enviado correctamente: {"pc_name": "GWINTBLEIDD", "pc_ip": "192.168.42.1", "pc_user": "GWINTBLEIDD$", "drive_letter": "E:", "readonly_status": "readonly aplicado al disco 2 (unidad E:)", "event": "USB inserted: E: | readonly aplicado al disco 2 (unidad E:)", "readonly_success": true}
+2025-09-28 17:53:21 | ERROR | Error inesperado al lanzar la interfaz en la sesión activa: module 'win32con' has no attribute 'TokenPrimary'
+2025-09-28 17:53:21 | INFO | Solicitando credenciales al usuario para la unidad E:
+2025-09-28 17:53:23 | WARNING | El formulario de credenciales terminó con código 1 para la unidad E:
+2025-09-28 17:53:23 | INFO | Autorización no concedida para la unidad E:
+2025-09-28 17:53:23 | INFO | USB permanece protegida: E: | Autorización no concedida para la unidad E:
+2025-09-28 17:53:23 | INFO | Evento USB enviado correctamente: {"pc_name": "GWINTBLEIDD", "pc_ip": "192.168.42.1", "pc_user": "GWINTBLEIDD$", "drive_letter": "E:", "readonly_status": "Autorizaci\u00f3n no concedida para la unidad E:", "event": "USB permanece protegida: E: | Autorizaci\u00f3n no concedida para la unidad E:", "unlock_granted": false}
+2025-09-28 17:53:47 | INFO | Solicitud de parada recibida
+2025-09-28 17:53:48 | INFO | Servicio detenido
+2025-09-30 01:26:28 | INFO | Servicio iniciado
+2025-09-30 01:26:39 | ERROR | diskpart devolvió código 2147755354 al establecer E: solo lectura. Stdout: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El volumen 5 es el volumen seleccionado.
+
+Error del Servicio de disco virtual:
+No se admite la operaci¢n en medios extra¡bles. | Stderr: 
+2025-09-30 01:26:39 | INFO | Disco 2 (para unidad E:) establecido en modo solo lectura. Salida: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El disco 2 es ahora el disco seleccionado.
+
+Atributos de disco establecidos correctamente.
+
+Saliendo de DiskPart...
+2025-09-30 01:26:39 | INFO | Evento USB detectado: USB inserted: E: | readonly aplicado al disco 2 (unidad E:)
+2025-09-30 01:26:39 | INFO | Evento USB enviado correctamente: {"pc_name": "GWINTBLEIDD", "pc_ip": "192.168.42.1", "pc_user": "GWINTBLEIDD$", "drive_letter": "E:", "readonly_status": "readonly aplicado al disco 2 (unidad E:)", "event": "USB inserted: E: | readonly aplicado al disco 2 (unidad E:)", "readonly_success": true}
+2025-09-30 01:26:39 | ERROR | Error inesperado al lanzar la interfaz en la sesión activa: module 'win32con' has no attribute 'TokenPrimary'
+2025-09-30 01:26:39 | INFO | Solicitando credenciales al usuario para la unidad E:
+2025-09-30 01:26:41 | WARNING | El formulario de credenciales terminó con código 1 para la unidad E:
+2025-09-30 01:26:41 | INFO | Autorización no concedida para la unidad E:
+2025-09-30 01:26:41 | INFO | USB permanece protegida: E: | Autorización no concedida para la unidad E:
+2025-09-30 01:26:41 | INFO | Evento USB enviado correctamente: {"pc_name": "GWINTBLEIDD", "pc_ip": "192.168.42.1", "pc_user": "GWINTBLEIDD$", "drive_letter": "E:", "readonly_status": "Autorizaci\u00f3n no concedida para la unidad E:", "event": "USB permanece protegida: E: | Autorizaci\u00f3n no concedida para la unidad E:", "unlock_granted": false}
+2025-09-30 01:29:04 | INFO | Solicitud de parada recibida
+2025-09-30 01:29:05 | INFO | Servicio detenido
+2025-10-01 17:15:55 | INFO | Servicio iniciado
+2025-10-01 17:16:37 | ERROR | diskpart devolvió código 2147755354 al establecer E: solo lectura. Stdout: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El volumen 5 es el volumen seleccionado.
+
+Error del Servicio de disco virtual:
+No se admite la operaci¢n en medios extra¡bles. | Stderr: 
+2025-10-01 17:16:38 | INFO | Disco 2 (para unidad E:) establecido en modo solo lectura. Salida: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El disco 2 es ahora el disco seleccionado.
+
+Atributos de disco establecidos correctamente.
+
+Saliendo de DiskPart...
+2025-10-01 17:16:38 | INFO | Evento USB detectado: USB inserted: E: | readonly aplicado al disco 2 (unidad E:)
+2025-10-01 17:16:38 | INFO | Evento USB enviado correctamente: {"pc_name": "GWINTBLEIDD", "pc_ip": "172.22.48.1", "pc_user": "GWINTBLEIDD$", "drive_letter": "E:", "readonly_status": "readonly aplicado al disco 2 (unidad E:)", "event": "USB inserted: E: | readonly aplicado al disco 2 (unidad E:)", "readonly_success": true}
+2025-10-01 17:16:38 | ERROR | Error inesperado al lanzar la interfaz en la sesión activa: module 'win32con' has no attribute 'TokenPrimary'
+2025-10-01 17:16:38 | INFO | Solicitando credenciales al usuario para la unidad E:
+2025-10-01 17:16:40 | WARNING | El formulario de credenciales terminó con código 1 para la unidad E:
+2025-10-01 17:16:40 | INFO | Autorización no concedida para la unidad E:
+2025-10-01 17:16:40 | INFO | USB permanece protegida: E: | Autorización no concedida para la unidad E:
+2025-10-01 17:16:40 | INFO | Evento USB enviado correctamente: {"pc_name": "GWINTBLEIDD", "pc_ip": "172.22.48.1", "pc_user": "GWINTBLEIDD$", "drive_letter": "E:", "readonly_status": "Autorizaci\u00f3n no concedida para la unidad E:", "event": "USB permanece protegida: E: | Autorizaci\u00f3n no concedida para la unidad E:", "unlock_granted": false}
+2025-10-01 19:08:46 | ERROR | diskpart devolvió código 2147755354 al establecer E: solo lectura. Stdout: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El volumen 5 es el volumen seleccionado.
+
+Error del Servicio de disco virtual:
+No se admite la operaci¢n en medios extra¡bles. | Stderr: 
+2025-10-01 19:08:46 | INFO | Disco 2 (para unidad E:) establecido en modo solo lectura. Salida: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El disco 2 es ahora el disco seleccionado.
+
+Atributos de disco establecidos correctamente.
+
+Saliendo de DiskPart...
+2025-10-01 19:08:46 | INFO | Evento USB detectado: USB inserted: E: | readonly aplicado al disco 2 (unidad E:)
+2025-10-01 19:08:46 | INFO | Evento USB enviado correctamente: {"pc_name": "GWINTBLEIDD", "pc_ip": "172.22.48.1", "pc_user": "GWINTBLEIDD$", "drive_letter": "E:", "readonly_status": "readonly aplicado al disco 2 (unidad E:)", "event": "USB inserted: E: | readonly aplicado al disco 2 (unidad E:)", "readonly_success": true}
+2025-10-01 19:08:46 | ERROR | Error inesperado al lanzar la interfaz en la sesión activa: module 'win32con' has no attribute 'TokenPrimary'
+2025-10-01 19:08:46 | INFO | Solicitando credenciales al usuario para la unidad E:
+2025-10-01 19:08:47 | WARNING | El formulario de credenciales terminó con código 1 para la unidad E:
+2025-10-01 19:08:47 | INFO | Autorización no concedida para la unidad E:
+2025-10-01 19:08:47 | INFO | USB permanece protegida: E: | Autorización no concedida para la unidad E:
+2025-10-01 19:08:47 | INFO | Evento USB enviado correctamente: {"pc_name": "GWINTBLEIDD", "pc_ip": "172.22.48.1", "pc_user": "GWINTBLEIDD$", "drive_letter": "E:", "readonly_status": "Autorizaci\u00f3n no concedida para la unidad E:", "event": "USB permanece protegida: E: | Autorizaci\u00f3n no concedida para la unidad E:", "unlock_granted": false}
+2025-10-01 19:26:39 | INFO | Servicio iniciado
+2025-10-01 19:28:09 | ERROR | diskpart devolvió código 2147755354 al establecer E: solo lectura. Stdout: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El volumen 5 es el volumen seleccionado.
+
+Error del Servicio de disco virtual:
+No se admite la operaci¢n en medios extra¡bles. | Stderr: 
+2025-10-01 19:28:09 | ERROR | diskpart devolvió código 2147755354 al establecer E: solo lectura. Stdout: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El volumen 5 es el volumen seleccionado.
+
+Error del Servicio de disco virtual:
+No se admite la operaci¢n en medios extra¡bles. | Stderr: 
+2025-10-01 19:28:10 | INFO | Disco 2 (para unidad E:) establecido en modo solo lectura. Salida: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El disco 2 es ahora el disco seleccionado.
+
+Atributos de disco establecidos correctamente.
+
+Saliendo de DiskPart...
+2025-10-01 19:28:10 | INFO | Evento USB detectado: USB inserted: E: | readonly aplicado al disco 2 (unidad E:)
+2025-10-01 19:28:10 | INFO | Disco 2 (para unidad E:) establecido en modo solo lectura. Salida: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El disco 2 es ahora el disco seleccionado.
+
+Atributos de disco establecidos correctamente.
+
+Saliendo de DiskPart...
+2025-10-01 19:28:10 | INFO | Evento USB detectado: USB inserted: E: | readonly aplicado al disco 2 (unidad E:)
+2025-10-01 19:28:12 | ERROR | Error al enviar evento USB: HTTPConnectionPool(host='172.20.10.12', port=3000): Max retries exceeded with url: /api/usb-event (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x000001F7BD3CEF90>: Failed to establish a new connection: [WinError 10061] No se puede establecer una conexión ya que el equipo de destino denegó expresamente dicha conexión'))
+2025-10-01 19:28:12 | ERROR | Error al enviar evento USB: HTTPConnectionPool(host='172.20.10.12', port=3000): Max retries exceeded with url: /api/usb-event (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x000001CA2BAEF360>: Failed to establish a new connection: [WinError 10061] No se puede establecer una conexión ya que el equipo de destino denegó expresamente dicha conexión'))
+2025-10-01 19:28:12 | ERROR | Error inesperado al lanzar la interfaz en la sesión activa: module 'win32con' has no attribute 'TokenPrimary'
+2025-10-01 19:28:12 | INFO | Solicitando credenciales al usuario para la unidad E:
+2025-10-01 19:28:13 | WARNING | El formulario de credenciales terminó con código 1 para la unidad E:
+2025-10-01 19:28:13 | INFO | Autorización no concedida para la unidad E:
+2025-10-01 19:28:13 | INFO | USB permanece protegida: E: | Autorización no concedida para la unidad E:
+2025-10-01 19:28:14 | ERROR | Error al crear desbloqueo pendiente: HTTPConnectionPool(host='172.20.10.12', port=3000): Max retries exceeded with url: /api/usb-event/pending-unlock (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x000001F7BD450050>: Failed to establish a new connection: [WinError 10061] No se puede establecer una conexión ya que el equipo de destino denegó expresamente dicha conexión'))
+2025-10-01 19:28:15 | ERROR | Error al enviar evento USB: HTTPConnectionPool(host='172.20.10.12', port=3000): Max retries exceeded with url: /api/usb-event (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x000001CA2BAE3890>: Failed to establish a new connection: [WinError 10061] No se puede establecer una conexión ya que el equipo de destino denegó expresamente dicha conexión'))
+2025-10-01 19:28:54 | ERROR | diskpart devolvió código 2147755354 al establecer E: solo lectura. Stdout: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El volumen 5 es el volumen seleccionado.
+
+Error del Servicio de disco virtual:
+No se admite la operaci¢n en medios extra¡bles. | Stderr: 
+2025-10-01 19:28:54 | ERROR | diskpart devolvió código 2147755354 al establecer E: solo lectura. Stdout: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El volumen 5 es el volumen seleccionado.
+
+Error del Servicio de disco virtual:
+No se admite la operaci¢n en medios extra¡bles. | Stderr: 
+2025-10-01 19:28:54 | INFO | Disco 2 (para unidad E:) establecido en modo solo lectura. Salida: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El disco 2 es ahora el disco seleccionado.
+
+Atributos de disco establecidos correctamente.
+
+Saliendo de DiskPart...
+2025-10-01 19:28:54 | INFO | Evento USB detectado: USB inserted: E: | readonly aplicado al disco 2 (unidad E:)
+2025-10-01 19:28:54 | INFO | Evento USB enviado correctamente: {"pc_name": "GWINTBLEIDD", "pc_ip": "172.22.48.1", "pc_user": "Gothan", "drive_letter": "E:", "readonly_status": "readonly aplicado al disco 2 (unidad E:)", "event": "USB inserted: E: | readonly aplicado al disco 2 (unidad E:)"}
+2025-10-01 19:28:54 | INFO | Disco 2 (para unidad E:) establecido en modo solo lectura. Salida: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El disco 2 es ahora el disco seleccionado.
+
+Atributos de disco establecidos correctamente.
+
+Saliendo de DiskPart...
+2025-10-01 19:28:54 | INFO | Evento USB detectado: USB inserted: E: | readonly aplicado al disco 2 (unidad E:)
+2025-10-01 19:28:56 | INFO | Desbloqueo pendiente creado para E: en GWINTBLEIDD
+2025-10-01 19:28:56 | INFO | Señal enviada para abrir navegador en http://172.20.10.12:3000/login?pcName=GWINTBLEIDD
+2025-10-01 19:28:56 | INFO | Esperando autorización de desbloqueo para E: (timeout: 300s)...
+2025-10-01 19:28:56 | INFO | Evento USB enviado correctamente: {"pc_name": "GWINTBLEIDD", "pc_ip": "172.22.48.1", "pc_user": "GWINTBLEIDD$", "drive_letter": "E:", "readonly_status": "readonly aplicado al disco 2 (unidad E:)", "event": "USB inserted: E: | readonly aplicado al disco 2 (unidad E:)", "readonly_success": true}
+2025-10-01 19:28:56 | ERROR | Error inesperado al lanzar la interfaz en la sesión activa: module 'win32con' has no attribute 'TokenPrimary'
+2025-10-01 19:28:56 | INFO | Solicitando credenciales al usuario para la unidad E:
+2025-10-01 19:28:57 | WARNING | El formulario de credenciales terminó con código 1 para la unidad E:
+2025-10-01 19:28:57 | INFO | Autorización no concedida para la unidad E:
+2025-10-01 19:28:57 | INFO | USB permanece protegida: E: | Autorización no concedida para la unidad E:
+2025-10-01 19:29:00 | INFO | Evento USB enviado correctamente: {"pc_name": "GWINTBLEIDD", "pc_ip": "172.22.48.1", "pc_user": "GWINTBLEIDD$", "drive_letter": "E:", "readonly_status": "Autorizaci\u00f3n no concedida para la unidad E:", "event": "USB permanece protegida: E: | Autorizaci\u00f3n no concedida para la unidad E:", "unlock_granted": false}
+2025-10-01 19:29:22 | ERROR | diskpart devolvió código 2147755354 al establecer E: solo lectura. Stdout: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El volumen 5 es el volumen seleccionado.
+
+Error del Servicio de disco virtual:
+No se admite la operaci¢n en medios extra¡bles. | Stderr: 
+2025-10-01 19:29:23 | INFO | Disco 2 (para unidad E:) establecido en modo solo lectura. Salida: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El disco 2 es ahora el disco seleccionado.
+
+Atributos de disco establecidos correctamente.
+
+Saliendo de DiskPart...
+2025-10-01 19:29:23 | INFO | Evento USB detectado: USB inserted: E: | readonly aplicado al disco 2 (unidad E:)
+2025-10-01 19:29:23 | INFO | Evento USB enviado correctamente: {"pc_name": "GWINTBLEIDD", "pc_ip": "172.22.48.1", "pc_user": "GWINTBLEIDD$", "drive_letter": "E:", "readonly_status": "readonly aplicado al disco 2 (unidad E:)", "event": "USB inserted: E: | readonly aplicado al disco 2 (unidad E:)", "readonly_success": true}
+2025-10-01 19:29:23 | ERROR | Error inesperado al lanzar la interfaz en la sesión activa: module 'win32con' has no attribute 'TokenPrimary'
+2025-10-01 19:29:23 | INFO | Solicitando credenciales al usuario para la unidad E:
+2025-10-01 19:29:24 | WARNING | El formulario de credenciales terminó con código 1 para la unidad E:
+2025-10-01 19:29:24 | INFO | Autorización no concedida para la unidad E:
+2025-10-01 19:29:24 | INFO | USB permanece protegida: E: | Autorización no concedida para la unidad E:
+2025-10-01 19:29:24 | INFO | Evento USB enviado correctamente: {"pc_name": "GWINTBLEIDD", "pc_ip": "172.22.48.1", "pc_user": "GWINTBLEIDD$", "drive_letter": "E:", "readonly_status": "Autorizaci\u00f3n no concedida para la unidad E:", "event": "USB permanece protegida: E: | Autorizaci\u00f3n no concedida para la unidad E:", "unlock_granted": false}
+2025-10-01 19:30:36 | ERROR | diskpart devolvió código 2147755354 al establecer E: solo lectura. Stdout: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El volumen 5 es el volumen seleccionado.
+
+Error del Servicio de disco virtual:
+No se admite la operaci¢n en medios extra¡bles. | Stderr: 
+2025-10-01 19:30:37 | INFO | Disco 2 (para unidad E:) establecido en modo solo lectura. Salida: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El disco 2 es ahora el disco seleccionado.
+
+Atributos de disco establecidos correctamente.
+
+Saliendo de DiskPart...
+2025-10-01 19:30:37 | INFO | Evento USB detectado: USB inserted: E: | readonly aplicado al disco 2 (unidad E:)
+2025-10-01 19:30:37 | INFO | Evento USB enviado correctamente: {"pc_name": "GWINTBLEIDD", "pc_ip": "172.22.48.1", "pc_user": "GWINTBLEIDD$", "drive_letter": "E:", "readonly_status": "readonly aplicado al disco 2 (unidad E:)", "event": "USB inserted: E: | readonly aplicado al disco 2 (unidad E:)", "readonly_success": true}
+2025-10-01 19:30:37 | ERROR | Error inesperado al lanzar la interfaz en la sesión activa: module 'win32con' has no attribute 'TokenPrimary'
+2025-10-01 19:30:37 | INFO | Solicitando credenciales al usuario para la unidad E:
+2025-10-01 19:30:38 | WARNING | El formulario de credenciales terminó con código 1 para la unidad E:
+2025-10-01 19:30:38 | INFO | Autorización no concedida para la unidad E:
+2025-10-01 19:30:38 | INFO | USB permanece protegida: E: | Autorización no concedida para la unidad E:
+2025-10-01 19:30:38 | INFO | Evento USB enviado correctamente: {"pc_name": "GWINTBLEIDD", "pc_ip": "172.22.48.1", "pc_user": "GWINTBLEIDD$", "drive_letter": "E:", "readonly_status": "Autorizaci\u00f3n no concedida para la unidad E:", "event": "USB permanece protegida: E: | Autorizaci\u00f3n no concedida para la unidad E:", "unlock_granted": false}
+2025-10-01 19:31:12 | INFO | Solicitud de parada recibida
+2025-10-01 19:32:00 | INFO | Solicitud de parada recibida
+2025-10-01 19:32:01 | INFO | Solicitud de parada recibida
+2025-10-01 19:32:19 | INFO | Solicitud de parada recibida
+2025-10-01 19:32:21 | INFO | Servicio detenido
+2025-10-02 15:02:36 | INFO | Servicio iniciado
+2025-10-02 15:05:34 | ERROR | diskpart devolvió código 2147755354 al establecer E: solo lectura. Stdout: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El volumen 5 es el volumen seleccionado.
+
+Error del Servicio de disco virtual:
+No se admite la operaci¢n en medios extra¡bles. | Stderr: 
+2025-10-02 15:05:34 | INFO | Disco 2 (para unidad E:) establecido en modo solo lectura. Salida: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El disco 2 es ahora el disco seleccionado.
+
+Atributos de disco establecidos correctamente.
+
+Saliendo de DiskPart...
+2025-10-02 15:05:34 | INFO | Evento USB detectado: USB inserted: E: | readonly aplicado al disco 2 (unidad E:)
+2025-10-02 15:05:34 | INFO | Evento USB enviado correctamente: {"pc_name": "GWINTBLEIDD", "pc_ip": "192.168.42.1", "pc_user": "GWINTBLEIDD$", "drive_letter": "E:", "readonly_status": "readonly aplicado al disco 2 (unidad E:)", "event": "USB inserted: E: | readonly aplicado al disco 2 (unidad E:)"}
+2025-10-02 15:05:37 | INFO | Desbloqueo pendiente creado para E: en GWINTBLEIDD
+2025-10-02 15:05:37 | INFO | Señal enviada al agente para unidad E:
+2025-10-02 15:05:37 | INFO | Esperando autorización de desbloqueo para E: (timeout: 300s)...
+2025-10-02 15:10:40 | WARNING | Timeout esperando autorización de desbloqueo para E:
+2025-10-02 15:10:40 | WARNING | USB E: permanecerá en modo solo lectura (timeout o no autorizado)
+2025-10-02 15:14:54 | ERROR | diskpart devolvió código 2147755354 al establecer E: solo lectura. Stdout: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El volumen 5 es el volumen seleccionado.
+
+Error del Servicio de disco virtual:
+No se admite la operaci¢n en medios extra¡bles. | Stderr: 
+2025-10-02 15:14:55 | INFO | Disco 2 (para unidad E:) establecido en modo solo lectura. Salida: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El disco 2 es ahora el disco seleccionado.
+
+Atributos de disco establecidos correctamente.
+
+Saliendo de DiskPart...
+2025-10-02 15:14:55 | INFO | Evento USB detectado: USB inserted: E: | readonly aplicado al disco 2 (unidad E:)
+2025-10-02 15:14:55 | INFO | Evento USB enviado correctamente: {"pc_name": "GWINTBLEIDD", "pc_ip": "192.168.42.1", "pc_user": "GWINTBLEIDD$", "drive_letter": "E:", "readonly_status": "readonly aplicado al disco 2 (unidad E:)", "event": "USB inserted: E: | readonly aplicado al disco 2 (unidad E:)"}
+2025-10-02 15:14:55 | INFO | Desbloqueo pendiente creado para E: en GWINTBLEIDD
+2025-10-02 15:14:55 | INFO | Señal enviada al agente para unidad E:
+2025-10-02 15:14:55 | INFO | Esperando autorización de desbloqueo para E: (timeout: 300s)...
+2025-10-02 15:19:57 | WARNING | Timeout esperando autorización de desbloqueo para E:
+2025-10-02 15:19:57 | WARNING | USB E: permanecerá en modo solo lectura (timeout o no autorizado)
