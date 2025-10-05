@@ -2,8 +2,8 @@ import { db } from "@/lib/db";
 import { hashPassword, generateApiKey } from "@/lib/auth";
 
 // createUser (solo modo posicional)
-// Uso: npm run user:create -- <username> <password> [apiKey] [role]
-// Salida (éxito): CREATED <id> <username> <apiKey> <role>
+// Uso: npm run user:create -- <username> <password> [apiKey] [role] [computerName]
+// Salida (éxito): CREATED <id> <username> <apiKey> <role> [computerName]
 // Errores: código !=0 y mensaje corto.
 
 async function main() {
@@ -26,6 +26,7 @@ async function main() {
   const password = args[1];
   const apiKeyProvided = args[2];
   const role = args[3] || "user"; // Por defecto "user"
+  const computerName = args[4]; // Nombre de la computadora (opcional)
 
   if (role !== "admin" && role !== "user") {
     console.error("ERROR: rol debe ser 'admin' o 'user'");
@@ -38,14 +39,28 @@ async function main() {
     process.exit(2);
   }
 
+  let computerId = null;
+  if (computerName) {
+    const computer = await (db as any).computer.findUnique({
+      where: { name: computerName },
+    });
+    if (!computer) {
+      console.error(`ERROR: La computadora '${computerName}' no existe`);
+      process.exit(3);
+    }
+    computerId = computer.id;
+  }
+
   const passwordHash = await hashPassword(password);
   const apiKey = apiKeyProvided || generateApiKey();
   const user = await (db as any).user.create({
-    data: { username, passwordHash, apiKey, role },
+    data: { username, passwordHash, apiKey, role, computerId },
   });
 
   console.log(
-    `CREATED ${user.id} ${user.username} ${user.apiKey} ${user.role}`
+    `CREATED ${user.id} ${user.username} ${user.apiKey} ${user.role}${
+      computerName ? ` ${computerName}` : ""
+    }`
   );
   process.exit(0);
 }
@@ -53,9 +68,12 @@ async function main() {
 function printUsage(reason?: string) {
   if (reason) console.error(reason);
   console.log(
-    "Uso: npm run user:create -- <username> <password> [apiKey] [role]"
+    "Uso: npm run user:create -- <username> <password> [apiKey] [role] [computerName]"
   );
   console.log("Roles disponibles: admin, user (por defecto: user)");
+  console.log(
+    "computerName: Nombre de la computadora a asignar (opcional, solo para usuarios)"
+  );
 }
 
 main().catch((e) => {

@@ -29,15 +29,45 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
+      // Intentar obtener el hostname desde diferentes fuentes
+      let clientHostname = "";
+
+      // 1. Desde el parámetro pcName de la URL (si viene del servicio USB)
+      if (pcName) {
+        clientHostname = pcName;
+      }
+      // 2. Intentar obtener del localStorage (si se guardó previamente)
+      else if (typeof window !== "undefined") {
+        clientHostname = localStorage.getItem("clientHostname") || "";
+      }
+
+      const headers: HeadersInit = {
+        "Content-Type": "application/json",
+      };
+
+      // Agregar hostname a los headers si está disponible
+      if (clientHostname) {
+        headers["x-client-hostname"] = clientHostname;
+      }
+
       const res = await fetch("/api/auth/login", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ username, password }),
         credentials: "include",
       });
       const data = await res.json();
       if (!data.ok) {
-        setError(data.error?.message || "Error desconocido");
+        // Mostrar mensaje específico si intenta ingresar desde computadora incorrecta
+        if (data.error?.code === "WRONG_COMPUTER") {
+          setError(
+            `No puedes iniciar sesión desde esta computadora. Solo puedes acceder desde: ${
+              data.error?.details?.assignedComputer || "tu computadora asignada"
+            }`
+          );
+        } else {
+          setError(data.error?.message || "Error desconocido");
+        }
         setLoading(false);
         return;
       }

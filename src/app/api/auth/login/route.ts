@@ -38,7 +38,10 @@ export async function POST(req: Request) {
       );
     }
 
-    const user = await (db as any).user.findUnique({ where: { username } });
+    const user = await (db as any).user.findUnique({
+      where: { username },
+      include: { computer: true },
+    });
     if (!user) {
       await simulatePasswordCheckDelay();
       return NextResponse.json(
@@ -48,6 +51,34 @@ export async function POST(req: Request) {
         },
         { status: 401 }
       );
+    }
+
+    // Validar que usuarios normales solo puedan iniciar sesión desde su PC asignada
+    if (user.role === "user" && user.computer) {
+      // Obtener el hostname de la computadora cliente
+      const clientHostname = req.headers.get("x-client-hostname");
+
+      // Validar que el hostname coincida (case-insensitive)
+      if (
+        clientHostname &&
+        clientHostname.toUpperCase() !== user.computer.name.toUpperCase()
+      ) {
+        await simulatePasswordCheckDelay();
+        return NextResponse.json(
+          {
+            ok: false,
+            error: {
+              code: "WRONG_COMPUTER",
+              message: `Solo puede iniciar sesión desde la computadora asignada: ${user.computer.name}`,
+              details: {
+                assignedComputer: user.computer.name,
+                attemptedComputer: clientHostname,
+              },
+            },
+          },
+          { status: 403 }
+        );
+      }
     }
     // Verificar lockout
     if (user.lockedUntil && new Date(user.lockedUntil).getTime() > Date.now()) {

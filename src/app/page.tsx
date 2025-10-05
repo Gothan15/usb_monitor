@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RefreshCw, LogOut } from "lucide-react";
@@ -9,14 +10,43 @@ import { StatsCards } from "@/components/dashboard/StatsCards";
 import { EventsTab } from "@/components/dashboard/EventsTab";
 import { ComputersTab } from "@/components/dashboard/ComputersTab";
 import { NetworkScannerTab } from "@/components/dashboard/NetworkScannerTab";
+import { FullscreenSpinner } from "@/components/ui/spinner";
 
 export default function Home() {
+  const router = useRouter();
   const [events, setEvents] = useState<USBEvent[]>([]);
   const [computers, setComputers] = useState<Computer[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  const [checkingRole, setCheckingRole] = useState(true);
+
+  // Verificar rol de usuario
+  useEffect(() => {
+    const checkRole = async () => {
+      try {
+        const res = await fetch("/api/auth/session", {
+          credentials: "include",
+        });
+        const data = await res.json();
+
+        if (data.ok && data.user) {
+          if (data.user.role === "user") {
+            router.push("/unlocked");
+            return;
+          }
+        }
+        setCheckingRole(false);
+      } catch (error) {
+        console.error("Error verificando rol:", error);
+        setCheckingRole(false);
+      }
+    };
+
+    checkRole();
+  }, [router]);
+
   const logout = async () => {
     try {
       await fetch("/api/auth/logout", { method: "POST" });
@@ -92,6 +122,10 @@ export default function Home() {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
     return eventDate > oneHourAgo;
   }).length;
+
+  if (checkingRole) {
+    return <FullscreenSpinner label="Verificando permisos" />;
+  }
 
   return (
     <div className="container mx-auto p-6 space-y-6">

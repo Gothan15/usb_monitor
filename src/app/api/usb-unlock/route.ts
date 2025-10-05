@@ -117,6 +117,17 @@ export async function GET(req: Request) {
       },
     });
 
+    // Si hay un unlock autorizado, eliminarlo después de devolverlo
+    // para evitar que se procese múltiples veces
+    if (unlock && checkInterval) {
+      await (db as any).pendingUnlock.delete({
+        where: { id: unlock.id },
+      });
+      console.log(
+        `PendingUnlock ${unlock.id} eliminado después de ser procesado`
+      );
+    }
+
     return NextResponse.json({
       ok: true,
       unlocked: !!unlock,

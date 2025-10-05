@@ -38,6 +38,7 @@ model Computer {
   agentVersion     String?  // versión del ejecutable/agent si se puede detectar en el futuro
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  users     User[]   // Relación con usuarios
   
   @@map("computers")
   @@index([lastSeen])
@@ -49,10 +50,14 @@ model User {
   passwordHash String
   apiKey       String    @unique
   role         String    @default("user") // "admin" o "user"
+  computerId   String?   // Computadora asignada al usuario
+  computer     Computer? @relation(fields: [computerId], references: [id], onDelete: SetNull)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   failedAttempts Int      @default(0)
   lockedUntil   DateTime?
+  
+  @@index([computerId])
 }
 
 model PendingUnlock {
@@ -66,4 +71,24 @@ model PendingUnlock {
   @@map("pending_unlocks")
   @@index([pcName, unlocked])
   @@index([expiresAt])
+}
+
+model USBConnection {
+  id            String    @id @default(cuid())
+  pcName        String
+  driveLetter   String
+  volumeName    String
+  serialNumber  String
+  model         String
+  size          BigInt    @default(0)
+  connectedAt   DateTime  @default(now())
+  disconnectedAt DateTime?
+  lastSeen      DateTime  @default(now())
+  isConnected   Boolean   @default(true)
+  
+  @@map("usb_connections")
+  @@index([pcName, isConnected])
+  @@index([serialNumber])
+  @@index([connectedAt])
+  @@index([disconnectedAt])
 }

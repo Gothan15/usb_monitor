@@ -15,7 +15,9 @@
     "user:create": "tsx scripts/createUser.ts",
     "user:list": "tsx scripts/listUsers.ts",
     "user:delete": "tsx scripts/deleteUser.ts",
-    "user:rotate-key": "tsx scripts/rotateApiKey.ts"
+    "user:rotate-key": "tsx scripts/rotateApiKey.ts",
+    "user:assign-computer": "tsx scripts/assignComputer.ts",
+    "computer:list": "tsx scripts/listComputers.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

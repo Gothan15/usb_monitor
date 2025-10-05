@@ -2,6 +2,7 @@ import os from "os";
 import { exec } from "child_process";
 import util from "util";
 import { db } from "@/lib/db";
+import { checkServiceHealth } from "@/lib/serviceNotifier";
 
 const execAsync = util.promisify(exec);
 
@@ -57,8 +58,6 @@ async function checkService(
     "serviceInstalled" | "serviceRunning" | "lastServiceCheck"
   >
 > {
-  // Estrategia inicial: intentar llamar a un endpoint futuro que expondrá el agente.
-  // Por ahora hacemos un HEAD/GET hacia http://ip:5001/health (puede ajustarse) usando fetch.
   const result: Pick<
     HostScanResult,
     "serviceInstalled" | "serviceRunning" | "lastServiceCheck"
@@ -67,21 +66,14 @@ async function checkService(
     serviceRunning: false,
     lastServiceCheck: new Date(),
   };
-  try {
-    const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), 1500);
-    const res = await fetch(`http://${ip}:5001/health`, {
-      method: "GET",
-      signal: controller.signal,
-    }).catch(() => undefined);
-    clearTimeout(t);
-    if (res && res.ok) {
-      result.serviceInstalled = true;
-      result.serviceRunning = true; // asume que responde => activo
-    }
-  } catch {
-    // No responde, se queda en false.
+
+  const health = await checkServiceHealth(ip);
+
+  if (health.available) {
+    result.serviceInstalled = true;
+    result.serviceRunning = true;
   }
+
   return result;
 }
 
