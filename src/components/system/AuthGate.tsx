@@ -23,6 +23,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
           method: full ? "GET" : "HEAD",
           cache: "no-store",
           signal: controller.signal,
+          credentials: "include",
         });
         clearTimeout(timeout);
         if (res.status === 401) {

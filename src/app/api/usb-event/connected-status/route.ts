@@ -17,7 +17,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const body = await req.json();
+    const body = (await req.json().catch(() => null)) as any;
+
+    if (!body || typeof body !== "object") {
+      return NextResponse.json(
+        { ok: false, error: "Cuerpo JSON inválido o ausente" },
+        { status: 400 }
+      );
+    }
+
     const { pcName, connectedDrives } = body;
 
     if (!pcName || !Array.isArray(connectedDrives)) {

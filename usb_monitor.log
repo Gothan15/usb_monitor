@@ -99,3 +99,273 @@ Saliendo de DiskPart...
 2025-10-05 11:36:32 | INFO | USB E: desbloqueado exitosamente tras autorización
 2025-10-05 11:36:38 | WARNING | Recibida petición de desbloqueo para E: pero no está en pendientes
 2025-10-05 11:36:38 | INFO | 192.168.42.1 - "POST /unlock HTTP/1.1" 404 -
+2025-10-05 12:32:55 | INFO | 10.2.0.2 - "GET /health HTTP/1.1" 200 -
+2025-10-05 12:33:54 | INFO | Disco 2 (unidad E:) establecido en modo solo lectura. Salida: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El disco 2 es ahora el disco seleccionado.
+
+Atributos de disco establecidos correctamente.
+
+Saliendo de DiskPart...
+2025-10-05 12:33:54 | INFO | Evento USB detectado: USB inserted: E: | readonly aplicado al disco 2 (unidad E:)
+2025-10-05 12:33:54 | INFO | Evento USB enviado correctamente: {"pc_name": "GWINTBLEIDD", "pc_ip": "192.168.42.1", "pc_user": "GWINTBLEIDD$", "drive_letter": "E:", "readonly_status": "readonly aplicado al disco 2 (unidad E:)", "event": "USB inserted: E: | readonly aplicado al disco 2 (unidad E:)"}
+2025-10-05 12:33:55 | INFO | Registro de desbloqueo pendiente creado para GWINTBLEIDD - E:
+2025-10-05 12:33:55 | INFO | Archivo de señal creado para el agente: C:\ProgramData\USBMonitor\browser_signal.json
+2025-10-05 12:33:55 | INFO | USB E: bloqueado y pendiente de autorización
+2025-10-05 12:34:28 | INFO | Recibida notificación HTTP para desbloquear E: en GWINTBLEIDD
+2025-10-05 12:34:28 | INFO | Iniciando desbloqueo de unidad E:
+2025-10-05 12:34:28 | WARNING | No se pudo resolver el número de disco para la unidad E: <x_wmi: Unexpected COM Error (-2147352567, 'Ocurrió una excepción.', (0, 'SWbemServicesEx', 'La aplicación llamó a una interfaz que se aplanó para un diferente subproceso. ', None, 0, -2147417842), None)>
+2025-10-05 12:34:29 | INFO | Disco 2 (unidad E:) desbloqueado. Salida: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El disco 2 es ahora el disco seleccionado.
+
+Atributos de disco borrados correctamente.
+
+Saliendo de DiskPart...
+2025-10-05 12:34:29 | INFO | Unidad E: desbloqueada exitosamente: readonly removido del disco 2 (unidad E:)
+2025-10-05 12:34:29 | INFO | Archivo de señal limpiado
+2025-10-05 12:34:29 | INFO | 192.168.42.1 - "POST /unlock HTTP/1.1" 200 -
+2025-10-05 12:34:29 | INFO | USB E: desbloqueado via HTTP exitosamente
+2025-10-05 12:57:59 | INFO | Deteniendo servidor HTTP...
+2025-10-05 12:57:59 | INFO | Solicitud de parada recibida
+2025-10-05 12:58:00 | INFO | Servicio detenido
+2025-10-05 12:58:20 | INFO | Servicio iniciado
+2025-10-05 12:58:21 | INFO | Servidor HTTP iniciado en puerto 5001 para recibir notificaciones
+2025-10-05 12:58:21 | INFO | Iniciando monitoreo de autorizaciones de desbloqueo
+2025-10-05 12:58:21 | INFO | Iniciando monitoreo de unidades USB conectadas
+2025-10-05 13:00:25 | ERROR | diskpart devolvió código 2147755354 al bloquear disco 2 (unidad E:). Stdout: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El disco 2 es ahora el disco seleccionado.
+
+Atributos de disco establecidos correctamente.
+
+Error del Servicio de disco virtual:
+No se admite la operaci¢n en medios extra¡bles. | Stderr: 
+2025-10-05 13:00:25 | INFO | Evento USB detectado: USB inserted: E: | Fallo al aplicar readonly y poner offline el disco 2 para unidad E:
+2025-10-05 13:00:25 | INFO | Evento USB enviado correctamente: {"pc_name": "GWINTBLEIDD", "pc_ip": "192.168.42.1", "pc_user": "GWINTBLEIDD$", "drive_letter": "E:", "readonly_status": "Fallo al aplicar readonly y poner offline el disco 2 para unidad E:", "event": "USB inserted: E: | Fallo al aplicar readonly y poner offline el disco 2 para unidad E:"}
+2025-10-05 13:22:10 | INFO | Deteniendo servidor HTTP...
+2025-10-05 13:22:10 | INFO | Solicitud de parada recibida
+2025-10-05 13:22:11 | INFO | Servicio detenido
+2025-10-05 14:45:05 | INFO | Servicio iniciado
+2025-10-05 14:45:17 | INFO | Servidor HTTP iniciado en puerto 5001 para recibir notificaciones
+2025-10-05 14:45:17 | INFO | Iniciando monitoreo de autorizaciones de desbloqueo
+2025-10-05 14:45:17 | INFO | Iniciando monitoreo de unidades USB conectadas
+2025-10-05 14:45:36 | INFO | Disco 2 (unidad E:) establecido en modo solo lectura. Salida: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El disco 2 es ahora el disco seleccionado.
+
+Atributos de disco establecidos correctamente.
+
+Saliendo de DiskPart...
+2025-10-05 14:45:36 | INFO | Evento USB detectado: USB inserted: E: | readonly aplicado al disco 2 (unidad E:)
+2025-10-05 14:45:37 | INFO | Evento USB enviado correctamente: {"pc_name": "GWINTBLEIDD", "pc_ip": "192.168.42.1", "pc_user": "GWINTBLEIDD$", "drive_letter": "E:", "readonly_status": "readonly aplicado al disco 2 (unidad E:)", "event": "USB inserted: E: | readonly aplicado al disco 2 (unidad E:)"}
+2025-10-05 14:45:40 | INFO | Registro de desbloqueo pendiente creado para GWINTBLEIDD - E:
+2025-10-05 14:45:40 | INFO | Archivo de señal creado para el agente: C:\ProgramData\USBMonitor\browser_signal.json
+2025-10-05 14:45:40 | INFO | USB E: bloqueado y pendiente de autorización
+2025-10-05 14:45:56 | INFO | Recibida notificación HTTP para desbloquear E: en GWINTBLEIDD
+2025-10-05 14:45:56 | INFO | Iniciando desbloqueo de unidad E:
+2025-10-05 14:45:56 | WARNING | No se pudo resolver el número de disco para la unidad E: <x_wmi: Unexpected COM Error (-2147352567, 'Ocurrió una excepción.', (0, 'SWbemServicesEx', 'La aplicación llamó a una interfaz que se aplanó para un diferente subproceso. ', None, 0, -2147417842), None)>
+2025-10-05 14:45:57 | INFO | Autorización de desbloqueo recibida para E:
+2025-10-05 14:45:57 | INFO | Iniciando desbloqueo de unidad E:
+2025-10-05 14:45:57 | WARNING | No se pudo resolver el número de disco para la unidad E: <x_wmi: Unexpected COM Error (-2147352567, 'Ocurrió una excepción.', (0, 'SWbemServicesEx', 'La aplicación llamó a una interfaz que se aplanó para un diferente subproceso. ', None, 0, -2147417842), None)>
+2025-10-05 14:45:58 | INFO | Disco 2 (unidad E:) desbloqueado. Salida: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El disco 2 es ahora el disco seleccionado.
+
+Atributos de disco borrados correctamente.
+
+Saliendo de DiskPart...
+2025-10-05 14:45:58 | INFO | Disco 2 (unidad E:) desbloqueado. Salida: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El disco 2 es ahora el disco seleccionado.
+
+Atributos de disco borrados correctamente.
+
+Saliendo de DiskPart...
+2025-10-05 14:45:58 | INFO | Unidad E: desbloqueada exitosamente: readonly removido del disco 2 (unidad E:)
+2025-10-05 14:45:58 | INFO | Unidad E: desbloqueada exitosamente: readonly removido del disco 2 (unidad E:)
+2025-10-05 14:45:58 | INFO | Archivo de señal limpiado
+2025-10-05 14:45:58 | INFO | USB E: desbloqueado exitosamente tras autorización
+2025-10-05 14:45:58 | INFO | 192.168.42.1 - "POST /unlock HTTP/1.1" 200 -
+2025-10-05 14:45:58 | INFO | USB E: desbloqueado via HTTP exitosamente
+2025-10-05 14:50:10 | INFO | Deteniendo servidor HTTP...
+2025-10-05 14:50:10 | INFO | Solicitud de parada recibida
+2025-10-05 14:50:12 | INFO | Servicio detenido
+2025-10-12 22:15:54 | INFO | Servicio iniciado
+2025-10-12 22:16:07 | INFO | Servidor HTTP iniciado en puerto 5001 para recibir notificaciones
+2025-10-12 22:16:07 | INFO | Iniciando monitoreo de autorizaciones de desbloqueo
+2025-10-12 22:16:07 | INFO | Iniciando monitoreo de unidades USB conectadas
+2025-10-12 22:16:26 | INFO | Disco 2 (unidad E:) establecido en modo solo lectura. Salida: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El disco 2 es ahora el disco seleccionado.
+
+Atributos de disco establecidos correctamente.
+
+Saliendo de DiskPart...
+2025-10-12 22:16:26 | INFO | Evento USB detectado: USB inserted: E: | readonly aplicado al disco 2 (unidad E:)
+2025-10-12 22:16:27 | INFO | Evento USB enviado correctamente: {"pc_name": "GWINTBLEIDD", "pc_ip": "192.168.42.1", "pc_user": "GWINTBLEIDD$", "drive_letter": "E:", "readonly_status": "readonly aplicado al disco 2 (unidad E:)", "event": "USB inserted: E: | readonly aplicado al disco 2 (unidad E:)"}
+2025-10-12 22:16:28 | INFO | Registro de desbloqueo pendiente creado para GWINTBLEIDD - E:
+2025-10-12 22:16:28 | INFO | Archivo de señal creado para el agente: C:\ProgramData\USBMonitor\browser_signal.json
+2025-10-12 22:16:28 | INFO | USB E: bloqueado y pendiente de autorización
+2025-10-12 22:25:36 | INFO | Disco 2 (unidad E:) establecido en modo solo lectura. Salida: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El disco 2 es ahora el disco seleccionado.
+
+Atributos de disco establecidos correctamente.
+
+Saliendo de DiskPart...
+2025-10-12 22:25:36 | INFO | Evento USB detectado: USB inserted: E: | readonly aplicado al disco 2 (unidad E:)
+2025-10-12 22:25:37 | INFO | Evento USB enviado correctamente: {"pc_name": "GWINTBLEIDD", "pc_ip": "192.168.42.1", "pc_user": "GWINTBLEIDD$", "drive_letter": "E:", "readonly_status": "readonly aplicado al disco 2 (unidad E:)", "event": "USB inserted: E: | readonly aplicado al disco 2 (unidad E:)"}
+2025-10-12 22:25:38 | INFO | Registro de desbloqueo pendiente creado para GWINTBLEIDD - E:
+2025-10-12 22:25:38 | INFO | Archivo de señal creado para el agente: C:\ProgramData\USBMonitor\browser_signal.json
+2025-10-12 22:25:38 | INFO | USB E: bloqueado y pendiente de autorización
+2025-10-12 22:39:36 | INFO | Disco 2 (unidad E:) establecido en modo solo lectura. Salida: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El disco 2 es ahora el disco seleccionado.
+
+Atributos de disco establecidos correctamente.
+
+Saliendo de DiskPart...
+2025-10-12 22:39:36 | INFO | Evento USB detectado: USB inserted: E: | readonly aplicado al disco 2 (unidad E:)
+2025-10-12 22:39:36 | INFO | Evento USB enviado correctamente: {"pc_name": "GWINTBLEIDD", "pc_ip": "192.168.42.1", "pc_user": "GWINTBLEIDD$", "drive_letter": "E:", "readonly_status": "readonly aplicado al disco 2 (unidad E:)", "event": "USB inserted: E: | readonly aplicado al disco 2 (unidad E:)"}
+2025-10-12 22:39:38 | INFO | Registro de desbloqueo pendiente creado para GWINTBLEIDD - E:
+2025-10-12 22:39:38 | INFO | Archivo de señal creado para el agente: C:\ProgramData\USBMonitor\browser_signal.json
+2025-10-12 22:39:38 | INFO | USB E: bloqueado y pendiente de autorización
+2025-10-12 22:40:13 | INFO | Recibida notificación HTTP para desbloquear E: en GWINTBLEIDD
+2025-10-12 22:40:13 | INFO | Iniciando desbloqueo de unidad E:
+2025-10-12 22:40:13 | WARNING | No se pudo resolver el número de disco para la unidad E: <x_wmi: Unexpected COM Error (-2147352567, 'Ocurrió una excepción.', (0, 'SWbemServicesEx', 'La aplicación llamó a una interfaz que se aplanó para un diferente subproceso. ', None, 0, -2147417842), None)>
+2025-10-12 22:40:13 | WARNING | No se pudo resolver el disco asociado a la unidad E:
+2025-10-12 22:40:13 | ERROR | Fallo al desbloquear unidad E:: No se pudo resolver el disco asociado a la unidad E:
+2025-10-12 22:40:13 | INFO | 192.168.42.1 - "POST /unlock HTTP/1.1" 500 -
+2025-10-12 22:40:13 | ERROR | Fallo al desbloquear USB E: via HTTP
+2025-10-12 22:40:16 | INFO | Autorización de desbloqueo recibida para E:
+2025-10-12 22:40:16 | INFO | Iniciando desbloqueo de unidad E:
+2025-10-12 22:40:16 | WARNING | No se pudo resolver el número de disco para la unidad E: <x_wmi: Unexpected COM Error (-2147352567, 'Ocurrió una excepción.', (0, 'SWbemServicesEx', 'La aplicación llamó a una interfaz que se aplanó para un diferente subproceso. ', None, 0, -2147417842), None)>
+2025-10-12 22:40:16 | WARNING | No se pudo resolver el disco asociado a la unidad E:
+2025-10-12 22:40:16 | ERROR | Fallo al desbloquear unidad E:: No se pudo resolver el disco asociado a la unidad E:
+2025-10-12 22:40:16 | ERROR | Fallo al desbloquear USB E: tras autorización
+2025-10-12 22:40:25 | INFO | Disco 2 (unidad E:) establecido en modo solo lectura. Salida: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El disco 2 es ahora el disco seleccionado.
+
+Atributos de disco establecidos correctamente.
+
+Saliendo de DiskPart...
+2025-10-12 22:40:25 | INFO | Evento USB detectado: USB inserted: E: | readonly aplicado al disco 2 (unidad E:)
+2025-10-12 22:40:25 | INFO | Evento USB enviado correctamente: {"pc_name": "GWINTBLEIDD", "pc_ip": "192.168.42.1", "pc_user": "GWINTBLEIDD$", "drive_letter": "E:", "readonly_status": "readonly aplicado al disco 2 (unidad E:)", "event": "USB inserted: E: | readonly aplicado al disco 2 (unidad E:)"}
+2025-10-12 22:40:25 | INFO | Registro de desbloqueo pendiente creado para GWINTBLEIDD - E:
+2025-10-12 22:40:25 | INFO | Archivo de señal creado para el agente: C:\ProgramData\USBMonitor\browser_signal.json
+2025-10-12 22:40:25 | INFO | USB E: bloqueado y pendiente de autorización
+2025-10-12 22:40:47 | INFO | Recibida notificación HTTP para desbloquear E: en GWINTBLEIDD
+2025-10-12 22:40:47 | INFO | Iniciando desbloqueo de unidad E:
+2025-10-12 22:40:47 | WARNING | No se pudo resolver el número de disco para la unidad E: <x_wmi: Unexpected COM Error (-2147352567, 'Ocurrió una excepción.', (0, 'SWbemServicesEx', 'La aplicación llamó a una interfaz que se aplanó para un diferente subproceso. ', None, 0, -2147417842), None)>
+2025-10-12 22:40:49 | INFO | Disco 2 (unidad E:) desbloqueado. Salida: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El disco 2 es ahora el disco seleccionado.
+
+Atributos de disco borrados correctamente.
+
+Saliendo de DiskPart...
+2025-10-12 22:40:49 | INFO | Unidad E: desbloqueada exitosamente: readonly removido del disco 2 (unidad E:)
+2025-10-12 22:40:49 | INFO | Archivo de señal limpiado
+2025-10-12 22:40:49 | INFO | 192.168.42.1 - "POST /unlock HTTP/1.1" 200 -
+2025-10-12 22:40:49 | INFO | USB E: desbloqueado via HTTP exitosamente
+2025-10-12 22:42:13 | INFO | Disco 2 (unidad E:) establecido en modo solo lectura. Salida: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El disco 2 es ahora el disco seleccionado.
+
+Atributos de disco establecidos correctamente.
+
+Saliendo de DiskPart...
+2025-10-12 22:42:13 | INFO | Evento USB detectado: USB inserted: E: | readonly aplicado al disco 2 (unidad E:)
+2025-10-12 22:42:23 | ERROR | Error al enviar evento USB: HTTPConnectionPool(host='172.20.10.12', port=3000): Read timed out. (read timeout=10)
+2025-10-12 22:42:33 | ERROR | Error al crear pending unlock: HTTPConnectionPool(host='172.20.10.12', port=3000): Read timed out. (read timeout=10)
+2025-10-12 22:42:33 | INFO | Archivo de señal creado para el agente: C:\ProgramData\USBMonitor\browser_signal.json
+2025-10-12 22:42:33 | INFO | USB E: bloqueado y pendiente de autorización
+2025-10-12 23:22:13 | INFO | Disco 2 (unidad E:) establecido en modo solo lectura. Salida: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El disco 2 es ahora el disco seleccionado.
+
+Atributos de disco establecidos correctamente.
+
+Saliendo de DiskPart...
+2025-10-12 23:22:13 | INFO | Evento USB detectado: USB inserted: E: | readonly aplicado al disco 2 (unidad E:)
+2025-10-12 23:22:15 | INFO | Evento USB enviado correctamente: {"pc_name": "GWINTBLEIDD", "pc_ip": "192.168.42.1", "pc_user": "GWINTBLEIDD$", "drive_letter": "E:", "readonly_status": "readonly aplicado al disco 2 (unidad E:)", "event": "USB inserted: E: | readonly aplicado al disco 2 (unidad E:)"}
+2025-10-12 23:22:18 | INFO | Registro de desbloqueo pendiente creado para GWINTBLEIDD - E:
+2025-10-12 23:22:18 | INFO | Archivo de señal creado para el agente: C:\ProgramData\USBMonitor\browser_signal.json
+2025-10-12 23:22:18 | INFO | USB E: bloqueado y pendiente de autorización
+2025-10-12 23:22:40 | INFO | Recibida notificación HTTP para desbloquear E: en GWINTBLEIDD
+2025-10-12 23:22:40 | INFO | Iniciando desbloqueo de unidad E:
+2025-10-12 23:22:40 | WARNING | No se pudo resolver el número de disco para la unidad E: <x_wmi: Unexpected COM Error (-2147352567, 'Ocurrió una excepción.', (0, 'SWbemServicesEx', 'La aplicación llamó a una interfaz que se aplanó para un diferente subproceso. ', None, 0, -2147417842), None)>
+2025-10-12 23:22:40 | INFO | Autorización de desbloqueo recibida para E:
+2025-10-12 23:22:40 | INFO | Iniciando desbloqueo de unidad E:
+2025-10-12 23:22:40 | WARNING | No se pudo resolver el número de disco para la unidad E: <x_wmi: Unexpected COM Error (-2147352567, 'Ocurrió una excepción.', (0, 'SWbemServicesEx', 'La aplicación llamó a una interfaz que se aplanó para un diferente subproceso. ', None, 0, -2147417842), None)>
+2025-10-12 23:22:42 | INFO | Disco 2 (unidad E:) desbloqueado. Salida: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El disco 2 es ahora el disco seleccionado.
+
+Atributos de disco borrados correctamente.
+
+Saliendo de DiskPart...
+2025-10-12 23:22:42 | INFO | Unidad E: desbloqueada exitosamente: readonly removido del disco 2 (unidad E:)
+2025-10-12 23:22:42 | INFO | Disco 2 (unidad E:) desbloqueado. Salida: Microsoft DiskPart versi¢n 10.0.22621.1
+
+Copyright (C) Microsoft Corporation.
+En el equipo: GWINTBLEIDD
+
+El disco 2 es ahora el disco seleccionado.
+
+Atributos de disco borrados correctamente.
+
+Saliendo de DiskPart...
+2025-10-12 23:22:42 | INFO | Unidad E: desbloqueada exitosamente: readonly removido del disco 2 (unidad E:)
+2025-10-12 23:22:42 | INFO | Archivo de señal limpiado
+2025-10-12 23:22:42 | WARNING | Error al limpiar archivo de señal: [WinError 2] El sistema no puede encontrar el archivo especificado: 'C:\\ProgramData\\USBMonitor\\browser_signal.json'
+2025-10-12 23:22:42 | INFO | 192.168.42.1 - "POST /unlock HTTP/1.1" 200 -
+2025-10-12 23:22:42 | INFO | USB E: desbloqueado exitosamente tras autorización
+2025-10-12 23:22:42 | INFO | USB E: desbloqueado via HTTP exitosamente
+2025-10-12 23:24:36 | INFO | Deteniendo servidor HTTP...
+2025-10-12 23:24:36 | INFO | Servicio detenido
+2025-10-12 23:24:37 | INFO | Solicitud de parada recibida

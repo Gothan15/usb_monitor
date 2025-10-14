@@ -81,28 +81,49 @@ export async function notifyServiceUnlock(
 /**
  * Verifica si el servicio está disponible en una computadora.
  */
-export async function checkServiceHealth(
-  ip: string
-): Promise<{ available: boolean; hostname?: string }> {
-  try {
-    const servicePort = process.env.USB_SERVICE_PORT || "5001";
-    const healthUrl = `http://${ip}:${servicePort}/health`;
+export async function checkServiceHealth(ip: string): Promise<{
+  available: boolean;
+  hostname?: string;
+  statusCode?: number;
+  statusText?: string;
+  latencyMs?: number;
+}> {
+  const servicePort = process.env.USB_SERVICE_PORT || "5001";
+  const healthUrl = `http://${ip}:${servicePort}/health`;
+  const started = Date.now();
 
+  try {
     const response = await fetch(healthUrl, {
       method: "GET",
       signal: AbortSignal.timeout(3000),
     });
 
+    const latencyMs = Date.now() - started;
+    const statusCode = response.status;
+    const statusText = response.statusText || undefined;
+
     if (response.ok) {
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
       return {
         available: true,
         hostname: data.hostname,
+        statusCode,
+        statusText: (data.status as string) || statusText || "OK",
+        latencyMs,
       };
     }
 
-    return { available: false };
-  } catch (error) {
-    return { available: false };
+    return {
+      available: false,
+      statusCode,
+      statusText: statusText || "Sin respuesta",
+      latencyMs,
+    };
+  } catch (error: any) {
+    return {
+      available: false,
+      statusText: error?.message || "Error de red",
+      latencyMs: Date.now() - started,
+    };
   }
 }

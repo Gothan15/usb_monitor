@@ -224,23 +224,9 @@ export default function LoginPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Contraseña
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword((s) => !s)}
-                      className="text-xs text-primary hover:underline inline-flex items-center gap-1"
-                    >
-                      {showPassword ? (
-                        <EyeOff className="h-3 w-3" />
-                      ) : (
-                        <Eye className="h-3 w-3" />
-                      )}{" "}
-                      {showPassword ? "Ocultar" : "Mostrar"}
-                    </button>
-                  </div>
+                  <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Contraseña
+                  </label>
                   <div className="relative">
                     <input
                       type={showPassword ? "text" : "password"}
@@ -251,6 +237,22 @@ export default function LoginPage() {
                       autoComplete="current-password"
                       placeholder="••••••••"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((s) => !s)}
+                      className="absolute inset-y-0 right-2 flex items-center justify-center rounded-full p-2 text-muted-foreground transition-colors hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                      <span className="sr-only">
+                        {showPassword
+                          ? "Ocultar contraseña"
+                          : "Mostrar contraseña"}
+                      </span>
+                    </button>
                   </div>
                 </div>
                 <Button

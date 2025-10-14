@@ -30,29 +30,62 @@ import os
 import socket
 import subprocess
 import sys
+import tempfile
+import threading
 import time
+from contextlib import redirect_stderr, redirect_stdout
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
-import tempfile
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse, parse_qs
-import threading
 
 import pythoncom  # type: ignore
 import requests
+import servicemanager  # type: ignore
 import win32event  # type: ignore
 import win32service  # type: ignore
 import win32serviceutil  # type: ignore
-import servicemanager  # type: ignore
 import wmi  # type: ignore
+import winerror
+
+try:  # pragma: no cover - pywintypes siempre se instala con pywin32
+    import pywintypes
+except ImportError:  # pragma: no cover
+    pywintypes = None  # type: ignore
+
+import tkinter as tk
+from tkinter import messagebox, ttk
+from tkinter.scrolledtext import ScrolledText
 
 
 DEFAULT_HOST = "172.20.10.12"
 DEFAULT_PORT = 3000
 DEFAULT_ENDPOINT = "/api/usb-event"
-DEFAULT_LOG_PATH = Path("D:/Monitor_USB/usb_monitor.log")
+PROGRAM_DATA_DIR = Path(os.environ.get("ProgramData", "C:/ProgramData")) / "USBMonitor"
+LOG_FILE_NAME = "usb_monitor_service.log"
+LEGACY_LOG_FILE_NAME = "usb_monitor.log"
+
+
+def get_app_directory() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
+
+
+def get_log_file_name() -> str:
+    return LOG_FILE_NAME if getattr(sys, "frozen", False) else LEGACY_LOG_FILE_NAME
+
+
+def get_default_log_path() -> Path:
+    if getattr(sys, "frozen", False):
+        base_dir = get_app_directory()
+    else:
+        base_dir = PROGRAM_DATA_DIR
+    return (base_dir / get_log_file_name()).resolve()
+
+
 DEFAULT_LISTEN_PORT = 5001  # Puerto donde el servicio escuchará peticiones
-SIGNAL_FILE = Path("C:/ProgramData/USBMonitor/browser_signal.json")
+SIGNAL_FILE = (PROGRAM_DATA_DIR / "browser_signal.json").resolve()
 HOSTNAME = (socket.gethostname() or "").strip().upper() or "UNKNOWN_HOST"
 
 
@@ -103,21 +136,60 @@ def resolve_log_path() -> Path:
         path = Path(custom_path)
         if path.suffix:
             path.parent.mkdir(parents=True, exist_ok=True)
-            return path
+            return path.resolve()
         path.mkdir(parents=True, exist_ok=True)
-        return path / "usb_monitor.log"
+        return (path / get_log_file_name()).resolve()
 
-    DEFAULT_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    return DEFAULT_LOG_PATH
+    default_path = get_default_log_path()
+    try:
+        default_path.parent.mkdir(parents=True, exist_ok=True)
+        return default_path
+    except OSError:
+        if getattr(sys, "frozen", False):
+            fallback_dir = PROGRAM_DATA_DIR
+        else:
+            fallback_dir = get_app_directory() / "logs"
+        fallback_dir.mkdir(parents=True, exist_ok=True)
+        return (fallback_dir / get_log_file_name()).resolve()
 
 
 def get_logger() -> logging.Logger:
     """Configura y devuelve un logger compartido."""
-    log_file = resolve_log_path()
     logger = logging.getLogger("usb_monitor_service")
     if not logger.handlers:
         logger.setLevel(logging.INFO)
-        handler = logging.FileHandler(log_file, encoding="utf-8")
+        log_file = resolve_log_path()
+        pending_warning: Optional[str] = None
+
+        try:
+            handler: logging.Handler = logging.FileHandler(log_file, encoding="utf-8")
+        except OSError as exc:
+            fallback_paths = [
+                (PROGRAM_DATA_DIR / get_log_file_name()).resolve(),
+                (get_app_directory() / "logs" / get_log_file_name()).resolve(),
+            ]
+            handler = None
+            last_exc: Optional[Exception] = exc
+            for candidate in fallback_paths:
+                if candidate == log_file:
+                    continue
+                try:
+                    candidate.parent.mkdir(parents=True, exist_ok=True)
+                    handler = logging.FileHandler(candidate, encoding="utf-8")
+                    pending_warning = (
+                        "No se pudo crear el log en %s (%s). Se usará %s."
+                        % (log_file, exc, candidate)
+                    )
+                    break
+                except OSError as fallback_exc:
+                    last_exc = fallback_exc
+            if handler is None:
+                handler = logging.StreamHandler()
+                pending_warning = (
+                    "No se pudo crear el archivo de log (%s). Se registrará sólo en la consola."
+                    % last_exc
+                )
+
         formatter = logging.Formatter(
             "%(asctime)s | %(levelname)s | %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
@@ -128,10 +200,43 @@ def get_logger() -> logging.Logger:
             stream_handler = logging.StreamHandler()
             stream_handler.setFormatter(formatter)
             logger.addHandler(stream_handler)
+        destination = getattr(getattr(handler, "stream", handler), "name", None)
+        if isinstance(destination, str):
+            logger.info("Registro inicializado en %s", destination)
+        else:
+            logger.info("Registro inicializado (%s)", type(handler).__name__)
+        if pending_warning:
+            logger.warning(pending_warning)
     return logger
 
 
 LOGGER = get_logger()
+
+
+def log_initial_configuration() -> None:
+    if getattr(LOGGER, "_config_logged", False):
+        return
+
+    try:
+        api_key_present = "sí" if os.environ.get("USB_MONITOR_API_KEY") else "no"
+        LOGGER.info(
+            "Configuración inicial | frozen=%s | destino=%s:%s | endpoint=%s | puerto_http=%s | api_key=%s",
+            getattr(sys, "frozen", False),
+            get_server_host(),
+            get_server_port(),
+            os.environ.get("USB_MONITOR_ENDPOINT", DEFAULT_ENDPOINT),
+            get_listen_port(),
+            api_key_present,
+        )
+        LOGGER.debug("Ruta efectiva de log: %s", resolve_log_path())
+        LOGGER.debug("Argumentos de ejecución: %s", sys.argv)
+    except Exception as exc:  # pragma: no cover - logging inicial no debe fallar
+        LOGGER.debug("No se pudo registrar la configuración inicial: %s", exc)
+    finally:
+        setattr(LOGGER, "_config_logged", True)
+
+
+log_initial_configuration()
 
 
 def resolve_ip() -> str:
@@ -191,12 +296,21 @@ def send_event(payload: Dict[str, Any]) -> None:
 
 
 def resolve_drive_letter(event: Any, conn: wmi.WMI) -> Optional[str]:
+    LOGGER.debug(
+        "Resolviendo letra de unidad | DriveName=%s | VolumeName=%s | DeviceID=%s",
+        getattr(event, "DriveName", None),
+        getattr(event, "VolumeName", None),
+        getattr(event, "DeviceID", None),
+    )
     drive_name = getattr(event, "DriveName", None)
     if isinstance(drive_name, str) and len(drive_name) >= 2 and drive_name[1] == ":":
-        return drive_name[:2].upper()
+        resolved = drive_name[:2].upper()
+        LOGGER.info("Letra de unidad determinada directamente: %s", resolved)
+        return resolved
 
     candidate = getattr(event, "VolumeName", None) or getattr(event, "DeviceID", None)
     if not isinstance(candidate, str):
+        LOGGER.debug("Evento sin candidate válido para letra: %s", candidate)
         return None
 
     try:
@@ -206,18 +320,23 @@ def resolve_drive_letter(event: Any, conn: wmi.WMI) -> Optional[str]:
         )
         for volume in volumes:
             drive_letter = getattr(volume, "DriveLetter", None)
-            if drive_letter and len(drive_letter) >= 2 and drive_letter[1] == ":":
-                return drive_letter[:2].upper()
+            if drive_letter:
+                resolved = str(drive_letter).upper()
+                LOGGER.info("Letra de unidad resuelta vía WMI: %s", resolved)
+                return resolved
     except Exception as exc:
         LOGGER.warning("No se pudo resolver letra de unidad para %s: %s", candidate, exc)
 
+    LOGGER.debug("No se encontró letra de unidad para el evento.")
     return None
 
 
 def resolve_disk_number(drive_letter: str, conn: wmi.WMI) -> Optional[str]:
+    LOGGER.debug("Resolviendo número de disco para la unidad %s", drive_letter)
     try:
         logical = conn.Win32_LogicalDisk(DeviceID=f"{drive_letter}:")
         if not logical:
+            LOGGER.debug("No se encontró Win32_LogicalDisk para %s", drive_letter)
             return None
         partitions = logical[0].associators(wmi_result_class="Win32_DiskPartition")
         for partition in partitions:
@@ -225,7 +344,13 @@ def resolve_disk_number(drive_letter: str, conn: wmi.WMI) -> Optional[str]:
             for disk in disks:
                 index = getattr(disk, "Index", None)
                 if index is not None:
-                    return str(index)
+                    resolved = str(index)
+                    LOGGER.info(
+                        "Número de disco para %s resuelto vía asociación directa: %s",
+                        drive_letter,
+                        resolved,
+                    )
+                    return resolved
         # Fallback manual join via Win32_LogicalDiskToPartition
         rels = conn.query(
             "SELECT * FROM Win32_LogicalDiskToPartition WHERE Antecedent LIKE '%{}%'".format(
@@ -243,13 +368,20 @@ def resolve_disk_number(drive_letter: str, conn: wmi.WMI) -> Optional[str]:
             for disk in disk_info:
                 index = getattr(disk, "Index", None)
                 if index is not None:
-                    return str(index)
+                    resolved = str(index)
+                    LOGGER.info(
+                        "Número de disco para %s resuelto vía fallback: %s",
+                        drive_letter,
+                        resolved,
+                    )
+                    return resolved
     except Exception as exc:
         LOGGER.warning(
             "No se pudo resolver el número de disco para la unidad %s: %s",
             drive_letter,
             exc,
         )
+    LOGGER.debug("No se pudo determinar el número de disco para %s", drive_letter)
     return None
 
 
@@ -260,6 +392,8 @@ def run_diskpart(commands: str) -> subprocess.CompletedProcess[str]:
         script_path = script_file.name
 
     try:
+        LOGGER.info("Ejecutando diskpart con script temporal %s", script_path)
+        LOGGER.debug("Contenido de script diskpart:\n%s", script_content.strip())
         result = subprocess.run(
             ["diskpart", "/s", script_path],
             text=True,
@@ -442,18 +576,28 @@ def protect_usb_media(
     drive_letter: Optional[str],
     conn: wmi.WMI,
 ) -> Tuple[Optional[str], bool, str]:
+    LOGGER.info("Iniciando protección en solo lectura para unidad: %s", drive_letter)
     if not drive_letter:
         msg = "No se determinó la letra de unidad"
         LOGGER.warning("%s", msg)
         return None, False, msg
 
     success, detail = set_disk_readonly(drive_letter, conn)
+    LOGGER.info(
+        "Resultado de protección para %s | éxito=%s | detalle=%s",
+        drive_letter,
+        success,
+        detail,
+    )
     return drive_letter, success, detail
 
 
 def create_browser_signal(pc_name: str, drive_letter: str) -> None:
     """Crea el archivo de señal para que el agente muestre el login."""
     try:
+        LOGGER.info(
+            "Creando archivo de señal para %s con unidad %s", pc_name, drive_letter
+        )
         SIGNAL_FILE.parent.mkdir(parents=True, exist_ok=True)
         
         signal_data = {
@@ -478,6 +622,11 @@ def create_pending_unlock(pc_name: str, drive_letter: str) -> bool:
         url = build_url(endpoint)
         headers = {"Content-Type": "application/json"}
         headers.update(get_auth_headers())
+        LOGGER.info(
+            "Solicitando creación de pending unlock para PC=%s unidad=%s",
+            pc_name,
+            drive_letter,
+        )
         
         payload = {
             "pcName": pc_name,
@@ -507,6 +656,12 @@ def check_unlock_status(pc_name: str) -> Tuple[bool, Optional[str]]:
         data = response.json()
         unlocked = data.get("unlocked", False)
         drive_letter = data.get("driveLetter")
+        LOGGER.debug(
+            "Estado de desbloqueo consultado | pc=%s | unlocked=%s | drive=%s",
+            pc_name,
+            unlocked,
+            drive_letter,
+        )
         
         return unlocked, drive_letter
     except Exception as exc:
@@ -594,6 +749,14 @@ def get_connected_usb_drives(conn: wmi.WMI) -> list:
                         "freeSpace": free_space,
                     }
                 )
+                LOGGER.debug(
+                    "Unidad USB detectada | letter=%s | modelo=%s | serie=%s | size=%s | libre=%s",
+                    drive_id,
+                    model or "Unknown",
+                    serial or "Unknown",
+                    size,
+                    free_space,
+                )
 
     return usb_drives
 
@@ -620,8 +783,9 @@ def send_connected_drives_status(pc_name: str, conn: wmi.WMI) -> bool:
         LOGGER.debug("Error HTTP al enviar estado de unidades conectadas: %s", exc)
         return False
 
-    LOGGER.debug(
-        "Estado de unidades conectadas enviado: %d drives", len(connected_drives)
+    LOGGER.info(
+        "Estado de unidades conectadas enviado: %d unidades reportadas",
+        len(connected_drives),
     )
     return True
 
@@ -801,8 +965,14 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
         self.main()
 
     def main(self) -> None:
-        pythoncom.CoInitialize()
+        LOGGER.info("Inicializando bucle principal del servicio")
+        try:
+            pythoncom.CoInitialize()
+        except pythoncom.com_error as exc:
+            LOGGER.error("No se pudo inicializar COM para el servicio: %s", exc)
+            return
         hostname = HOSTNAME
+        LOGGER.info("Hostname detectado para el servicio: %s", hostname)
         try:
             c = wmi.WMI()
             self.wmi_connection = c  # Guardar referencia para el HTTP handler
@@ -811,6 +981,7 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                 wmi_class="Win32_VolumeChangeEvent",
                 EventType=2,  # 2 => Device arrival
             )
+            LOGGER.info("Watcher WMI inicializado para Win32_VolumeChangeEvent")
         except Exception as exc:
             LOGGER.error("No se pudo inicializar WMI: %s", exc)
             pythoncom.CoUninitialize()
@@ -826,6 +997,10 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
             daemon=True
         )
         unlock_monitor_thread.start()
+        LOGGER.info(
+            "Thread de monitoreo de autorizaciones iniciado (id=%s)",
+            unlock_monitor_thread.ident,
+        )
 
         # Thread para monitorear USBs conectadas continuamente
         connected_monitor_thread = threading.Thread(
@@ -834,6 +1009,10 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
             daemon=True
         )
         connected_monitor_thread.start()
+        LOGGER.info(
+            "Thread de monitoreo de unidades conectadas iniciado (id=%s)",
+            connected_monitor_thread.ident,
+        )
 
         while not self.stopped:
             rc = win32event.WaitForSingleObject(self.stop_event, 500)
@@ -914,12 +1093,24 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
         pythoncom.CoInitialize()
         
         try:
+            pending_logged_empty = False
             while not self.stopped:
                 try:
                     time.sleep(3)  # Verificar cada 3 segundos
                     
                     if not self.pending_usbs:
+                        if not pending_logged_empty:
+                            LOGGER.debug("Sin USBs pendientes de desbloqueo")
+                            pending_logged_empty = True
                         continue
+                    else:
+                        if pending_logged_empty:
+                            LOGGER.debug("Se detectaron USBs pendientes nuevamente")
+                        pending_logged_empty = False
+                        LOGGER.info(
+                            "Pendientes actuales de desbloqueo: %s",
+                            list(self.pending_usbs.keys()),
+                        )
                     
                     # Verificar estado de desbloqueo en el backend
                     pc_name = HOSTNAME
@@ -974,6 +1165,9 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                 if conn is None:
                     try:
                         conn = wmi.WMI()
+                        LOGGER.info(
+                            "Conexión WMI lista para monitorear unidades conectadas"
+                        )
                     except Exception as exc:
                         LOGGER.error(
                             "No se pudo crear conexión WMI para monitorear unidades conectadas: %s",
@@ -1003,8 +1197,392 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
             pythoncom.CoUninitialize()
 
 
+SERVICE_STATE_LABELS: Dict[int, str] = {
+    win32service.SERVICE_STOPPED: "Detenido",
+    win32service.SERVICE_START_PENDING: "Iniciando...",
+    win32service.SERVICE_STOP_PENDING: "Deteniendo...",
+    win32service.SERVICE_RUNNING: "En ejecución",
+    win32service.SERVICE_CONTINUE_PENDING: "Reanudando...",
+    win32service.SERVICE_PAUSE_PENDING: "Pausando...",
+    win32service.SERVICE_PAUSED: "Pausado",
+}
+
+
+def _query_service_state() -> Tuple[Optional[int], str]:
+    try:
+        status = win32serviceutil.QueryServiceStatus(USBMonitorService._svc_name_)
+    except Exception as exc:  # pragma: no cover - depende del sistema
+        win_err = getattr(exc, "winerror", None)
+        if win_err == getattr(winerror, "ERROR_SERVICE_DOES_NOT_EXIST", 1060):
+            LOGGER.warning("Consulta de estado: servicio no instalado")
+            return None, "No instalado"
+        LOGGER.error("Error consultando estado del servicio: %s", exc)
+        return None, f"Error: {exc}"
+
+    state = status[1]
+    description = SERVICE_STATE_LABELS.get(state, f"Estado desconocido ({state})")
+    LOGGER.debug("Estado del servicio consultado: %s (%s)", state, description)
+    return state, description
+
+
+def _merge_process_output(stdout: Optional[str], stderr: Optional[str]) -> str:
+    fragments = []
+    if stdout:
+        stdout = stdout.strip()
+        if stdout:
+            fragments.append(stdout)
+    if stderr:
+        stderr = stderr.strip()
+        if stderr:
+            fragments.append(stderr)
+    return "\n".join(fragments)
+
+
+def _build_service_command(command: str) -> list[str]:
+    if getattr(sys, "frozen", False):
+        return [sys.executable, command]
+    return [sys.executable, str(Path(__file__).resolve()), command]
+
+
+def _format_win_error(exc: Exception) -> str:
+    win_err = getattr(exc, "winerror", None)
+    if win_err is not None:
+        description = getattr(exc, "strerror", None)
+        if description:
+            return f"[WinError {win_err}] {description}"
+        return f"[WinError {win_err}] {exc}"
+    return str(exc)
+
+
+def _wait_for_state(target_state: int, timeout: int = 45) -> bool:
+    deadline = time.time() + timeout
+    LOGGER.debug(
+        "Esperando estado %s (timeout=%ss)",
+        SERVICE_STATE_LABELS.get(target_state, target_state),
+        timeout,
+    )
+    while time.time() < deadline:
+        state, _ = _query_service_state()
+        if state == target_state:
+            LOGGER.debug("Estado objetivo alcanzado: %s", target_state)
+            return True
+        time.sleep(0.5)
+    LOGGER.warning(
+        "Timeout esperando estado %s tras %ss",
+        SERVICE_STATE_LABELS.get(target_state, target_state),
+        timeout,
+    )
+    return False
+
+
+def _control_service_direct(command: str, timeout: int = 45) -> Tuple[bool, str]:
+    state, description = _query_service_state()
+
+    if state is None:
+        LOGGER.warning(
+            "No se puede ejecutar '%s' porque el estado actual es desconocido: %s",
+            command,
+            description,
+        )
+        return False, description
+
+    try:
+        if command == "start":
+            if state == win32service.SERVICE_RUNNING:
+                LOGGER.info("Comando start solicitado, pero el servicio ya está en ejecución")
+                return True, "El servicio ya está en ejecución."
+            LOGGER.info("Intentando iniciar servicio (estado actual: %s)", description)
+            win32serviceutil.StartService(USBMonitorService._svc_name_)
+            if _wait_for_state(win32service.SERVICE_RUNNING, timeout):
+                LOGGER.info("Servicio marcado como en ejecución tras comando start")
+                return True, "Servicio iniciado correctamente."
+            state, description = _query_service_state()
+            LOGGER.error(
+                "No se confirmó el arranque del servicio tras start. Estado actual: %s",
+                description,
+            )
+            return False, (
+                "No se pudo confirmar el arranque del servicio. "
+                f"Estado actual: {description}"
+            )
+
+        if command == "stop":
+            if state == win32service.SERVICE_STOPPED:
+                LOGGER.info("Comando stop solicitado, pero el servicio ya está detenido")
+                return True, "El servicio ya está detenido."
+            LOGGER.info("Intentando detener servicio (estado actual: %s)", description)
+            win32serviceutil.StopService(USBMonitorService._svc_name_)
+            if _wait_for_state(win32service.SERVICE_STOPPED, timeout):
+                LOGGER.info("Servicio marcado como detenido tras comando stop")
+                return True, "Servicio detenido correctamente."
+            state, description = _query_service_state()
+            LOGGER.error(
+                "No se confirmó la detención del servicio tras stop. Estado actual: %s",
+                description,
+            )
+            return False, (
+                "No se pudo confirmar la detención del servicio. "
+                f"Estado actual: {description}"
+            )
+
+        if command == "restart":
+            LOGGER.info("Intentando reiniciar servicio")
+            win32serviceutil.RestartService(USBMonitorService._svc_name_)
+            if _wait_for_state(win32service.SERVICE_RUNNING, timeout):
+                LOGGER.info("Servicio marcado como en ejecución tras comando restart")
+                return True, "Servicio reiniciado correctamente."
+            state, description = _query_service_state()
+            LOGGER.error(
+                "No se confirmó el reinicio del servicio. Estado actual: %s",
+                description,
+            )
+            return False, (
+                "No se pudo confirmar el reinicio del servicio. "
+                f"Estado actual: {description}"
+            )
+    except Exception as exc:  # pragma: no cover - depende del sistema
+        LOGGER.error("Excepción al ejecutar comando directo '%s': %s", command, exc)
+        return False, _format_win_error(exc)
+
+    return False, f"Comando '{command}' no soportado."
+
+
+def _execute_service_command(command: str, timeout: int = 45) -> Tuple[bool, str]:
+    if command in {"start", "stop", "restart"}:
+        LOGGER.info("Ejecutando comando directo de servicio: %s", command)
+        return _control_service_direct(command, timeout)
+
+    env = os.environ.copy()
+    env["USB_MONITOR_SILENT"] = "0"
+    resolved_cmd = _build_service_command(command)
+    LOGGER.info("Ejecutando comando de línea del servicio: %s", resolved_cmd)
+    try:
+        result = subprocess.run(
+            resolved_cmd,
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=timeout,
+        )
+    except subprocess.CalledProcessError as exc:
+        LOGGER.error(
+            "Comando '%s' devolvió código %s. Stdout: %s | Stderr: %s",
+            command,
+            exc.returncode,
+            exc.stdout,
+            exc.stderr,
+        )
+        message = _merge_process_output(exc.stdout, exc.stderr)
+        if not message:
+            message = f"Error al ejecutar '{command}'. Código: {exc.returncode}"
+        return False, message
+    except subprocess.TimeoutExpired as exc:
+        LOGGER.error("Timeout ejecutando comando '%s' tras %ss", command, timeout)
+        try:
+            exc.process.kill()
+        except Exception:
+            pass
+        stdout, stderr = exc.process.communicate()
+        message = _merge_process_output(stdout, stderr)
+
+        state, description = _query_service_state()
+        if command == "start" and state == win32service.SERVICE_RUNNING:
+            extra = (
+                "El comando 'start' excedió el tiempo de espera, "
+                "pero el servicio reporta estado en ejecución."
+            )
+            LOGGER.warning("Timeout de start pero el servicio aparece en ejecución")
+            if message:
+                message = f"{message}\n{extra}"
+            else:
+                message = extra
+            return True, message
+
+        if command == "stop" and state == win32service.SERVICE_STOPPED:
+            extra = (
+                "El comando 'stop' excedió el tiempo de espera, "
+                "pero el servicio aparece detenido."
+            )
+            LOGGER.warning("Timeout de stop pero el servicio aparece detenido")
+            if message:
+                message = f"{message}\n{extra}"
+            else:
+                message = extra
+            return True, message
+
+        if not message:
+            message = (
+                f"El comando '{command}' excedió el tiempo de espera de {timeout} s."
+            )
+        return False, message
+    except Exception as exc:
+        LOGGER.exception("Excepción inesperada ejecutando comando '%s'", command)
+        return False, str(exc)
+
+    message = _merge_process_output(result.stdout, result.stderr)
+    if not message:
+        message = f"Comando '{command}' ejecutado correctamente."
+    LOGGER.info("Comando '%s' ejecutado correctamente", command)
+    return True, message
+
+
+def run_gui() -> None:
+    root = tk.Tk()
+    root.title("USB Monitor Service")
+    root.resizable(False, False)
+
+    icon_path = get_app_directory() / "usb_monitor_service.ico"
+    if icon_path.exists():
+        try:
+            root.iconbitmap(default=str(icon_path))
+        except Exception:
+            pass
+
+    root.columnconfigure(0, weight=1)
+    root.rowconfigure(0, weight=1)
+
+    container = ttk.Frame(root, padding=16)
+    container.grid(row=0, column=0, sticky="nsew")
+    container.columnconfigure(0, weight=1)
+    container.columnconfigure(1, weight=1)
+    container.rowconfigure(2, weight=1)
+
+    status_var = tk.StringVar()
+    status_label = ttk.Label(container, textvariable=status_var, font=("Segoe UI", 11, "bold"))
+    status_label.grid(row=0, column=0, columnspan=2, sticky="w")
+
+    info_label = ttk.Label(
+        container,
+        text="Ejecuta esta herramienta como administrador para instalar o controlar el servicio.",
+        wraplength=360,
+        foreground="#444444",
+    )
+    info_label.grid(row=1, column=0, columnspan=2, pady=(6, 10), sticky="w")
+
+    log_box = ScrolledText(container, height=8, width=52, state="disabled", wrap="word")
+    log_box.grid(row=2, column=0, columnspan=2, pady=(0, 12), sticky="nsew")
+
+    command_buttons: list[ttk.Button] = []
+
+    def append_log(text: str) -> None:
+        timestamp = time.strftime("%H:%M:%S")
+        log_box.configure(state="normal")
+        log_box.insert("end", f"[{timestamp}] {text}\n")
+        log_box.see("end")
+        log_box.configure(state="disabled")
+        LOGGER.info("GUI: %s", text)
+
+    def set_buttons_state(state: str) -> None:
+        for btn in command_buttons:
+            btn.configure(state=state)
+
+    def update_status() -> None:
+        state, description = _query_service_state()
+        status_var.set(f"Estado del servicio: {description}")
+        if state == win32service.SERVICE_RUNNING:
+            status_label.configure(foreground="#0A7F2E")
+        elif state == win32service.SERVICE_STOPPED:
+            status_label.configure(foreground="#B22222")
+        elif state is None:
+            status_label.configure(foreground="#B22222")
+        else:
+            status_label.configure(foreground="#BB8400")
+
+    def finish_command(success: bool, message: str) -> None:
+        set_buttons_state("normal")
+        append_log(message)
+        update_status()
+        if not success:
+            messagebox.showerror("USB Monitor Service", message, parent=root)
+            LOGGER.error("GUI: comando finalizado con error - %s", message)
+        else:
+            LOGGER.info("GUI: comando finalizado correctamente - %s", message)
+
+    def run_command_async(command: str) -> None:
+        def worker() -> None:
+            success, message = _execute_service_command(command)
+            root.after(0, lambda: finish_command(success, message))
+
+        append_log(f"Ejecutando '{command}'...")
+        LOGGER.info("GUI: se solicitó ejecución del comando '%s'", command)
+        set_buttons_state("disabled")
+        threading.Thread(target=worker, daemon=True).start()
+
+    commands = [
+        ("Instalar servicio", "install"),
+        ("Iniciar servicio", "start"),
+        ("Detener servicio", "stop"),
+        ("Desinstalar servicio", "remove"),
+    ]
+
+    for idx, (label, command) in enumerate(commands):
+        row = 3 + idx // 2
+        column = idx % 2
+        btn = ttk.Button(container, text=label, command=lambda c=command: run_command_async(c))
+        btn.grid(row=row, column=column, padx=4, pady=4, sticky="ew")
+        command_buttons.append(btn)
+
+    refresh_button = ttk.Button(container, text="Actualizar estado", command=update_status)
+    refresh_button.grid(row=5, column=0, columnspan=2, pady=(8, 0), sticky="ew")
+
+    append_log("Interfaz iniciada.")
+    update_status()
+
+    def periodic_status_refresh() -> None:
+        update_status()
+        root.after(5000, periodic_status_refresh)
+
+    root.after(5000, periodic_status_refresh)
+
+    root.mainloop()
+
+
 if __name__ == "__main__":
-    if len(sys.argv) == 1:
-        print(__doc__)
+    def _run_command_line(command: str) -> None:
+        silent_requested = os.environ.get("USB_MONITOR_SILENT", "1") == "1"
+        should_silence = (
+            getattr(sys, "frozen", False)
+            and command != "debug"
+            and silent_requested
+        )
+
+        if should_silence:
+            with open(os.devnull, "w", encoding="utf-8") as devnull:
+                with redirect_stdout(devnull), redirect_stderr(devnull):
+                    win32serviceutil.HandleCommandLine(USBMonitorService)
+        else:
+            win32serviceutil.HandleCommandLine(USBMonitorService)
+
+    def _launch_gui() -> None:
+        try:
+            run_gui()
+        except Exception as exc:  # pragma: no cover - gui solo en Windows con Tk
+            LOGGER.error("Error al iniciar la interfaz gráfica: %s", exc)
+            print("No se pudo iniciar la interfaz gráfica. Ejecuta con 'debug' para más detalles.")
+
+    args = [arg.lower() for arg in sys.argv[1:]]
+
+    if args and args[0] in {"gui", "--gui"}:
+        _launch_gui()
+    elif args:
+        _run_command_line(args[0])
     else:
-        win32serviceutil.HandleCommandLine(USBMonitorService)
+        LOGGER.info("Sin argumentos: intentando iniciar como servicio")
+        try:
+            servicemanager.Initialize()
+            servicemanager.PrepareToHostSingle(USBMonitorService)
+            servicemanager.StartServiceCtrlDispatcher()
+        except Exception as exc:
+            if getattr(exc, "winerror", None) == 1063:
+                LOGGER.info(
+                    "Dispatcher no disponible (WinError 1063). Ejecutando interfaz gráfica en modo interactivo."
+                )
+                _launch_gui()
+            else:
+                LOGGER.critical(
+                    "Error al iniciar el dispatcher del servicio: %s",
+                    exc,
+                    exc_info=True,
+                )
+                raise

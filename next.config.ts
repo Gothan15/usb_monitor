@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /* config options here */
+  allowedDevOrigins: ["172.20.10.12", "http://172.20.10.12:3000"],
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -11,7 +12,7 @@ const nextConfig: NextConfig = {
     if (dev) {
       // 禁用 webpack 的热模块替换
       config.watchOptions = {
-        ignored: ['**/*'], // 忽略所有文件变化
+        ignored: ["**/*"], // 忽略所有文件变化
       };
     }
     return config;

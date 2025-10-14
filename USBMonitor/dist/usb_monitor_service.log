@@ -1,0 +1,66 @@
+2025-10-13 23:49:48 | INFO | Registro inicializado en D:\Monitor_USB\USBMonitor\dist\usb_monitor_service.log
+2025-10-13 23:49:48 | INFO | Configuración inicial | frozen=True | destino=172.20.10.12:3000 | endpoint=/api/usb-event | puerto_http=5001 | api_key=sí
+2025-10-13 23:49:48 | INFO | Sin argumentos: intentando iniciar como servicio
+2025-10-13 23:49:48 | INFO | Dispatcher no disponible (WinError 1063). Ejecutando interfaz gráfica en modo interactivo.
+2025-10-13 23:49:48 | INFO | GUI: Interfaz iniciada.
+2025-10-13 23:50:09 | INFO | Registro inicializado en D:\Monitor_USB\USBMonitor\dist\usb_monitor_service.log
+2025-10-13 23:50:09 | INFO | Configuración inicial | frozen=True | destino=172.20.10.12:3000 | endpoint=/api/usb-event | puerto_http=5001 | api_key=sí
+2025-10-13 23:50:09 | INFO | Sin argumentos: intentando iniciar como servicio
+2025-10-13 23:50:09 | INFO | Dispatcher no disponible (WinError 1063). Ejecutando interfaz gráfica en modo interactivo.
+2025-10-13 23:50:09 | INFO | GUI: Interfaz iniciada.
+2025-10-13 23:50:18 | INFO | GUI: Ejecutando 'install'...
+2025-10-13 23:50:18 | INFO | GUI: se solicitó ejecución del comando 'install'
+2025-10-13 23:50:18 | INFO | Ejecutando comando de línea del servicio: ['D:\\Monitor_USB\\USBMonitor\\dist\\USBMonitorService.exe', 'install']
+2025-10-13 23:50:19 | INFO | Registro inicializado en D:\Monitor_USB\USBMonitor\dist\usb_monitor_service.log
+2025-10-13 23:50:19 | INFO | Configuración inicial | frozen=True | destino=172.20.10.12:3000 | endpoint=/api/usb-event | puerto_http=5001 | api_key=sí
+2025-10-13 23:50:19 | INFO | Comando 'install' ejecutado correctamente
+2025-10-13 23:50:19 | INFO | GUI: Installing service USBMonitorService
+Changing service configuration
+Service updated
+2025-10-13 23:50:19 | INFO | GUI: comando finalizado correctamente - Installing service USBMonitorService
+Changing service configuration
+Service updated
+2025-10-13 23:50:25 | INFO | GUI: Ejecutando 'start'...
+2025-10-13 23:50:25 | INFO | GUI: se solicitó ejecución del comando 'start'
+2025-10-13 23:50:25 | INFO | Ejecutando comando directo de servicio: start
+2025-10-13 23:50:25 | INFO | Intentando iniciar servicio (estado actual: Detenido)
+2025-10-13 23:50:27 | INFO | Registro inicializado en D:\Monitor_USB\USBMonitor\dist\usb_monitor_service.log
+2025-10-13 23:50:27 | INFO | Configuración inicial | frozen=True | destino=172.20.10.12:3000 | endpoint=/api/usb-event | puerto_http=5001 | api_key=sí
+2025-10-13 23:50:27 | INFO | Sin argumentos: intentando iniciar como servicio
+2025-10-13 23:50:27 | INFO | Servicio iniciado
+2025-10-13 23:50:27 | INFO | Servicio marcado como en ejecución tras comando start
+2025-10-13 23:50:27 | INFO | GUI: Servicio iniciado correctamente.
+2025-10-13 23:50:27 | INFO | GUI: comando finalizado correctamente - Servicio iniciado correctamente.
+2025-10-13 23:50:27 | INFO | Inicializando bucle principal del servicio
+2025-10-13 23:50:27 | INFO | Hostname detectado para el servicio: GWINTBLEIDD
+2025-10-13 23:50:28 | INFO | Watcher WMI inicializado para Win32_VolumeChangeEvent
+2025-10-13 23:50:40 | INFO | Servidor HTTP iniciado en puerto 5001 para recibir notificaciones
+2025-10-13 23:50:40 | INFO | Iniciando monitoreo de autorizaciones de desbloqueo
+2025-10-13 23:50:40 | INFO | Thread de monitoreo de autorizaciones iniciado (id=17452)
+2025-10-13 23:50:40 | INFO | Iniciando monitoreo de unidades USB conectadas
+2025-10-13 23:50:40 | INFO | Thread de monitoreo de unidades conectadas iniciado (id=12816)
+2025-10-13 23:50:40 | INFO | Conexión WMI lista para monitorear unidades conectadas
+2025-10-13 23:50:47 | INFO | GUI: Ejecutando 'stop'...
+2025-10-13 23:50:47 | INFO | GUI: se solicitó ejecución del comando 'stop'
+2025-10-13 23:50:47 | INFO | Ejecutando comando directo de servicio: stop
+2025-10-13 23:50:47 | INFO | Intentando detener servicio (estado actual: En ejecución)
+2025-10-13 23:50:47 | INFO | Deteniendo servidor HTTP...
+2025-10-13 23:50:47 | INFO | Servicio detenido
+2025-10-13 23:50:47 | INFO | Solicitud de parada recibida
+2025-10-13 23:50:47 | INFO | Servicio marcado como detenido tras comando stop
+2025-10-13 23:50:47 | INFO | GUI: Servicio detenido correctamente.
+2025-10-13 23:50:47 | INFO | GUI: comando finalizado correctamente - Servicio detenido correctamente.
+2025-10-13 23:50:51 | INFO | GUI: Ejecutando 'remove'...
+2025-10-13 23:50:51 | INFO | GUI: se solicitó ejecución del comando 'remove'
+2025-10-13 23:50:51 | INFO | Ejecutando comando de línea del servicio: ['D:\\Monitor_USB\\USBMonitor\\dist\\USBMonitorService.exe', 'remove']
+2025-10-13 23:50:52 | INFO | Registro inicializado en D:\Monitor_USB\USBMonitor\dist\usb_monitor_service.log
+2025-10-13 23:50:52 | INFO | Configuración inicial | frozen=True | destino=172.20.10.12:3000 | endpoint=/api/usb-event | puerto_http=5001 | api_key=sí
+2025-10-13 23:50:52 | INFO | Comando 'remove' ejecutado correctamente
+2025-10-13 23:50:52 | INFO | GUI: Removing service USBMonitorService
+Service removed
+2025-10-13 23:50:52 | WARNING | Consulta de estado: servicio no instalado
+2025-10-13 23:50:52 | INFO | GUI: comando finalizado correctamente - Removing service USBMonitorService
+Service removed
+2025-10-13 23:50:54 | WARNING | Consulta de estado: servicio no instalado
+2025-10-13 23:50:59 | WARNING | Consulta de estado: servicio no instalado
+2025-10-13 23:51:04 | WARNING | Consulta de estado: servicio no instalado

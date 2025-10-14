@@ -12,6 +12,9 @@ export interface HostScanResult {
   serviceInstalled?: boolean;
   serviceRunning?: boolean;
   lastServiceCheck?: Date;
+  healthStatus?: string;
+  hostname?: string;
+  latencyMs?: number;
   error?: string;
 }
 
@@ -49,22 +52,22 @@ async function pingHost(ip: string, timeoutMs = 800): Promise<boolean> {
   }
 }
 
-async function checkService(
-  ip: string,
-  serverBase: string
-): Promise<
-  Pick<
-    HostScanResult,
-    "serviceInstalled" | "serviceRunning" | "lastServiceCheck"
-  >
-> {
-  const result: Pick<
-    HostScanResult,
-    "serviceInstalled" | "serviceRunning" | "lastServiceCheck"
-  > = {
+type ServiceCheckResult = Pick<
+  HostScanResult,
+  | "serviceInstalled"
+  | "serviceRunning"
+  | "lastServiceCheck"
+  | "healthStatus"
+  | "hostname"
+  | "latencyMs"
+>;
+
+async function checkService(ip: string): Promise<ServiceCheckResult> {
+  const result: ServiceCheckResult = {
     serviceInstalled: false,
     serviceRunning: false,
     lastServiceCheck: new Date(),
+    healthStatus: "Sin respuesta",
   };
 
   const health = await checkServiceHealth(ip);
@@ -72,6 +75,27 @@ async function checkService(
   if (health.available) {
     result.serviceInstalled = true;
     result.serviceRunning = true;
+    const code = health.statusCode ?? 200;
+    const statusText = health.statusText || "OK";
+    result.healthStatus = `${code} ${statusText}`.trim();
+    if (health.hostname) {
+      result.hostname = health.hostname;
+    }
+  } else {
+    const code = health.statusCode;
+    const statusText = health.statusText;
+    if (code) {
+      result.healthStatus = `${code} ${statusText || ""}`.trim();
+    } else if (statusText) {
+      result.healthStatus = statusText;
+    }
+    if (health.hostname) {
+      result.hostname = health.hostname;
+    }
+  }
+
+  if (typeof health.latencyMs === "number") {
+    result.latencyMs = health.latencyMs;
   }
 
   return result;
@@ -132,7 +156,7 @@ export async function scanNetwork(
         const isUp = await pingHost(ip);
         host.alive = isUp;
         if (isUp) {
-          const svc = await checkService(ip, "");
+          const svc = await checkService(ip);
           Object.assign(host, svc);
           // Actualizar/crear en DB (best-effort)
           await (db as any).computer.upsert({
@@ -204,7 +228,7 @@ export function startScanJob(cidr?: string): ScanJob {
       try {
         const alive = await pingHost(ip);
         let svc: any = {};
-        if (alive) svc = await checkService(ip, "");
+        if (alive) svc = await checkService(ip);
         const host: HostScanResult = { ip, alive, ...svc };
         job.results.push(host);
       } catch (e: any) {

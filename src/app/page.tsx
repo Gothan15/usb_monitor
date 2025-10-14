@@ -11,6 +11,7 @@ import { EventsTab } from "@/components/dashboard/EventsTab";
 import { ComputersTab } from "@/components/dashboard/ComputersTab";
 import { NetworkScannerTab } from "@/components/dashboard/NetworkScannerTab";
 import { FullscreenSpinner } from "@/components/ui/spinner";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Home() {
   const router = useRouter();
@@ -21,6 +22,7 @@ export default function Home() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [checkingRole, setCheckingRole] = useState(true);
+  const { toast } = useToast();
 
   // Verificar rol de usuario
   useEffect(() => {
@@ -82,6 +84,13 @@ export default function Home() {
             computersResponse.status +
             ")"
         );
+        if (manual) {
+          toast({
+            title: "Error al actualizar",
+            description: `Eventos ${eventsResponse.status} / PCs ${computersResponse.status}`,
+            variant: "destructive",
+          });
+        }
       }
       if (eventsResponse.ok) {
         const eventsData = await eventsResponse.json();
@@ -92,9 +101,24 @@ export default function Home() {
         setComputers(computersData);
       }
       setLastUpdate(new Date());
+      if (manual && eventsResponse.ok && computersResponse.ok) {
+        toast({
+          title: "Datos sincronizados",
+          description: `Actualizado a las ${new Date().toLocaleTimeString(
+            "es-ES"
+          )}`,
+        });
+      }
     } catch (error: any) {
       console.error("Error al cargar datos:", error);
       setErrorMsg(error.message || "Fallo de red");
+      if (manual) {
+        toast({
+          title: "Fallo al actualizar",
+          description: error.message || "Revisa tu conexión",
+          variant: "destructive",
+        });
+      }
     } finally {
       if (manual) {
         setRefreshing(false);
