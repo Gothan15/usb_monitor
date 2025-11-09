@@ -1,43 +1,82 @@
-# Guía de migración a PostgreSQL
+# Guía paso a paso: migración a PostgreSQL
 
-> **Objetivo**: pasar la base de datos del sistema USB Monitor de SQLite a PostgreSQL manteniendo la integridad de los datos y el flujo de trabajo con Prisma.
+> **Objetivo**: mover el proyecto USB Monitor desde SQLite (`db/custom.db`) a PostgreSQL conservando datos, scripts y despliegues.
 
-## 🧭 Resumen del proceso
+Esta guía sigue un orden estricto de tareas. Ve marcando cada paso conforme lo completes.
 
-1. Preparar una instancia de PostgreSQL accesible en Windows (servicio local, Docker o servicio gestionado).
-2. Crear la base de datos, el usuario y otorgar permisos.
-3. Actualizar las variables de entorno (`.env`) con la cadena de conexión nueva.
-4. Cambiar el `datasource` de Prisma a `provider = "postgresql"`.
-5. Generar y aplicar migraciones para PostgreSQL.
-6. Migrar los datos existentes desde SQLite.
-7. Verificar la aplicación y adaptar scripts/automatizaciones.
+## 🧭 Itinerario de alto nivel
 
-Cada sección detalla comandos concretos y notas de validación.
+1. Respaldar el estado actual de SQLite.
+2. Provisionar PostgreSQL (local, Docker o gestionado).
+3. Crear base de datos, usuario y permisos dedicados.
+4. Actualizar variables de entorno (`.env`) y servicios Windows si aplican.
+5. Ajustar Prisma (`schema.prisma`, migraciones, cliente).
+6. Migrar datos (dump/import o pgloader).
+7. Validar funcionamiento de la app, scripts CLI y servicios.
+8. Depurar residuos (SQLite, tareas programadas, documentación).
 
-## ✅ Prerrequisitos
+Cada apartado trae comandos concretos y chequeos de verificación.
+
+## ✅ Prerrequisitos imprescindibles
 
 - **PostgreSQL 14+** instalado o accesible vía red.
 - Usuario con permisos `CREATEDB` o acceso para crear esquemas.
 - `psql` o una herramienta gráfica (pgAdmin, DBeaver) para ejecutar comandos.
 - Node.js 18+, pnpm/npm y Prisma CLI (`npx prisma`).
-- Copia de seguridad del archivo `db/custom.db` (SQLite actual).
+- Copia de seguridad del archivo `db/custom.db` (SQLite actual) y de cualquier tabla auxiliar.
 - Acceso a PowerShell 7+ (o Windows PowerShell 5.1) con permisos de administrador para instalar dependencias.
 - (Opcional) Chocolatey o Winget para instalar `sqlite3`, `pgloader` u otras herramientas CLI.
 
 > 💡 Mantén a mano las credenciales de la nueva instancia: host, puerto, base de datos, usuario y contraseña.
 
-## 1. Preparar PostgreSQL
+## Paso 0. Respaldar el estado actual
 
-### 1.1. Instalar PostgreSQL en Windows
+1. Copia el archivo SQLite y guárdalo fuera del repositorio:
 
-1. Descarga el instalador oficial desde [https://www.postgresql.org/download/windows/](https://www.postgresql.org/download/windows/).
-2. Ejecuta el instalador **como administrador** y selecciona los componentes `PostgreSQL Server` y `Command Line Tools`.
-3. Define una contraseña para el usuario `postgres` (superusuario por defecto) y deja el puerto predeterminado `5432` a menos que esté ocupado.
-4. Finaliza la instalación y confirma que el servicio `postgresql-x64-*` aparece como **En ejecución** en `services.msc`.
+```powershell
+Copy-Item .\db\custom.db .\backups\custom-$(Get-Date -Format "yyyyMMdd-HHmm").db
+```
 
-> 🛠️ Alternativa rápida: si usas Chocolatey, puedes instalarlo con `choco install postgresql` (recuerda reiniciar PowerShell para que se actualicen las variables de entorno).
+2. Si hay servicios Windows (`USBMonitorService`), detén temporalmente la tarea programada o el servicio durante la migración para evitar escrituras en SQLite.
 
-### 1.2. Instancia local con Docker (opcional)
+## Paso 1. Provisionar PostgreSQL
+
+### Opción A. Instalación nativa en Windows
+
+1. Descarga el instalador oficial desde <https://www.postgresql.org/download/windows/>.
+2. Ejecuta como administrador, instala `PostgreSQL Server` y `Command Line Tools`.
+3. Define contraseña para `postgres`, conserva puerto `5432` (o registra el nuevo).
+4. Valida que el servicio `postgresql-x64-*` aparezca como **Running** en `services.msc`.
+
+> 🛠️ Chocolatey: `choco install postgresql` (reinicia la terminal después).
+
+### Paso 1.2. Configurar `psql` en el `PATH`
+
+1. Ubica la carpeta `bin` creada por el instalador, por ejemplo `C:\Program Files\PostgreSQL\16\bin`.
+2. Abre PowerShell **como administrador** y agrega la ruta a tu variable de entorno de usuario:
+
+```powershell
+[Environment]::SetEnvironmentVariable(
+  "Path",
+  "$([Environment]::GetEnvironmentVariable('Path', 'User'));C:\Program Files\PostgreSQL\16\bin",
+  'User'
+)
+```
+
+- Sustituye la ruta si instalaste otra versión o ubicación.
+
+3. Cierra y vuelve a abrir tu terminal para que tome el nuevo `PATH`.
+4. Verifica la configuración con:
+
+```powershell
+psql --version
+```
+
+Deberías ver la versión de PostgreSQL sin necesidad de escribir la ruta completa.
+
+> 📌 Si prefieres un comando puntual sin modificar el `PATH`, ejecuta `"$Env:ProgramFiles\PostgreSQL\16\bin\psql.exe" -h localhost -U postgres` cada vez.
+
+### Opción B. Instancia aislada con Docker
 
 Si prefieres aislar la base de datos en un contenedor:
 
@@ -45,9 +84,9 @@ Si prefieres aislar la base de datos en un contenedor:
 docker run --name usb-postgres -e POSTGRES_PASSWORD=usb-secret -p 5432:5432 -d postgres:16
 ```
 
-### 1.3. Preparar base de datos y usuario
+### Paso 1.1. Crear base de datos y usuario de aplicación
 
-Conéctate como superusuario (por ejemplo `postgres`) desde PowerShell:
+Conéctate como superusuario (ej. `postgres`):
 
 ```powershell
 psql -h localhost -U postgres
@@ -61,11 +100,11 @@ CREATE USER usb_app WITH ENCRYPTED PASSWORD 'cambia-esta-contraseña';
 GRANT ALL PRIVILEGES ON DATABASE usb_monitor TO usb_app;
 ```
 
-En entornos productivos, crea un usuario distinto para tareas administrativas y usa políticas de contraseñas seguras.
+> En producción define contraseñas robustas, roles separados y SSL/TLS según la plataforma.
 
 > Para salir de la consola `psql`, escribe `\q` y presiona Enter.
 
-## 2. Configurar variables de entorno
+## Paso 2. Configurar variables de entorno
 
 1. Duplica `.env.example` si aún no existe `.env` (ejemplo rápido desde PowerShell: `Copy-Item .env.example .env`).
 2. Actualiza `DATABASE_URL` con la cadena de PostgreSQL. Si usas Visual Studio Code, puedes abrir el archivo con `code .env`; en PowerShell: `notepad .env`:
@@ -74,7 +113,7 @@ En entornos productivos, crea un usuario distinto para tareas administrativas y 
 DATABASE_URL="postgresql://usb_app:cambia-esta-contraseña@localhost:5432/usb_monitor?schema=public"
 ```
 
-3. (Opcional pero recomendado) Define una base shadow para migraciones locales (crea la base con `psql -h localhost -U postgres -c "CREATE DATABASE usb_monitor_shadow;"`):
+3. (Recomendado) Usa base shadow para migraciones seguras:
 
 ```env
 SHADOW_DATABASE_URL="postgresql://usb_app:cambia-esta-contraseña@localhost:5432/usb_monitor_shadow?schema=public"
@@ -84,12 +123,11 @@ Si `psql` no está en el `PATH`, usa la ruta completa, por ejemplo: `"$Env:Progr
 
 > 📌 Si necesitas que la variable quede disponible a nivel de usuario en Windows (por ejemplo para tareas programadas), puedes ejecutarla con `setx DATABASE_URL "postgresql://..."` y reiniciar la terminal. Para el proyecto basta con mantenerla en `.env`.
 
-> 📌 Si despliegas en producción, asegurate de propagar estas variables en tu plataforma (Docker Compose, servicios Windows, Railway, etc.).
+> 📌 Si despliegas en producción, propaga estas variables a tu orquestador (Docker, servicios Windows, CI/CD).
 
-## 3. Actualizar `schema.prisma`
+## Paso 3. Ajustar `prisma/schema.prisma`
 
-1. Abre `prisma/schema.prisma`.
-2. Cambia el bloque `datasource` a:
+1. Abre `prisma/schema.prisma` y modifica el bloque `datasource`:
 
 ```prisma
 datasource db {
@@ -101,13 +139,13 @@ datasource db {
 
 3. Guarda el archivo.
 
-> ⚠️ No elimines las migraciones existentes; Prisma las reutilizará para crear la estructura en PostgreSQL.
+> ⚠️ Mantén el historial de migraciones. Sólo ajusta migraciones pasadas si contienen SQL específico de SQLite.
 
-## 4. Generar y aplicar migraciones
+## Paso 4. Generar y aplicar migraciones
 
-### 4.1. Sin datos previos (instalación nueva)
+### Escenario A. Proyecto nuevo (sin datos previos)
 
-Si apenas comienzas y no necesitas datos históricos:
+Si no necesitas traer datos históricos:
 
 ```powershell
 npm run db:migrate -- --name init-postgres
@@ -116,10 +154,10 @@ npm run db:generate
 
 Esto creará las tablas en la base Postgres y regenerará el cliente de Prisma.
 
-### 4.2. Con datos existentes (SQLite → Postgres)
+### Escenario B. Migración con datos existentes
 
-1. **Bloquea la aplicación** o asegúrate de que nadie escriba en SQLite durante la migración.
-2. Genera el SQL de diferencias (asegúrate de ejecutar PowerShell en la raíz del proyecto):
+1. **Congela escrituras** en SQLite (detén servicios, tareas y sesiones `npm run dev`).
+2. Genera el script de diferencias (desde la raíz del repo):
 
 ```powershell
 npx prisma migrate diff --from-url "file:./db/custom.db" --to-url "$Env:DATABASE_URL" --script > prisma/migrations/sqlite-to-postgres.sql
@@ -131,17 +169,17 @@ npx prisma migrate diff --from-url "file:./db/custom.db" --to-url "$Env:DATABASE
 psql "$Env:DATABASE_URL" -f .\prisma\migrations\sqlite-to-postgres.sql
 ```
 
-4. Opcionalmente, crea una migración Prisma explícita para futuras bases:
+4. (Opcional) Registra una migración Prisma para entornos limpios:
 
 ```powershell
 npx prisma migrate dev --name init-postgres
 ```
 
-> 🛡️ Haz una copia de `db/custom.db` antes de cualquier migración. Si algo falla, podrás volver atrás rápidamente.
+> 🛡️ No borres el dump ni el `.db` original hasta completar los chequeos del Paso 7.
 
-## 5. Migrar los datos
+## Paso 5. Migrar los datos
 
-### 5.1. Exportar desde SQLite
+### Paso 5.1. Exportar desde SQLite
 
 ```powershell
 # Directo con sqlite3 instalado en Windows (chocolatey) o WSL
@@ -149,7 +187,7 @@ npx prisma migrate dev --name init-postgres
 sqlite3 .\db\custom.db ".mode insert" ".output sqlite_dump.sql" ".dump"
 ```
 
-### 5.2. Importar en PostgreSQL
+### Paso 5.2. Importar en PostgreSQL
 
 Limpia el dump eliminando instrucciones `PRAGMA` y `sqlite_sequence` si es necesario.
 
@@ -167,24 +205,24 @@ Alternativas:
   ```
 - Exporta e importa con una herramienta GUI (DBeaver soporta ambos motores).
 
-> ✅ Verifica que los índices (`@@index`) y nombres de tablas (`@@map`) coincidan después de importar.
+> ✅ Revisa que índices (`@@index`) y nombres mapeados (`@@map`) sigan intactos.
 
-## 6. Verificaciones post-migración
+## Paso 6. Validaciones post-migración
 
-1. Ejecuta migraciones pendientes y genera cliente:
+1. Ejecuta migraciones y renueva cliente Prisma:
 
 ```powershell
 npm run db:migrate
 npm run db:generate
 ```
 
-2. Abre Prisma Studio para inspeccionar datos:
+2. Abre Prisma Studio y verifica tablas/relaciones:
 
 ```powershell
 npx prisma studio
 ```
 
-3. Ejecuta la aplicación en desarrollo para asegurar que se conecta a Postgres:
+3. Levanta la app en desarrollo y revisa logs de Prisma:
 
 ```powershell
 npm run dev
@@ -192,17 +230,17 @@ npm run dev
 
 Observa la consola; Prisma mostrará la URL de conexión utilizada.
 
-> 🔍 Si necesitas confirmar que el servicio de PostgreSQL está activo en Windows, ejecuta `Get-Service postgresql*` desde PowerShell. Para reiniciarlo usa `Restart-Service postgresql-x64-16` (ajusta la versión según tu instalación).
+> 🔍 Confirma servicio activo con `Get-Service postgresql*`. Reinicia con `Restart-Service postgresql-x64-16` (ajusta versión).
 
-## 7. Ajustes adicionales
+## Paso 7. Ajustes y limpieza
 
-- **Scripts CLI** (`scripts/*.ts`): no necesitan cambios, pero asegúrate de que el nuevo `DATABASE_URL` esté disponible al ejecutar `npm run user:create`, etc.
+- **Scripts CLI** (`scripts/*.ts`): se alimentan del mismo `DATABASE_URL`. Comprueba que `npm run user:*` funciona con Postgres.
 - **Backups**: define una política de respaldo para Postgres (pg_dump, snapshots).
 - Para respaldos manuales en Windows puedes usar: `pg_dump "$Env:DATABASE_URL" --file backup.sql` (usa la ruta completa al binario si no está en el `PATH`).
-- **Monitorización**: añade chequeos de salud o alertas si usas un Postgres gestionado.
+- **Monitorización**: añade health-checks si usas Postgres gestionado o de terceros.
 - **Eliminar SQLite**: cuando verifiques que todo funciona, archiva o elimina `db/custom.db` y los backups generados.
 
-## 🧪 Lista de comprobación final
+## ✅ Lista de verificación final
 
 - [ ] `.env` actualizado con `DATABASE_URL` de PostgreSQL (y `SHADOW_DATABASE_URL` opcional).
 - [ ] `schema.prisma` apunta a `provider = "postgresql"`.

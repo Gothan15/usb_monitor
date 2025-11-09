@@ -21,6 +21,19 @@ export interface Computer {
   lastServiceCheck?: string | null;
 }
 
+export interface WhitelistEntry {
+  id: string;
+  serialNumber: string;
+  label: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: {
+    id: string;
+    username: string;
+  } | null;
+}
+
 export function formatDateTime(dateString: string) {
   return new Date(dateString).toLocaleString("es-ES", {
     day: "2-digit",

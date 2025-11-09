@@ -198,7 +198,7 @@ export default function LoginPage() {
                   <CardDescription className="text-xs">
                     {pcName
                       ? "Desbloquear dispositivo USB"
-                      : "Acceso seguro al panel administrativo"}
+                      : "Acceso seguro al panel"}
                   </CardDescription>
                 </div>
               </div>
@@ -270,10 +270,10 @@ export default function LoginPage() {
                     "Entrar"
                   )}
                 </Button>
-                <p className="text-[11px] text-center text-muted-foreground leading-relaxed">
+                {/* <p className="text-[11px] text-center text-muted-foreground leading-relaxed">
                   La creación de cuentas sólo está permitida mediante script CLI
                   autorizado.
-                </p>
+                </p> */}
               </form>
             </CardContent>
           </Card>

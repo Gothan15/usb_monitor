@@ -87,43 +87,137 @@ export async function checkServiceHealth(ip: string): Promise<{
   statusCode?: number;
   statusText?: string;
   latencyMs?: number;
+  serviceVersion?: string;
+  uptimeSeconds?: number;
+  pendingUnlocks?: number;
+  heartbeatAt?: number;
 }> {
   const servicePort = process.env.USB_SERVICE_PORT || "5001";
-  const healthUrl = `http://${ip}:${servicePort}/health`;
-  const started = Date.now();
+  const baseUrl = `http://${ip}:${servicePort}`;
 
-  try {
-    const response = await fetch(healthUrl, {
-      method: "GET",
-      signal: AbortSignal.timeout(3000),
-    });
-
-    const latencyMs = Date.now() - started;
-    const statusCode = response.status;
-    const statusText = response.statusText || undefined;
-
-    if (response.ok) {
-      const data = await response.json().catch(() => ({}));
-      return {
-        available: true,
-        hostname: data.hostname,
-        statusCode,
-        statusText: (data.status as string) || statusText || "OK",
-        latencyMs,
-      };
+  const normalizeTimestamp = (value: unknown): number | undefined => {
+    if (typeof value === "number") {
+      return value > 10_000_000_000 ? value : value * 1000;
     }
+    if (typeof value === "string") {
+      const numeric = Number(value);
+      if (!Number.isNaN(numeric)) {
+        return numeric > 10_000_000_000 ? numeric : numeric * 1000;
+      }
+      const parsed = Date.parse(value);
+      if (!Number.isNaN(parsed)) return parsed;
+    }
+    return undefined;
+  };
 
-    return {
+  const coerceNumber = (value: unknown): number | undefined => {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string") {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+    return undefined;
+  };
+
+  type HealthResult = {
+    available: boolean;
+    hostname?: string;
+    statusCode?: number;
+    statusText?: string;
+    latencyMs?: number;
+    serviceVersion?: string;
+    uptimeSeconds?: number;
+    pendingUnlocks?: number;
+    heartbeatAt?: number;
+  };
+
+  let lastResult: HealthResult | undefined;
+
+  const attempt = async (path: string): Promise<HealthResult | null> => {
+    const started = Date.now();
+    try {
+      const response = await fetch(`${baseUrl}${path}`, {
+        method: "GET",
+        signal: AbortSignal.timeout(3000),
+      });
+
+      const latencyMs = Date.now() - started;
+      const statusCode = response.status;
+      const statusText = response.statusText || undefined;
+      const contentType = response.headers.get("content-type") || "";
+      const isJson = contentType.toLowerCase().includes("json");
+      const data = isJson ? await response.json().catch(() => ({})) : {};
+
+      const hostname =
+        data.hostname || data.pc_name || data.name || data.pcName || undefined;
+      const statusField =
+        (typeof data.status === "string" && data.status) ||
+        (typeof data.service_status === "string" && data.service_status) ||
+        statusText ||
+        (response.ok ? "OK" : "Sin respuesta");
+      const version =
+        (typeof data.version === "string" && data.version) ||
+        (typeof data.serviceVersion === "string" && data.serviceVersion) ||
+        (typeof data.build === "string" && data.build) ||
+        (typeof data.appVersion === "string" && data.appVersion) ||
+        undefined;
+      const uptimeRaw = data.uptime_seconds ?? data.uptimeSeconds;
+      const pendingRaw =
+        data.pending_unlocks ?? data.pendingUnlocks ?? data.pending;
+      const heartbeatRaw =
+        data.timestamp ?? data.heartbeat ?? data.heartbeatAt ?? data.lastPing;
+      const uptimeValue = coerceNumber(uptimeRaw);
+      const pendingValue = coerceNumber(pendingRaw);
+
+      const result: HealthResult = {
+        available: response.ok,
+        hostname,
+        statusCode,
+        statusText: statusField,
+        latencyMs,
+        serviceVersion: version,
+        uptimeSeconds:
+          typeof uptimeValue === "number"
+            ? Math.max(0, uptimeValue)
+            : undefined,
+        pendingUnlocks:
+          typeof pendingValue === "number"
+            ? Math.max(0, Math.round(pendingValue))
+            : undefined,
+        heartbeatAt: normalizeTimestamp(heartbeatRaw),
+      };
+
+      lastResult = result;
+
+      if (
+        !response.ok &&
+        path === "/service-status" &&
+        [404, 405].includes(response.status)
+      ) {
+        return null;
+      }
+
+      return result;
+    } catch (error: any) {
+      lastResult = {
+        available: false,
+        statusText: error?.message || "Error de red",
+        latencyMs: Date.now() - started,
+      };
+      return null;
+    }
+  };
+
+  const primary = await attempt("/service-status");
+  if (primary) return primary;
+
+  const fallback = await attempt("/health");
+  if (fallback) return fallback;
+
+  return (
+    lastResult || {
       available: false,
-      statusCode,
-      statusText: statusText || "Sin respuesta",
-      latencyMs,
-    };
-  } catch (error: any) {
-    return {
-      available: false,
-      statusText: error?.message || "Error de red",
-      latencyMs: Date.now() - started,
-    };
-  }
+      statusText: "Sin respuesta",
+    }
+  );
 }

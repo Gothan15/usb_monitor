@@ -15,6 +15,10 @@ export interface HostScanResult {
   healthStatus?: string;
   hostname?: string;
   latencyMs?: number;
+  serviceVersion?: string;
+  uptimeSeconds?: number;
+  pendingUnlocks?: number;
+  lastServiceHeartbeat?: Date | null;
   error?: string;
 }
 
@@ -60,6 +64,10 @@ type ServiceCheckResult = Pick<
   | "healthStatus"
   | "hostname"
   | "latencyMs"
+  | "serviceVersion"
+  | "uptimeSeconds"
+  | "pendingUnlocks"
+  | "lastServiceHeartbeat"
 >;
 
 async function checkService(ip: string): Promise<ServiceCheckResult> {
@@ -71,31 +79,43 @@ async function checkService(ip: string): Promise<ServiceCheckResult> {
   };
 
   const health = await checkServiceHealth(ip);
+  const statusText =
+    health.statusText || (health.available ? "OK" : "Sin respuesta");
+  const statusCode = health.statusCode;
+
+  if (statusCode) {
+    result.healthStatus = `${statusCode} ${statusText || ""}`.trim();
+  } else if (statusText) {
+    result.healthStatus = statusText;
+  }
 
   if (health.available) {
     result.serviceInstalled = true;
     result.serviceRunning = true;
-    const code = health.statusCode ?? 200;
-    const statusText = health.statusText || "OK";
-    result.healthStatus = `${code} ${statusText}`.trim();
-    if (health.hostname) {
-      result.hostname = health.hostname;
-    }
-  } else {
-    const code = health.statusCode;
-    const statusText = health.statusText;
-    if (code) {
-      result.healthStatus = `${code} ${statusText || ""}`.trim();
-    } else if (statusText) {
-      result.healthStatus = statusText;
-    }
-    if (health.hostname) {
-      result.hostname = health.hostname;
-    }
+  }
+
+  if (health.hostname) {
+    result.hostname = health.hostname;
   }
 
   if (typeof health.latencyMs === "number") {
     result.latencyMs = health.latencyMs;
+  }
+
+  if (typeof health.serviceVersion === "string") {
+    result.serviceVersion = health.serviceVersion;
+  }
+
+  if (typeof health.uptimeSeconds === "number") {
+    result.uptimeSeconds = health.uptimeSeconds;
+  }
+
+  if (typeof health.pendingUnlocks === "number") {
+    result.pendingUnlocks = health.pendingUnlocks;
+  }
+
+  if (typeof health.heartbeatAt === "number") {
+    result.lastServiceHeartbeat = new Date(health.heartbeatAt);
   }
 
   return result;

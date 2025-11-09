@@ -1,66 +1,206 @@
-2025-10-13 23:49:48 | INFO | Registro inicializado en D:\Monitor_USB\USBMonitor\dist\usb_monitor_service.log
-2025-10-13 23:49:48 | INFO | Configuración inicial | frozen=True | destino=172.20.10.12:3000 | endpoint=/api/usb-event | puerto_http=5001 | api_key=sí
-2025-10-13 23:49:48 | INFO | Sin argumentos: intentando iniciar como servicio
-2025-10-13 23:49:48 | INFO | Dispatcher no disponible (WinError 1063). Ejecutando interfaz gráfica en modo interactivo.
-2025-10-13 23:49:48 | INFO | GUI: Interfaz iniciada.
-2025-10-13 23:50:09 | INFO | Registro inicializado en D:\Monitor_USB\USBMonitor\dist\usb_monitor_service.log
-2025-10-13 23:50:09 | INFO | Configuración inicial | frozen=True | destino=172.20.10.12:3000 | endpoint=/api/usb-event | puerto_http=5001 | api_key=sí
-2025-10-13 23:50:09 | INFO | Sin argumentos: intentando iniciar como servicio
-2025-10-13 23:50:09 | INFO | Dispatcher no disponible (WinError 1063). Ejecutando interfaz gráfica en modo interactivo.
-2025-10-13 23:50:09 | INFO | GUI: Interfaz iniciada.
-2025-10-13 23:50:18 | INFO | GUI: Ejecutando 'install'...
-2025-10-13 23:50:18 | INFO | GUI: se solicitó ejecución del comando 'install'
-2025-10-13 23:50:18 | INFO | Ejecutando comando de línea del servicio: ['D:\\Monitor_USB\\USBMonitor\\dist\\USBMonitorService.exe', 'install']
-2025-10-13 23:50:19 | INFO | Registro inicializado en D:\Monitor_USB\USBMonitor\dist\usb_monitor_service.log
-2025-10-13 23:50:19 | INFO | Configuración inicial | frozen=True | destino=172.20.10.12:3000 | endpoint=/api/usb-event | puerto_http=5001 | api_key=sí
-2025-10-13 23:50:19 | INFO | Comando 'install' ejecutado correctamente
-2025-10-13 23:50:19 | INFO | GUI: Installing service USBMonitorService
-Changing service configuration
-Service updated
-2025-10-13 23:50:19 | INFO | GUI: comando finalizado correctamente - Installing service USBMonitorService
-Changing service configuration
-Service updated
-2025-10-13 23:50:25 | INFO | GUI: Ejecutando 'start'...
-2025-10-13 23:50:25 | INFO | GUI: se solicitó ejecución del comando 'start'
-2025-10-13 23:50:25 | INFO | Ejecutando comando directo de servicio: start
-2025-10-13 23:50:25 | INFO | Intentando iniciar servicio (estado actual: Detenido)
-2025-10-13 23:50:27 | INFO | Registro inicializado en D:\Monitor_USB\USBMonitor\dist\usb_monitor_service.log
-2025-10-13 23:50:27 | INFO | Configuración inicial | frozen=True | destino=172.20.10.12:3000 | endpoint=/api/usb-event | puerto_http=5001 | api_key=sí
-2025-10-13 23:50:27 | INFO | Sin argumentos: intentando iniciar como servicio
-2025-10-13 23:50:27 | INFO | Servicio iniciado
-2025-10-13 23:50:27 | INFO | Servicio marcado como en ejecución tras comando start
-2025-10-13 23:50:27 | INFO | GUI: Servicio iniciado correctamente.
-2025-10-13 23:50:27 | INFO | GUI: comando finalizado correctamente - Servicio iniciado correctamente.
-2025-10-13 23:50:27 | INFO | Inicializando bucle principal del servicio
-2025-10-13 23:50:27 | INFO | Hostname detectado para el servicio: GWINTBLEIDD
-2025-10-13 23:50:28 | INFO | Watcher WMI inicializado para Win32_VolumeChangeEvent
-2025-10-13 23:50:40 | INFO | Servidor HTTP iniciado en puerto 5001 para recibir notificaciones
-2025-10-13 23:50:40 | INFO | Iniciando monitoreo de autorizaciones de desbloqueo
-2025-10-13 23:50:40 | INFO | Thread de monitoreo de autorizaciones iniciado (id=17452)
-2025-10-13 23:50:40 | INFO | Iniciando monitoreo de unidades USB conectadas
-2025-10-13 23:50:40 | INFO | Thread de monitoreo de unidades conectadas iniciado (id=12816)
-2025-10-13 23:50:40 | INFO | Conexión WMI lista para monitorear unidades conectadas
-2025-10-13 23:50:47 | INFO | GUI: Ejecutando 'stop'...
-2025-10-13 23:50:47 | INFO | GUI: se solicitó ejecución del comando 'stop'
-2025-10-13 23:50:47 | INFO | Ejecutando comando directo de servicio: stop
-2025-10-13 23:50:47 | INFO | Intentando detener servicio (estado actual: En ejecución)
-2025-10-13 23:50:47 | INFO | Deteniendo servidor HTTP...
-2025-10-13 23:50:47 | INFO | Servicio detenido
-2025-10-13 23:50:47 | INFO | Solicitud de parada recibida
-2025-10-13 23:50:47 | INFO | Servicio marcado como detenido tras comando stop
-2025-10-13 23:50:47 | INFO | GUI: Servicio detenido correctamente.
-2025-10-13 23:50:47 | INFO | GUI: comando finalizado correctamente - Servicio detenido correctamente.
-2025-10-13 23:50:51 | INFO | GUI: Ejecutando 'remove'...
-2025-10-13 23:50:51 | INFO | GUI: se solicitó ejecución del comando 'remove'
-2025-10-13 23:50:51 | INFO | Ejecutando comando de línea del servicio: ['D:\\Monitor_USB\\USBMonitor\\dist\\USBMonitorService.exe', 'remove']
-2025-10-13 23:50:52 | INFO | Registro inicializado en D:\Monitor_USB\USBMonitor\dist\usb_monitor_service.log
-2025-10-13 23:50:52 | INFO | Configuración inicial | frozen=True | destino=172.20.10.12:3000 | endpoint=/api/usb-event | puerto_http=5001 | api_key=sí
-2025-10-13 23:50:52 | INFO | Comando 'remove' ejecutado correctamente
-2025-10-13 23:50:52 | INFO | GUI: Removing service USBMonitorService
+2025-11-08 04:27:52 | INFO | Registro inicializado en D:\Monitor_USB\USBMonitor\dist\usb_monitor_service.log
+2025-11-08 04:27:52 | INFO | Configuración inicial | frozen=True | destino=172.20.10.12:3000 | endpoint=/api/usb-event | puerto_http=5001 | api_key=no
+2025-11-08 04:27:52 | INFO | Sin argumentos: intentando iniciar como servicio
+2025-11-08 04:27:52 | INFO | Dispatcher no disponible (WinError 1063). Ejecutando interfaz gráfica en modo interactivo.
+2025-11-08 04:27:52 | INFO | GUI: Interfaz iniciada.
+2025-11-08 04:27:52 | WARNING | Consulta de estado: servicio no instalado
+2025-11-08 04:27:52 | ERROR | Error al consultar configuración del servicio: (1060, 'OpenService', 'El servicio especificado no existe como servicio instalado.')
+2025-11-08 04:27:55 | INFO | GUI: Actualizando IP del servidor a '172.20.10.12'...
+2025-11-08 04:27:55 | INFO | GUI: se solicitó actualizar USB_MONITOR_SERVER_HOST a 172.20.10.12
+2025-11-08 04:27:56 | INFO | USB_MONITOR_SERVER_HOST actualizado a 172.20.10.12
+2025-11-08 04:27:56 | INFO | GUI: CORRECTO: se guard¢ el valor especificado.
+Host del backend actualizado a '172.20.10.12'. Reinicia el servicio para aplicar los cambios.
+2025-11-08 04:27:56 | WARNING | Consulta de estado: servicio no instalado
+2025-11-08 04:27:56 | ERROR | Error al consultar configuración del servicio: (1060, 'OpenService', 'El servicio especificado no existe como servicio instalado.')
+2025-11-08 04:27:56 | INFO | GUI: comando finalizado correctamente - CORRECTO: se guard¢ el valor especificado.
+Host del backend actualizado a '172.20.10.12'. Reinicia el servicio para aplicar los cambios.
+2025-11-08 04:27:57 | WARNING | Consulta de estado: servicio no instalado
+2025-11-08 04:27:57 | ERROR | Error al consultar configuración del servicio: (1060, 'OpenService', 'El servicio especificado no existe como servicio instalado.')
+2025-11-08 04:31:53 | INFO | Registro inicializado en D:\Monitor_USB\USBMonitor\dist\usb_monitor_service.log
+2025-11-08 04:31:53 | INFO | Configuración inicial | frozen=True | destino=172.20.10.12:3000 | endpoint=/api/usb-event | puerto_http=5001 | api_key=no
+2025-11-08 04:31:53 | INFO | Sin argumentos: intentando iniciar como servicio
+2025-11-08 04:31:53 | INFO | Dispatcher no disponible (WinError 1063). Ejecutando interfaz gráfica en modo interactivo.
+2025-11-08 04:31:53 | INFO | GUI: Interfaz iniciada.
+2025-11-08 04:31:53 | WARNING | Consulta de estado: servicio no instalado
+2025-11-08 04:31:53 | ERROR | Error al consultar configuración del servicio: (1060, 'OpenService', 'El servicio especificado no existe como servicio instalado.')
+2025-11-08 04:31:58 | WARNING | Consulta de estado: servicio no instalado
+2025-11-08 04:31:58 | ERROR | Error al consultar configuración del servicio: (1060, 'OpenService', 'El servicio especificado no existe como servicio instalado.')
+2025-11-08 04:31:58 | INFO | GUI: Actualizando IP del servidor a '172.20.10.12'...
+2025-11-08 04:31:58 | INFO | GUI: se solicitó actualizar USB_MONITOR_SERVER_HOST a 172.20.10.12
+2025-11-08 04:31:59 | INFO | USB_MONITOR_SERVER_HOST actualizado a 172.20.10.12
+2025-11-08 04:31:59 | INFO | GUI: CORRECTO: se guardó el valor especificado.
+Host del backend actualizado a '172.20.10.12'. Reinicia el servicio para aplicar los cambios.
+2025-11-08 04:31:59 | WARNING | Consulta de estado: servicio no instalado
+2025-11-08 04:31:59 | ERROR | Error al consultar configuración del servicio: (1060, 'OpenService', 'El servicio especificado no existe como servicio instalado.')
+2025-11-08 04:31:59 | INFO | GUI: comando finalizado correctamente - CORRECTO: se guardó el valor especificado.
+Host del backend actualizado a '172.20.10.12'. Reinicia el servicio para aplicar los cambios.
+2025-11-08 04:32:03 | WARNING | Consulta de estado: servicio no instalado
+2025-11-08 04:32:03 | ERROR | Error al consultar configuración del servicio: (1060, 'OpenService', 'El servicio especificado no existe como servicio instalado.')
+2025-11-08 04:32:08 | WARNING | Consulta de estado: servicio no instalado
+2025-11-08 04:32:08 | ERROR | Error al consultar configuración del servicio: (1060, 'OpenService', 'El servicio especificado no existe como servicio instalado.')
+2025-11-08 04:32:13 | WARNING | Consulta de estado: servicio no instalado
+2025-11-08 04:32:13 | ERROR | Error al consultar configuración del servicio: (1060, 'OpenService', 'El servicio especificado no existe como servicio instalado.')
+2025-11-08 04:32:18 | INFO | GUI: Actualizando IP del servidor a '172.20.10.12'...
+2025-11-08 04:32:18 | INFO | GUI: se solicitó actualizar USB_MONITOR_SERVER_HOST a 172.20.10.12
+2025-11-08 04:32:18 | WARNING | Consulta de estado: servicio no instalado
+2025-11-08 04:32:18 | ERROR | Error al consultar configuración del servicio: (1060, 'OpenService', 'El servicio especificado no existe como servicio instalado.')
+2025-11-08 04:32:18 | INFO | USB_MONITOR_SERVER_HOST actualizado a 172.20.10.12
+2025-11-08 04:32:18 | INFO | GUI: CORRECTO: se guardó el valor especificado.
+Host del backend actualizado a '172.20.10.12'. Reinicia el servicio para aplicar los cambios.
+2025-11-08 04:32:18 | WARNING | Consulta de estado: servicio no instalado
+2025-11-08 04:32:18 | ERROR | Error al consultar configuración del servicio: (1060, 'OpenService', 'El servicio especificado no existe como servicio instalado.')
+2025-11-08 04:32:18 | INFO | GUI: comando finalizado correctamente - CORRECTO: se guardó el valor especificado.
+Host del backend actualizado a '172.20.10.12'. Reinicia el servicio para aplicar los cambios.
+2025-11-08 04:33:43 | INFO | Registro inicializado en D:\Monitor_USB\USBMonitor\dist\usb_monitor_service.log
+2025-11-08 04:33:43 | INFO | Configuración inicial | frozen=True | destino=172.20.10.12:3000 | endpoint=/api/usb-event | puerto_http=5001 | api_key=no
+2025-11-08 04:33:43 | INFO | Sin argumentos: intentando iniciar como servicio
+2025-11-08 04:33:43 | INFO | Dispatcher no disponible (WinError 1063). Ejecutando interfaz gráfica en modo interactivo.
+2025-11-08 04:33:44 | INFO | GUI: Interfaz iniciada.
+2025-11-08 04:33:44 | WARNING | Consulta de estado: servicio no instalado
+2025-11-08 04:33:44 | ERROR | Error al consultar configuración del servicio: (1060, 'OpenService', 'El servicio especificado no existe como servicio instalado.')
+2025-11-08 04:33:47 | INFO | GUI: Actualizando IP del servidor a '172.20.10.12'...
+2025-11-08 04:33:47 | INFO | GUI: se solicitó actualizar USB_MONITOR_SERVER_HOST a 172.20.10.12
+2025-11-08 04:33:47 | INFO | USB_MONITOR_SERVER_HOST actualizado a 172.20.10.12
+2025-11-08 04:33:47 | INFO | GUI: CORRECTO: se guardó el valor especificado.
+Host del backend actualizado a '172.20.10.12'. Reinicia el servicio para aplicar los cambios.
+2025-11-08 04:33:47 | WARNING | Consulta de estado: servicio no instalado
+2025-11-08 04:33:47 | ERROR | Error al consultar configuración del servicio: (1060, 'OpenService', 'El servicio especificado no existe como servicio instalado.')
+2025-11-08 04:33:47 | INFO | GUI: comando finalizado correctamente - CORRECTO: se guardó el valor especificado.
+Host del backend actualizado a '172.20.10.12'. Reinicia el servicio para aplicar los cambios.
+2025-11-08 04:33:49 | WARNING | Consulta de estado: servicio no instalado
+2025-11-08 04:33:49 | ERROR | Error al consultar configuración del servicio: (1060, 'OpenService', 'El servicio especificado no existe como servicio instalado.')
+2025-11-08 04:33:49 | INFO | GUI: Abriendo configurador de API key...
+2025-11-08 04:33:49 | INFO | GUI: Configurador de API key abierto.
+2025-11-08 04:33:58 | INFO | setx stdout: CORRECTO: se guardó el valor especificado.
+2025-11-08 04:33:58 | WARNING | Consulta de estado: servicio no instalado
+2025-11-08 04:33:58 | ERROR | Error al consultar configuración del servicio: (1060, 'OpenService', 'El servicio especificado no existe como servicio instalado.')
+2025-11-08 04:33:59 | INFO | GUI: API key configurada para adminUser.
+2025-11-08 04:34:00 | INFO | GUI: Configurador de API key cerrado.
+2025-11-08 04:34:03 | WARNING | Consulta de estado: servicio no instalado
+2025-11-08 04:34:03 | ERROR | Error al consultar configuración del servicio: (1060, 'OpenService', 'El servicio especificado no existe como servicio instalado.')
+2025-11-08 04:34:08 | WARNING | Consulta de estado: servicio no instalado
+2025-11-08 04:34:08 | ERROR | Error al consultar configuración del servicio: (1060, 'OpenService', 'El servicio especificado no existe como servicio instalado.')
+2025-11-08 04:34:13 | WARNING | Consulta de estado: servicio no instalado
+2025-11-08 04:34:13 | ERROR | Error al consultar configuración del servicio: (1060, 'OpenService', 'El servicio especificado no existe como servicio instalado.')
+2025-11-08 04:34:18 | WARNING | Consulta de estado: servicio no instalado
+2025-11-08 04:34:18 | ERROR | Error al consultar configuración del servicio: (1060, 'OpenService', 'El servicio especificado no existe como servicio instalado.')
+2025-11-08 04:34:23 | WARNING | Consulta de estado: servicio no instalado
+2025-11-08 04:34:23 | ERROR | Error al consultar configuración del servicio: (1060, 'OpenService', 'El servicio especificado no existe como servicio instalado.')
+2025-11-08 04:34:24 | INFO | GUI: Ejecutando 'install'...
+2025-11-08 04:34:24 | INFO | GUI: se solicitó ejecución del comando 'install'
+2025-11-08 04:34:24 | INFO | Ejecutando comando de línea del servicio: ['D:\\Monitor_USB\\USBMonitor\\dist\\USBMonitorService.exe', 'install']
+2025-11-08 04:34:25 | INFO | Registro inicializado en D:\Monitor_USB\USBMonitor\dist\usb_monitor_service.log
+2025-11-08 04:34:25 | INFO | Configuración inicial | frozen=True | destino=172.20.10.12:3000 | endpoint=/api/usb-event | puerto_http=5001 | api_key=no
+2025-11-08 04:34:25 | INFO | Comando 'install' ejecutado correctamente
+2025-11-08 04:34:25 | INFO | GUI: Installing service USBMonitorService
+Service installed
+2025-11-08 04:34:26 | INFO | GUI: comando finalizado correctamente - Installing service USBMonitorService
+Service installed
+2025-11-08 04:34:27 | INFO | GUI: Ejecutando 'start'...
+2025-11-08 04:34:27 | INFO | GUI: se solicitó ejecución del comando 'start'
+2025-11-08 04:34:27 | INFO | Ejecutando comando directo de servicio: start
+2025-11-08 04:34:27 | INFO | Intentando iniciar servicio (estado actual: Detenido)
+2025-11-08 04:34:31 | INFO | Registro inicializado en D:\Monitor_USB\USBMonitor\dist\usb_monitor_service.log
+2025-11-08 04:34:31 | INFO | Configuración inicial | frozen=True | destino=172.20.10.12:3000 | endpoint=/api/usb-event | puerto_http=5001 | api_key=sí
+2025-11-08 04:34:31 | INFO | Sin argumentos: intentando iniciar como servicio
+2025-11-08 04:34:31 | INFO | Servicio marcado como en ejecución tras comando start
+2025-11-08 04:34:31 | INFO | ╔════════════════════════════════════════════════════════════╗
+2025-11-08 04:34:31 | INFO | ║        SERVICIO USB MONITOR INICIADO                      ║
+2025-11-08 04:34:31 | INFO | ╚════════════════════════════════════════════════════════════╝
+2025-11-08 04:34:31 | INFO | Inicializando bucle principal del servicio
+2025-11-08 04:34:31 | INFO | Hostname detectado para el servicio: GWINTBLEIDD
+2025-11-08 04:34:31 | INFO | GUI: Servicio iniciado correctamente.
+2025-11-08 04:34:31 | INFO | GUI: comando finalizado correctamente - Servicio iniciado correctamente.
+2025-11-08 04:34:31 | INFO | Watcher WMI inicializado para Win32_VolumeChangeEvent
+2025-11-08 04:34:31 | INFO | Servidor HTTP iniciado en puerto 5001 para recibir notificaciones
+2025-11-08 04:34:31 | INFO | ╔════════════════════════════════════════════════════════════╗
+2025-11-08 04:34:31 | INFO | Thread de monitoreo de autorizaciones iniciado (id=2336)
+2025-11-08 04:34:31 | INFO | ║ Thread de Monitoreo de Autorizaciones de Desbloqueo INICIADO ║
+2025-11-08 04:34:31 | INFO | ╚════════════════════════════════════════════════════════════╝
+2025-11-08 04:34:31 | INFO | ╔════════════════════════════════════════════════════════════╗
+2025-11-08 04:34:31 | INFO | Thread de monitoreo de unidades conectadas iniciado (id=9388)
+2025-11-08 04:34:31 | INFO | ║   Thread de Monitoreo de Unidades Conectadas INICIADO      ║
+2025-11-08 04:34:31 | INFO | ╚════════════════════════════════════════════════════════════╝
+2025-11-08 04:34:45 | INFO | GUI: Alternando configuración de inicio automático...
+2025-11-08 04:34:45 | INFO | GUI: se solicitó alternar inicio automático
+2025-11-08 04:34:45 | INFO | Servicio configurado para inicio automático.
+2025-11-08 04:34:45 | INFO | GUI: Servicio configurado para inicio automático.
+2025-11-08 04:34:45 | INFO | GUI: comando finalizado correctamente - Servicio configurado para inicio automático.
+2025-11-08 04:34:45 | INFO |   [Estado Conectadas] ✓ Status enviado: 0 unidades reportadas
+2025-11-08 04:34:47 | INFO | GUI: Alternando configuración de inicio automático...
+2025-11-08 04:34:47 | INFO | GUI: se solicitó alternar inicio automático
+2025-11-08 04:34:47 | INFO | Servicio configurado para inicio manual.
+2025-11-08 04:34:47 | INFO | GUI: Servicio configurado para inicio manual.
+2025-11-08 04:34:47 | INFO | GUI: comando finalizado correctamente - Servicio configurado para inicio manual.
+2025-11-08 04:34:56 | INFO |   [Estado Conectadas] ✓ Status enviado: 0 unidades reportadas
+2025-11-08 04:35:06 | INFO |   [Estado Conectadas] ✓ Status enviado: 0 unidades reportadas
+2025-11-08 04:35:16 | INFO |   [Estado Conectadas] ✓ Status enviado: 0 unidades reportadas
+2025-11-08 04:35:26 | INFO |   [Estado Conectadas] ✓ Status enviado: 0 unidades reportadas
+2025-11-08 04:35:36 | INFO |   [Estado Conectadas] ✓ Status enviado: 0 unidades reportadas
+2025-11-08 04:35:46 | INFO |   [Estado Conectadas] ✓ Status enviado: 0 unidades reportadas
+2025-11-08 04:35:55 | INFO | ═══ EVENTO DE INSERCIÓN DETECTADO ═══
+2025-11-08 04:35:55 | INFO | Letra de unidad determinada directamente: E:
+2025-11-08 04:35:55 | INFO |   [1/5] Letra de unidad resuelta: E:
+2025-11-08 04:35:55 | INFO |   [2/5] Iniciando obtención de número de serie...
+2025-11-08 04:35:56 | INFO |     ✓ Serial obtenido en intento 1/5: 4C530001210813100303
+2025-11-08 04:35:56 | INFO |   [2/5] ✓ Serial obtenido: 4C530001210813100303
+2025-11-08 04:35:56 | INFO |   [3/5] Verificando whitelist para serial: 4C530001210813100303
+2025-11-08 04:35:57 | INFO |     [Whitelist] ✓ Serial 4C530001210813100303 AUTORIZADO | Etiqueta: mij | Notas: prueba
+2025-11-08 04:35:57 | INFO |   [3/5] ✓ AUTORIZADO EN WHITELIST
+2025-11-08 04:35:57 | INFO |   [4/5] Dispositivo está en whitelist, OMITIENDO BLOQUEO
+2025-11-08 04:35:57 | INFO |   [5/5] Enviando evento autorizado al backend
+2025-11-08 04:35:58 | INFO |   [Estado Conectadas] ✓ Status enviado: 1 unidades reportadas
+2025-11-08 04:35:58 | INFO | Evento USB enviado correctamente: {"pc_name": "GWINTBLEIDD", "pc_ip": "172.20.10.12", "pc_user": "GWINTBLEIDD$", "drive_letter": "E:", "readonly_status": "Whitelisted: acceso directo (mij) - prueba", "event": "USB inserted: E: | Whitelisted: acceso directo (mij) - prueba | WHITELIST", "serial_number": "4C530001210813100303", "whitelisted": true}
+2025-11-08 04:35:58 | INFO | ═══ EVENTO COMPLETADO: USB AUTORIZADO ═══
+
+2025-11-08 04:36:08 | INFO |   [Estado Conectadas] ✓ Status enviado: 1 unidades reportadas
+2025-11-08 04:36:18 | INFO |   [Estado Conectadas] ✓ Status enviado: 1 unidades reportadas
+2025-11-08 04:36:29 | INFO |   [Estado Conectadas] ✓ Status enviado: 1 unidades reportadas
+2025-11-08 04:36:39 | INFO |   [Estado Conectadas] ✓ Status enviado: 1 unidades reportadas
+2025-11-08 04:36:49 | INFO |   [Estado Conectadas] ✓ Status enviado: 1 unidades reportadas
+2025-11-08 04:37:00 | INFO |   [Estado Conectadas] ✓ Status enviado: 1 unidades reportadas
+2025-11-08 04:37:10 | INFO |   [Estado Conectadas] ✓ Status enviado: 0 unidades reportadas
+2025-11-08 04:37:20 | INFO |   [Estado Conectadas] ✓ Status enviado: 0 unidades reportadas
+2025-11-08 04:37:30 | INFO |   [Estado Conectadas] ✓ Status enviado: 0 unidades reportadas
+2025-11-08 04:37:40 | INFO | GUI: Ejecutando 'stop'...
+2025-11-08 04:37:40 | INFO | GUI: se solicitó ejecución del comando 'stop'
+2025-11-08 04:37:40 | INFO | Ejecutando comando directo de servicio: stop
+2025-11-08 04:37:40 | INFO | Intentando detener servicio (estado actual: En ejecución)
+2025-11-08 04:37:40 | INFO | Deteniendo servidor HTTP...
+2025-11-08 04:37:40 | INFO | ╔════════════════════════════════════════════════════════════╗
+2025-11-08 04:37:40 | INFO | ║   Thread de Monitoreo de Unidades Conectadas FINALIZADO   ║
+2025-11-08 04:37:40 | INFO | ╚════════════════════════════════════════════════════════════╝
+2025-11-08 04:37:40 | INFO | Solicitud de parada recibida
+2025-11-08 04:37:40 | INFO | ╔════════════════════════════════════════════════════════════╗
+2025-11-08 04:37:40 | INFO | ║ Thread de Monitoreo de Autorizaciones FINALIZADO           ║
+2025-11-08 04:37:40 | INFO | ╚════════════════════════════════════════════════════════════╝
+2025-11-08 04:37:41 | INFO | ╔════════════════════════════════════════════════════════════╗
+2025-11-08 04:37:41 | INFO | ║        SERVICIO USB MONITOR DETENIDO                      ║
+2025-11-08 04:37:41 | INFO | ╚════════════════════════════════════════════════════════════╝
+2025-11-08 04:37:41 | INFO | Servicio marcado como detenido tras comando stop
+2025-11-08 04:37:41 | INFO | GUI: Servicio detenido correctamente.
+2025-11-08 04:37:41 | INFO | GUI: comando finalizado correctamente - Servicio detenido correctamente.
+2025-11-08 04:37:43 | INFO | GUI: Alternando configuración de inicio automático...
+2025-11-08 04:37:43 | INFO | GUI: se solicitó alternar inicio automático
+2025-11-08 04:37:43 | INFO | Servicio configurado para inicio automático.
+2025-11-08 04:37:43 | INFO | GUI: Servicio configurado para inicio automático.
+2025-11-08 04:37:43 | INFO | GUI: comando finalizado correctamente - Servicio configurado para inicio automático.
+2025-11-08 04:37:46 | INFO | GUI: Alternando configuración de inicio automático...
+2025-11-08 04:37:46 | INFO | GUI: se solicitó alternar inicio automático
+2025-11-08 04:37:46 | INFO | Servicio configurado para inicio manual.
+2025-11-08 04:37:46 | INFO | GUI: Servicio configurado para inicio manual.
+2025-11-08 04:37:46 | INFO | GUI: comando finalizado correctamente - Servicio configurado para inicio manual.
+2025-11-08 04:37:51 | INFO | GUI: Ejecutando 'remove'...
+2025-11-08 04:37:51 | INFO | GUI: se solicitó ejecución del comando 'remove'
+2025-11-08 04:37:51 | INFO | Ejecutando comando de línea del servicio: ['D:\\Monitor_USB\\USBMonitor\\dist\\USBMonitorService.exe', 'remove']
+2025-11-08 04:37:52 | INFO | Registro inicializado en D:\Monitor_USB\USBMonitor\dist\usb_monitor_service.log
+2025-11-08 04:37:52 | INFO | Configuración inicial | frozen=True | destino=172.20.10.12:3000 | endpoint=/api/usb-event | puerto_http=5001 | api_key=no
+2025-11-08 04:37:52 | INFO | Comando 'remove' ejecutado correctamente
+2025-11-08 04:37:52 | INFO | GUI: Removing service USBMonitorService
 Service removed
-2025-10-13 23:50:52 | WARNING | Consulta de estado: servicio no instalado
-2025-10-13 23:50:52 | INFO | GUI: comando finalizado correctamente - Removing service USBMonitorService
+2025-11-08 04:37:52 | WARNING | Consulta de estado: servicio no instalado
+2025-11-08 04:37:52 | ERROR | Error al consultar configuración del servicio: (1060, 'OpenService', 'El servicio especificado no existe como servicio instalado.')
+2025-11-08 04:37:52 | INFO | GUI: comando finalizado correctamente - Removing service USBMonitorService
 Service removed
-2025-10-13 23:50:54 | WARNING | Consulta de estado: servicio no instalado
-2025-10-13 23:50:59 | WARNING | Consulta de estado: servicio no instalado
-2025-10-13 23:51:04 | WARNING | Consulta de estado: servicio no instalado
+2025-11-08 04:37:53 | WARNING | Consulta de estado: servicio no instalado
+2025-11-08 04:37:53 | ERROR | Error al consultar configuración del servicio: (1060, 'OpenService', 'El servicio especificado no existe como servicio instalado.')

@@ -12,3 +12,16 @@ export const db =
   });
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = db;
+
+const denyRawSql = (..._args: unknown[]) => {
+  throw new Error(
+    "Raw SQL execution is disabled. Use the Prisma query builder instead."
+  );
+};
+
+Object.assign(db as unknown as Record<string, unknown>, {
+  $queryRaw: denyRawSql,
+  $queryRawUnsafe: denyRawSql,
+  $executeRaw: denyRawSql,
+  $executeRawUnsafe: denyRawSql,
+});

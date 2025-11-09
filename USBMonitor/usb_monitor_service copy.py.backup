@@ -1,0 +1,1798 @@
+"""USB Monitor Windows Service
+
+Este script implementa un servicio de Windows que detecta la conexión de unidades
+USB, envía una notificación HTTP POST al backend de Monitor_USB y establece la
+unidad detectada en modo solo lectura mediante `diskpart`.
+
+Requisitos:
+    pip install pywin32 wmi requests
+
+Uso:
+    python usb_monitor_service.py install   # Instala el servicio
+    python usb_monitor_service.py start     # Inicia el servicio
+    python usb_monitor_service.py stop      # Detiene el servicio
+    python usb_monitor_service.py remove    # Elimina el servicio
+    python usb_monitor_service.py debug     # Ejecuta en modo consola (debug)
+
+Variables de entorno opcionales:
+    USB_MONITOR_SERVER_HOST  -> host del backend (por defecto 172.20.10.12)
+    USB_MONITOR_SERVER_PORT  -> puerto del backend (por defecto 3000)
+    USB_MONITOR_ENDPOINT     -> ruta del endpoint (por defecto /api/usb-event)
+    USB_MONITOR_LOG_PATH     -> ruta del archivo de log
+
+"""
+from __future__ import annotations
+
+import getpass
+import json
+import logging
+import os
+import re
+import socket
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+from contextlib import redirect_stderr, redirect_stdout
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
+from typing import Any, Dict, Optional, Tuple
+from urllib.parse import urlparse, parse_qs, quote
+
+import pythoncom  # type: ignore
+import requests
+import servicemanager  # type: ignore
+import win32event  # type: ignore
+import win32service  # type: ignore
+import win32serviceutil  # type: ignore
+import wmi  # type: ignore
+import winerror
+
+try:  # pragma: no cover - pywintypes siempre se instala con pywin32
+    import pywintypes
+except ImportError:  # pragma: no cover
+    pywintypes = None  # type: ignore
+
+import tkinter as tk
+from tkinter import messagebox, ttk
+from tkinter.scrolledtext import ScrolledText
+
+
+DEFAULT_HOST = "172.20.10.12"
+DEFAULT_PORT = 3000
+DEFAULT_ENDPOINT = "/api/usb-event"
+PROGRAM_DATA_DIR = Path(os.environ.get("ProgramData", "C:/ProgramData")) / "USBMonitor"
+LOG_FILE_NAME = "usb_monitor_service.log"
+LEGACY_LOG_FILE_NAME = "usb_monitor.log"
+
+
+def get_app_directory() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
+
+
+def get_log_file_name() -> str:
+    return LOG_FILE_NAME if getattr(sys, "frozen", False) else LEGACY_LOG_FILE_NAME
+
+
+def get_default_log_path() -> Path:
+    if getattr(sys, "frozen", False):
+        base_dir = get_app_directory()
+    else:
+        base_dir = PROGRAM_DATA_DIR
+    return (base_dir / get_log_file_name()).resolve()
+
+
+DEFAULT_LISTEN_PORT = 5001  # Puerto donde el servicio escuchará peticiones
+SIGNAL_FILE = (PROGRAM_DATA_DIR / "browser_signal.json").resolve()
+HOSTNAME_RAW = (socket.gethostname() or "").strip() or "UNKNOWN_HOST"
+DEFAULT_IPV4_FALLBACK = "127.0.0.1"
+
+CONTROL_CHARS_REGEX = re.compile(r"[\x00-\x1F\x7F]")
+VALID_IPV4_REGEX = re.compile(r"^(?:\d{1,3}\.){3}\d{1,3}$")
+
+
+def _sanitize_string(value: Optional[str], max_length: int) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    sanitized = CONTROL_CHARS_REGEX.sub("", value).strip()
+    if not sanitized:
+        return None
+    return sanitized[:max_length]
+
+
+def sanitize_required_string(
+    value: Optional[str], *, max_length: int, fallback: str
+) -> str:
+    sanitized = _sanitize_string(value, max_length)
+    if sanitized is None:
+        return _sanitize_string(fallback, max_length) or fallback
+    return sanitized
+
+
+def sanitize_optional_string(value: Optional[str], max_length: int) -> Optional[str]:
+    return _sanitize_string(value, max_length)
+
+
+def sanitize_drive_letter(value: Optional[str]) -> Optional[str]:
+    cleaned = sanitize_optional_string(value, 3)
+    if not cleaned:
+        return None
+    candidate = cleaned.upper()
+    if len(candidate) == 2 and candidate[1] == ":" and candidate[0].isalpha():
+        return candidate
+    return None
+
+
+def is_valid_ipv4(value: str) -> bool:
+    if not VALID_IPV4_REGEX.match(value):
+        return False
+    try:
+        return all(0 <= int(part) <= 255 for part in value.split("."))
+    except ValueError:
+        return False
+
+
+def ensure_ipv4(value: Optional[str], default: str = DEFAULT_IPV4_FALLBACK) -> str:
+    candidate = sanitize_optional_string(value, 15)
+    if candidate and is_valid_ipv4(candidate):
+        return candidate
+    return default
+
+
+HOSTNAME = sanitize_required_string(
+    HOSTNAME_RAW.upper(), max_length=120, fallback="UNKNOWN_HOST"
+)
+
+
+def get_server_host() -> str:
+    return os.environ.get("USB_MONITOR_SERVER_HOST", DEFAULT_HOST)
+
+
+def get_server_port() -> int:
+    try:
+        return int(os.environ.get("USB_MONITOR_SERVER_PORT", str(DEFAULT_PORT)))
+    except ValueError:
+        LOGGER.warning(
+            "Valor inválido para USB_MONITOR_SERVER_PORT, usando puerto por defecto %s",
+            DEFAULT_PORT,
+        )
+        return DEFAULT_PORT
+
+
+def get_listen_port() -> int:
+    """Obtiene el puerto donde el servicio escuchará peticiones HTTP."""
+    try:
+        return int(os.environ.get("USB_MONITOR_LISTEN_PORT", str(DEFAULT_LISTEN_PORT)))
+    except ValueError:
+        LOGGER.warning(
+            "Valor inválido para USB_MONITOR_LISTEN_PORT, usando puerto por defecto %s",
+            DEFAULT_LISTEN_PORT,
+        )
+        return DEFAULT_LISTEN_PORT
+
+
+def build_url(endpoint: str) -> str:
+    host = get_server_host()
+    port = get_server_port()
+    return f"http://{host}:{port}{endpoint}"
+
+
+def get_auth_headers() -> Dict[str, str]:
+    headers: Dict[str, str] = {}
+    api_key = os.environ.get("USB_MONITOR_API_KEY")
+    if api_key:
+        headers["Authorization"] = f"ApiKey {api_key}"
+    return headers
+
+
+def resolve_log_path() -> Path:
+    custom_path = os.environ.get("USB_MONITOR_LOG_PATH")
+    if custom_path:
+        path = Path(custom_path)
+        if path.suffix:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            return path.resolve()
+        path.mkdir(parents=True, exist_ok=True)
+        return (path / get_log_file_name()).resolve()
+
+    default_path = get_default_log_path()
+    try:
+        default_path.parent.mkdir(parents=True, exist_ok=True)
+        return default_path
+    except OSError:
+        if getattr(sys, "frozen", False):
+            fallback_dir = PROGRAM_DATA_DIR
+        else:
+            fallback_dir = get_app_directory() / "logs"
+        fallback_dir.mkdir(parents=True, exist_ok=True)
+        return (fallback_dir / get_log_file_name()).resolve()
+
+
+def get_logger() -> logging.Logger:
+    """Configura y devuelve un logger compartido."""
+    logger = logging.getLogger("usb_monitor_service")
+    if not logger.handlers:
+        logger.setLevel(logging.INFO)
+        log_file = resolve_log_path()
+        pending_warning: Optional[str] = None
+
+        try:
+            handler: logging.Handler = logging.FileHandler(log_file, encoding="utf-8")
+        except OSError as exc:
+            fallback_paths = [
+                (PROGRAM_DATA_DIR / get_log_file_name()).resolve(),
+                (get_app_directory() / "logs" / get_log_file_name()).resolve(),
+            ]
+            handler = None
+            last_exc: Optional[Exception] = exc
+            for candidate in fallback_paths:
+                if candidate == log_file:
+                    continue
+                try:
+                    candidate.parent.mkdir(parents=True, exist_ok=True)
+                    handler = logging.FileHandler(candidate, encoding="utf-8")
+                    pending_warning = (
+                        "No se pudo crear el log en %s (%s). Se usará %s."
+                        % (log_file, exc, candidate)
+                    )
+                    break
+                except OSError as fallback_exc:
+                    last_exc = fallback_exc
+            if handler is None:
+                handler = logging.StreamHandler()
+                pending_warning = (
+                    "No se pudo crear el archivo de log (%s). Se registrará sólo en la consola."
+                    % last_exc
+                )
+
+        formatter = logging.Formatter(
+            "%(asctime)s | %(levelname)s | %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        if len(sys.argv) > 1 and sys.argv[1].lower() == "debug":
+            stream_handler = logging.StreamHandler()
+            stream_handler.setFormatter(formatter)
+            logger.addHandler(stream_handler)
+        destination = getattr(getattr(handler, "stream", handler), "name", None)
+        if isinstance(destination, str):
+            logger.info("Registro inicializado en %s", destination)
+        else:
+            logger.info("Registro inicializado (%s)", type(handler).__name__)
+        if pending_warning:
+            logger.warning(pending_warning)
+    return logger
+
+
+LOGGER = get_logger()
+
+
+def log_initial_configuration() -> None:
+    if getattr(LOGGER, "_config_logged", False):
+        return
+
+    try:
+        api_key_present = "sí" if os.environ.get("USB_MONITOR_API_KEY") else "no"
+        LOGGER.info(
+            "Configuración inicial | frozen=%s | destino=%s:%s | endpoint=%s | puerto_http=%s | api_key=%s",
+            getattr(sys, "frozen", False),
+            get_server_host(),
+            get_server_port(),
+            os.environ.get("USB_MONITOR_ENDPOINT", DEFAULT_ENDPOINT),
+            get_listen_port(),
+            api_key_present,
+        )
+        LOGGER.debug("Ruta efectiva de log: %s", resolve_log_path())
+        LOGGER.debug("Argumentos de ejecución: %s", sys.argv)
+    except Exception as exc:  # pragma: no cover - logging inicial no debe fallar
+        LOGGER.debug("No se pudo registrar la configuración inicial: %s", exc)
+    finally:
+        setattr(LOGGER, "_config_logged", True)
+
+
+log_initial_configuration()
+
+
+def resolve_ip() -> str:
+    """Obtiene la IP más razonable asociada al host local."""
+    try:
+        hostname = socket.gethostname()
+        addresses = socket.gethostbyname_ex(hostname)[2]
+        for addr in addresses:
+            if not isinstance(addr, str):
+                continue
+            candidate = ensure_ipv4(addr, default="")
+            if candidate and not candidate.startswith("127."):
+                return candidate
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            candidate = ensure_ipv4(s.getsockname()[0], default="")
+            if candidate:
+                return candidate
+    except Exception as exc:
+        LOGGER.warning("No se pudo resolver IP local: %s", exc)
+    return DEFAULT_IPV4_FALLBACK
+
+
+def build_payload(
+    event: Any,
+    drive_descriptor: Optional[str] = None,
+    readonly_status: Optional[str] = None,
+    serial_number: Optional[str] = None,
+    whitelisted: bool = False,
+) -> Dict[str, Any]:
+    descriptor_candidate = drive_descriptor
+    if not descriptor_candidate:
+        for attr in ("DriveName", "VolumeName", "DeviceID"):
+            value = getattr(event, attr, None)
+            if value:
+                descriptor_candidate = str(value)
+                break
+
+    descriptor_clean = sanitize_required_string(
+        descriptor_candidate,
+        max_length=120,
+        fallback="Unknown",
+    )
+
+    readonly_clean = sanitize_optional_string(readonly_status, 120)
+    drive_letter_clean = sanitize_drive_letter(drive_descriptor)
+    serial_clean = sanitize_optional_string(serial_number, 128)
+
+    event_parts = [f"USB inserted: {descriptor_clean}"]
+    if readonly_clean:
+        event_parts.append(readonly_clean)
+    if whitelisted:
+        event_parts.append("WHITELIST")
+
+    event_message = sanitize_required_string(
+        " | ".join(event_parts),
+        max_length=512,
+        fallback="USB event detected",
+    )
+
+    payload: Dict[str, Any] = {
+        "pc_name": HOSTNAME,
+        "pc_ip": resolve_ip(),
+        "pc_user": sanitize_required_string(
+            getpass.getuser(), max_length=120, fallback="UNKNOWN_USER"
+        ),
+        "drive_letter": drive_letter_clean,
+        "readonly_status": readonly_clean,
+        "event": event_message,
+    }
+
+    if serial_clean:
+        payload["serial_number"] = serial_clean
+    if whitelisted:
+        payload["whitelisted"] = True
+
+    return payload
+
+
+def send_event(payload: Dict[str, Any]) -> None:
+    endpoint = os.environ.get("USB_MONITOR_ENDPOINT", DEFAULT_ENDPOINT)
+    url = build_url(endpoint)
+    headers = {"Content-Type": "application/json"}
+    headers.update(get_auth_headers())
+
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        response.raise_for_status()
+        LOGGER.info("Evento USB enviado correctamente: %s", json.dumps(payload))
+    except Exception as exc:
+        LOGGER.error("Error al enviar evento USB: %s", exc)
+
+
+def resolve_drive_letter(event: Any, conn: wmi.WMI) -> Optional[str]:
+    LOGGER.debug(
+        "Resolviendo letra de unidad | DriveName=%s | VolumeName=%s | DeviceID=%s",
+        getattr(event, "DriveName", None),
+        getattr(event, "VolumeName", None),
+        getattr(event, "DeviceID", None),
+    )
+    drive_name = getattr(event, "DriveName", None)
+    if isinstance(drive_name, str) and len(drive_name) >= 2 and drive_name[1] == ":":
+        resolved = drive_name[:2].upper()
+        LOGGER.info("Letra de unidad determinada directamente: %s", resolved)
+        return resolved
+
+    candidate = getattr(event, "VolumeName", None) or getattr(event, "DeviceID", None)
+    if not isinstance(candidate, str):
+        LOGGER.debug("Evento sin candidate válido para letra: %s", candidate)
+        return None
+
+    try:
+        normalized = candidate.replace("\\", "\\\\")
+        volumes = conn.query(
+            f"SELECT DriveLetter FROM Win32_Volume WHERE DeviceID='{normalized}'"
+        )
+        for volume in volumes:
+            drive_letter = getattr(volume, "DriveLetter", None)
+            if drive_letter:
+                resolved = str(drive_letter).upper()
+                LOGGER.info("Letra de unidad resuelta vía WMI: %s", resolved)
+                return resolved
+    except Exception as exc:
+        LOGGER.warning("No se pudo resolver letra de unidad para %s: %s", candidate, exc)
+
+    LOGGER.debug("No se encontró letra de unidad para el evento.")
+    return None
+
+
+def resolve_disk_number(drive_letter: str, conn: wmi.WMI) -> Optional[str]:
+    LOGGER.debug("Resolviendo número de disco para la unidad %s", drive_letter)
+    try:
+        logical = conn.Win32_LogicalDisk(DeviceID=f"{drive_letter}:")
+        if not logical:
+            LOGGER.debug("No se encontró Win32_LogicalDisk para %s", drive_letter)
+            return None
+        partitions = logical[0].associators(wmi_result_class="Win32_DiskPartition")
+        for partition in partitions:
+            disks = partition.associators(wmi_result_class="Win32_DiskDrive")
+            for disk in disks:
+                index = getattr(disk, "Index", None)
+                if index is not None:
+                    resolved = str(index)
+                    LOGGER.info(
+                        "Número de disco para %s resuelto vía asociación directa: %s",
+                        drive_letter,
+                        resolved,
+                    )
+                    return resolved
+        # Fallback manual join via Win32_LogicalDiskToPartition
+        rels = conn.query(
+            "SELECT * FROM Win32_LogicalDiskToPartition WHERE Antecedent LIKE '%{}%'".format(
+                drive_letter
+            )
+        )
+        for rel in rels:
+            antecedent = getattr(rel, "Antecedent", "")
+            disk_part = antecedent.split("\\")[-1]
+            disk_info = conn.query(
+                "SELECT * FROM Win32_DiskDrive WHERE DeviceID LIKE '%{}%'".format(
+                    disk_part
+                )
+            )
+            for disk in disk_info:
+                index = getattr(disk, "Index", None)
+                if index is not None:
+                    resolved = str(index)
+                    LOGGER.info(
+                        "Número de disco para %s resuelto vía fallback: %s",
+                        drive_letter,
+                        resolved,
+                    )
+                    return resolved
+    except Exception as exc:
+        LOGGER.warning(
+            "No se pudo resolver el número de disco para la unidad %s: %s",
+            drive_letter,
+            exc,
+        )
+    LOGGER.debug("No se pudo determinar el número de disco para %s", drive_letter)
+    return None
+
+
+def run_diskpart(commands: str) -> subprocess.CompletedProcess[str]:
+    script_content = commands if commands.endswith("\n") else commands + "\n"
+    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as script_file:
+        script_file.write(script_content)
+        script_path = script_file.name
+
+    try:
+        LOGGER.info("Ejecutando diskpart con script temporal %s", script_path)
+        LOGGER.debug("Contenido de script diskpart:\n%s", script_content.strip())
+        result = subprocess.run(
+            ["diskpart", "/s", script_path],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+    finally:
+        try:
+            os.remove(script_path)
+        except OSError:
+            pass
+
+    return result
+
+
+def resolve_disk_number_with_fallback(
+    letter: str, conn: Optional[wmi.WMI]
+) -> Optional[str]:
+    """Resuelve el número de disco intentando reusar la conexión WMI y, si falla,
+    crea una nueva conexión dentro del mismo hilo."""
+
+    disk_number: Optional[str] = None
+
+    if conn is not None:
+        disk_number = resolve_disk_number(letter, conn)
+        if disk_number:
+            return disk_number
+
+    LOGGER.debug(
+        "Reintentando resolver disco %s con nueva conexión WMI en este hilo",
+        letter,
+    )
+
+    temp_conn: Optional[wmi.WMI] = None
+    initialized = False
+    try:
+        pythoncom.CoInitialize()
+        initialized = True
+    except pythoncom.com_error as exc:
+        LOGGER.debug("CoInitialize adicional devolvió error (se ignora): %s", exc)
+
+    try:
+        temp_conn = wmi.WMI()
+        disk_number = resolve_disk_number(letter, temp_conn)
+    except Exception as exc:
+        LOGGER.warning(
+            "No se pudo resolver el número de disco %s con nueva conexión WMI: %s",
+            letter,
+            exc,
+        )
+        disk_number = None
+    finally:
+        if initialized:
+            pythoncom.CoUninitialize()
+
+    return disk_number
+
+
+def set_disk_readonly(drive_letter: str, conn: wmi.WMI) -> Tuple[bool, str]:
+    letter = drive_letter.rstrip(":").upper()
+    if len(letter) != 1 or not letter.isalpha():
+        msg = f"Letra de unidad inválida ({drive_letter})"
+        LOGGER.warning("%s", msg)
+        return False, msg
+
+    disk_number = resolve_disk_number_with_fallback(letter, conn)
+    if not disk_number:
+        msg = f"No se pudo resolver el disco asociado a la unidad {drive_letter}"
+        LOGGER.warning("%s", msg)
+        return False, msg
+
+    script = f"select disk {disk_number}\nattributes disk set readonly\nexit\n"
+
+    try:
+        result = run_diskpart(script)
+        stdout_lower = result.stdout.lower()
+        stderr_lower = result.stderr.lower()
+        if (
+            result.returncode == 0
+            and "error" not in stdout_lower
+            and "error" not in stderr_lower
+        ):
+            msg = f"readonly aplicado al disco {disk_number} (unidad {drive_letter})"
+            LOGGER.info(
+                "Disco %s (unidad %s) establecido en modo solo lectura. Salida: %s",
+                disk_number,
+                drive_letter,
+                result.stdout.strip(),
+            )
+            return True, msg
+
+        LOGGER.error(
+            "diskpart devolvió código %s al bloquear disco %s (unidad %s). Stdout: %s | Stderr: %s",
+            result.returncode,
+            disk_number,
+            drive_letter,
+            result.stdout.strip(),
+            result.stderr.strip(),
+        )
+        msg = (
+            f"Fallo al aplicar readonly en disco {disk_number} para unidad {drive_letter}"
+        )
+        return False, msg
+    except FileNotFoundError:
+        msg = "diskpart no está disponible en el sistema"
+        LOGGER.error("%s. No se puede bloquear escritura.", msg)
+        return False, msg
+    except subprocess.TimeoutExpired:
+        msg = f"diskpart tardó demasiado en proteger la unidad {drive_letter}"
+        LOGGER.error("%s. Operación cancelada.", msg)
+        return False, msg
+    except Exception as exc:
+        msg = f"Error inesperado al establecer unidad {drive_letter} solo lectura: {exc}"
+        LOGGER.error("%s", msg)
+        return False, msg
+
+
+def clear_disk_readonly(drive_letter: str, conn: wmi.WMI) -> Tuple[bool, str]:
+    """Remueve el atributo de solo lectura del disco que contiene la unidad USB."""
+    letter = drive_letter.rstrip(":").upper()
+    if len(letter) != 1 or not letter.isalpha():
+        msg = f"Letra de unidad inválida ({drive_letter})"
+        LOGGER.warning("%s", msg)
+        return False, msg
+
+    disk_number = resolve_disk_number_with_fallback(letter, conn)
+    if not disk_number:
+        msg = f"No se pudo resolver el disco asociado a la unidad {drive_letter}"
+        LOGGER.warning("%s", msg)
+        return False, msg
+
+    script = f"select disk {disk_number}\nattributes disk clear readonly\nexit\n"
+
+    try:
+        result = run_diskpart(script)
+        stdout_lower = result.stdout.lower()
+        stderr_lower = result.stderr.lower()
+
+        if (
+            result.returncode == 0
+            and "error" not in stdout_lower
+            and "error" not in stderr_lower
+        ):
+            msg = f"readonly removido del disco {disk_number} (unidad {drive_letter})"
+            LOGGER.info(
+                "Disco %s (unidad %s) desbloqueado. Salida: %s",
+                disk_number,
+                drive_letter,
+                result.stdout.strip(),
+            )
+            return True, msg
+
+        LOGGER.error(
+            "diskpart devolvió código %s al desbloquear disco %s (unidad %s). Stdout: %s | Stderr: %s",
+            result.returncode,
+            disk_number,
+            drive_letter,
+            result.stdout.strip(),
+            result.stderr.strip(),
+        )
+        msg = f"Fallo al remover readonly en disco {disk_number} para unidad {drive_letter}"
+        return False, msg
+
+    except FileNotFoundError:
+        msg = "diskpart no está disponible en el sistema"
+        LOGGER.error("%s. No se puede desbloquear.", msg)
+        return False, msg
+    except subprocess.TimeoutExpired:
+        msg = f"diskpart tardó demasiado en desbloquear la unidad {drive_letter}"
+        LOGGER.error("%s. Operación cancelada.", msg)
+        return False, msg
+    except Exception as exc:
+        msg = f"Error inesperado al desbloquear unidad {drive_letter}: {exc}"
+        LOGGER.error("%s", msg)
+        return False, msg
+
+
+def protect_usb_media(
+    drive_letter: Optional[str],
+    conn: wmi.WMI,
+) -> Tuple[Optional[str], bool, str]:
+    LOGGER.info("Iniciando protección en solo lectura para unidad: %s", drive_letter)
+    if not drive_letter:
+        msg = "No se determinó la letra de unidad"
+        LOGGER.warning("%s", msg)
+        return None, False, msg
+
+    success, detail = set_disk_readonly(drive_letter, conn)
+    LOGGER.info(
+        "Resultado de protección para %s | éxito=%s | detalle=%s",
+        drive_letter,
+        success,
+        detail,
+    )
+    return drive_letter, success, detail
+
+
+def create_browser_signal(pc_name: str, drive_letter: str) -> None:
+    """Crea el archivo de señal para que el agente muestre el login."""
+    try:
+        LOGGER.info(
+            "Creando archivo de señal para %s con unidad %s", pc_name, drive_letter
+        )
+        SIGNAL_FILE.parent.mkdir(parents=True, exist_ok=True)
+        
+        signal_data = {
+            "pc_name": pc_name,
+            "drive_letter": drive_letter,
+            "timestamp": time.time(),
+            "processed": False,
+        }
+        
+        with open(SIGNAL_FILE, "w", encoding="utf-8") as f:
+            json.dump(signal_data, f, indent=2)
+        
+        LOGGER.info("Archivo de señal creado para el agente: %s", SIGNAL_FILE)
+    except Exception as exc:
+        LOGGER.error("Error al crear archivo de señal: %s", exc)
+
+
+def create_pending_unlock(pc_name: str, drive_letter: str) -> bool:
+    """Crea un registro de desbloqueo pendiente en el backend."""
+    try:
+        endpoint = "/api/usb-event/pending-unlock"
+        url = build_url(endpoint)
+        headers = {"Content-Type": "application/json"}
+        headers.update(get_auth_headers())
+        LOGGER.info(
+            "Solicitando creación de pending unlock para PC=%s unidad=%s",
+            pc_name,
+            drive_letter,
+        )
+        
+        payload = {
+            "pcName": pc_name,
+            "driveLetter": drive_letter,
+        }
+        
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        LOGGER.info("Registro de desbloqueo pendiente creado para %s - %s", pc_name, drive_letter)
+        return True
+    except Exception as exc:
+        LOGGER.error("Error al crear pending unlock: %s", exc)
+        return False
+
+
+def check_whitelist(serial_number: Optional[str]) -> Tuple[bool, Optional[Dict[str, Any]]]:
+    """Consulta el backend para verificar si el serial está autorizado."""
+    if not serial_number:
+        return False, None
+
+    try:
+        encoded_serial = quote(serial_number, safe="")
+        endpoint = f"/api/whitelist/check?serial={encoded_serial}"
+        url = build_url(endpoint)
+        headers = get_auth_headers()
+
+        response = requests.get(url, headers=headers, timeout=8)
+        response.raise_for_status()
+
+        data = response.json()
+        allowed = bool(data.get("allowed"))
+        entry = data.get("entry") if allowed else None
+
+        if allowed:
+            LOGGER.info(
+                "Serial %s autorizado por whitelist%s",
+                serial_number,
+                f" ({entry.get('label')})" if entry and entry.get("label") else "",
+            )
+        else:
+            LOGGER.debug("Serial %s no está en whitelist", serial_number)
+
+        return allowed, entry
+    except Exception as exc:
+        LOGGER.debug("No se pudo verificar whitelist para %s: %s", serial_number, exc)
+        return False, None
+
+
+def check_unlock_status(pc_name: str) -> Tuple[bool, Optional[str]]:
+    """Verifica si el backend ha autorizado el desbloqueo."""
+    try:
+        endpoint = f"/api/usb-unlock?pcName={pc_name}&check=true"
+        url = build_url(endpoint)
+        headers = get_auth_headers()
+        
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        data = response.json()
+        unlocked = data.get("unlocked", False)
+        drive_letter = data.get("driveLetter")
+        LOGGER.debug(
+            "Estado de desbloqueo consultado | pc=%s | unlocked=%s | drive=%s",
+            pc_name,
+            unlocked,
+            drive_letter,
+        )
+        
+        return unlocked, drive_letter
+    except Exception as exc:
+        LOGGER.debug("Error al verificar estado de desbloqueo: %s", exc)
+        return False, None
+
+
+def unlock_usb(drive_letter: str, conn: wmi.WMI) -> bool:
+    """Desbloquea una unidad USB removiendo el atributo readonly."""
+    LOGGER.info("Iniciando desbloqueo de unidad %s", drive_letter)
+    
+    success, msg = clear_disk_readonly(drive_letter, conn)
+    
+    if success:
+        LOGGER.info("Unidad %s desbloqueada exitosamente: %s", drive_letter, msg)
+    else:
+        LOGGER.error("Fallo al desbloquear unidad %s: %s", drive_letter, msg)
+    
+    return success
+
+
+def get_connected_usb_drives(conn: wmi.WMI) -> list:
+    """Obtiene información de todas las unidades USB conectadas actualmente."""
+    usb_drives: list[Dict[str, Any]] = []
+
+    disks = conn.Win32_DiskDrive(InterfaceType="USB")
+    for disk in disks:
+        disk_index = getattr(disk, "Index", None)
+        if disk_index is None:
+            continue
+
+        serial = (getattr(disk, "SerialNumber", "") or "").strip()
+        model = (getattr(disk, "Model", "") or "").strip()
+
+        try:
+            partitions = disk.associators(wmi_result_class="Win32_DiskPartition")
+        except Exception as exc:
+            LOGGER.debug(
+                "No se pudieron obtener particiones para el disco USB %s: %s",
+                disk_index,
+                exc,
+            )
+            continue
+
+        for partition in partitions:
+            try:
+                logical_disks = partition.associators(
+                    wmi_result_class="Win32_LogicalDisk"
+                )
+            except Exception as exc:
+                LOGGER.debug(
+                    "No se pudieron obtener volúmenes lógicos para el disco USB %s: %s",
+                    disk_index,
+                    exc,
+                )
+                continue
+
+            for logical in logical_disks:
+                drive_letter = getattr(logical, "DeviceID", None)
+                if not drive_letter:
+                    continue
+
+                drive_id = str(drive_letter).upper()
+                volume_name = getattr(logical, "VolumeName", "") or "Sin nombre"
+                size_value = getattr(logical, "Size", 0)
+                free_value = getattr(logical, "FreeSpace", 0)
+
+                try:
+                    size = int(size_value) if size_value else 0
+                except (TypeError, ValueError):
+                    size = 0
+
+                try:
+                    free_space = int(free_value) if free_value else 0
+                except (TypeError, ValueError):
+                    free_space = 0
+
+                usb_drives.append(
+                    {
+                        "driveLetter": drive_id,
+                        "volumeName": volume_name,
+                        "serialNumber": serial or "Unknown",
+                        "model": model or "Unknown",
+                        "size": size,
+                        "freeSpace": free_space,
+                    }
+                )
+                LOGGER.debug(
+                    "Unidad USB detectada | letter=%s | modelo=%s | serie=%s | size=%s | libre=%s",
+                    drive_id,
+                    model or "Unknown",
+                    serial or "Unknown",
+                    size,
+                    free_space,
+                )
+
+    return usb_drives
+
+
+def find_drive_info_by_letter(
+    drives: list[Dict[str, Any]], drive_letter: str
+) -> Optional[Dict[str, Any]]:
+    normalized = drive_letter.rstrip(":").upper()
+    for drive in drives:
+        candidate = str(drive.get("driveLetter", "")).rstrip(":").upper()
+        if candidate == normalized:
+            return drive
+    return None
+
+
+def send_connected_drives_status(pc_name: str, conn: wmi.WMI) -> bool:
+    """Envía el estado actual de las unidades USB conectadas al backend."""
+    endpoint = "/api/usb-event/connected-status"
+    url = build_url(endpoint)
+    headers = {"Content-Type": "application/json"}
+    headers.update(get_auth_headers())
+
+    connected_drives = get_connected_usb_drives(conn)
+
+    payload = {
+        "pcName": pc_name,
+        "timestamp": time.time(),
+        "connectedDrives": connected_drives,
+    }
+
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        LOGGER.debug("Error HTTP al enviar estado de unidades conectadas: %s", exc)
+        return False
+
+    LOGGER.info(
+        "Estado de unidades conectadas enviado: %d unidades reportadas",
+        len(connected_drives),
+    )
+    return True
+
+
+class UnlockHTTPHandler(BaseHTTPRequestHandler):
+    """Handler HTTP para recibir notificaciones de desbloqueo del backend."""
+    
+    service_instance = None  # Referencia al servicio para acceder a pending_usbs y wmi
+    
+    def log_message(self, format: str, *args) -> None:
+        """Sobrescribe el logging para usar nuestro logger."""
+        LOGGER.info("%s - %s", self.address_string(), format % args)
+    
+    def do_GET(self) -> None:
+        """Maneja peticiones GET para health check."""
+        parsed = urlparse(self.path)
+        
+        if parsed.path == "/health":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            response = {
+                "status": "ok",
+                "hostname": HOSTNAME,
+                "service": "USBMonitorService"
+            }
+            self.wfile.write(json.dumps(response).encode())
+        else:
+            self.send_response(404)
+            self.end_headers()
+    
+    def do_POST(self) -> None:
+        """Maneja peticiones POST para desbloquear USB."""
+        parsed = urlparse(self.path)
+        
+        if parsed.path != "/unlock":
+            self.send_response(404)
+            self.end_headers()
+            return
+        
+        try:
+            # Leer el body de la petición
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length)
+            data = json.loads(body.decode())
+            
+            pc_name = data.get("pcName", "").upper()
+            drive_letter = data.get("driveLetter", "").upper()
+            
+            # Validar que sea para esta PC
+            if pc_name != HOSTNAME:
+                LOGGER.warning(
+                    "Recibida petición de desbloqueo para PC '%s' pero este es '%s'",
+                    pc_name, HOSTNAME
+                )
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                error_response = {
+                    "ok": False,
+                    "error": f"Esta petición es para {pc_name}, pero esta PC es {HOSTNAME}"
+                }
+                self.wfile.write(json.dumps(error_response).encode())
+                return
+            
+            # Validar que el USB esté en la lista de pendientes
+            if drive_letter not in self.service_instance.pending_usbs:
+                LOGGER.warning(
+                    "Recibida petición de desbloqueo para %s pero no está en pendientes",
+                    drive_letter
+                )
+                self.send_response(404)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                error_response = {
+                    "ok": False,
+                    "error": f"USB {drive_letter} no encontrado en pendientes"
+                }
+                self.wfile.write(json.dumps(error_response).encode())
+                return
+            
+            # Ejecutar el desbloqueo
+            LOGGER.info(
+                "Recibida notificación HTTP para desbloquear %s en %s",
+                drive_letter, pc_name
+            )
+            
+            # Inicializar COM para este thread (el servidor HTTP usa threads separados)
+            pythoncom.CoInitialize()
+            try:
+                success = unlock_usb(drive_letter, self.service_instance.wmi_connection)
+            finally:
+                pythoncom.CoUninitialize()
+            
+            if success:
+                # Remover de pendientes
+                self.service_instance.pending_usbs.pop(drive_letter, None)
+                
+                # Limpiar archivo de señal
+                try:
+                    if SIGNAL_FILE.exists():
+                        SIGNAL_FILE.unlink()
+                        LOGGER.info("Archivo de señal limpiado")
+                except Exception as e:
+                    LOGGER.warning("Error al limpiar archivo de señal: %s", e)
+                
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                response = {
+                    "ok": True,
+                    "message": f"USB {drive_letter} desbloqueado exitosamente"
+                }
+                self.wfile.write(json.dumps(response).encode())
+                LOGGER.info("USB %s desbloqueado via HTTP exitosamente", drive_letter)
+            else:
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                error_response = {
+                    "ok": False,
+                    "error": f"Fallo al desbloquear USB {drive_letter}"
+                }
+                self.wfile.write(json.dumps(error_response).encode())
+                LOGGER.error("Fallo al desbloquear USB %s via HTTP", drive_letter)
+                
+        except json.JSONDecodeError:
+            LOGGER.error("Body de petición no es JSON válido")
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            error_response = {"ok": False, "error": "JSON inválido"}
+            self.wfile.write(json.dumps(error_response).encode())
+        except Exception as exc:
+            LOGGER.error("Error al procesar petición de desbloqueo: %s", exc)
+            self.send_response(500)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            error_response = {"ok": False, "error": str(exc)}
+            self.wfile.write(json.dumps(error_response).encode())
+
+
+class USBMonitorService(win32serviceutil.ServiceFramework):
+    _svc_name_ = "USBMonitorService"
+    _svc_display_name_ = "USB Monitor Service"
+    _svc_description_ = (
+        "Monitorea conexiones de dispositivos USB y notifica al servidor Monitor_USB"
+    )
+
+    def __init__(self, args):
+        win32serviceutil.ServiceFramework.__init__(self, args)
+        self.stop_event = win32event.CreateEvent(None, 0, 0, None)
+        self.stopped = False
+        self.pending_usbs: Dict[str, str] = {}  # {drive_letter: pc_name}
+        self.wmi_connection = None  # Referencia a la conexión WMI
+        self.http_server = None  # Servidor HTTP
+        self.http_thread = None  # Thread del servidor HTTP
+
+    def SvcStop(self) -> None:
+        self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
+        win32event.SetEvent(self.stop_event)
+        self.stopped = True
+        
+        # Detener el servidor HTTP
+        if self.http_server:
+            try:
+                LOGGER.info("Deteniendo servidor HTTP...")
+                self.http_server.shutdown()
+            except Exception as exc:
+                LOGGER.error("Error al detener servidor HTTP: %s", exc)
+        
+        LOGGER.info("Solicitud de parada recibida")
+
+    def SvcDoRun(self) -> None:
+        LOGGER.info("Servicio iniciado")
+        servicemanager.LogInfoMsg("USBMonitorService - iniciado")
+        self.main()
+
+    def main(self) -> None:
+        LOGGER.info("Inicializando bucle principal del servicio")
+        try:
+            pythoncom.CoInitialize()
+        except pythoncom.com_error as exc:
+            LOGGER.error("No se pudo inicializar COM para el servicio: %s", exc)
+            return
+        hostname = HOSTNAME
+        LOGGER.info("Hostname detectado para el servicio: %s", hostname)
+        try:
+            c = wmi.WMI()
+            self.wmi_connection = c  # Guardar referencia para el HTTP handler
+            watcher = c.watch_for(
+                notification_type="Creation",
+                wmi_class="Win32_VolumeChangeEvent",
+                EventType=2,  # 2 => Device arrival
+            )
+            LOGGER.info("Watcher WMI inicializado para Win32_VolumeChangeEvent")
+        except Exception as exc:
+            LOGGER.error("No se pudo inicializar WMI: %s", exc)
+            pythoncom.CoUninitialize()
+            return
+
+        # Iniciar servidor HTTP en un thread separado
+        self.start_http_server()
+
+        # Thread para monitorear desbloqueos autorizados (fallback polling)
+        unlock_monitor_thread = threading.Thread(
+            target=self.monitor_unlock_authorization,
+            args=(c,),
+            daemon=True
+        )
+        unlock_monitor_thread.start()
+        LOGGER.info(
+            "Thread de monitoreo de autorizaciones iniciado (id=%s)",
+            unlock_monitor_thread.ident,
+        )
+
+        # Thread para monitorear USBs conectadas continuamente
+        connected_monitor_thread = threading.Thread(
+            target=self.monitor_connected_drives,
+            args=(hostname,),
+            daemon=True
+        )
+        connected_monitor_thread.start()
+        LOGGER.info(
+            "Thread de monitoreo de unidades conectadas iniciado (id=%s)",
+            connected_monitor_thread.ident,
+        )
+
+        while not self.stopped:
+            rc = win32event.WaitForSingleObject(self.stop_event, 500)
+            if rc == win32event.WAIT_OBJECT_0:
+                break
+
+            try:
+                event = watcher(timeout_ms=2000)
+                if event:
+                    drive_letter = resolve_drive_letter(event, c)
+                    serial_number: Optional[str] = None
+                    whitelist_entry: Optional[Dict[str, Any]] = None
+                    whitelisted = False
+
+                    if drive_letter:
+                        for attempt in range(3):
+                            try:
+                                connected_drives = get_connected_usb_drives(c)
+                                drive_info = find_drive_info_by_letter(
+                                    connected_drives, drive_letter
+                                )
+                                if drive_info:
+                                    candidate = (
+                                        (drive_info.get("serialNumber") or "").strip()
+                                    )
+                                    if candidate:
+                                        serial_number = candidate
+                                        break
+                            except Exception as info_exc:
+                                LOGGER.debug(
+                                    "No se pudo obtener información adicional de %s (intento %s): %s",
+                                    drive_letter,
+                                    attempt + 1,
+                                    info_exc,
+                                )
+                            if serial_number:
+                                break
+                            time.sleep(0.3)
+
+                    if serial_number:
+                        whitelisted, whitelist_entry = check_whitelist(serial_number)
+
+                    if whitelisted:
+                        label = (
+                            whitelist_entry.get("label")
+                            if isinstance(whitelist_entry, dict)
+                            else None
+                        )
+                        notes = (
+                            whitelist_entry.get("notes")
+                            if isinstance(whitelist_entry, dict)
+                            else None
+                        )
+                        readonly_msg = "Whitelisted: acceso directo"
+                        if label:
+                            readonly_msg = f"{readonly_msg} ({label})"
+                        if notes:
+                            readonly_msg = f"{readonly_msg} - {notes}"
+                        payload = build_payload(
+                            event,
+                            drive_letter,
+                            readonly_msg,
+                            serial_number,
+                            True,
+                        )
+                        LOGGER.info(
+                            "Dispositivo %s (serial: %s) en whitelist, se omite bloqueo",
+                            drive_letter or "?",
+                            serial_number,
+                        )
+                        send_event(payload)
+                        if drive_letter:
+                            normalized_letter = drive_letter.rstrip(":").upper()
+                            self.pending_usbs.pop(drive_letter, None)
+                            self.pending_usbs.pop(normalized_letter, None)
+                            self.pending_usbs.pop(f"{normalized_letter}:", None)
+                        continue
+
+                    # 1. Proteger USB con readonly
+                    letter_used, readonly_ok, readonly_msg = protect_usb_media(
+                        drive_letter, c
+                    )
+
+                    # 2. Enviar evento al backend
+                    payload = build_payload(
+                        event,
+                        letter_used,
+                        readonly_msg,
+                        serial_number,
+                        False,
+                    )
+                    LOGGER.info("Evento USB detectado: %s", payload["event"])
+                    send_event(payload)
+
+                    # 3. Si se bloqueó correctamente, crear pending unlock y señal
+                    if letter_used and readonly_ok:
+                        # Agregar a la lista de USBs pendientes
+                        self.pending_usbs[letter_used] = hostname
+
+                        # Crear registro de desbloqueo pendiente en backend
+                        create_pending_unlock(hostname, letter_used)
+
+                        # Crear archivo de señal para el agente
+                        create_browser_signal(hostname, letter_used)
+
+                        LOGGER.info(
+                            "USB %s bloqueado y pendiente de autorización",
+                            letter_used,
+                        )
+                    
+            except wmi.x_wmi_timed_out:
+                continue
+            except Exception as exc:
+                LOGGER.error("Error en el loop principal: %s", exc)
+                time.sleep(5)
+
+        pythoncom.CoUninitialize()
+        LOGGER.info("Servicio detenido")
+
+    def start_http_server(self) -> None:
+        """Inicia el servidor HTTP en un thread separado."""
+        try:
+            listen_port = get_listen_port()
+            
+            # Configurar el handler con referencia al servicio
+            UnlockHTTPHandler.service_instance = self
+            
+            # Crear el servidor HTTP
+            self.http_server = HTTPServer(("0.0.0.0", listen_port), UnlockHTTPHandler)
+            
+            # Iniciar en un thread separado
+            self.http_thread = threading.Thread(
+                target=self.http_server.serve_forever,
+                daemon=True
+            )
+            self.http_thread.start()
+            
+            LOGGER.info(
+                "Servidor HTTP iniciado en puerto %s para recibir notificaciones",
+                listen_port
+            )
+        except Exception as exc:
+            LOGGER.error("Error al iniciar servidor HTTP: %s", exc)
+            LOGGER.warning("El servicio continuará usando solo polling")
+
+    def monitor_unlock_authorization(self, conn: wmi.WMI) -> None:
+        """Monitorea periódicamente si hay USBs autorizados para desbloquear."""
+        LOGGER.info("Iniciando monitoreo de autorizaciones de desbloqueo")
+        
+        # Inicializar COM para este thread
+        pythoncom.CoInitialize()
+        
+        try:
+            pending_logged_empty = False
+            while not self.stopped:
+                try:
+                    time.sleep(3)  # Verificar cada 3 segundos
+                    
+                    if not self.pending_usbs:
+                        if not pending_logged_empty:
+                            LOGGER.debug("Sin USBs pendientes de desbloqueo")
+                            pending_logged_empty = True
+                        continue
+                    else:
+                        if pending_logged_empty:
+                            LOGGER.debug("Se detectaron USBs pendientes nuevamente")
+                        pending_logged_empty = False
+                        LOGGER.info(
+                            "Pendientes actuales de desbloqueo: %s",
+                            list(self.pending_usbs.keys()),
+                        )
+                    
+                    # Verificar estado de desbloqueo en el backend
+                    pc_name = HOSTNAME
+                    unlocked, drive_letter = check_unlock_status(pc_name)
+                    
+                    if unlocked and drive_letter and drive_letter in self.pending_usbs:
+                        # Desbloquear la unidad
+                        LOGGER.info(
+                            "Autorización de desbloqueo recibida para %s",
+                            drive_letter
+                        )
+                        
+                        success = unlock_usb(drive_letter, conn)
+                        
+                        if success:
+                            # Remover de la lista de pendientes
+                            self.pending_usbs.pop(drive_letter, None)
+                            
+                            # Limpiar archivo de señal
+                            try:
+                                if SIGNAL_FILE.exists():
+                                    SIGNAL_FILE.unlink()
+                                    LOGGER.info("Archivo de señal limpiado")
+                            except Exception as e:
+                                LOGGER.warning("Error al limpiar archivo de señal: %s", e)
+                            
+                            LOGGER.info(
+                                "USB %s desbloqueado exitosamente tras autorización",
+                                drive_letter
+                            )
+                        else:
+                            LOGGER.error(
+                                "Fallo al desbloquear USB %s tras autorización",
+                                drive_letter
+                            )
+                    
+                except Exception as exc:
+                    LOGGER.error("Error en monitor de autorizaciones: %s", exc)
+                    time.sleep(5)
+        finally:
+            pythoncom.CoUninitialize()
+
+    def monitor_connected_drives(self, pc_name: str) -> None:
+        """Monitorea periódicamente las unidades USB conectadas y envía el estado al backend."""
+        LOGGER.info("Iniciando monitoreo de unidades USB conectadas")
+
+        pythoncom.CoInitialize()
+        conn: Optional[wmi.WMI] = None
+
+        try:
+            while not self.stopped:
+                if conn is None:
+                    try:
+                        conn = wmi.WMI()
+                        LOGGER.info(
+                            "Conexión WMI lista para monitorear unidades conectadas"
+                        )
+                    except Exception as exc:
+                        LOGGER.error(
+                            "No se pudo crear conexión WMI para monitorear unidades conectadas: %s",
+                            exc,
+                        )
+                        time.sleep(10)
+                        continue
+
+                try:
+                    sent = send_connected_drives_status(pc_name, conn)
+                    if not sent:
+                        LOGGER.debug(
+                            "No se actualizó el estado de unidades conectadas para %s",
+                            pc_name,
+                        )
+                except Exception as exc:
+                    LOGGER.error(
+                        "Error al obtener o enviar unidades conectadas para %s: %s",
+                        pc_name,
+                        exc,
+                    )
+                    conn = None
+
+                time.sleep(10)
+        finally:
+            conn = None
+            pythoncom.CoUninitialize()
+
+
+SERVICE_STATE_LABELS: Dict[int, str] = {
+    win32service.SERVICE_STOPPED: "Detenido",
+    win32service.SERVICE_START_PENDING: "Iniciando...",
+    win32service.SERVICE_STOP_PENDING: "Deteniendo...",
+    win32service.SERVICE_RUNNING: "En ejecución",
+    win32service.SERVICE_CONTINUE_PENDING: "Reanudando...",
+    win32service.SERVICE_PAUSE_PENDING: "Pausando...",
+    win32service.SERVICE_PAUSED: "Pausado",
+}
+
+
+def _query_service_state() -> Tuple[Optional[int], str]:
+    try:
+        status = win32serviceutil.QueryServiceStatus(USBMonitorService._svc_name_)
+    except Exception as exc:  # pragma: no cover - depende del sistema
+        win_err = getattr(exc, "winerror", None)
+        if win_err == getattr(winerror, "ERROR_SERVICE_DOES_NOT_EXIST", 1060):
+            LOGGER.warning("Consulta de estado: servicio no instalado")
+            return None, "No instalado"
+        LOGGER.error("Error consultando estado del servicio: %s", exc)
+        return None, f"Error: {exc}"
+
+    state = status[1]
+    description = SERVICE_STATE_LABELS.get(state, f"Estado desconocido ({state})")
+    LOGGER.debug("Estado del servicio consultado: %s (%s)", state, description)
+    return state, description
+
+
+def _merge_process_output(stdout: Optional[str], stderr: Optional[str]) -> str:
+    fragments = []
+    if stdout:
+        stdout = stdout.strip()
+        if stdout:
+            fragments.append(stdout)
+    if stderr:
+        stderr = stderr.strip()
+        if stderr:
+            fragments.append(stderr)
+    return "\n".join(fragments)
+
+
+def _build_service_command(command: str) -> list[str]:
+    if getattr(sys, "frozen", False):
+        return [sys.executable, command]
+    return [sys.executable, str(Path(__file__).resolve()), command]
+
+
+def _format_win_error(exc: Exception) -> str:
+    win_err = getattr(exc, "winerror", None)
+    if win_err is not None:
+        description = getattr(exc, "strerror", None)
+        if description:
+            return f"[WinError {win_err}] {description}"
+        return f"[WinError {win_err}] {exc}"
+    return str(exc)
+
+
+def _wait_for_state(target_state: int, timeout: int = 45) -> bool:
+    deadline = time.time() + timeout
+    LOGGER.debug(
+        "Esperando estado %s (timeout=%ss)",
+        SERVICE_STATE_LABELS.get(target_state, target_state),
+        timeout,
+    )
+    while time.time() < deadline:
+        state, _ = _query_service_state()
+        if state == target_state:
+            LOGGER.debug("Estado objetivo alcanzado: %s", target_state)
+            return True
+        time.sleep(0.5)
+    LOGGER.warning(
+        "Timeout esperando estado %s tras %ss",
+        SERVICE_STATE_LABELS.get(target_state, target_state),
+        timeout,
+    )
+    return False
+
+
+def _control_service_direct(command: str, timeout: int = 45) -> Tuple[bool, str]:
+    state, description = _query_service_state()
+
+    if state is None:
+        LOGGER.warning(
+            "No se puede ejecutar '%s' porque el estado actual es desconocido: %s",
+            command,
+            description,
+        )
+        return False, description
+
+    try:
+        if command == "start":
+            if state == win32service.SERVICE_RUNNING:
+                LOGGER.info("Comando start solicitado, pero el servicio ya está en ejecución")
+                return True, "El servicio ya está en ejecución."
+            LOGGER.info("Intentando iniciar servicio (estado actual: %s)", description)
+            win32serviceutil.StartService(USBMonitorService._svc_name_)
+            if _wait_for_state(win32service.SERVICE_RUNNING, timeout):
+                LOGGER.info("Servicio marcado como en ejecución tras comando start")
+                return True, "Servicio iniciado correctamente."
+            state, description = _query_service_state()
+            LOGGER.error(
+                "No se confirmó el arranque del servicio tras start. Estado actual: %s",
+                description,
+            )
+            return False, (
+                "No se pudo confirmar el arranque del servicio. "
+                f"Estado actual: {description}"
+            )
+
+        if command == "stop":
+            if state == win32service.SERVICE_STOPPED:
+                LOGGER.info("Comando stop solicitado, pero el servicio ya está detenido")
+                return True, "El servicio ya está detenido."
+            LOGGER.info("Intentando detener servicio (estado actual: %s)", description)
+            win32serviceutil.StopService(USBMonitorService._svc_name_)
+            if _wait_for_state(win32service.SERVICE_STOPPED, timeout):
+                LOGGER.info("Servicio marcado como detenido tras comando stop")
+                return True, "Servicio detenido correctamente."
+            state, description = _query_service_state()
+            LOGGER.error(
+                "No se confirmó la detención del servicio tras stop. Estado actual: %s",
+                description,
+            )
+            return False, (
+                "No se pudo confirmar la detención del servicio. "
+                f"Estado actual: {description}"
+            )
+
+        if command == "restart":
+            LOGGER.info("Intentando reiniciar servicio")
+            win32serviceutil.RestartService(USBMonitorService._svc_name_)
+            if _wait_for_state(win32service.SERVICE_RUNNING, timeout):
+                LOGGER.info("Servicio marcado como en ejecución tras comando restart")
+                return True, "Servicio reiniciado correctamente."
+            state, description = _query_service_state()
+            LOGGER.error(
+                "No se confirmó el reinicio del servicio. Estado actual: %s",
+                description,
+            )
+            return False, (
+                "No se pudo confirmar el reinicio del servicio. "
+                f"Estado actual: {description}"
+            )
+    except Exception as exc:  # pragma: no cover - depende del sistema
+        LOGGER.error("Excepción al ejecutar comando directo '%s': %s", command, exc)
+        return False, _format_win_error(exc)
+
+    return False, f"Comando '{command}' no soportado."
+
+
+def _execute_service_command(command: str, timeout: int = 45) -> Tuple[bool, str]:
+    if command in {"start", "stop", "restart"}:
+        LOGGER.info("Ejecutando comando directo de servicio: %s", command)
+        return _control_service_direct(command, timeout)
+
+    env = os.environ.copy()
+    env["USB_MONITOR_SILENT"] = "0"
+    resolved_cmd = _build_service_command(command)
+    LOGGER.info("Ejecutando comando de línea del servicio: %s", resolved_cmd)
+    try:
+        result = subprocess.run(
+            resolved_cmd,
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=timeout,
+        )
+    except subprocess.CalledProcessError as exc:
+        LOGGER.error(
+            "Comando '%s' devolvió código %s. Stdout: %s | Stderr: %s",
+            command,
+            exc.returncode,
+            exc.stdout,
+            exc.stderr,
+        )
+        message = _merge_process_output(exc.stdout, exc.stderr)
+        if not message:
+            message = f"Error al ejecutar '{command}'. Código: {exc.returncode}"
+        return False, message
+    except subprocess.TimeoutExpired as exc:
+        LOGGER.error("Timeout ejecutando comando '%s' tras %ss", command, timeout)
+        try:
+            exc.process.kill()
+        except Exception:
+            pass
+        stdout, stderr = exc.process.communicate()
+        message = _merge_process_output(stdout, stderr)
+
+        state, description = _query_service_state()
+        if command == "start" and state == win32service.SERVICE_RUNNING:
+            extra = (
+                "El comando 'start' excedió el tiempo de espera, "
+                "pero el servicio reporta estado en ejecución."
+            )
+            LOGGER.warning("Timeout de start pero el servicio aparece en ejecución")
+            if message:
+                message = f"{message}\n{extra}"
+            else:
+                message = extra
+            return True, message
+
+        if command == "stop" and state == win32service.SERVICE_STOPPED:
+            extra = (
+                "El comando 'stop' excedió el tiempo de espera, "
+                "pero el servicio aparece detenido."
+            )
+            LOGGER.warning("Timeout de stop pero el servicio aparece detenido")
+            if message:
+                message = f"{message}\n{extra}"
+            else:
+                message = extra
+            return True, message
+
+        if not message:
+            message = (
+                f"El comando '{command}' excedió el tiempo de espera de {timeout} s."
+            )
+        return False, message
+    except Exception as exc:
+        LOGGER.exception("Excepción inesperada ejecutando comando '%s'", command)
+        return False, str(exc)
+
+    message = _merge_process_output(result.stdout, result.stderr)
+    if not message:
+        message = f"Comando '{command}' ejecutado correctamente."
+    LOGGER.info("Comando '%s' ejecutado correctamente", command)
+    return True, message
+
+
+def run_gui() -> None:
+    root = tk.Tk()
+    root.title("USB Monitor Service")
+    root.resizable(False, False)
+
+    icon_path = get_app_directory() / "usb_monitor_service.ico"
+    if icon_path.exists():
+        try:
+            root.iconbitmap(default=str(icon_path))
+        except Exception:
+            pass
+
+    root.columnconfigure(0, weight=1)
+    root.rowconfigure(0, weight=1)
+
+    container = ttk.Frame(root, padding=16)
+    container.grid(row=0, column=0, sticky="nsew")
+    container.columnconfigure(0, weight=1)
+    container.columnconfigure(1, weight=1)
+    container.rowconfigure(2, weight=1)
+
+    status_var = tk.StringVar()
+    status_label = ttk.Label(container, textvariable=status_var, font=("Segoe UI", 11, "bold"))
+    status_label.grid(row=0, column=0, columnspan=2, sticky="w")
+
+    info_label = ttk.Label(
+        container,
+        text="Ejecuta esta herramienta como administrador para instalar o controlar el servicio.",
+        wraplength=360,
+        foreground="#444444",
+    )
+    info_label.grid(row=1, column=0, columnspan=2, pady=(6, 10), sticky="w")
+
+    log_box = ScrolledText(container, height=8, width=52, state="disabled", wrap="word")
+    log_box.grid(row=2, column=0, columnspan=2, pady=(0, 12), sticky="nsew")
+
+    command_buttons: list[ttk.Button] = []
+
+    def append_log(text: str) -> None:
+        timestamp = time.strftime("%H:%M:%S")
+        log_box.configure(state="normal")
+        log_box.insert("end", f"[{timestamp}] {text}\n")
+        log_box.see("end")
+        log_box.configure(state="disabled")
+        LOGGER.info("GUI: %s", text)
+
+    def set_buttons_state(state: str) -> None:
+        for btn in command_buttons:
+            btn.configure(state=state)
+
+    def update_status() -> None:
+        state, description = _query_service_state()
+        status_var.set(f"Estado del servicio: {description}")
+        if state == win32service.SERVICE_RUNNING:
+            status_label.configure(foreground="#0A7F2E")
+        elif state == win32service.SERVICE_STOPPED:
+            status_label.configure(foreground="#B22222")
+        elif state is None:
+            status_label.configure(foreground="#B22222")
+        else:
+            status_label.configure(foreground="#BB8400")
+
+    def finish_command(success: bool, message: str) -> None:
+        set_buttons_state("normal")
+        append_log(message)
+        update_status()
+        if not success:
+            messagebox.showerror("USB Monitor Service", message, parent=root)
+            LOGGER.error("GUI: comando finalizado con error - %s", message)
+        else:
+            LOGGER.info("GUI: comando finalizado correctamente - %s", message)
+
+    def run_command_async(command: str) -> None:
+        def worker() -> None:
+            success, message = _execute_service_command(command)
+            root.after(0, lambda: finish_command(success, message))
+
+        append_log(f"Ejecutando '{command}'...")
+        LOGGER.info("GUI: se solicitó ejecución del comando '%s'", command)
+        set_buttons_state("disabled")
+        threading.Thread(target=worker, daemon=True).start()
+
+    commands = [
+        ("Instalar servicio", "install"),
+        ("Iniciar servicio", "start"),
+        ("Detener servicio", "stop"),
+        ("Desinstalar servicio", "remove"),
+    ]
+
+    for idx, (label, command) in enumerate(commands):
+        row = 3 + idx // 2
+        column = idx % 2
+        btn = ttk.Button(container, text=label, command=lambda c=command: run_command_async(c))
+        btn.grid(row=row, column=column, padx=4, pady=4, sticky="ew")
+        command_buttons.append(btn)
+
+    refresh_button = ttk.Button(container, text="Actualizar estado", command=update_status)
+    refresh_button.grid(row=5, column=0, columnspan=2, pady=(8, 0), sticky="ew")
+
+    append_log("Interfaz iniciada.")
+    update_status()
+
+    def periodic_status_refresh() -> None:
+        update_status()
+        root.after(5000, periodic_status_refresh)
+
+    root.after(5000, periodic_status_refresh)
+
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    def _run_command_line(command: str) -> None:
+        silent_requested = os.environ.get("USB_MONITOR_SILENT", "1") == "1"
+        should_silence = (
+            getattr(sys, "frozen", False)
+            and command != "debug"
+            and silent_requested
+        )
+
+        if should_silence:
+            with open(os.devnull, "w", encoding="utf-8") as devnull:
+                with redirect_stdout(devnull), redirect_stderr(devnull):
+                    win32serviceutil.HandleCommandLine(USBMonitorService)
+        else:
+            win32serviceutil.HandleCommandLine(USBMonitorService)
+
+    def _launch_gui() -> None:
+        try:
+            run_gui()
+        except Exception as exc:  # pragma: no cover - gui solo en Windows con Tk
+            LOGGER.error("Error al iniciar la interfaz gráfica: %s", exc)
+            print("No se pudo iniciar la interfaz gráfica. Ejecuta con 'debug' para más detalles.")
+
+    args = [arg.lower() for arg in sys.argv[1:]]
+
+    if args and args[0] in {"gui", "--gui"}:
+        _launch_gui()
+    elif args:
+        _run_command_line(args[0])
+    else:
+        LOGGER.info("Sin argumentos: intentando iniciar como servicio")
+        try:
+            servicemanager.Initialize()
+            servicemanager.PrepareToHostSingle(USBMonitorService)
+            servicemanager.StartServiceCtrlDispatcher()
+        except Exception as exc:
+            if getattr(exc, "winerror", None) == 1063:
+                LOGGER.info(
+                    "Dispatcher no disponible (WinError 1063). Ejecutando interfaz gráfica en modo interactivo."
+                )
+                _launch_gui()
+            else:
+                LOGGER.critical(
+                    "Error al iniciar el dispatcher del servicio: %s",
+                    exc,
+                    exc_info=True,
+                )
+                raise

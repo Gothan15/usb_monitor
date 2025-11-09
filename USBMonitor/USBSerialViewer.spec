@@ -1,18 +1,23 @@
-# -*- mode: python ; coding: utf-8 -*-
+# -*- mode: python ; coding: ascii -*-
 
 from pathlib import Path
 
-
 project_dir = Path.cwd()
-icon_file = project_dir / "usb_monitor_service.ico"
 
 
 a = Analysis(
-    ['usb_monitor_service.py'],
+    ['usb_serial_viewer.py'],
     pathex=[str(project_dir)],
     binaries=[],
     datas=[],
-    hiddenimports=['win32timezone', 'servicemanager', 'pythoncom'],
+    hiddenimports=[
+        'pythoncom',
+        'pywintypes',
+        'win32com',
+        'win32com.client',
+        'win32timezone',
+        'wmi',
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -28,7 +33,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='USBMonitorService',
+    name='USBSerialViewer',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -41,16 +46,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=str(icon_file),
-)
-
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name='USBMonitorService',
+    icon=None,
 )

@@ -1,21 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth"; // Sólo se usará para GET (consulta), no para POST (ingesta)
+import { usbEventPayloadSchema } from "@/lib/validators";
 
 export async function POST(request: NextRequest) {
   try {
     // Ingesta abierta: NO requiere autenticación (según petición).
     // Considera en el futuro: firma compartida, lista blanca IP o token simple.
     const body = await request.json();
+    const parsed = usbEventPayloadSchema.safeParse(body);
 
-    const { pc_name, pc_ip, pc_user, event } = body;
-
-    if (!pc_name || !pc_ip || !pc_user || !event) {
+    if (!parsed.success) {
+      const firstIssue = parsed.error.issues.at(0)?.message || "invalid body";
       return NextResponse.json(
-        { error: "Faltan campos requeridos" },
+        { error: "Payload invalido", detail: firstIssue },
         { status: 400 }
       );
     }
+
+    const { pc_name, pc_ip, pc_user, event } = parsed.data;
 
     // Guardar el evento USB en la base de datos
     const usbEvent = await db.uSBEvent.create({
@@ -23,7 +26,7 @@ export async function POST(request: NextRequest) {
         pcName: pc_name,
         pcIp: pc_ip,
         pcUser: pc_user,
-        event: event,
+        event,
         timestamp: new Date(),
       },
     });
