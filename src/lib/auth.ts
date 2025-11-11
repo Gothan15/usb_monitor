@@ -1,6 +1,7 @@
 import { randomBytes, scryptSync, timingSafeEqual, createHmac } from "crypto";
 import argon2 from "argon2";
 import { db } from "./db";
+import { getCurrentTimestamp } from "./time";
 
 // Autenticación simplificada:
 // - Un único token de sesión firmado (HMAC) en cookie HttpOnly 'session'
@@ -131,7 +132,7 @@ function verifySession(token: string): SessionPayload | null {
         "base64"
       ).toString()
     ) as SessionPayload;
-    const now = Math.floor(Date.now() / 1000);
+    const now = Math.floor(getCurrentTimestamp() / 1000);
     if (payload.exp < now) return null;
     if (payload.la && now - payload.la > SESSION_INACTIVITY_LIMIT) return null; // inactividad
     return payload;
@@ -145,7 +146,7 @@ export function createSessionToken(
   apiKey: string | null,
   ttlSeconds = SESSION_TTL_SECONDS
 ) {
-  const now = Math.floor(Date.now() / 1000);
+  const now = Math.floor(getCurrentTimestamp() / 1000);
   return signSession({
     uid: userId,
     ak: apiKey,
@@ -157,7 +158,7 @@ export function createSessionToken(
 export function renewSessionToken(token: string): string | null {
   const payload = verifySession(token);
   if (!payload) return null;
-  const now = Math.floor(Date.now() / 1000);
+  const now = Math.floor(getCurrentTimestamp() / 1000);
   // Sliding inactivity update: solo regenerar si han pasado > 2 min desde última actividad
   if (payload.la && now - payload.la < 120) return token; // evitar regeneración excesiva
   return signSession({

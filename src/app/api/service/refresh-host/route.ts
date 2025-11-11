@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { remoteStatus, summarize } from "@/lib/winrmService";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth";
+import { getCurrentDate } from "@/lib/time";
 
 async function tryHealth(ip: string) {
   try {
@@ -26,25 +27,26 @@ export async function POST(req: NextRequest) {
     const health = await tryHealth(ip);
     const serviceInstalled = statusSummary.serviceInstalled ?? !!health;
     const serviceRunning = statusSummary.serviceRunning ?? !!health;
+    const checkedAt = getCurrentDate();
     await (db as any).computer.upsert({
       where: { name: ip },
       update: {
         ipAddress: ip,
-        lastSeen: new Date(),
+        lastSeen: checkedAt,
         isActive: true,
         serviceInstalled,
         serviceRunning,
-        lastServiceCheck: new Date(),
+        lastServiceCheck: checkedAt,
         agentVersion: health?.version ?? undefined,
       },
       create: {
         name: ip,
         ipAddress: ip,
-        lastSeen: new Date(),
+        lastSeen: checkedAt,
         isActive: true,
         serviceInstalled,
         serviceRunning,
-        lastServiceCheck: new Date(),
+        lastServiceCheck: checkedAt,
         agentVersion: health?.version ?? null,
       },
     });

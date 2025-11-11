@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { addMillisecondsToNow } from "@/lib/time";
 
 /**
  * POST /api/usb-event/pending-unlock
@@ -31,7 +32,7 @@ export async function POST(req: Request) {
     }
 
     // Crear registro de desbloqueo pendiente (expira en 10 minutos)
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    const expiresAt = addMillisecondsToNow(10 * 60 * 1000);
 
     const pendingUnlock = await (db as any).pendingUnlock.create({
       data: {

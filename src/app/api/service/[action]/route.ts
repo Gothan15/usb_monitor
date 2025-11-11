@@ -9,6 +9,7 @@ import {
 } from "@/lib/winrmService";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth";
+import { getCurrentDate } from "@/lib/time";
 
 type ServiceAction = "install" | "uninstall" | "start" | "stop" | "status";
 
@@ -41,24 +42,25 @@ export async function POST(
       summary.serviceRunning !== undefined
     ) {
       try {
+        const checkedAt = getCurrentDate();
         await (db as any).computer.upsert({
           where: { name: ip },
           update: {
             ipAddress: ip,
-            lastSeen: new Date(),
+            lastSeen: checkedAt,
             isActive: true,
             serviceInstalled: summary.serviceInstalled ?? undefined,
             serviceRunning: summary.serviceRunning ?? undefined,
-            lastServiceCheck: new Date(),
+            lastServiceCheck: checkedAt,
           } as any,
           create: {
             name: ip,
             ipAddress: ip,
-            lastSeen: new Date(),
+            lastSeen: checkedAt,
             isActive: true,
             serviceInstalled: summary.serviceInstalled ?? false,
             serviceRunning: summary.serviceRunning ?? false,
-            lastServiceCheck: new Date(),
+            lastServiceCheck: checkedAt,
           } as any,
         });
       } catch (e) {

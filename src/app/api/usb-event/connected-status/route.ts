@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { authenticateRequest } from "@/lib/auth";
+import { getCurrentDate } from "@/lib/time";
 
 /**
  * POST /api/usb-event/connected-status
@@ -35,7 +36,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const now = new Date();
+    const now = getCurrentDate();
 
     // Obtener todas las conexiones activas de esta PC
     const activeConnections = await (db as any).uSBConnection.findMany({

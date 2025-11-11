@@ -4,6 +4,7 @@
  */
 
 import { db } from "./db";
+import { getCurrentTimestamp } from "@/lib/time";
 
 /**
  * Notifica al servicio USB de una computadora específica
@@ -134,14 +135,14 @@ export async function checkServiceHealth(ip: string): Promise<{
   let lastResult: HealthResult | undefined;
 
   const attempt = async (path: string): Promise<HealthResult | null> => {
-    const started = Date.now();
+    const started = getCurrentTimestamp();
     try {
       const response = await fetch(`${baseUrl}${path}`, {
         method: "GET",
         signal: AbortSignal.timeout(3000),
       });
 
-      const latencyMs = Date.now() - started;
+      const latencyMs = getCurrentTimestamp() - started;
       const statusCode = response.status;
       const statusText = response.statusText || undefined;
       const contentType = response.headers.get("content-type") || "";
@@ -202,7 +203,7 @@ export async function checkServiceHealth(ip: string): Promise<{
       lastResult = {
         available: false,
         statusText: error?.message || "Error de red",
-        latencyMs: Date.now() - started,
+        latencyMs: getCurrentTimestamp() - started,
       };
       return null;
     }

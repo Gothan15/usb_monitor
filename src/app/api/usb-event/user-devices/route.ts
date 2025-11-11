@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verifySessionFromRequest } from "@/lib/auth";
+import { getCurrentDate } from "@/lib/time";
 
 /**
  * GET /api/usb-event/user-devices
@@ -34,6 +35,7 @@ export async function GET(req: Request) {
         ok: true,
         events: [],
         computer: null,
+        apiKey: user.apiKey || "",
         message: "No tiene una computadora asignada",
       });
     }
@@ -55,7 +57,7 @@ export async function GET(req: Request) {
         pcName: user.computer.name,
         unlocked: false,
         expiresAt: {
-          gte: new Date(),
+          gte: getCurrentDate(),
         },
       },
       orderBy: {
@@ -112,11 +114,61 @@ export async function GET(req: Request) {
       pendingUnlocks,
       connectedUSBs: connectedUSBs.map(serializeConnection),
       usbHistory: usbHistory.map(serializeConnection),
+      apiKey: user.apiKey || "", // Incluir API Key del usuario
     });
   } catch (error: any) {
     console.error("Error en user-devices:", error);
     return NextResponse.json(
       { ok: false, error: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    const session = await verifySessionFromRequest(req);
+    if (!session) {
+      return NextResponse.json(
+        { ok: false, error: "No autenticado" },
+        { status: 401 }
+      );
+    }
+
+    const user = await (db as any).user.findUnique({
+      where: { username: session.username },
+      include: { computer: true },
+    });
+
+    if (!user) {
+      return NextResponse.json(
+        { ok: false, error: "Usuario no encontrado" },
+        { status: 404 }
+      );
+    }
+
+    if (!user.computer) {
+      return NextResponse.json(
+        { ok: false, error: "No tiene una computadora asignada" },
+        { status: 403 }
+      );
+    }
+
+    const pcName = user.computer.name;
+    const [deletedEvents, deletedConnections] = await Promise.all([
+      (db as any).uSBEvent.deleteMany({ where: { pcName } }),
+      (db as any).uSBConnection.deleteMany({ where: { pcName } }),
+    ]);
+
+    return NextResponse.json({
+      ok: true,
+      deletedEvents: deletedEvents.count,
+      deletedConnections: deletedConnections.count,
+    });
+  } catch (error: any) {
+    console.error("Error limpiando historial de usuario:", error);
+    return NextResponse.json(
+      { ok: false, error: error.message || "No se pudo limpiar el historial" },
       { status: 500 }
     );
   }

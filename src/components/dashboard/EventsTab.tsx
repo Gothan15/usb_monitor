@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Card,
@@ -21,16 +21,31 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertTriangle, Clock3, ShieldCheck, Siren, Usb } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  AlertTriangle,
+  Clock3,
+  Loader2,
+  ShieldCheck,
+  Siren,
+  Trash2,
+  Usb,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { USBEvent, formatDateTime } from "./types";
+import { DashboardPagination } from "./DashboardPagination";
 
 interface Props {
   events: USBEvent[];
   loading: boolean;
+  onClear?: () => void;
+  clearing?: boolean;
 }
 
-export function EventsTab({ events, loading }: Props) {
+export function EventsTab({ events, loading, onClear, clearing }: Props) {
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
   const classifyEvent = (message: string) => {
     const normalized = message.toLowerCase();
     const isUnlock =
@@ -120,6 +135,43 @@ export function EventsTab({ events, loading }: Props) {
     ];
   }, [events, loading]);
 
+  const pageCount = useMemo(() => {
+    if (events.length === 0) return 1;
+    return Math.max(1, Math.ceil(events.length / Math.max(pageSize, 1)));
+  }, [events.length, pageSize]);
+
+  useEffect(() => {
+    if (page > pageCount) {
+      setPage(pageCount);
+    }
+  }, [page, pageCount]);
+
+  const handlePageChange = useCallback(
+    (nextPage: number) => {
+      const clamped = Math.min(Math.max(nextPage, 1), pageCount);
+      setPage(clamped);
+    },
+    [pageCount]
+  );
+
+  const handlePageSizeChange = useCallback((nextSize: number) => {
+    setPageSize(nextSize);
+    setPage(1);
+  }, []);
+
+  const paginatedEvents = useMemo(() => {
+    if (events.length === 0) return [];
+    const start = (page - 1) * pageSize;
+    return events.slice(start, start + pageSize);
+  }, [events, page, pageSize]);
+
+  const handleClear = useCallback(() => {
+    if (!onClear) return;
+    onClear();
+  }, [onClear]);
+
+  const clearDisabled = loading || clearing || events.length === 0;
+
   return (
     <motion.section
       initial={{ opacity: 0, y: 12 }}
@@ -144,15 +196,34 @@ export function EventsTab({ events, loading }: Props) {
                 </CardDescription>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300/80">
-              <span className="inline-flex items-center gap-1 rounded-full border border-white/70 bg-white/80 px-3 py-1 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-white/10">
-                <span className="size-2 rounded-full bg-emerald-500 dark:bg-emerald-400" />
-                Tiempo real sincronizado
-              </span>
-              <span className="inline-flex items-center gap-1 rounded-full border border-white/70 bg-white/80 px-3 py-1 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-white/10">
-                <Clock3 className="size-3" />
-                Últimas 24h
-              </span>
+            <div className="flex flex-col gap-2 text-xs font-medium text-slate-600 dark:text-slate-300/80 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1 rounded-full border border-white/70 bg-white/80 px-3 py-1 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-white/10">
+                  <span className="size-2 rounded-full bg-emerald-500 dark:bg-emerald-400" />
+                  Tiempo real sincronizado
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full border border-white/70 bg-white/80 px-3 py-1 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-white/10">
+                  <Clock3 className="size-3" />
+                  Últimas 24h
+                </span>
+              </div>
+              {onClear && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="inline-flex items-center gap-2 font-semibold text-slate-700 dark:text-slate-100"
+                  onClick={handleClear}
+                  disabled={clearDisabled}
+                >
+                  {clearing ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="size-4" />
+                  )}
+                  {clearing ? "Limpiando..." : "Limpiar historial"}
+                </Button>
+              )}
             </div>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -204,7 +275,7 @@ export function EventsTab({ events, loading }: Props) {
           ) : (
             <>
               <div className="space-y-4 md:hidden">
-                {events.map((event) => {
+                {paginatedEvents.map((event) => {
                   const { badgeVariant, tone } = classifyEvent(event.event);
                   return (
                     <motion.div
@@ -280,7 +351,7 @@ export function EventsTab({ events, loading }: Props) {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {events.map((event) => {
+                    {paginatedEvents.map((event) => {
                       const { badgeVariant, rowClassName } = classifyEvent(
                         event.event
                       );
@@ -322,6 +393,14 @@ export function EventsTab({ events, loading }: Props) {
                   </TableBody>
                 </Table>
               </ScrollArea>
+              <DashboardPagination
+                page={page}
+                pageSize={pageSize}
+                totalItems={events.length}
+                onPageChange={handlePageChange}
+                onPageSizeChange={handlePageSizeChange}
+                label="eventos"
+              />
             </>
           )}
         </CardContent>

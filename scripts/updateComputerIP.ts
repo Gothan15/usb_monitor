@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { getCurrentDate } from "@/lib/time";
 
 const prisma = new PrismaClient();
 
@@ -8,7 +9,7 @@ async function updateComputerIP(computerName: string, newIP: string) {
       where: { name: computerName },
       data: {
         ipAddress: newIP,
-        lastSeen: new Date(),
+        lastSeen: getCurrentDate(),
         isActive: true,
       },
     });

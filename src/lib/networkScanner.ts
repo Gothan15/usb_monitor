@@ -3,6 +3,7 @@ import { exec } from "child_process";
 import util from "util";
 import { db } from "@/lib/db";
 import { checkServiceHealth } from "@/lib/serviceNotifier";
+import { getCurrentDate, getCurrentTimestamp } from "@/lib/time";
 
 const execAsync = util.promisify(exec);
 
@@ -74,7 +75,7 @@ async function checkService(ip: string): Promise<ServiceCheckResult> {
   const result: ServiceCheckResult = {
     serviceInstalled: false,
     serviceRunning: false,
-    lastServiceCheck: new Date(),
+    lastServiceCheck: getCurrentDate(),
     healthStatus: "Sin respuesta",
   };
 
@@ -159,7 +160,7 @@ export async function scanNetwork(
     !options?.force &&
     lastScan &&
     lastScan.cidr === net &&
-    Date.now() - lastScan.timestamp < CACHE_TTL_MS
+    getCurrentTimestamp() - lastScan.timestamp < CACHE_TTL_MS
   ) {
     return lastScan.results;
   }
@@ -179,12 +180,13 @@ export async function scanNetwork(
           const svc = await checkService(ip);
           Object.assign(host, svc);
           // Actualizar/crear en DB (best-effort)
+          const lastSeenAt = getCurrentDate();
           await (db as any).computer.upsert({
             where: { name: ip },
             // Cast a any debido a posible desincronización temporal del cliente Prisma
             update: {
               ipAddress: ip,
-              lastSeen: new Date(),
+              lastSeen: lastSeenAt,
               isActive: isUp,
               // Campos extra añadidos recientemente al modelo Computer
               serviceInstalled: (svc as any).serviceInstalled ?? false,
@@ -194,7 +196,7 @@ export async function scanNetwork(
             create: {
               name: ip,
               ipAddress: ip,
-              lastSeen: new Date(),
+              lastSeen: lastSeenAt,
               isActive: isUp,
               serviceInstalled: (svc as any).serviceInstalled ?? false,
               serviceRunning: (svc as any).serviceRunning ?? false,
@@ -210,7 +212,7 @@ export async function scanNetwork(
   }
   const workers = Array.from({ length: concurrency }, () => worker());
   await Promise.all(workers);
-  lastScan = { cidr: net, timestamp: Date.now(), results };
+  lastScan = { cidr: net, timestamp: getCurrentTimestamp(), results };
   return results;
 }
 
@@ -231,7 +233,7 @@ export function startScanJob(cidr?: string): ScanJob {
   const job: ScanJob = {
     id: newJobId(),
     cidr: net,
-    started: Date.now(),
+    started: getCurrentTimestamp(),
     progress: 0,
     results: [],
     status: "running",
@@ -260,17 +262,17 @@ export function startScanJob(cidr?: string): ScanJob {
   Promise.all(Array.from({ length: concurrency }, () => runWorker()))
     .then(() => {
       job.status = "finished";
-      job.finished = Date.now();
+      job.finished = getCurrentTimestamp();
       lastScan = {
         cidr: job.cidr,
-        timestamp: Date.now(),
+        timestamp: getCurrentTimestamp(),
         results: job.results,
       };
     })
     .catch((e) => {
       job.status = "error";
       job.error = e.message;
-      job.finished = Date.now();
+      job.finished = getCurrentTimestamp();
     });
   return job;
 }

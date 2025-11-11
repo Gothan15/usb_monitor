@@ -1,3 +1,5 @@
+import { getCurrentTimestamp } from "@/lib/time";
+
 // Rate limiting simple en memoria (IP + clave compuesta) para despliegue single-instance.
 // En producción multi-nodo usar Redis.
 
@@ -13,17 +15,13 @@ interface Entry {
 
 const store = new Map<string, Entry>();
 
-function now() {
-  return Date.now();
-}
-
 export function hit(
   key: string,
   cfg: BucketKeyConfig
 ): { allowed: boolean; remaining: number; resetIn: number } {
   const k = `${key}`;
   const current = store.get(k);
-  const t = now();
+  const t = getCurrentTimestamp();
   if (!current || current.expiresAt <= t) {
     const expiresAt = t + cfg.windowMs;
     store.set(k, { count: 1, expiresAt });
@@ -41,7 +39,7 @@ export function hit(
 }
 
 export function cleanup() {
-  const t = now();
+  const t = getCurrentTimestamp();
   for (const [k, v] of store) {
     if (v.expiresAt <= t) store.delete(k);
   }

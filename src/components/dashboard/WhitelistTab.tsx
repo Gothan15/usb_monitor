@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Card,
@@ -35,6 +35,7 @@ import {
   UserCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { DashboardPagination } from "./DashboardPagination";
 
 interface CreatePayload {
   serialNumber: string;
@@ -56,6 +57,8 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
   const [formError, setFormError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const totalEntries = entries.length;
   const latestCreatedAt = useMemo(() => {
@@ -116,6 +119,36 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
       totalEntries,
     ]
   );
+
+  const pageCount = useMemo(() => {
+    if (entries.length === 0) return 1;
+    return Math.max(1, Math.ceil(entries.length / Math.max(pageSize, 1)));
+  }, [entries.length, pageSize]);
+
+  useEffect(() => {
+    if (page > pageCount) {
+      setPage(pageCount);
+    }
+  }, [page, pageCount]);
+
+  const handlePageChange = useCallback(
+    (nextPage: number) => {
+      const clamped = Math.min(Math.max(nextPage, 1), pageCount);
+      setPage(clamped);
+    },
+    [pageCount]
+  );
+
+  const handlePageSizeChange = useCallback((nextSize: number) => {
+    setPageSize(nextSize);
+    setPage(1);
+  }, []);
+
+  const paginatedEntries = useMemo(() => {
+    if (entries.length === 0) return [];
+    const start = (page - 1) * pageSize;
+    return entries.slice(start, start + pageSize);
+  }, [entries, page, pageSize]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -300,7 +333,7 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
                   el formulario.
                 </div>
               ) : (
-                entries.map((entry) => {
+                paginatedEntries.map((entry) => {
                   const isDeleting = deletingId === entry.id;
                   return (
                     <div
@@ -399,7 +432,7 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    entries.map((entry) => (
+                    paginatedEntries.map((entry) => (
                       <TableRow
                         key={entry.id}
                         className="group border border-white/70 bg-white/70 transition-colors hover:border-cyan-300/60 hover:bg-cyan-50/60 dark:border-white/5 dark:bg-white/5 dark:hover:border-cyan-400/30 dark:hover:bg-cyan-500/10"
@@ -459,6 +492,16 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
                 </TableBody>
               </Table>
             </ScrollArea>
+            {entries.length > 0 && !loading && (
+              <DashboardPagination
+                page={page}
+                pageSize={pageSize}
+                totalItems={entries.length}
+                onPageChange={handlePageChange}
+                onPageSizeChange={handlePageSizeChange}
+                label="seriales"
+              />
+            )}
           </div>
         </CardContent>
       </Card>

@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import AuthGate from "@/components/system/AuthGate";
+import { ThemeProvider } from "@/components/system/ThemeProvider";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({
@@ -67,9 +68,11 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >
-        {/* AuthGate protege rutas usando cookie de sesión; /login se gestiona dentro del propio AuthGate */}
-        <AuthGate>{children}</AuthGate>
-        <Toaster />
+        <ThemeProvider>
+          {/* AuthGate protege rutas usando cookie de sesión; /login se gestiona dentro del propio AuthGate */}
+          <AuthGate>{children}</AuthGate>
+          <Toaster />
+        </ThemeProvider>
       </body>
     </html>
   );

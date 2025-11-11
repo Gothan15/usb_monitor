@@ -1,10 +1,4 @@
-import { db } from "@/lib/db";
-import { verifySessionFromRequest } from "@/lib/auth";
-
-export interface AdminContext {
-  userId: string;
-  username: string;
-}
+import { requireAdminUser } from "@/lib/admin";
 
 export function normalizeSerial(serial: string): string {
   const collapsed = serial.replace(/\s+/g, "");
@@ -42,17 +36,4 @@ export function serializeWhitelistEntry(entry: any) {
   };
 }
 
-export async function requireAdminUser(
-  req: Request
-): Promise<AdminContext | null> {
-  const session = await verifySessionFromRequest(req);
-  if (!session || session.role !== "admin") return null;
-
-  const user = await db.user.findUnique({
-    where: { username: session.username },
-    select: { id: true, username: true },
-  });
-
-  if (!user) return null;
-  return { userId: user.id, username: user.username };
-}
+export { requireAdminUser };

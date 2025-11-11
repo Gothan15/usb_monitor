@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verifySessionFromRequest } from "@/lib/auth";
+import { getCurrentDate } from "@/lib/time";
 
 /**
  * POST /api/usb-unlock
@@ -31,7 +32,7 @@ export async function POST(req: Request) {
         pcName: pcName,
         unlocked: false,
         expiresAt: {
-          gte: new Date(),
+          gte: getCurrentDate(),
         },
       },
       orderBy: {
@@ -109,7 +110,7 @@ export async function GET(req: Request) {
         pcName: pcName,
         unlocked: true,
         expiresAt: {
-          gte: new Date(),
+          gte: getCurrentDate(),
         },
       },
       orderBy: {

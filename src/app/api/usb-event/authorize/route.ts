@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verifySessionFromRequest } from "@/lib/auth";
 import { notifyServiceUnlock } from "@/lib/serviceNotifier";
+import { getCurrentDate } from "@/lib/time";
 
 /**
  * POST /api/usb-event/authorize
@@ -54,7 +55,7 @@ export async function POST(req: Request) {
         driveLetter: driveLetter,
         unlocked: false,
         expiresAt: {
-          gte: new Date(),
+          gte: getCurrentDate(),
         },
       },
       orderBy: {

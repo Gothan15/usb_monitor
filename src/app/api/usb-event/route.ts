@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth"; // Sólo se usará para GET (consulta), no para POST (ingesta)
 import { usbEventPayloadSchema } from "@/lib/validators";
+import { getCurrentDate } from "@/lib/time";
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,13 +22,15 @@ export async function POST(request: NextRequest) {
     const { pc_name, pc_ip, pc_user, event } = parsed.data;
 
     // Guardar el evento USB en la base de datos
+    const occurredAt = getCurrentDate();
+
     const usbEvent = await db.uSBEvent.create({
       data: {
         pcName: pc_name,
         pcIp: pc_ip,
         pcUser: pc_user,
         event,
-        timestamp: new Date(),
+        timestamp: occurredAt,
       },
     });
 
@@ -36,13 +39,13 @@ export async function POST(request: NextRequest) {
       where: { name: pc_name },
       update: {
         ipAddress: pc_ip,
-        lastSeen: new Date(),
+        lastSeen: occurredAt,
         isActive: true,
       },
       create: {
         name: pc_name,
         ipAddress: pc_ip,
-        lastSeen: new Date(),
+        lastSeen: occurredAt,
         isActive: true,
       },
     });
@@ -78,6 +81,36 @@ export async function GET(req: Request) {
     console.error("Error al obtener eventos USB:", error);
     return NextResponse.json(
       { error: "Error interno del servidor" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const auth = await requireAuth(req);
+    const actor = await db.user.findUnique({
+      where: { id: auth.userId },
+      select: { role: true },
+    });
+
+    if (!actor || actor.role !== "admin") {
+      return NextResponse.json(
+        { ok: false, error: "Solo un administrador puede limpiar eventos." },
+        { status: 403 }
+      );
+    }
+
+    const deletedEvents = await db.uSBEvent.deleteMany();
+
+    return NextResponse.json({
+      ok: true,
+      deletedEvents: deletedEvents.count,
+    });
+  } catch (error) {
+    console.error("Error al limpiar eventos USB:", error);
+    return NextResponse.json(
+      { ok: false, error: "No se pudo limpiar el historial." },
       { status: 500 }
     );
   }

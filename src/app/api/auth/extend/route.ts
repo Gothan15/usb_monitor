@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { authenticateRequest, createSessionToken } from "@/lib/auth";
+import { getCurrentTimestamp } from "@/lib/time";
 
 export async function POST(req: Request) {
   const auth = await authenticateRequest(req);
@@ -19,7 +20,7 @@ export async function POST(req: Request) {
   const isProd = process.env.NODE_ENV === "production";
   const flags = ["Path=/", "HttpOnly", "SameSite=Strict", `Max-Age=${ttl}`];
   if (isProd) flags.push("Secure");
-  const now = Math.floor(Date.now() / 1000);
+  const now = Math.floor(getCurrentTimestamp() / 1000);
   const res = NextResponse.json({ ok: true, expiresAt: now + ttl });
   res.headers.append("Set-Cookie", `session=${token}; ${flags.join("; ")}`);
   return res;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Card,
@@ -21,20 +21,35 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   AlertTriangle,
   Cpu,
+  Loader2,
   MonitorSmartphone,
   Router,
   Sparkles,
+  Trash2,
   Wifi,
 } from "lucide-react";
-import { Computer, formatDateTime } from "./types";
+import { Computer, formatDateTime, formatTime } from "./types";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { DashboardPagination } from "./DashboardPagination";
 
 interface Props {
   computers: Computer[];
   loading: boolean;
+  onDelete?: (id: string) => Promise<void> | void;
 }
 
 function StatusBadge({ active }: { active: boolean }) {
@@ -52,7 +67,12 @@ function StatusBadge({ active }: { active: boolean }) {
   );
 }
 
-export function ComputersTab({ computers, loading }: Props) {
+export function ComputersTab({ computers, loading, onDelete }: Props) {
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Computer | null>(null);
+
   const quickStats = useMemo(() => {
     if (loading) {
       return [
@@ -88,6 +108,50 @@ export function ComputersTab({ computers, loading }: Props) {
       },
     ];
   }, [computers, loading]);
+
+  const pageCount = useMemo(() => {
+    if (computers.length === 0) return 1;
+    return Math.max(1, Math.ceil(computers.length / Math.max(pageSize, 1)));
+  }, [computers.length, pageSize]);
+
+  useEffect(() => {
+    if (page > pageCount) {
+      setPage(pageCount);
+    }
+  }, [page, pageCount]);
+
+  const handlePageChange = useCallback(
+    (nextPage: number) => {
+      const clamped = Math.min(Math.max(nextPage, 1), pageCount);
+      setPage(clamped);
+    },
+    [pageCount]
+  );
+
+  const handlePageSizeChange = useCallback((nextSize: number) => {
+    setPageSize(nextSize);
+    setPage(1);
+  }, []);
+
+  const paginatedComputers = useMemo(() => {
+    if (computers.length === 0) return [];
+    const start = (page - 1) * pageSize;
+    return computers.slice(start, start + pageSize);
+  }, [computers, page, pageSize]);
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!onDelete || !pendingDelete) return;
+
+    try {
+      setDeletingId(pendingDelete.id);
+      await onDelete(pendingDelete.id);
+      setPendingDelete(null);
+    } catch (error) {
+      console.error("Error al eliminar computadora", error);
+    } finally {
+      setDeletingId(null);
+    }
+  }, [onDelete, pendingDelete]);
 
   return (
     <motion.section
@@ -178,7 +242,7 @@ export function ComputersTab({ computers, loading }: Props) {
           ) : (
             <>
               <div className="space-y-4 md:hidden">
-                {computers.map((computer) => (
+                {paginatedComputers.map((computer) => (
                   <motion.div
                     key={computer.id}
                     whileHover={{ y: -4 }}
@@ -194,7 +258,26 @@ export function ComputersTab({ computers, loading }: Props) {
                           {computer.ipAddress}
                         </p>
                       </div>
-                      <StatusBadge active={computer.isActive} />
+                      <div className="flex items-center gap-2">
+                        <StatusBadge active={computer.isActive} />
+                        {onDelete && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="text-slate-500 hover:text-destructive dark:text-slate-300"
+                            disabled={deletingId === computer.id}
+                            onClick={() => setPendingDelete(computer)}
+                            aria-label={`Eliminar ${computer.name}`}
+                          >
+                            {deletingId === computer.id ? (
+                              <Loader2 className="size-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="size-4" />
+                            )}
+                          </Button>
+                        )}
+                      </div>
                     </div>
                     <div className="mt-4 grid gap-3 text-xs text-slate-600 dark:text-slate-300">
                       <div className="flex items-center justify-between">
@@ -219,11 +302,7 @@ export function ComputersTab({ computers, loading }: Props) {
                           <span className="font-semibold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
                             Último ping
                           </span>
-                          <span>
-                            {new Date(
-                              computer.lastServiceCheck
-                            ).toLocaleTimeString("es-ES")}
-                          </span>
+                          <span>{formatTime(computer.lastServiceCheck)}</span>
                         </div>
                       )}
                       <div className="flex items-center justify-between">
@@ -269,10 +348,15 @@ export function ComputersTab({ computers, loading }: Props) {
                       <TableHead className="text-slate-600 dark:text-slate-200">
                         Fecha registro
                       </TableHead>
+                      {onDelete && (
+                        <TableHead className="text-right text-slate-600 dark:text-slate-200">
+                          Acciones
+                        </TableHead>
+                      )}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {computers.map((computer) => (
+                    {paginatedComputers.map((computer) => (
                       <TableRow
                         key={computer.id}
                         className="group border border-white/70 bg-white/75 transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-300/60 hover:bg-emerald-50/60 dark:border-white/5 dark:bg-white/5 dark:hover:border-emerald-400/30 dark:hover:bg-emerald-500/10"
@@ -306,9 +390,7 @@ export function ComputersTab({ computers, loading }: Props) {
                             </Badge>
                             {computer.lastServiceCheck && (
                               <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                                {new Date(
-                                  computer.lastServiceCheck
-                                ).toLocaleTimeString("es-ES")}
+                                {formatTime(computer.lastServiceCheck)}
                               </span>
                             )}
                           </div>
@@ -321,15 +403,75 @@ export function ComputersTab({ computers, loading }: Props) {
                         <TableCell className="text-slate-600 dark:text-slate-200">
                           {formatDateTime(computer.createdAt)}
                         </TableCell>
+                        {onDelete && (
+                          <TableCell className="text-right">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="text-slate-500 hover:text-destructive dark:text-slate-300"
+                              disabled={deletingId === computer.id}
+                              onClick={() => setPendingDelete(computer)}
+                              aria-label={`Eliminar ${computer.name}`}
+                            >
+                              {deletingId === computer.id ? (
+                                <Loader2 className="size-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="size-4" />
+                              )}
+                            </Button>
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
               </ScrollArea>
+              <DashboardPagination
+                page={page}
+                pageSize={pageSize}
+                totalItems={computers.length}
+                onPageChange={handlePageChange}
+                onPageSizeChange={handlePageSizeChange}
+                label="computadoras"
+              />
             </>
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog
+        open={Boolean(pendingDelete)}
+        onOpenChange={(open) => {
+          if (!open && deletingId === null) {
+            setPendingDelete(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              ¿Eliminar {pendingDelete?.name ?? "este equipo"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción removerá {pendingDelete?.name ?? "el equipo"} del
+              inventario y no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingId !== null}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => void handleConfirmDelete()}
+              disabled={deletingId !== null}
+              className="bg-rose-600 hover:bg-rose-700"
+            >
+              {deletingId !== null ? "Eliminando..." : "Eliminar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </motion.section>
   );
 }

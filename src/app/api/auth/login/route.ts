@@ -7,6 +7,7 @@ import {
   hashPassword,
 } from "@/lib/auth";
 import { hit } from "@/lib/rateLimit";
+import { addMillisecondsToNow, getCurrentTimestamp } from "@/lib/time";
 
 export async function POST(req: Request) {
   try {
@@ -81,7 +82,10 @@ export async function POST(req: Request) {
       }
     }
     // Verificar lockout
-    if (user.lockedUntil && new Date(user.lockedUntil).getTime() > Date.now()) {
+    if (
+      user.lockedUntil &&
+      new Date(user.lockedUntil).getTime() > getCurrentTimestamp()
+    ) {
       return NextResponse.json(
         {
           ok: false,
@@ -99,7 +103,7 @@ export async function POST(req: Request) {
           failedAttempts: (user.failedAttempts || 0) + 1,
           lockedUntil:
             (user.failedAttempts || 0) + 1 >= 7
-              ? new Date(Date.now() + 15 * 60_000)
+              ? addMillisecondsToNow(15 * 60_000)
               : null,
         },
         select: { failedAttempts: true },

@@ -5,6 +5,7 @@ import {
   simulatePasswordCheckDelay,
   verifyPassword,
 } from "@/lib/auth";
+import { getCurrentDate } from "@/lib/time";
 
 const MAX_FAILED_ATTEMPTS = Number(
   process.env.USB_MONITOR_MAX_FAILED_ATTEMPTS || 5
@@ -72,7 +73,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const now = new Date();
+    const now = getCurrentDate();
     if (user.lockedUntil && user.lockedUntil > now) {
       const minutesLeft = Math.ceil(
         (user.lockedUntil.getTime() - now.getTime()) / 60000
