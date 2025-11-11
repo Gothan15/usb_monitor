@@ -87,6 +87,44 @@ export async function GET(req: Request) {
       take: 100, // Últimas 100 conexiones
     });
 
+    const warnings: string[] = [];
+    const alternateIdentifiers = new Set<string>();
+    if (
+      typeof user.computer.ipAddress === "string" &&
+      user.computer.ipAddress.length > 0 &&
+      user.computer.ipAddress !== user.computer.name
+    ) {
+      alternateIdentifiers.add(user.computer.ipAddress);
+    }
+
+    if (alternateIdentifiers.size > 0) {
+      const identifiers = Array.from(alternateIdentifiers);
+      const [altEventCount, altConnections] = await Promise.all([
+        (db as any).uSBEvent.count({
+          where: { pcName: { in: identifiers } },
+        }),
+        (db as any).uSBConnection.count({
+          where: { pcName: { in: identifiers } },
+        }),
+      ]);
+
+      if (altEventCount > 0 || altConnections > 0) {
+        warnings.push(
+          `Se detectaron registros USB asociados a identificador alterno (${identifiers.join(
+            ", "
+          )}). Contacta al administrador para consolidar los datos de ${
+            user.computer.name
+          }.`
+        );
+        console.warn("[user-devices] Identificadores alternos detectados", {
+          computer: user.computer.name,
+          identifiers,
+          altEventCount,
+          altConnections,
+        });
+      }
+    }
+
     const serializeConnection = (connection: any) => ({
       ...connection,
       size:
@@ -115,6 +153,7 @@ export async function GET(req: Request) {
       connectedUSBs: connectedUSBs.map(serializeConnection),
       usbHistory: usbHistory.map(serializeConnection),
       apiKey: user.apiKey || "", // Incluir API Key del usuario
+      warnings,
     });
   } catch (error: any) {
     console.error("Error en user-devices:", error);

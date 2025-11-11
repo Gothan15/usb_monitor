@@ -30,6 +30,7 @@ import {
   formatTime,
 } from "@/components/dashboard/types";
 import { getCurrentDate } from "@/lib/time";
+import { getCsrfTokenFromDocument } from "@/lib/utils";
 
 type ViewKey =
   | "overview"
@@ -87,7 +88,7 @@ export default function Home() {
         if (data?.ok && data.user) {
           const role = data.user.role ?? null;
           if (role === "user") {
-            router.push("/unlocked");
+            router.push("/basic-user");
             return;
           }
           setUser({
@@ -214,27 +215,24 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  const logout = useCallback(async () => {
-    try {
-      await fetch("/api/auth/logout", { method: "POST" });
-      try {
-        const ch = new BroadcastChannel("auth-state");
-        ch.postMessage({ type: "logout" });
-        ch.close();
-      } catch {}
-      window.location.href = "/login";
-    } catch {}
-  }, []);
-
   const handleCreateWhitelist = useCallback(
     async (payload: {
       serialNumber: string;
       label?: string;
       notes?: string;
     }) => {
+      const csrfToken = getCsrfTokenFromDocument();
+      if (!csrfToken) {
+        throw new Error(
+          "Sesión sin token de seguridad. Vuelve a iniciar sesión e inténtalo otra vez."
+        );
+      }
       const response = await fetch("/api/whitelist", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": csrfToken,
+        },
         body: JSON.stringify(payload),
         credentials: "include",
       });
@@ -265,8 +263,17 @@ export default function Home() {
 
   const handleDeleteWhitelist = useCallback(
     async (id: string) => {
+      const csrfToken = getCsrfTokenFromDocument();
+      if (!csrfToken) {
+        throw new Error(
+          "Sesión sin token de seguridad. Vuelve a iniciar sesión e inténtalo otra vez."
+        );
+      }
       const response = await fetch(`/api/whitelist/${id}`, {
         method: "DELETE",
+        headers: {
+          "x-csrf-token": csrfToken,
+        },
         credentials: "include",
       });
 
@@ -296,8 +303,17 @@ export default function Home() {
 
   const handleDeleteComputer = useCallback(
     async (id: string) => {
+      const csrfToken = getCsrfTokenFromDocument();
+      if (!csrfToken) {
+        throw new Error(
+          "Sesión sin token de seguridad. Vuelve a iniciar sesión e inténtalo otra vez."
+        );
+      }
       const response = await fetch(`/api/computers/${id}`, {
         method: "DELETE",
+        headers: {
+          "x-csrf-token": csrfToken,
+        },
         credentials: "include",
       });
 
@@ -329,8 +345,17 @@ export default function Home() {
     if (clearingEvents) return;
     setClearingEvents(true);
     try {
+      const csrfToken = getCsrfTokenFromDocument();
+      if (!csrfToken) {
+        throw new Error(
+          "Sesión sin token de seguridad. Vuelve a iniciar sesión e inténtalo otra vez."
+        );
+      }
       const response = await fetch("/api/usb-event", {
         method: "DELETE",
+        headers: {
+          "x-csrf-token": csrfToken,
+        },
         credentials: "include",
       });
       const data = await response.json().catch(() => null);
@@ -501,7 +526,6 @@ export default function Home() {
         void fetchData(true);
       }}
       refreshing={refreshing}
-      onLogout={logout}
       lastUpdateLabel={lastUpdateLabel}
       subtitle={activeItem.description}
       title={activeItem.label}

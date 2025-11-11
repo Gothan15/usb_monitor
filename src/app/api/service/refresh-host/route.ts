@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { remoteStatus, summarize } from "@/lib/winrmService";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth";
 import { getCurrentDate } from "@/lib/time";
+import { hit } from "@/lib/rateLimit";
+import { logError } from "@/lib/logger";
 
 async function tryHealth(ip: string) {
   try {
@@ -19,19 +20,37 @@ async function tryHealth(ip: string) {
 
 export async function POST(req: NextRequest) {
   try {
-    await requireAuth(req); // JWT en Authorization: Bearer <token>
+    const auth = await requireAuth(req, { role: "admin" });
     const { ip } = await req.json();
-    if (!ip) return NextResponse.json({ error: "Falta ip" }, { status: 400 });
-    const raw = await remoteStatus(ip);
-    const statusSummary = summarize(raw, "status");
-    const health = await tryHealth(ip);
-    const serviceInstalled = statusSummary.serviceInstalled ?? !!health;
-    const serviceRunning = statusSummary.serviceRunning ?? !!health;
+    if (typeof ip !== "string" || !ip.trim())
+      return NextResponse.json({ error: "Falta ip" }, { status: 400 });
+    const normalizedIp = ip.trim();
+    const clientIp =
+      (req.headers.get("x-forwarded-for") || "").split(",")[0].trim() ||
+      "unknown";
+    const rl = await hit(
+      "refresh-host",
+      { windowMs: 30_000, max: 5 },
+      { userId: auth.userId, ip: clientIp }
+    );
+    if (!rl.allowed) {
+      return NextResponse.json({ error: "Rate limit" }, { status: 429 });
+    }
+    const health = await tryHealth(normalizedIp);
+    const serviceInstalled = !!health;
+    const serviceRunning = !!health;
+    const winrm = {
+      success: false,
+      action: "status",
+      error: "WinRM deshabilitado",
+      serviceInstalled: null,
+      serviceRunning: null,
+    };
     const checkedAt = getCurrentDate();
-    await (db as any).computer.upsert({
-      where: { name: ip },
+    await db.computer.upsert({
+      where: { name: normalizedIp },
       update: {
-        ipAddress: ip,
+        ipAddress: normalizedIp,
         lastSeen: checkedAt,
         isActive: true,
         serviceInstalled,
@@ -40,8 +59,8 @@ export async function POST(req: NextRequest) {
         agentVersion: health?.version ?? undefined,
       },
       create: {
-        name: ip,
-        ipAddress: ip,
+        name: normalizedIp,
+        ipAddress: normalizedIp,
         lastSeen: checkedAt,
         isActive: true,
         serviceInstalled,
@@ -50,16 +69,26 @@ export async function POST(req: NextRequest) {
         agentVersion: health?.version ?? null,
       },
     });
-    return NextResponse.json({
-      ip,
+    const res = NextResponse.json({
+      ip: normalizedIp,
       serviceInstalled,
       serviceRunning,
       agentVersion: health?.version || null,
-      winrm: statusSummary,
+      winrm,
       health,
     });
+    res.headers.set("Cache-Control", "no-store");
+    return res;
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    if (e?.message === "UNAUTHORIZED")
+      return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    if (e?.message === "FORBIDDEN")
+      return NextResponse.json({ error: "Acceso denegado" }, { status: 403 });
+    if (e?.code === "CSRF_INVALID" || e?.code === "CSRF_MISSING") {
+      return NextResponse.json({ error: "CSRF inválido" }, { status: 403 });
+    }
+    logError("Error en refresh-host", e);
+    return NextResponse.json({ error: "Error" }, { status: 500 });
   }
 }
 

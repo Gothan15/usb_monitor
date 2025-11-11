@@ -47,3 +47,14 @@ test
 prompt
 
 server.log
+
+# python
+**/__pycache__/
+*.py[cod]
+*.spec
+
+# pyinstaller artifacts
+USBMonitor/build/
+USBMonitor/build_usb_serial_viewer/
+USBMonitor/dist/
+USBMonitor/dist_usb_serial_viewer/

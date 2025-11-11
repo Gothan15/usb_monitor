@@ -4,6 +4,7 @@ import util from "util";
 import { db } from "@/lib/db";
 import { checkServiceHealth } from "@/lib/serviceNotifier";
 import { getCurrentDate, getCurrentTimestamp } from "@/lib/time";
+import { normalizeComputerName } from "@/lib/utils";
 
 const execAsync = util.promisify(exec);
 
@@ -179,10 +180,15 @@ export async function scanNetwork(
         if (isUp) {
           const svc = await checkService(ip);
           Object.assign(host, svc);
+          const normalizedName = svc.hostname
+            ? normalizeComputerName(svc.hostname)
+            : "";
+          const computerName = normalizedName || normalizeComputerName(ip);
+          host.hostname = normalizedName || host.hostname || computerName;
           // Actualizar/crear en DB (best-effort)
           const lastSeenAt = getCurrentDate();
           await (db as any).computer.upsert({
-            where: { name: ip },
+            where: { name: computerName },
             // Cast a any debido a posible desincronización temporal del cliente Prisma
             update: {
               ipAddress: ip,
@@ -194,7 +200,7 @@ export async function scanNetwork(
               lastServiceCheck: (svc as any).lastServiceCheck,
             } as any,
             create: {
-              name: ip,
+              name: computerName,
               ipAddress: ip,
               lastSeen: lastSeenAt,
               isActive: isUp,

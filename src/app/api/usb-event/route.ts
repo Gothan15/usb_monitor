@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth"; // Sólo se usará para GET (consulta), no para POST (ingesta)
 import { usbEventPayloadSchema } from "@/lib/validators";
 import { getCurrentDate } from "@/lib/time";
+import { normalizeComputerName } from "@/lib/utils";
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,38 +20,59 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { pc_name, pc_ip, pc_user, event } = parsed.data;
+    const {
+      pc_name,
+      pc_ip,
+      pc_user,
+      event,
+      drive_letter,
+      serial_number,
+      readonly_status,
+      whitelisted,
+    } = parsed.data;
+
+    const computerName = normalizeComputerName(pc_name);
+    const normalizedDrive = drive_letter ?? null;
+    const normalizedSerial = serial_number ?? null;
+    const normalizedReadonly = readonly_status ?? null;
+    const whitelistedFlag = Boolean(whitelisted);
 
     // Guardar el evento USB en la base de datos
     const occurredAt = getCurrentDate();
 
     const usbEvent = await db.uSBEvent.create({
       data: {
-        pcName: pc_name,
+        pcName: computerName,
         pcIp: pc_ip,
         pcUser: pc_user,
         event,
         timestamp: occurredAt,
+        driveLetter: normalizedDrive,
+        serialNumber: normalizedSerial,
+        readonlyStatus: normalizedReadonly,
+        whitelisted: whitelistedFlag,
       },
     });
 
     // Actualizar o crear registro de computadora
     await db.computer.upsert({
-      where: { name: pc_name },
+      where: { name: computerName },
       update: {
         ipAddress: pc_ip,
         lastSeen: occurredAt,
         isActive: true,
       },
       create: {
-        name: pc_name,
+        name: computerName,
         ipAddress: pc_ip,
         lastSeen: occurredAt,
         isActive: true,
       },
     });
 
-    console.log(`Evento USB recibido: ${event} desde ${pc_name} (${pc_ip})`);
+    console.log(
+      `Evento USB recibido: ${event} desde ${computerName} (${pc_ip})`
+    );
 
     return NextResponse.json({
       success: true,

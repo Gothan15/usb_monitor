@@ -5,9 +5,13 @@ import {
   simulatePasswordCheckDelay,
   createSessionToken,
   hashPassword,
+  buildSessionCookie,
+  buildCsrfCookie,
+  issueCsrfToken,
 } from "@/lib/auth";
 import { hit } from "@/lib/rateLimit";
 import { addMillisecondsToNow, getCurrentTimestamp } from "@/lib/time";
+import { logError } from "@/lib/logger";
 
 export async function POST(req: Request) {
   try {
@@ -27,8 +31,12 @@ export async function POST(req: Request) {
       "unknown";
     const rlKey = `login:${ip}`;
     const rlUserKey = `login:${ip}:${username}`;
-    const rl = hit(rlKey, { windowMs: 5 * 60_000, max: 30 }); // 30 intentos IP/5min
-    const rlUser = hit(rlUserKey, { windowMs: 5 * 60_000, max: 5 }); // 5 intentos usuario/5min
+    const rl = await hit(rlKey, { windowMs: 5 * 60_000, max: 30 }, { ip });
+    const rlUser = await hit(
+      rlUserKey,
+      { windowMs: 5 * 60_000, max: 5 },
+      { ip, identifier: username.toLowerCase() }
+    );
     if (!rl.allowed || !rlUser.allowed) {
       return NextResponse.json(
         {
@@ -139,29 +147,23 @@ export async function POST(req: Request) {
     }
     // Emitir cookie de sesión simple
     const token = createSessionToken(user.id, user.apiKey);
-    const isProd = process.env.NODE_ENV === "production";
-    const cookieFlags = [
-      "Path=/",
-      "HttpOnly",
-      "SameSite=Strict",
-      "Max-Age=3600",
-    ];
-    if (isProd) cookieFlags.push("Secure");
+    const csrfToken = issueCsrfToken();
     const response = NextResponse.json({
       ok: true,
       user: { id: user.id, username: user.username, role: user.role },
       // Frontend ya no necesita guardar nada; token sólo en cookie
     });
-    response.headers.append(
-      "Set-Cookie",
-      `session=${token}; ${cookieFlags.join("; ")}`
-    );
+    response.headers.append("Set-Cookie", buildSessionCookie(token));
+    response.headers.append("Set-Cookie", buildCsrfCookie(csrfToken));
+    response.headers.set("Cache-Control", "no-store");
+    response.headers.set("X-CSRF-Token", csrfToken);
     return response;
   } catch (e: any) {
+    logError("Error en inicio de sesión", e);
     return NextResponse.json(
       {
         ok: false,
-        error: { code: "SERVER_ERROR", message: e.message || "Error interno" },
+        error: { code: "SERVER_ERROR", message: "Error interno" },
       },
       { status: 500 }
     );

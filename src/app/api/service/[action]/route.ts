@@ -1,15 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  remoteInstall,
-  remoteUninstall,
-  remoteStart,
-  remoteStop,
-  remoteStatus,
-  summarize,
-} from "@/lib/winrmService";
-import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth";
-import { getCurrentDate } from "@/lib/time";
 
 type ServiceAction = "install" | "uninstall" | "start" | "stop" | "status";
 
@@ -18,60 +8,28 @@ export async function POST(
   { params }: { params: { action: ServiceAction } }
 ) {
   try {
-    await requireAuth(req); // JWT en Authorization: Bearer <token>
+    await requireAuth(req, { role: "admin" });
     const { ip } = await req.json();
-    if (!ip) return NextResponse.json({ error: "Falta ip" }, { status: 400 });
-    const action = params.action;
-
-    let raw;
-    if (action === "install") raw = await remoteInstall(ip);
-    else if (action === "uninstall") raw = await remoteUninstall(ip);
-    else if (action === "start") raw = await remoteStart(ip);
-    else if (action === "stop") raw = await remoteStop(ip);
-    else if (action === "status") raw = await remoteStatus(ip);
-    else
-      return NextResponse.json(
-        { error: "Acción no soportada" },
-        { status: 400 }
-      );
-
-    const summary = summarize(raw, action);
-    // Persistir si tenemos flags
-    if (
-      summary.serviceInstalled !== undefined ||
-      summary.serviceRunning !== undefined
-    ) {
-      try {
-        const checkedAt = getCurrentDate();
-        await (db as any).computer.upsert({
-          where: { name: ip },
-          update: {
-            ipAddress: ip,
-            lastSeen: checkedAt,
-            isActive: true,
-            serviceInstalled: summary.serviceInstalled ?? undefined,
-            serviceRunning: summary.serviceRunning ?? undefined,
-            lastServiceCheck: checkedAt,
-          } as any,
-          create: {
-            name: ip,
-            ipAddress: ip,
-            lastSeen: checkedAt,
-            isActive: true,
-            serviceInstalled: summary.serviceInstalled ?? false,
-            serviceRunning: summary.serviceRunning ?? false,
-            lastServiceCheck: checkedAt,
-          } as any,
-        });
-      } catch (e) {
-        console.error("No se pudo persistir estado de servicio", e);
-      }
+    if (typeof ip !== "string" || !ip.trim()) {
+      return NextResponse.json({ error: "Falta ip" }, { status: 400 });
     }
-    return NextResponse.json(summary, { status: summary.success ? 200 : 500 });
 
-    return NextResponse.json({ error: "Acción no soportada" }, { status: 400 });
+    return NextResponse.json(
+      {
+        error: "El control remoto del agente está deshabilitado temporalmente",
+        action: params.action,
+        ip: ip.trim(),
+      },
+      { status: 503 }
+    );
   } catch (error: any) {
-    console.error("Error en control de servicio:", error);
+    if (error?.message === "UNAUTHORIZED")
+      return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    if (error?.message === "FORBIDDEN")
+      return NextResponse.json({ error: "Acceso denegado" }, { status: 403 });
+    if (error?.code === "CSRF_INVALID" || error?.code === "CSRF_MISSING") {
+      return NextResponse.json({ error: "CSRF inválido" }, { status: 403 });
+    }
     return NextResponse.json(
       { error: error.message || "Error" },
       { status: 500 }

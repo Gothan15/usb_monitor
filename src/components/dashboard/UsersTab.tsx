@@ -48,6 +48,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { getCsrfTokenFromDocument } from "@/lib/utils";
 import { DashboardPagination } from "./DashboardPagination";
 import { formatDateTime, type Computer } from "./types";
 import {
@@ -278,6 +279,16 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
 
     setCreating(true);
     try {
+      const csrfToken = getCsrfTokenFromDocument();
+      if (!csrfToken) {
+        throw new Error(
+          "Sesión sin token de seguridad. Inicia sesión nuevamente."
+        );
+      }
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "x-csrf-token": csrfToken,
+      };
       const selectedComputer = sortedComputers.find(
         (computer) => computer.id === createForm.computerId
       );
@@ -293,7 +304,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
 
       const response = await fetch("/api/users", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         credentials: "include",
         body: JSON.stringify(payload),
       });
@@ -378,9 +389,19 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
 
     setUpdating(true);
     try {
+      const csrfToken = getCsrfTokenFromDocument();
+      if (!csrfToken) {
+        throw new Error(
+          "Sesión sin token de seguridad. Inicia sesión nuevamente."
+        );
+      }
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "x-csrf-token": csrfToken,
+      };
       const response = await fetch(`/api/users/${editingUser.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers,
         credentials: "include",
         body: JSON.stringify(payload),
       });
@@ -412,8 +433,18 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
     if (!deletingUser) return;
     setDeleting(true);
     try {
+      const csrfToken = getCsrfTokenFromDocument();
+      if (!csrfToken) {
+        throw new Error(
+          "Sesión sin token de seguridad. Inicia sesión nuevamente."
+        );
+      }
+      const headers: Record<string, string> = {
+        "x-csrf-token": csrfToken,
+      };
       const response = await fetch(`/api/users/${deletingUser.id}`, {
         method: "DELETE",
+        headers,
         credentials: "include",
       });
       const data = await response.json().catch(() => null);

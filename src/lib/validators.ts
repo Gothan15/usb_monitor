@@ -25,6 +25,27 @@ function buildSanitizedStringSchema(maxLength: number) {
     .refine((val) => val.length > 0, "invalid value");
 }
 
+function buildOptionalSanitizedStringSchema(maxLength: number) {
+  return z
+    .preprocess((value) => {
+      if (value == null) return undefined;
+      if (typeof value !== "string") return undefined;
+      const sanitized = sanitizeControlChars(value.trim());
+      return sanitized.length ? sanitized : undefined;
+    }, buildSanitizedStringSchema(maxLength))
+    .optional();
+}
+
+const driveLetterSchema = z
+  .preprocess((value) => {
+    if (value == null) return undefined;
+    if (typeof value !== "string") return undefined;
+    const sanitized = sanitizeControlChars(value.trim().toUpperCase());
+    if (!sanitized) return undefined;
+    return sanitized.endsWith(":") ? sanitized : `${sanitized}:`;
+  }, z.string().regex(/^[A-Z]:$/, "invalid drive letter"))
+  .optional();
+
 export const usbEventPayloadSchema = z.object({
   pc_name: buildSanitizedStringSchema(120),
   pc_ip: z
@@ -33,6 +54,10 @@ export const usbEventPayloadSchema = z.object({
     .refine((val) => isValidIPv4(val), "invalid ipv4"),
   pc_user: buildSanitizedStringSchema(120),
   event: buildSanitizedStringSchema(512),
+  drive_letter: driveLetterSchema,
+  serial_number: buildOptionalSanitizedStringSchema(128),
+  readonly_status: buildOptionalSanitizedStringSchema(256),
+  whitelisted: z.boolean().optional(),
 });
 
 export type UsbEventPayload = z.infer<typeof usbEventPayloadSchema>;

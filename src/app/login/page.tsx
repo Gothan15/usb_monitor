@@ -12,6 +12,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { motion } from "framer-motion";
 import { Eye, EyeOff, Loader2, Usb, CheckCircle2 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { getCsrfTokenFromDocument } from "@/lib/utils";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
@@ -75,9 +76,22 @@ export default function LoginPage() {
       // Si hay un pcName en la URL, intentar desbloquear el USB
       if (pcName) {
         try {
+          const csrfTokenFromHeader = res.headers.get("X-CSRF-Token");
+          const csrfToken = csrfTokenFromHeader || getCsrfTokenFromDocument();
+
+          if (!csrfToken) {
+            throw new Error(
+              "No se detectó token CSRF tras iniciar sesión. Actualiza la página e inténtalo nuevamente."
+            );
+          }
+
           const unlockRes = await fetch("/api/usb-unlock", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              "x-csrf-token": csrfToken,
+            },
+            credentials: "include",
             body: JSON.stringify({ pcName }),
           });
 
@@ -115,7 +129,7 @@ export default function LoginPage() {
       } catch {}
 
       if (data.user?.role === "user") {
-        router.push("/unlocked");
+        router.push("/basic-user");
       } else {
         router.push("/");
       }

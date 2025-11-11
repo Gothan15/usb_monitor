@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import type { LucideIcon } from "lucide-react";
-import { Bell, Menu, RefreshCw, Search, LogOut, X } from "lucide-react";
+import { Bell, Menu, RefreshCw, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -13,6 +13,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { ThemeToggle } from "@/components/system/ThemeToggle";
+import { LogoutButton } from "@/components/system/LogoutButton";
+import { useAmbientScrollbar } from "@/hooks/useAmbientScrollbar";
 
 export interface AppShellNavItem {
   key: string;
@@ -28,7 +30,6 @@ interface AppShellProps {
   onNavigate: (key: string) => void;
   onRefresh?: () => void;
   refreshing?: boolean;
-  onLogout?: () => void;
   lastUpdateLabel?: string;
   subtitle?: string;
   title?: string;
@@ -45,7 +46,6 @@ export function AppShell({
   onNavigate,
   onRefresh,
   refreshing = false,
-  onLogout,
   lastUpdateLabel,
   subtitle,
   title = "Panel corporativo",
@@ -54,8 +54,14 @@ export function AppShell({
 }: AppShellProps) {
   const [isDesktop, setIsDesktop] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [isContentScrolling, setIsContentScrolling] = useState(false);
-  const hideScrollbarTimeoutRef = useRef<number | null>(null);
+  const {
+    containerProps: navScrollProps,
+    scrollbarClassName: navScrollbarClassName,
+  } = useAmbientScrollbar();
+  const {
+    containerProps: contentScrollProps,
+    scrollbarClassName: contentScrollbarClassName,
+  } = useAmbientScrollbar();
 
   useEffect(() => {
     const query = window.matchMedia("(min-width: 1280px)");
@@ -82,45 +88,6 @@ export function AppShell({
   };
 
   const closeSidebar = () => setSidebarOpen(false);
-
-  const showScrollbars = () => {
-    if (hideScrollbarTimeoutRef.current) {
-      window.clearTimeout(hideScrollbarTimeoutRef.current);
-      hideScrollbarTimeoutRef.current = null;
-    }
-    setIsContentScrolling(true);
-  };
-
-  const scheduleHideScrollbars = () => {
-    if (hideScrollbarTimeoutRef.current) {
-      window.clearTimeout(hideScrollbarTimeoutRef.current);
-    }
-    hideScrollbarTimeoutRef.current = window.setTimeout(() => {
-      setIsContentScrolling(false);
-      hideScrollbarTimeoutRef.current = null;
-    }, 700);
-  };
-
-  const handleContentScroll = () => {
-    showScrollbars();
-    scheduleHideScrollbars();
-  };
-
-  const handleContentPointerEnter = () => {
-    showScrollbars();
-  };
-
-  const handleContentPointerLeave = () => {
-    scheduleHideScrollbars();
-  };
-
-  useEffect(() => {
-    return () => {
-      if (hideScrollbarTimeoutRef.current) {
-        window.clearTimeout(hideScrollbarTimeoutRef.current);
-      }
-    };
-  }, []);
 
   return (
     <div className="relative flex h-screen overflow-hidden bg-slate-100 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100">
@@ -169,7 +136,13 @@ export function AppShell({
           )}
         </div>
 
-        <nav className="mt-8 flex-1 space-y-1 overflow-y-auto pr-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        <nav
+          {...navScrollProps}
+          className={cn(
+            "mt-8 flex-1 space-y-1 overflow-y-auto pr-2",
+            navScrollbarClassName
+          )}
+        >
           {navItems.map((item) => {
             const isActive = item.key === activeItem.key;
             const button = (
@@ -309,17 +282,7 @@ export function AppShell({
                     </span>
                   </div>
                 </div>
-                {onLogout && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={onLogout}
-                    className="h-10 w-10 rounded-full border border-slate-200/70 bg-white text-slate-600 hover:bg-slate-100 md:h-10 md:w-10 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                  >
-                    <LogOut className="h-4 w-4" />
-                  </Button>
-                )}
+                <LogoutButton className="rounded-full border-slate-200 dark:border-slate-700" />
               </div>
             </div>
           </div>
@@ -341,15 +304,11 @@ export function AppShell({
 
         <div className="relative flex flex-1 overflow-hidden">
           <main
-            onScroll={handleContentScroll}
-            onMouseEnter={handleContentPointerEnter}
-            onMouseLeave={handleContentPointerLeave}
-            onFocusCapture={handleContentPointerEnter}
-            onBlurCapture={handleContentPointerLeave}
             className={cn(
-              "flex-1 overflow-y-auto px-4 pb-12 pt-8 sm:px-6 lg:px-10 scrollbar-ambient",
-              isContentScrolling ? "scrollbar-active" : "scrollbar-idle"
+              "flex-1 overflow-y-auto px-4 pb-12 pt-8 sm:px-6 lg:px-10",
+              contentScrollbarClassName
             )}
+            {...contentScrollProps}
           >
             <div className="mx-auto flex w-full max-w-7xl flex-col gap-8">
               {children}

@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Network, Radar } from "lucide-react";
 import { getCurrentIsoString } from "@/lib/time";
 import { formatDateTime } from "@/components/dashboard/types";
+import { getCsrfTokenFromDocument } from "@/lib/utils";
 
 interface ScanResult {
   ip: string;
@@ -57,24 +58,24 @@ const normalizeResult = (item: any): ScanResult => ({
   error: item?.error ? String(item.error) : undefined,
 });
 
-const dedupeByIp = (items: ScanResult[]): ScanResult[] => {
-  // Keep the first occurrence per IP and prefer entries with latency data.
-  const byIp = new Map<string, ScanResult>();
+const dedupeByIdentifier = (items: ScanResult[]): ScanResult[] => {
+  // Keep the first occurrence per hostname (or IP) and prefer entries with latency data.
+  const byIdentifier = new Map<string, ScanResult>();
   for (const item of items) {
-    const key = item.ip;
-    const current = byIp.get(key);
+    const key = (item.hostname && item.hostname.trim()) || item.ip;
+    const current = byIdentifier.get(key);
     if (!current) {
-      byIp.set(key, item);
+      byIdentifier.set(key, item);
       continue;
     }
     if (
       (current.latencyMs == null && item.latencyMs != null) ||
       (!current.healthStatus && item.healthStatus)
     ) {
-      byIp.set(key, item);
+      byIdentifier.set(key, item);
     }
   }
-  return Array.from(byIp.values());
+  return Array.from(byIdentifier.values());
 };
 
 export function NetworkScannerTab({ onRefreshComputers }: Props) {
@@ -87,10 +88,20 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
     try {
       setScanning(true);
       setScanError(null);
+      const csrfToken = getCsrfTokenFromDocument();
+      if (!csrfToken) {
+        throw new Error(
+          "Sesión sin token de seguridad. Inicia sesión nuevamente antes de escanear."
+        );
+      }
       const payload: Record<string, unknown> = { force: true };
       const res = await fetch("/api/network-scan", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": csrfToken,
+        },
+        credentials: "include",
         body: JSON.stringify(payload),
       });
 
@@ -101,7 +112,7 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
       }
 
       const normalized = Array.isArray(data?.results)
-        ? dedupeByIp(
+        ? dedupeByIdentifier(
             (data.results as unknown[])
               .map(normalizeResult)
               .filter((item) => item.alive)

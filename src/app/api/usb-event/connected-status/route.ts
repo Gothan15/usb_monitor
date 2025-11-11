@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { authenticateRequest } from "@/lib/auth";
+import { requireServiceAuth } from "@/lib/auth";
 import { getCurrentDate } from "@/lib/time";
+import { hit } from "@/lib/rateLimit";
+import { logError } from "@/lib/logger";
 
 /**
  * POST /api/usb-event/connected-status
@@ -9,14 +11,7 @@ import { getCurrentDate } from "@/lib/time";
  */
 export async function POST(req: NextRequest) {
   try {
-    // Verificar autenticación con API Key
-    const authResult = await authenticateRequest(req);
-    if (!authResult) {
-      return NextResponse.json(
-        { ok: false, error: "No autorizado" },
-        { status: 401 }
-      );
-    }
+    const serviceAuth = await requireServiceAuth(req);
 
     const body = (await req.json().catch(() => null)) as any;
 
@@ -29,10 +24,34 @@ export async function POST(req: NextRequest) {
 
     const { pcName, connectedDrives } = body;
 
-    if (!pcName || !Array.isArray(connectedDrives)) {
+    if (
+      typeof pcName !== "string" ||
+      !pcName.trim() ||
+      !Array.isArray(connectedDrives)
+    ) {
       return NextResponse.json(
         { ok: false, error: "pcName y connectedDrives son requeridos" },
         { status: 400 }
+      );
+    }
+
+    const normalizedPcName = pcName.trim();
+    const clientIp =
+      (req.headers.get("x-forwarded-for") || "").split(",")[0].trim() ||
+      "unknown";
+    const rl = await hit(
+      "usb-connected-status",
+      { windowMs: 5_000, max: 10 },
+      {
+        serviceId: serviceAuth.serviceId,
+        ip: clientIp,
+        identifier: normalizedPcName,
+      }
+    );
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { ok: false, error: "Rate limit" },
+        { status: 429 }
       );
     }
 
@@ -41,7 +60,7 @@ export async function POST(req: NextRequest) {
     // Obtener todas las conexiones activas de esta PC
     const activeConnections = await (db as any).uSBConnection.findMany({
       where: {
-        pcName: pcName,
+        pcName: normalizedPcName,
         isConnected: true,
       },
     });
@@ -72,7 +91,7 @@ export async function POST(req: NextRequest) {
       // Buscar conexión existente por serialNumber y pcName
       const existingConnection = await (db as any).uSBConnection.findFirst({
         where: {
-          pcName: pcName,
+          pcName: normalizedPcName,
           serialNumber: serialNumber,
           isConnected: true,
         },
@@ -95,7 +114,7 @@ export async function POST(req: NextRequest) {
         // Crear nueva conexión
         await (db as any).uSBConnection.create({
           data: {
-            pcName: pcName,
+            pcName: normalizedPcName,
             driveLetter: driveLetter,
             volumeName: volumeName || "Sin nombre",
             serialNumber: serialNumber,
@@ -109,13 +128,21 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       ok: true,
       message: "Estado actualizado",
       connectedCount: connectedDrives.length,
     });
+    res.headers.set("Cache-Control", "no-store");
+    return res;
   } catch (error: any) {
-    console.error("Error en connected-status:", error);
+    if (error?.message === "UNAUTHORIZED") {
+      return NextResponse.json(
+        { ok: false, error: "No autorizado" },
+        { status: 401 }
+      );
+    }
+    logError("Error en connected-status", error);
     return NextResponse.json(
       { ok: false, error: error.message },
       { status: 500 }

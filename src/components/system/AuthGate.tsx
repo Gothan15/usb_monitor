@@ -76,7 +76,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
         .then((data) => {
           if (data.ok && data.user) {
             if (data.user.role === "user") {
-              window.location.href = "/unlocked";
+              window.location.href = "/basic-user";
             } else {
               window.location.href = "/";
             }
@@ -111,6 +111,6 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     return <FullscreenSpinner label="Redirigiendo" />;
   }
 
-  // Estado ok -> mostrar la app (incluyendo /unlocked para usuarios normales).
+  // Estado ok -> mostrar la app (incluyendo /basic-user para usuarios normales).
   return <>{children}</>;
 }

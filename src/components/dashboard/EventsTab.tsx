@@ -46,12 +46,23 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  const classifyEvent = (message: string) => {
-    const normalized = message.toLowerCase();
+  const classifyEvent = (event: USBEvent) => {
+    if (event.whitelisted) {
+      return {
+        badgeVariant: "success" as const,
+        rowClassName:
+          "bg-emerald-50/60 dark:bg-emerald-500/10 transition-colors",
+        tone: "success" as const,
+      };
+    }
+
+    const normalized = event.event.toLowerCase();
+    const readonly = (event.readonlyStatus || "").toLowerCase();
     const isUnlock =
       normalized.includes("readonly removido") ||
       normalized.includes("desbloqueada") ||
-      normalized.includes("desbloqueado");
+      normalized.includes("desbloqueado") ||
+      readonly.includes("removido");
     const isError =
       normalized.includes("error") ||
       normalized.includes("fallo") ||
@@ -107,10 +118,10 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
 
     const total = events.length;
     const unlocks = events.filter(
-      (event) => classifyEvent(event.event).tone === "success"
+      (event) => classifyEvent(event).tone === "success"
     ).length;
     const alerts = events.filter(
-      (event) => classifyEvent(event.event).tone === "error"
+      (event) => classifyEvent(event).tone === "error"
     ).length;
 
     return [
@@ -276,7 +287,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
             <>
               <div className="space-y-4 md:hidden">
                 {paginatedEvents.map((event) => {
-                  const { badgeVariant, tone } = classifyEvent(event.event);
+                  const { badgeVariant, tone } = classifyEvent(event);
                   return (
                     <motion.div
                       key={event.id}
@@ -317,6 +328,20 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                       <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
                         {event.event}
                       </p>
+                      <div className="mt-3 grid gap-2 text-xs text-slate-500 dark:text-slate-300">
+                        {event.driveLetter && (
+                          <span>{`Unidad: ${event.driveLetter}`}</span>
+                        )}
+                        {event.serialNumber && (
+                          <span>{`Serial: ${event.serialNumber}`}</span>
+                        )}
+                        {event.readonlyStatus && (
+                          <span>{`Modo: ${event.readonlyStatus}`}</span>
+                        )}
+                        <span>{`Autorizado: ${
+                          event.whitelisted ? "Sí" : "No"
+                        }`}</span>
+                      </div>
                       <div className="mt-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-300">
                         <span>{formatDateTime(event.createdAt)}</span>
                         <span className="inline-flex items-center gap-1 rounded-full border border-white/70 bg-white/80 px-2 py-0.5 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-white/10">
@@ -346,15 +371,26 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                         Evento
                       </TableHead>
                       <TableHead className="text-slate-600 dark:text-slate-200">
+                        Unidad
+                      </TableHead>
+                      <TableHead className="text-slate-600 dark:text-slate-200">
+                        Serial
+                      </TableHead>
+                      <TableHead className="text-slate-600 dark:text-slate-200">
+                        Modo
+                      </TableHead>
+                      <TableHead className="text-slate-600 dark:text-slate-200">
+                        Whitelist
+                      </TableHead>
+                      <TableHead className="text-slate-600 dark:text-slate-200">
                         Fecha / Hora
                       </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {paginatedEvents.map((event) => {
-                      const { badgeVariant, rowClassName } = classifyEvent(
-                        event.event
-                      );
+                      const { badgeVariant, rowClassName } =
+                        classifyEvent(event);
                       const badgeClass =
                         badgeVariant === "default"
                           ? "border border-slate-200 bg-slate-100 text-slate-700 shadow-sm dark:border-white/10 dark:bg-white/10 dark:text-white"
@@ -383,6 +419,19 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                             >
                               {event.event}
                             </Badge>
+                          </TableCell>
+                          <TableCell className="text-slate-600 dark:text-slate-300/80">
+                            {event.driveLetter || "—"}
+                          </TableCell>
+                          <TableCell className="text-slate-600 dark:text-slate-300/80">
+                            {event.serialNumber || "—"}
+                          </TableCell>
+                          <TableCell className="text-slate-600 dark:text-slate-300/80">
+                            {event.readonlyStatus ||
+                              (event.whitelisted ? "Whitelisted" : "—")}
+                          </TableCell>
+                          <TableCell className="text-slate-600 dark:text-slate-300/80">
+                            {event.whitelisted ? "Sí" : "No"}
                           </TableCell>
                           <TableCell className="text-slate-600 dark:text-slate-200">
                             {formatDateTime(event.createdAt)}

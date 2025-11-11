@@ -2,14 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { scanNetwork, startScanJob, getScanJob } from "@/lib/networkScanner";
 import { hit } from "@/lib/rateLimit";
 import { requireAuth } from "@/lib/auth";
+import { logError } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
   try {
-    await requireAuth(req);
+    const auth = await requireAuth(req, { role: "admin" });
     const ip =
       (req.headers.get("x-forwarded-for") || "").split(",")[0].trim() ||
       "unknown";
-    const rl = hit(`net-scan:${ip}`, { windowMs: 60_000, max: 5 });
+    const rl = await hit(
+      "net-scan",
+      { windowMs: 60_000, max: 5 },
+      { userId: auth.userId, ip }
+    );
     if (!rl.allowed) {
       return NextResponse.json({ error: "Rate limit" }, { status: 429 });
     }
@@ -27,14 +32,23 @@ export async function POST(req: NextRequest) {
       });
     }
     const results = await scanNetwork(cidr, { force });
-    return NextResponse.json({
+    const res = NextResponse.json({
       cidr: cidr || "auto",
       cached: !force,
       count: results.length,
       results,
     });
+    res.headers.set("Cache-Control", "no-store");
+    return res;
   } catch (error: any) {
-    console.error("Error en escaneo de red:", error);
+    if (error?.message === "UNAUTHORIZED")
+      return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    if (error?.message === "FORBIDDEN")
+      return NextResponse.json({ error: "Acceso denegado" }, { status: 403 });
+    if (error?.code === "CSRF_INVALID" || error?.code === "CSRF_MISSING") {
+      return NextResponse.json({ error: "CSRF inválido" }, { status: 403 });
+    }
+    logError("Error en escaneo de red", error);
     return NextResponse.json(
       { error: error.message || "Error al escanear red" },
       { status: 500 }
@@ -44,10 +58,12 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   try {
-    await requireAuth(req); // JWT en Authorization: Bearer <token>
+    const auth = await requireAuth(req, { role: "admin", enforceCsrf: false });
   } catch (e: any) {
     if (e.message === "UNAUTHORIZED")
       return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    if (e.message === "FORBIDDEN")
+      return NextResponse.json({ error: "Acceso denegado" }, { status: 403 });
   }
   const { searchParams } = new URL(req.url);
   const jobId = searchParams.get("jobId");
@@ -56,13 +72,15 @@ export async function GET(req: NextRequest) {
   const job = getScanJob(jobId);
   if (!job)
     return NextResponse.json({ error: "job no encontrado" }, { status: 404 });
-  return NextResponse.json({
+  const res = NextResponse.json({
     id: job.id,
     status: job.status,
     progress: job.progress,
     results: job.results,
     cidr: job.cidr,
   });
+  res.headers.set("Cache-Control", "no-store");
+  return res;
 }
 
 export const dynamic = "force-dynamic";

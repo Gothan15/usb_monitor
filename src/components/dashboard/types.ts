@@ -4,6 +4,10 @@ export interface USBEvent {
   pcIp: string;
   pcUser: string;
   event: string;
+  driveLetter?: string | null;
+  serialNumber?: string | null;
+  readonlyStatus?: string | null;
+  whitelisted?: boolean;
   timestamp: string;
   createdAt: string;
 }

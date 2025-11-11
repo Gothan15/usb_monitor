@@ -1,16 +1,11 @@
 import { NextResponse } from "next/server";
-import { authenticateRequest } from "@/lib/auth";
+import { requireAuth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { logError } from "@/lib/logger";
 
 export async function GET(req: Request) {
   try {
-    const auth = await authenticateRequest(req);
-    if (!auth) {
-      return NextResponse.json(
-        { ok: false, error: "No autenticado" },
-        { status: 401 }
-      );
-    }
+    const auth = await requireAuth(req, { enforceCsrf: false });
 
     const user = await (db as any).user.findUnique({
       where: { id: auth.userId },
@@ -29,12 +24,26 @@ export async function GET(req: Request) {
       );
     }
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       ok: true,
       user,
     });
+    res.headers.set("Cache-Control", "no-store");
+    return res;
   } catch (error: any) {
-    console.error("Error obteniendo perfil:", error);
+    if (error?.message === "UNAUTHORIZED") {
+      return NextResponse.json(
+        { ok: false, error: "No autenticado" },
+        { status: 401 }
+      );
+    }
+    if (error?.message === "FORBIDDEN") {
+      return NextResponse.json(
+        { ok: false, error: "Acceso denegado" },
+        { status: 403 }
+      );
+    }
+    logError("Error obteniendo perfil", error);
     return NextResponse.json(
       { ok: false, error: error?.message || "Error interno" },
       { status: 500 }

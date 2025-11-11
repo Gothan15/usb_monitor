@@ -20,6 +20,10 @@ model USBEvent {
   pcIp      String
   pcUser    String
   event     String
+  driveLetter    String?
+  serialNumber   String?
+  readonlyStatus String?
+  whitelisted    Boolean  @default(false)
   timestamp DateTime @default(now())
   createdAt DateTime @default(now())
 

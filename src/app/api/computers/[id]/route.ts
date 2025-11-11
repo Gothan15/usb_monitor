@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth";
+import { logError } from "@/lib/logger";
 
 type RouteContext = {
   params: Promise<{
@@ -10,7 +11,7 @@ type RouteContext = {
 
 export async function DELETE(req: Request, context: RouteContext) {
   try {
-    await requireAuth(req);
+    await requireAuth(req, { role: "admin" });
 
     const { params } = context;
     const { id: rawId } = await params;
@@ -43,8 +44,11 @@ export async function DELETE(req: Request, context: RouteContext) {
     if ((error as any)?.message === "UNAUTHORIZED") {
       return NextResponse.json({ error: "No autorizado" }, { status: 401 });
     }
+    if ((error as any)?.message === "FORBIDDEN") {
+      return NextResponse.json({ error: "Acceso denegado" }, { status: 403 });
+    }
 
-    console.error("Error al eliminar computadora:", error);
+    logError("Error al eliminar computadora", error);
     return NextResponse.json(
       { ok: false, error: "Error interno del servidor" },
       { status: 500 }
