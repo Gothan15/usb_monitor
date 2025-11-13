@@ -40,52 +40,23 @@ export async function GET(req: Request) {
       });
     }
 
-    // Obtener eventos USB de la computadora del usuario
-    const events = await (db as any).uSBEvent.findMany({
-      where: {
-        pcName: user.computer.name,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-      take: 100, // Limitar a los últimos 100 eventos
-    });
-
-    // Obtener pending unlocks para esta computadora
-    const pendingUnlocks = await (db as any).pendingUnlock.findMany({
-      where: {
-        pcName: user.computer.name,
-        unlocked: false,
-        expiresAt: {
-          gte: getCurrentDate(),
-        },
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
-
-    // Obtener USBs conectadas actualmente
-    const connectedUSBs = await (db as any).uSBConnection.findMany({
-      where: {
-        pcName: user.computer.name,
-        isConnected: true,
-      },
-      orderBy: {
-        lastSeen: "desc",
-      },
-    });
-
-    // Obtener historial de conexiones USB
-    const usbHistory = await (db as any).uSBConnection.findMany({
-      where: {
-        pcName: user.computer.name,
-      },
-      orderBy: {
-        connectedAt: "desc",
-      },
-      take: 100, // Últimas 100 conexiones
-    });
+    // Group the dashboard queries into a single round trip to cut latency and contention.
+    const [events, connectedUSBs, usbHistory] = await (db as any).$transaction([
+      (db as any).uSBEvent.findMany({
+        where: { pcName: user.computer.name },
+        orderBy: { createdAt: "desc" },
+        take: 100,
+      }),
+      (db as any).uSBConnection.findMany({
+        where: { pcName: user.computer.name, isConnected: true },
+        orderBy: { lastSeen: "desc" },
+      }),
+      (db as any).uSBConnection.findMany({
+        where: { pcName: user.computer.name },
+        orderBy: { connectedAt: "desc" },
+        take: 100,
+      }),
+    ]);
 
     const warnings: string[] = [];
     const alternateIdentifiers = new Set<string>();
@@ -149,7 +120,6 @@ export async function GET(req: Request) {
       ok: true,
       events,
       computer: user.computer,
-      pendingUnlocks,
       connectedUSBs: connectedUSBs.map(serializeConnection),
       usbHistory: usbHistory.map(serializeConnection),
       apiKey: user.apiKey || "", // Incluir API Key del usuario

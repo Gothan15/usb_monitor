@@ -58,3 +58,6 @@ USBMonitor/build/
 USBMonitor/build_usb_serial_viewer/
 USBMonitor/dist/
 USBMonitor/dist_usb_serial_viewer/
+
+seed-data.json
+/scripts

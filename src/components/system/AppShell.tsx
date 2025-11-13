@@ -3,9 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import type { LucideIcon } from "lucide-react";
-import { Bell, Menu, RefreshCw, Search, X } from "lucide-react";
+import { Bell, Menu, RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import {
   Tooltip,
@@ -234,13 +233,6 @@ export function AppShell({
             </div>
 
             <div className="flex flex-1 items-center justify-end gap-3">
-              <div className="relative hidden max-w-sm flex-1 items-center md:flex">
-                <Search className="absolute left-3 h-4 w-4 text-slate-400" />
-                <Input
-                  placeholder="Buscar dispositivos, IP o usuarios"
-                  className="w-full rounded-full border border-slate-200/70 bg-white pl-10 text-sm text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                />
-              </div>
               <div className="flex items-center gap-2">
                 {onRefresh && (
                   <Button

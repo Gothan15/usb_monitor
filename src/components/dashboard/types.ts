@@ -39,6 +39,7 @@ export interface WhitelistEntry {
 }
 export {
   DEFAULT_TIME_ZONE,
+  formatDate,
   formatDateTime,
   formatHour,
   formatTime,

@@ -12,15 +12,16 @@
 
 ### 2.1 `createUser.ts`
 
-- **Objetivo**: Crear un usuario nuevo, opcionalmente con API key propia y computadora asignada.
+- **Objetivo**: Crear un usuario nuevo (administrador u operador básico), opcionalmente con API key propia y computadora asignada.
 - **Uso**:
   ```powershell
   npm run user:create -- <usuario> <password> [apiKey] [rol] [computerName]
   ```
 - **Pasos**:
   1. Lanza el comando con los argumentos obligatorios (`usuario`, `password`).
-  2. Si defines `rol`, sólo acepta `admin` o `user`; si indicas computadora, debe existir en la base de datos.
-  3. Verifica la salida `CREATED ...`. Cualquier código de salida distinto de `0` indica un error (usuario duplicado, computadora inexistente, etc.).
+  2. Para `rol` se aceptan `admin` o `user`.
+  3. Para usuarios `admin` o `user`, la computadora es opcional y puedes agregarla luego con `assignComputer.ts`.
+  4. Verifica la salida `CREATED ...`. Cualquier código de salida distinto de `0` indica un error (usuario duplicado, computadora inexistente, etc.).
 
 ### 2.2 `assignComputer.ts`
 
@@ -134,7 +135,7 @@
   npx tsx scripts/setApiKeyRemote.ts <computerName> <hostname> <username> <password>
   ```
 - **Pasos**:
-  1. Ejecuta el modo que prefieras.
+  1. Ejecuta el modo que prefieras. El script tomará la API key del primer usuario asignado (priorizando rol `user`).
   2. Si usas WinRM, confirma que esté habilitado y que las credenciales sean válidas.
   3. Tras éxito (manual o automático) reinicia el servicio con `net stop USBMonitorService` y `net start USBMonitorService`.
 
@@ -148,7 +149,7 @@
 - **Pasos**:
   1. Ejecuta el script.
   2. Revisa el log para ver cuántos usuarios se actualizaron.
-  3. Útil después de migraciones donde el campo `role` quedó vacío.
+  3. Ajusta roles a `admin` o `user` según corresponda.
 
 ## 3. Scripts Python
 
@@ -188,10 +189,11 @@
 2. **Alta y asignación de usuario nuevo**:
 
    1. `npm run user:create -- <usuario> <password> [rol] [computerName]`
-   2. `npm run user:assign-computer -- <usuario> <computerName>` (si no se indicó en el paso anterior)
-   3. `npm run user:list` para validar.
 
-3. **Auditoría periódica**:
+3. `npm run user:assign-computer -- <usuario> <computerName>` (si no se indicó en el paso anterior, aplica sólo para roles `admin`/`user`)
+4. `npm run user:list` para validar.
+
+5. **Auditoría periódica**:
    1. `npm run computer:list`
    2. `npm run user:list`
    3. `npx tsx scripts/debugListUsers.ts` si necesitas detalles crudos.

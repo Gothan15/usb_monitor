@@ -57,75 +57,115 @@ export async function POST(req: NextRequest) {
 
     const now = getCurrentDate();
 
-    // Obtener todas las conexiones activas de esta PC
-    const activeConnections = await (db as any).uSBConnection.findMany({
-      where: {
-        pcName: normalizedPcName,
-        isConnected: true,
-      },
-    });
+    const sanitizedDrives = Array.isArray(connectedDrives)
+      ? connectedDrives
+          .map((drive: any) => {
+            const rawLetter =
+              typeof drive?.driveLetter === "string"
+                ? drive.driveLetter.trim()
+                : "";
+            const normalizedLetter = rawLetter || "SIN-LETRA";
+            const rawSerial =
+              typeof drive?.serialNumber === "string"
+                ? drive.serialNumber.trim()
+                : "";
+            const fallbackSerial = `AUTO-${normalizedLetter}`;
+            return {
+              driveLetter: rawLetter || null,
+              volumeName:
+                typeof drive?.volumeName === "string" ? drive.volumeName : null,
+              serialNumber: rawSerial || fallbackSerial,
+              model: typeof drive?.model === "string" ? drive.model : null,
+              size: Number.isFinite(drive?.size) ? Number(drive.size) : 0,
+            };
+          })
+          .filter((drive) => drive.driveLetter)
+      : [];
 
-    // Crear un Set con las letras de unidad actualmente conectadas
-    const currentDriveLetters = new Set(
-      connectedDrives.map((d: any) => d.driveLetter)
-    );
+    const driveLetters = sanitizedDrives
+      .map((drive) => drive.driveLetter)
+      .filter((letter): letter is string => Boolean(letter));
 
-    // Marcar como desconectadas las que ya no están
-    for (const connection of activeConnections) {
-      if (!currentDriveLetters.has(connection.driveLetter)) {
-        await (db as any).uSBConnection.update({
-          where: { id: connection.id },
-          data: {
-            isConnected: false,
-            disconnectedAt: now,
+    if (driveLetters.length) {
+      // Batch mark stale connections as disconnected instead of looping updates per row.
+      await (db as any).uSBConnection.updateMany({
+        where: {
+          pcName: normalizedPcName,
+          isConnected: true,
+          driveLetter: { notIn: driveLetters },
+        },
+        data: {
+          isConnected: false,
+          disconnectedAt: now,
+        },
+      });
+    } else {
+      await (db as any).uSBConnection.updateMany({
+        where: {
+          pcName: normalizedPcName,
+          isConnected: true,
+        },
+        data: {
+          isConnected: false,
+          disconnectedAt: now,
+        },
+      });
+    }
+
+    const serials = sanitizedDrives
+      .map((drive) => drive.serialNumber)
+      .filter((serial): serial is string => Boolean(serial));
+
+    // Fetch active rows for incoming serials once to avoid per-drive round trips.
+    const existingConnections = serials.length
+      ? await (db as any).uSBConnection.findMany({
+          where: {
+            pcName: normalizedPcName,
+            isConnected: true,
+            serialNumber: { in: serials },
           },
-        });
+        })
+      : [];
+
+    const existingBySerial = new Map<string, any>();
+    for (const connection of existingConnections) {
+      if (connection.serialNumber) {
+        existingBySerial.set(connection.serialNumber, connection);
       }
     }
 
-    // Actualizar o crear registros para las unidades conectadas
-    for (const drive of connectedDrives) {
-      const { driveLetter, volumeName, serialNumber, model, size, freeSpace } =
-        drive;
-
-      // Buscar conexión existente por serialNumber y pcName
-      const existingConnection = await (db as any).uSBConnection.findFirst({
-        where: {
-          pcName: normalizedPcName,
-          serialNumber: serialNumber,
-          isConnected: true,
-        },
-        orderBy: {
-          connectedAt: "desc",
-        },
-      });
-
-      if (existingConnection) {
-        // Actualizar lastSeen y driveLetter (puede cambiar)
-        await (db as any).uSBConnection.update({
-          where: { id: existingConnection.id },
+    const operations = sanitizedDrives.map((drive) => {
+      const existing = drive.serialNumber
+        ? existingBySerial.get(drive.serialNumber)
+        : undefined;
+      if (existing) {
+        return (db as any).uSBConnection.update({
+          where: { id: existing.id },
           data: {
             lastSeen: now,
-            driveLetter: driveLetter,
-            volumeName: volumeName || existingConnection.volumeName,
-          },
-        });
-      } else {
-        // Crear nueva conexión
-        await (db as any).uSBConnection.create({
-          data: {
-            pcName: normalizedPcName,
-            driveLetter: driveLetter,
-            volumeName: volumeName || "Sin nombre",
-            serialNumber: serialNumber,
-            model: model || "Unknown",
-            size: BigInt(size || 0),
-            connectedAt: now,
-            lastSeen: now,
-            isConnected: true,
+            driveLetter: drive.driveLetter,
+            volumeName: drive.volumeName || existing.volumeName,
+            size: BigInt(drive.size || Number(existing.size) || 0),
           },
         });
       }
+      return (db as any).uSBConnection.create({
+        data: {
+          pcName: normalizedPcName,
+          driveLetter: drive.driveLetter,
+          volumeName: drive.volumeName || "Sin nombre",
+          serialNumber: drive.serialNumber,
+          model: drive.model || "Unknown",
+          size: BigInt(drive.size || 0),
+          connectedAt: now,
+          lastSeen: now,
+          isConnected: true,
+        },
+      });
+    });
+
+    if (operations.length) {
+      await (db as any).$transaction(operations);
     }
 
     const res = NextResponse.json({

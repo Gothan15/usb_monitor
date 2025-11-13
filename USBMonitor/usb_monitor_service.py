@@ -35,10 +35,12 @@ import sys
 import tempfile
 import threading
 import time
+from concurrent.futures import Future
+from queue import Queue, Full
 from contextlib import redirect_stderr, redirect_stdout
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from urllib.parse import urlparse, parse_qs, quote
 
 import pythoncom  # type: ignore
@@ -102,6 +104,65 @@ SERVICE_API_VERSION = "1.0.0"
 DATABASE_URL_ENV_VAR = "USB_MONITOR_DATABASE_URL"
 DEFAULT_DATABASE_URL = "postgresql://usb_app:usbapp123@localhost:5432/monitor_usb?schema=public"
 
+# Cache para evitar registrar advertencias duplicadas al descartar discos no USB
+DISCARDED_DISK_CACHE: Set[str] = set()
+
+RESOLVE_IP_CACHE_TTL = 300.0  # seconds
+WHITELIST_POSITIVE_TTL = 300.0
+WHITELIST_NEGATIVE_TTL = 60.0
+UNLOCK_NEGATIVE_BACKOFF = 5.0
+
+_resolved_ip_cache: Dict[str, Any] = {"value": DEFAULT_IPV4_FALLBACK, "expires_at": 0.0}
+_whitelist_cache: Dict[str, Tuple[float, bool, Optional[Dict[str, Any]]]] = {}
+_unlock_backoff: Dict[str, Tuple[float, bool, Optional[str]]] = {}
+
+NetworkTask = Tuple[Callable[..., Any], Tuple[Any, ...], Dict[str, Any], Optional[Future]]
+NETWORK_QUEUE: "Queue[NetworkTask]" = Queue(maxsize=512)
+
+
+def _start_network_worker() -> None:
+    def worker() -> None:
+        while True:
+            func, args, kwargs, future = NETWORK_QUEUE.get()
+            try:
+                result = func(*args, **kwargs)
+                if future is not None:
+                    future.set_result(result)
+            except Exception as exc:  # pragma: no cover - defensive logging
+                LOGGER.error("Error en tarea de red %s: %s", getattr(func, "__name__", func), exc)
+                if future is not None:
+                    future.set_exception(exc)
+            finally:
+                NETWORK_QUEUE.task_done()
+
+    thread = threading.Thread(target=worker, name="usb-monitor-network-worker", daemon=True)
+    thread.start()
+
+
+_start_network_worker()
+
+
+def submit_network_task(
+    func: Callable[..., Any],
+    *args: Any,
+    expect_result: bool = False,
+    **kwargs: Any,
+) -> Optional[Future]:
+    future = Future() if expect_result else None
+    try:
+        NETWORK_QUEUE.put_nowait((func, args, kwargs, future))
+    except Full:
+        LOGGER.warning("Cola de red llena, ejecutando %s síncronamente", getattr(func, "__name__", func))
+        try:
+            result = func(*args, **kwargs)
+            if future is not None:
+                future.set_result(result)
+        except Exception as exc:  # pragma: no cover - fallback path
+            LOGGER.error("Error ejecutando %s fuera de la cola: %s", getattr(func, "__name__", func), exc)
+            if future is not None:
+                future.set_exception(exc)
+    return future
+
 
 def get_app_directory() -> Path:
     if getattr(sys, "frozen", False):
@@ -125,6 +186,22 @@ DEFAULT_LISTEN_PORT = 5001  # Puerto donde el servicio escuchará peticiones
 SIGNAL_FILE = (PROGRAM_DATA_DIR / "browser_signal.json").resolve()
 HOSTNAME_RAW = (socket.gethostname() or "").strip() or "UNKNOWN_HOST"
 DEFAULT_IPV4_FALLBACK = "127.0.0.1"
+
+# Plan de telemetría (próxima iteración):
+#   - Registrar latencia de `unlock_usb` midiendo `time.perf_counter()` y enviar a `/api/metrics`:
+#     ```python
+#     def push_metric(name: str, value: float) -> None:
+#         submit_network_task(
+#             requests.post,
+#             build_url("/api/metrics"),
+#             expect_result=False,
+#             json={"name": name, "value": value},
+#             headers=get_auth_headers(),
+#             timeout=5,
+#         )
+#     ```
+#   - Incluir contador de consultas whitelist/pendientes en `send_event` para comparar contra el tamaño
+#     de la caché y ajustar `WHITELIST_POSITIVE_TTL` durante despliegues futuros.
 
 CONTROL_CHARS_REGEX = re.compile(r"[\x00-\x1F\x7F]")
 VALID_IPV4_REGEX = re.compile(r"^(?:\d{1,3}\.){3}\d{1,3}$")
@@ -898,8 +975,11 @@ def log_initial_configuration() -> None:
 log_initial_configuration()
 
 
-def resolve_ip() -> str:
-    """Obtiene la IP más razonable asociada al host local."""
+def resolve_ip(force_refresh: bool = False) -> str:
+    """Obtiene la IP más razonable asociada al host local con caché de corta duración."""
+    now = time.time()
+    if not force_refresh and _resolved_ip_cache["expires_at"] > now:
+        return str(_resolved_ip_cache["value"])
     try:
         hostname = socket.gethostname()
         addresses = socket.gethostbyname_ex(hostname)[2]
@@ -908,14 +988,20 @@ def resolve_ip() -> str:
                 continue
             candidate = ensure_ipv4(addr, default="")
             if candidate and not candidate.startswith("127."):
+                _resolved_ip_cache["value"] = candidate
+                _resolved_ip_cache["expires_at"] = now + RESOLVE_IP_CACHE_TTL
                 return candidate
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.connect(("8.8.8.8", 80))
             candidate = ensure_ipv4(s.getsockname()[0], default="")
             if candidate:
+                _resolved_ip_cache["value"] = candidate
+                _resolved_ip_cache["expires_at"] = now + RESOLVE_IP_CACHE_TTL
                 return candidate
     except Exception as exc:
         LOGGER.warning("No se pudo resolver IP local: %s", exc)
+    _resolved_ip_cache["value"] = DEFAULT_IPV4_FALLBACK
+    _resolved_ip_cache["expires_at"] = now + RESOLVE_IP_CACHE_TTL
     return DEFAULT_IPV4_FALLBACK
 
 
@@ -975,7 +1061,7 @@ def build_payload(
     return payload
 
 
-def send_event(payload: Dict[str, Any]) -> None:
+def _send_event_request(payload: Dict[str, Any]) -> None:
     endpoint = os.environ.get("USB_MONITOR_ENDPOINT", DEFAULT_ENDPOINT)
     url = build_url(endpoint)
     headers = {"Content-Type": "application/json"}
@@ -987,6 +1073,11 @@ def send_event(payload: Dict[str, Any]) -> None:
         LOGGER.info("Evento USB enviado correctamente: %s", json.dumps(payload))
     except Exception as exc:
         LOGGER.error("Error al enviar evento USB: %s", exc)
+
+
+def send_event(payload: Dict[str, Any]) -> None:
+    """Encola el envío para no bloquear el hilo principal del servicio."""
+    submit_network_task(_send_event_request, payload)
 
 
 def resolve_drive_letter(event: Any, conn: wmi.WMI) -> Optional[str]:
@@ -1325,120 +1416,133 @@ def create_browser_signal(pc_name: str, drive_letter: str) -> None:
         LOGGER.error("    ✗ Error al crear archivo de señal: %s", exc)
 
 
+def _create_pending_unlock_request(pc_name: str, drive_letter: str) -> bool:
+    # Legacy deshabilitado: se usa solo whitelist. No-op.
+    LOGGER.debug(
+        "    [Legacy OFF] pending-unlock omitido para PC=%s | Unidad=%s",
+        pc_name,
+        drive_letter,
+    )
+    return False
+
+
 def create_pending_unlock(pc_name: str, drive_letter: str) -> bool:
-    """Crea un registro de desbloqueo pendiente en el backend."""
-    try:
-        endpoint = "/api/usb-event/pending-unlock"
-        url = build_url(endpoint)
-        headers = {"Content-Type": "application/json"}
-        headers.update(get_auth_headers())
-        LOGGER.debug(
-            "    → Creando registro de pending unlock: PC=%s | Unidad=%s",
-            pc_name,
-            drive_letter,
+    # Legacy deshabilitado: no se crean pending unlocks.
+    LOGGER.debug("    [Legacy OFF] create_pending_unlock omitido")
+    return False
+
+
+def _check_whitelist_remote(normalized_serial: str) -> Tuple[bool, Optional[Dict[str, Any]]]:
+    encoded_serial = quote(normalized_serial, safe="")
+    endpoint = f"/api/whitelist/check?serial={encoded_serial}"
+    url = build_url(endpoint)
+    headers = get_auth_headers()
+
+    LOGGER.debug("    [Whitelist] Enviando petición GET a: %s", endpoint)
+    response = requests.get(url, headers=headers, timeout=8)
+    response.raise_for_status()
+
+    data = response.json()
+    allowed = bool(data.get("allowed"))
+    entry = data.get("entry") if allowed else None
+
+    if allowed:
+        label_info = f" | Etiqueta: {entry.get('label')}" if entry and entry.get("label") else ""
+        notes_info = f" | Notas: {entry.get('notes')}" if entry and entry.get("notes") else ""
+        LOGGER.info(
+            "    [Whitelist] ✓ Serial %s AUTORIZADO%s%s",
+            normalized_serial,
+            label_info,
+            notes_info,
         )
-        
-        payload = {
-            "pcName": pc_name,
-            "driveLetter": drive_letter,
-        }
-        
-        response = requests.post(url, json=payload, headers=headers, timeout=10)
-        response.raise_for_status()
-        
-        LOGGER.info("    ✓ Registro de desbloqueo pendiente creado: %s - %s", pc_name, drive_letter)
-        return True
-    except Exception as exc:
-        LOGGER.error("    ✗ Error al crear pending unlock: %s", exc)
-        return False
+    else:
+        LOGGER.warning("    [Whitelist] ✗ Serial %s NO ENCONTRADO en whitelist", normalized_serial)
+
+    return allowed, entry
 
 
 def check_whitelist(serial_number: Optional[str]) -> Tuple[bool, Optional[Dict[str, Any]]]:
-    """Consulta el backend para verificar si el serial está autorizado."""
+    """Consulta el backend para verificar si el serial está autorizado con caché y backoff."""
     normalized_serial = normalize_serial_candidate(serial_number)
     if not normalized_serial:
         LOGGER.debug("    [Whitelist] Serial no puede ser normalizado (valor vacío o inválido)")
         return False, None
 
-    try:
-        encoded_serial = quote(normalized_serial, safe="")
-        endpoint = f"/api/whitelist/check?serial={encoded_serial}"
-        url = build_url(endpoint)
-        headers = get_auth_headers()
+    cached = _whitelist_cache.get(normalized_serial)
+    now = time.time()
+    if cached and cached[0] > now:
+        return cached[1], cached[2]
 
-        LOGGER.debug("    [Whitelist] Enviando petición GET a: %s", endpoint)
-        response = requests.get(url, headers=headers, timeout=8)
-        response.raise_for_status()
+    future = submit_network_task(
+        _check_whitelist_remote,
+        normalized_serial,
+        expect_result=True,
+    )
 
-        data = response.json()
-        allowed = bool(data.get("allowed"))
-        entry = data.get("entry") if allowed else None
-
-        if allowed:
-            label_info = f" | Etiqueta: {entry.get('label')}" if entry and entry.get("label") else ""
-            notes_info = f" | Notas: {entry.get('notes')}" if entry and entry.get("notes") else ""
-            LOGGER.info(
-                "    [Whitelist] ✓ Serial %s AUTORIZADO%s%s",
-                normalized_serial,
-                label_info,
-                notes_info,
+    allowed: bool
+    entry: Optional[Dict[str, Any]]
+    if future is not None:
+        try:
+            allowed, entry = future.result(timeout=10)
+        except Exception as exc:
+            LOGGER.error(
+                "    [Whitelist] ✗ Error al obtener whitelist (cola): %s",
+                exc,
             )
-        else:
-            LOGGER.warning("    [Whitelist] ✗ Serial %s NO ENCONTRADO en whitelist", normalized_serial)
+            return False, None
+    else:
+        try:
+            allowed, entry = _check_whitelist_remote(normalized_serial)
+        except Exception as exc:  # pragma: no cover - redundante
+            LOGGER.error("    [Whitelist] ✗ Error al consultar whitelist directamente: %s", exc)
+            return False, None
 
-        return allowed, entry
-    except requests.Timeout:
-        LOGGER.error(
-            "    [Whitelist] ✗ TIMEOUT al verificar whitelist para %s (timeout: 8s)",
-            normalized_serial,
-        )
-        return False, None
-    except requests.RequestException as exc:
-        LOGGER.error(
-            "    [Whitelist] ✗ Error HTTP al verificar whitelist para %s: %s",
-            normalized_serial,
-            exc,
-        )
-        return False, None
-    except Exception as exc:
-        LOGGER.error(
-            "    [Whitelist] ✗ Error inesperado al verificar whitelist para %s: %s",
-            normalized_serial,
-            exc,
-        )
-        return False, None
+    ttl = WHITELIST_POSITIVE_TTL if allowed else WHITELIST_NEGATIVE_TTL
+    _whitelist_cache[normalized_serial] = (now + ttl, allowed, entry)
+    return allowed, entry
+
+
+def _check_unlock_status_remote(pc_name: str) -> Tuple[bool, Optional[str]]:
+    # Legacy deshabilitado: no se consulta estado de desbloqueo.
+    LOGGER.debug("    [Legacy OFF] check_unlock_status omitido para PC=%s", pc_name)
+    return False, None
 
 
 def check_unlock_status(pc_name: str) -> Tuple[bool, Optional[str]]:
-    """Verifica si el backend ha autorizado el desbloqueo."""
-    try:
-        endpoint = f"/api/usb-unlock?pcName={pc_name}&check=true"
-        url = build_url(endpoint)
-        headers = get_auth_headers()
-        
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        
-        data = response.json()
-        unlocked = data.get("unlocked", False)
-        drive_letter = data.get("driveLetter")
-        LOGGER.debug(
-            "    [Desbloqueo] Estado consultado | pc=%s | unlocked=%s | drive=%s",
-            pc_name,
-            unlocked,
-            drive_letter,
-        )
-        
-        return unlocked, drive_letter
-    except requests.Timeout:
-        LOGGER.debug("    [Desbloqueo] Timeout al verificar estado de desbloqueo")
-        return False, None
-    except requests.RequestException as exc:
-        LOGGER.debug("    [Desbloqueo] Error HTTP al verificar desbloqueo: %s", exc)
-        return False, None
-    except Exception as exc:
-        LOGGER.debug("    [Desbloqueo] Error al verificar estado de desbloqueo: %s", exc)
-        return False, None
+    """Verifica si el backend ha autorizado el desbloqueo aplicando backoff en respuestas negativas."""
+    now = time.time()
+    cached = _unlock_backoff.get(pc_name)
+    if cached and cached[0] > now:
+        return cached[1], cached[2]
+
+    future = submit_network_task(
+        _check_unlock_status_remote,
+        pc_name,
+        expect_result=True,
+    )
+
+    unlocked: bool
+    drive_letter: Optional[str]
+    if future is not None:
+        try:
+            unlocked, drive_letter = future.result(timeout=10)
+        except Exception as exc:
+            LOGGER.debug("    [Desbloqueo] Error al obtener estado (cola): %s", exc)
+            _unlock_backoff[pc_name] = (now + UNLOCK_NEGATIVE_BACKOFF, False, None)
+            return False, None
+    else:
+        try:
+            unlocked, drive_letter = _check_unlock_status_remote(pc_name)
+        except Exception as exc:
+            LOGGER.debug("    [Desbloqueo] Error al verificar desbloqueo directamente: %s", exc)
+            _unlock_backoff[pc_name] = (now + UNLOCK_NEGATIVE_BACKOFF, False, None)
+            return False, None
+
+    if unlocked:
+        _unlock_backoff.pop(pc_name, None)
+    else:
+        _unlock_backoff[pc_name] = (now + UNLOCK_NEGATIVE_BACKOFF, False, None)
+    return unlocked, drive_letter
 
 
 def unlock_usb(drive_letter: str, conn: wmi.WMI) -> bool:
@@ -1455,15 +1559,110 @@ def unlock_usb(drive_letter: str, conn: wmi.WMI) -> bool:
     return success
 
 
+USB_BUS_TYPE_IDS = {7}
+
+
+def _shorten(value: Optional[str], *, limit: int = 120) -> str:
+    if not value:
+        return ""
+    value = value.strip()
+    if len(value) <= limit:
+        return value
+    return value[: limit - 3] + "..."
+
+
+def _classify_disk_as_usb(disk: Any) -> Tuple[bool, List[str], Dict[str, Any]]:
+    interface_type_raw = getattr(disk, "InterfaceType", None)
+    interface_type = str(interface_type_raw).strip() if interface_type_raw else ""
+    interface_type_upper = interface_type.upper()
+
+    bus_type_raw = getattr(disk, "BusType", None)
+    bus_type: Optional[int] = None
+    bus_type_label: Optional[str] = None
+    if isinstance(bus_type_raw, (int, float)):
+        bus_type = int(bus_type_raw)
+    elif isinstance(bus_type_raw, str) and bus_type_raw.strip():
+        bus_type_label = bus_type_raw.strip()
+
+    pnp_device_id_raw = getattr(disk, "PNPDeviceID", None)
+    pnp_device_id = str(pnp_device_id_raw).strip() if pnp_device_id_raw else ""
+    pnp_device_id_upper = pnp_device_id.upper()
+
+    device_id_raw = getattr(disk, "DeviceID", None)
+    device_id = str(device_id_raw).strip() if device_id_raw else ""
+    device_id_upper = device_id.upper()
+
+    media_type_raw = getattr(disk, "MediaType", None)
+    media_type = str(media_type_raw).strip() if media_type_raw else ""
+
+    reasons: List[str] = []
+
+    if interface_type_upper == "USB":
+        reasons.append("InterfaceType=USB")
+
+    if bus_type is not None and bus_type in USB_BUS_TYPE_IDS:
+        reasons.append(f"BusType={bus_type}")
+    elif bus_type_label and bus_type_label.upper() == "USB":
+        reasons.append("BusTypeLabel=USB")
+
+    if "USBSTOR" in pnp_device_id_upper:
+        reasons.append("PNPDeviceID contiene USBSTOR")
+    elif "USB" in pnp_device_id_upper:
+        reasons.append("PNPDeviceID contiene USB")
+
+    if "\\USB" in device_id_upper or device_id_upper.startswith("USB"):
+        reasons.append("DeviceID contiene USB")
+
+    is_usb = bool(reasons)
+
+    metadata = {
+        "interfaceType": interface_type or None,
+        "busType": bus_type if bus_type is not None else (bus_type_label or None),
+        "mediaType": media_type or None,
+        "pnpDeviceId": pnp_device_id or None,
+        "deviceId": device_id or None,
+    }
+
+    return is_usb, reasons, metadata
+
+
 def get_connected_usb_drives(conn: wmi.WMI) -> list:
     """Obtiene información de todas las unidades USB conectadas actualmente."""
     usb_drives: list[Dict[str, Any]] = []
 
-    disks = conn.Win32_DiskDrive(InterfaceType="USB")
+    disks = conn.Win32_DiskDrive()
     for disk in disks:
         disk_index = getattr(disk, "Index", None)
         if disk_index is None:
             continue
+
+        is_usb, reasons, metadata = _classify_disk_as_usb(disk)
+        disk_identifier = f"{disk_index}:{metadata.get('deviceId') or metadata.get('pnpDeviceId') or 'UNKNOWN'}"
+
+        if not is_usb:
+            cache_key = f"skip:{disk_identifier}"
+            if cache_key not in DISCARDED_DISK_CACHE:
+                LOGGER.warning(
+                    "Disco descartado por no parecer USB | index=%s | interface=%s | media=%s",
+                    disk_index,
+                    metadata.get("interfaceType") or "N/A",
+                    metadata.get("mediaType") or "N/A",
+                )
+                LOGGER.debug(
+                    "Detalles del disco descartado | index=%s | PNP=%s | DeviceID=%s",
+                    disk_index,
+                    _shorten(metadata.get("pnpDeviceId")),
+                    _shorten(metadata.get("deviceId")),
+                )
+                DISCARDED_DISK_CACHE.add(cache_key)
+            continue
+
+        LOGGER.debug(
+            "Disco clasificado como USB | index=%s | razones=%s | interface=%s",
+            disk_index,
+            ", ".join(reasons),
+            metadata.get("interfaceType") or "N/A",
+        )
 
         serial = (getattr(disk, "SerialNumber", "") or "").strip()
         serial_normalized = normalize_serial_candidate(serial)
@@ -1527,10 +1726,15 @@ def get_connected_usb_drives(conn: wmi.WMI) -> list:
                         "driveLetter": drive_id,
                         "volumeName": volume_name,
                         "serialNumber": serial_report,
+                        "serialNumberNormalized": serial_normalized,
                         "serialNumberRaw": serial or None,
                         "model": model or "Unknown",
                         "size": size,
                         "freeSpace": free_space,
+                        "interfaceType": metadata.get("interfaceType"),
+                        "busType": metadata.get("busType"),
+                        "mediaType": metadata.get("mediaType"),
+                        "detectionReasons": reasons,
                     }
                 )
                 LOGGER.debug(
@@ -1557,14 +1761,14 @@ def find_drive_info_by_letter(
     return None
 
 
-def send_connected_drives_status(pc_name: str, conn: wmi.WMI) -> bool:
+def send_connected_drives_status(pc_name: str, conn: wmi.WMI, drives: Optional[list] = None) -> bool:
     """Envía el estado actual de las unidades USB conectadas al backend."""
     endpoint = "/api/usb-event/connected-status"
     url = build_url(endpoint)
     headers = {"Content-Type": "application/json"}
     headers.update(get_auth_headers())
 
-    connected_drives = get_connected_usb_drives(conn)
+    connected_drives = drives if drives is not None else get_connected_usb_drives(conn)
     LOGGER.debug("  [Estado Conectadas] Se encontraron %d unidades USB conectadas", len(connected_drives))
 
     payload = {
@@ -2141,6 +2345,7 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
         conn: Optional[wmi.WMI] = None
 
         try:
+            snapshot_signature: Optional[Tuple[Tuple[str, str, int], ...]] = None
             while not self.stopped:
                 if conn is None:
                     try:
@@ -2156,10 +2361,33 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
 
                 try:
                     LOGGER.debug("  [Consulta] Obteniendo estado de unidades USB conectadas...")
-                    sent = send_connected_drives_status(pc_name, conn)
-                    if not sent:
+                    connected_drives = get_connected_usb_drives(conn)
+                    signature = tuple(
+                        sorted(
+                            (
+                                str(item.get("driveLetter", "")),
+                                str(item.get("serialNumber", "")),
+                                int(item.get("size", 0)),
+                            )
+                            for item in connected_drives
+                        )
+                    )
+
+                    if signature == snapshot_signature:
                         LOGGER.debug(
-                            "  ⚠  No se actualizó el estado de unidades para %s",
+                            "  [Estado Conectadas] Sin cambios desde el último reporte"
+                        )
+                    else:
+                        snapshot_signature = signature
+                        sent = send_connected_drives_status(pc_name, conn, connected_drives)
+                        if not sent:
+                            LOGGER.debug(
+                                "  ⚠  No se actualizó el estado de unidades para %s",
+                                pc_name,
+                            )
+                    if not connected_drives:
+                        LOGGER.debug(
+                            "  [Estado Conectadas] No hay unidades activas en %s",
                             pc_name,
                         )
                 except Exception as exc:
@@ -2169,7 +2397,7 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                     )
                     conn = None
 
-                time.sleep(10)
+                time.sleep(20)
         finally:
             conn = None
             pythoncom.CoUninitialize()

@@ -8,6 +8,24 @@ import { normalizeComputerName } from "@/lib/utils";
 
 const execAsync = util.promisify(exec);
 
+/*
+  Métricas sugeridas:
+  ```ts
+  import { performance } from "node:perf_hooks";
+
+  function recordScanMetrics(durationMs: number, hosts: number) {
+    void fetch("/api/metrics", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "network_scan_latency_ms", value: durationMs, hosts }),
+    }).catch(() => {});
+  }
+  ```
+  Invocar `recordScanMetrics` tras `await Promise.all(workers);` para almacenar tiempos
+  en Prometheus/Grafana. Similarmente instrumentar `$transaction` en Prisma usando
+  `prisma.$on("query", ...)` cuando se habilite la canalización de observabilidad.
+*/
+
 export interface HostScanResult {
   ip: string;
   alive: boolean;
@@ -19,7 +37,6 @@ export interface HostScanResult {
   latencyMs?: number;
   serviceVersion?: string;
   uptimeSeconds?: number;
-  pendingUnlocks?: number;
   lastServiceHeartbeat?: Date | null;
   error?: string;
 }
@@ -51,6 +68,7 @@ function ipRangeFromCIDR(cidr: string): string[] {
 async function pingHost(ip: string, timeoutMs = 800): Promise<boolean> {
   try {
     // -n 1 un eco, -w timeout en ms (Windows). Ajustar si se despliega en Linux.
+    // Cambiar a una librería ICMP (net-ping/fast-ping) si se identifica este paso como cuello de botella.
     await execAsync(`ping -n 1 -w ${timeoutMs} ${ip}`);
     return true;
   } catch {
@@ -68,9 +86,18 @@ type ServiceCheckResult = Pick<
   | "latencyMs"
   | "serviceVersion"
   | "uptimeSeconds"
-  | "pendingUnlocks"
   | "lastServiceHeartbeat"
 >;
+
+interface ComputerUpsertPayload {
+  name: string;
+  ip: string;
+  lastSeenAt: Date;
+  isActive: boolean;
+  serviceInstalled?: boolean;
+  serviceRunning?: boolean;
+  lastServiceCheck?: Date;
+}
 
 async function checkService(ip: string): Promise<ServiceCheckResult> {
   const result: ServiceCheckResult = {
@@ -112,10 +139,6 @@ async function checkService(ip: string): Promise<ServiceCheckResult> {
     result.uptimeSeconds = health.uptimeSeconds;
   }
 
-  if (typeof health.pendingUnlocks === "number") {
-    result.pendingUnlocks = health.pendingUnlocks;
-  }
-
   if (typeof health.heartbeatAt === "number") {
     result.lastServiceHeartbeat = new Date(health.heartbeatAt);
   }
@@ -147,6 +170,40 @@ function newJobId() {
   return Math.random().toString(36).slice(2, 10);
 }
 
+const UPSERT_BATCH_SIZE = 25;
+const JOB_TTL_MS = 5 * 60_000;
+
+async function persistComputers(entries: ComputerUpsertPayload[]) {
+  if (!entries.length) return;
+  // Chunk $transaction calls to keep Prisma execution time predictable and reduce round trips.
+  for (let i = 0; i < entries.length; i += UPSERT_BATCH_SIZE) {
+    const slice = entries.slice(i, i + UPSERT_BATCH_SIZE);
+    const operations = slice.map((entry) =>
+      (db as any).computer.upsert({
+        where: { name: entry.name },
+        update: {
+          ipAddress: entry.ip,
+          lastSeen: entry.lastSeenAt,
+          isActive: entry.isActive,
+          serviceInstalled: entry.serviceInstalled ?? false,
+          serviceRunning: entry.serviceRunning ?? false,
+          lastServiceCheck: entry.lastServiceCheck,
+        },
+        create: {
+          name: entry.name,
+          ipAddress: entry.ip,
+          lastSeen: entry.lastSeenAt,
+          isActive: entry.isActive,
+          serviceInstalled: entry.serviceInstalled ?? false,
+          serviceRunning: entry.serviceRunning ?? false,
+          lastServiceCheck: entry.lastServiceCheck,
+        },
+      })
+    );
+    await (db as any).$transaction(operations);
+  }
+}
+
 export function getScanJob(jobId: string) {
   return jobs[jobId];
 }
@@ -168,6 +225,7 @@ export async function scanNetwork(
   const ips = ipRangeFromCIDR(net);
   const concurrency = 30;
   const results: HostScanResult[] = [];
+  const persistQueue: ComputerUpsertPayload[] = [];
   let index = 0;
   async function worker() {
     while (index < ips.length) {
@@ -185,29 +243,15 @@ export async function scanNetwork(
             : "";
           const computerName = normalizedName || normalizeComputerName(ip);
           host.hostname = normalizedName || host.hostname || computerName;
-          // Actualizar/crear en DB (best-effort)
-          const lastSeenAt = getCurrentDate();
-          await (db as any).computer.upsert({
-            where: { name: computerName },
-            // Cast a any debido a posible desincronización temporal del cliente Prisma
-            update: {
-              ipAddress: ip,
-              lastSeen: lastSeenAt,
-              isActive: isUp,
-              // Campos extra añadidos recientemente al modelo Computer
-              serviceInstalled: (svc as any).serviceInstalled ?? false,
-              serviceRunning: (svc as any).serviceRunning ?? false,
-              lastServiceCheck: (svc as any).lastServiceCheck,
-            } as any,
-            create: {
-              name: computerName,
-              ipAddress: ip,
-              lastSeen: lastSeenAt,
-              isActive: isUp,
-              serviceInstalled: (svc as any).serviceInstalled ?? false,
-              serviceRunning: (svc as any).serviceRunning ?? false,
-              lastServiceCheck: (svc as any).lastServiceCheck,
-            } as any,
+          // Defer writes so Prisma only touches the database once per batch instead of per host.
+          persistQueue.push({
+            name: computerName,
+            ip,
+            lastSeenAt: getCurrentDate(),
+            isActive: isUp,
+            serviceInstalled: (svc as any).serviceInstalled ?? false,
+            serviceRunning: (svc as any).serviceRunning ?? false,
+            lastServiceCheck: (svc as any).lastServiceCheck,
           });
         }
       } catch (e: any) {
@@ -218,6 +262,7 @@ export async function scanNetwork(
   }
   const workers = Array.from({ length: concurrency }, () => worker());
   await Promise.all(workers);
+  await persistComputers(persistQueue);
   lastScan = { cidr: net, timestamp: getCurrentTimestamp(), results };
   return results;
 }
@@ -274,11 +319,19 @@ export function startScanJob(cidr?: string): ScanJob {
         timestamp: getCurrentTimestamp(),
         results: job.results,
       };
+      // Auto-expire finished jobs to avoid unbounded memory growth when admins fire many scans.
+      setTimeout(() => {
+        delete jobs[job.id];
+      }, JOB_TTL_MS).unref?.();
     })
     .catch((e) => {
       job.status = "error";
       job.error = e.message;
       job.finished = getCurrentTimestamp();
+      // Ensure errored jobs also get purged after TTL.
+      setTimeout(() => {
+        delete jobs[job.id];
+      }, JOB_TTL_MS).unref?.();
     });
   return job;
 }

@@ -32,6 +32,37 @@ import {
 import { getCurrentDate } from "@/lib/time";
 import { getCsrfTokenFromDocument } from "@/lib/utils";
 
+/*
+  Rendimiento (pendiente de ejecutar en iteración siguiente):
+  1. Montar React Query a nivel de layout:
+    ```tsx
+    // src/components/system/QueryProvider.tsx
+    "use client";
+    import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+    const client = new QueryClient({ defaultOptions: { queries: { staleTime: 30_000 } } });
+    export function QueryProvider({ children }: { children: React.ReactNode }) {
+     return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+    }
+    ```
+    y envolver `<AuthGate>` dentro de `QueryProvider` en `RootLayout` para compartir caché.
+
+  2. Reemplazar `fetchData` con hooks específicos:
+    ```tsx
+    const eventsQuery = useQuery({
+     queryKey: ["events"],
+     queryFn: () => fetchJson<USBEvent[]>("/api/usb-event"),
+     enabled: ["overview", "events"].includes(activeKey),
+    });
+    ```
+    y crear invalidations con `queryClient.invalidateQueries(["events"])` cuando se muta.
+
+  3. Suscribirse a Socket.IO para eventos críticos (USB, estado de red) y actualizar cache
+    mediante `queryClient.setQueryData`, reduciendo el polling a 60 s para sincronización.
+
+  4. Eliminar la llamada `Promise.all` global en `fetchData` tras migrar, manteniendo únicamente
+    invalidaciones condicionadas por pestaña activa.
+*/
+
 type ViewKey =
   | "overview"
   | "events"
@@ -91,6 +122,7 @@ export default function Home() {
             router.push("/basic-user");
             return;
           }
+          // Rol 'agent' eliminado: solo 'admin' y 'user'.
           setUser({
             name: data.user.name ?? data.user.username ?? null,
             role,
@@ -104,7 +136,7 @@ export default function Home() {
     };
 
     checkRole();
-  }, [router]);
+  }, [router, toast]);
 
   const fetchData = useCallback(
     async (manual = false) => {
@@ -116,58 +148,75 @@ export default function Home() {
         }
         setErrorMsg(null);
 
-        const [
-          eventsResponse,
-          computersResponse,
-          whitelistResponse,
-          usersResponse,
-        ] = await Promise.all([
-          fetch("/api/usb-event", {
-            cache: "no-store",
-            credentials: "include",
-          }),
-          fetch("/api/computers", {
-            cache: "no-store",
-            credentials: "include",
-          }),
-          fetch("/api/whitelist", {
-            cache: "no-store",
-            credentials: "include",
-          }),
-          fetch("/api/users?page=1&pageSize=1", {
-            cache: "no-store",
-            credentials: "include",
-          }),
-        ]);
+        // Reducimos llamadas REST solicitando únicamente los recursos que la pestaña actual necesita.
+        const needEvents = ["overview", "events"].includes(activeKey);
+        const needComputers = ["overview", "computers", "network"].includes(
+          activeKey
+        );
+        const needWhitelist = ["overview", "whitelist"].includes(activeKey);
+        const needUsers = ["overview", "users", "settings"].includes(activeKey);
 
-        const allOk =
-          eventsResponse.ok &&
-          computersResponse.ok &&
-          whitelistResponse.ok &&
-          usersResponse.ok;
+        const tasks: Promise<void>[] = [];
+        let hadError = false;
 
-        if (eventsResponse.ok) {
-          const eventsData = await eventsResponse.json();
-          setEvents(eventsData);
+        if (needEvents) {
+          tasks.push(
+            fetch("/api/usb-event", {
+              cache: "no-store",
+              credentials: "include",
+            }).then(async (res) => {
+              if (!res.ok) throw res;
+              const eventsData = await res.json();
+              setEvents(eventsData);
+            })
+          );
         }
 
-        if (computersResponse.ok) {
-          const computersData = await computersResponse.json();
-          setComputers(computersData);
+        if (needComputers) {
+          tasks.push(
+            fetch("/api/computers", {
+              cache: "no-store",
+              credentials: "include",
+            }).then(async (res) => {
+              if (!res.ok) throw res;
+              const computersData = await res.json();
+              setComputers(computersData);
+            })
+          );
         }
 
-        if (whitelistResponse.ok) {
-          const whitelistData = await whitelistResponse.json();
-          setWhitelist(whitelistData?.items ?? whitelistData ?? []);
+        if (needWhitelist) {
+          tasks.push(
+            fetch("/api/whitelist", {
+              cache: "no-store",
+              credentials: "include",
+            }).then(async (res) => {
+              if (!res.ok) throw res;
+              const whitelistData = await res.json();
+              setWhitelist(whitelistData?.items ?? whitelistData ?? []);
+            })
+          );
         }
 
-        if (usersResponse.ok) {
-          const usersData = await usersResponse.json();
-          setUsersCount(usersData?.total ?? usersData?.items?.length ?? 0);
+        if (needUsers) {
+          tasks.push(
+            fetch("/api/users?page=1&pageSize=1", {
+              cache: "no-store",
+              credentials: "include",
+            }).then(async (res) => {
+              if (!res.ok) throw res;
+              const usersData = await res.json();
+              setUsersCount(usersData?.total ?? usersData?.items?.length ?? 0);
+            })
+          );
         }
 
-        if (!allOk) {
-          const errorSummary = `Eventos ${eventsResponse.status} / PCs ${computersResponse.status} / Whitelist ${whitelistResponse.status} / Usuarios ${usersResponse.status}`;
+        try {
+          await Promise.all(tasks);
+        } catch (res: any) {
+          hadError = true;
+          const status = Number(res?.status) || 500;
+          const errorSummary = `Fallo HTTP ${status} durante sincronización`;
           setErrorMsg(`Error al obtener datos (${errorSummary})`);
           if (manual) {
             toast({
@@ -176,7 +225,9 @@ export default function Home() {
               variant: "destructive",
             });
           }
-        } else {
+        }
+
+        if (tasks.length && !hadError) {
           const now = getCurrentDate();
           setLastUpdate(now);
           if (manual) {
@@ -206,7 +257,7 @@ export default function Home() {
         }
       }
     },
-    [toast]
+    [activeKey, toast]
   );
 
   useEffect(() => {

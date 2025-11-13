@@ -35,6 +35,12 @@ const dateTimeFormatter = createFormatter({
   second: "2-digit",
 });
 
+const dateFormatter = createFormatter({
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+});
+
 const timeFormatter = createFormatter({
   hour: "2-digit",
   minute: "2-digit",
@@ -69,6 +75,11 @@ const normalizeDate = (value: SupportedValue) => {
 export function formatDateTime(value: SupportedValue): string {
   const date = normalizeDate(value);
   return date ? dateTimeFormatter.format(date) : "—";
+}
+
+export function formatDate(value: SupportedValue): string {
+  const date = normalizeDate(value);
+  return date ? dateFormatter.format(date) : "—";
 }
 
 export function formatTime(

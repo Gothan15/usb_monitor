@@ -16,7 +16,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -36,6 +35,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DashboardPagination } from "./DashboardPagination";
+import { useTableSort } from "@/hooks/useTableSort";
+import { SortableTableHead } from "./SortableTableHead";
 
 interface CreatePayload {
   serialNumber: string;
@@ -60,12 +61,15 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  const totalEntries = entries.length;
+  const { sortedData, sortConfig, requestSort } =
+    useTableSort<WhitelistEntry>(entries);
+
+  const totalEntries = sortedData.length;
   const latestCreatedAt = useMemo(() => {
-    if (!entries.length) return null;
-    return entries[0]?.createdAt ?? null;
-  }, [entries]);
-  const latestCreatedBy = entries[0]?.createdBy?.username;
+    if (!sortedData.length) return null;
+    return sortedData[0]?.createdAt ?? null;
+  }, [sortedData]);
+  const latestCreatedBy = sortedData[0]?.createdBy?.username;
 
   const numberFormatter = useMemo(() => new Intl.NumberFormat("es-ES"), []);
 
@@ -121,9 +125,9 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
   );
 
   const pageCount = useMemo(() => {
-    if (entries.length === 0) return 1;
-    return Math.max(1, Math.ceil(entries.length / Math.max(pageSize, 1)));
-  }, [entries.length, pageSize]);
+    if (sortedData.length === 0) return 1;
+    return Math.max(1, Math.ceil(sortedData.length / Math.max(pageSize, 1)));
+  }, [sortedData.length, pageSize]);
 
   useEffect(() => {
     if (page > pageCount) {
@@ -145,10 +149,10 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
   }, []);
 
   const paginatedEntries = useMemo(() => {
-    if (entries.length === 0) return [];
+    if (sortedData.length === 0) return [];
     const start = (page - 1) * pageSize;
-    return entries.slice(start, start + pageSize);
-  }, [entries, page, pageSize]);
+    return sortedData.slice(start, start + pageSize);
+  }, [sortedData, page, pageSize]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -391,24 +395,61 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
               <Table className="min-w-full">
                 <TableHeader className="sticky top-0 z-10 bg-white/95 backdrop-blur-xl dark:bg-slate-900/80">
                   <TableRow className="border-slate-200/80 dark:border-white/10">
-                    <TableHead className="text-slate-600 dark:text-slate-200">
+                    <SortableTableHead
+                      column="serialNumber"
+                      currentSortKey={sortConfig.key}
+                      currentSortDirection={sortConfig.direction}
+                      onSort={requestSort}
+                      className="text-slate-600 dark:text-slate-200"
+                    >
                       Serial
-                    </TableHead>
-                    <TableHead className="text-slate-600 dark:text-slate-200">
+                    </SortableTableHead>
+                    <SortableTableHead
+                      column="label"
+                      currentSortKey={sortConfig.key}
+                      currentSortDirection={sortConfig.direction}
+                      onSort={requestSort}
+                      className="text-slate-600 dark:text-slate-200"
+                    >
                       Alias
-                    </TableHead>
-                    <TableHead className="text-slate-600 dark:text-slate-200">
+                    </SortableTableHead>
+                    <SortableTableHead
+                      column="notes"
+                      currentSortKey={sortConfig.key}
+                      currentSortDirection={sortConfig.direction}
+                      onSort={requestSort}
+                      className="text-slate-600 dark:text-slate-200"
+                    >
                       Notas
-                    </TableHead>
-                    <TableHead className="text-slate-600 dark:text-slate-200">
+                    </SortableTableHead>
+                    <SortableTableHead
+                      column="createdAt"
+                      currentSortKey={sortConfig.key}
+                      currentSortDirection={sortConfig.direction}
+                      onSort={requestSort}
+                      className="text-slate-600 dark:text-slate-200"
+                    >
                       Creado
-                    </TableHead>
-                    <TableHead className="text-slate-600 dark:text-slate-200">
+                    </SortableTableHead>
+                    <SortableTableHead
+                      column="createdBy"
+                      currentSortKey={sortConfig.key}
+                      currentSortDirection={sortConfig.direction}
+                      onSort={requestSort}
+                      className="text-slate-600 dark:text-slate-200"
+                    >
                       Autor
-                    </TableHead>
-                    <TableHead className="text-right text-slate-600 dark:text-slate-200">
+                    </SortableTableHead>
+                    <SortableTableHead
+                      column="id"
+                      currentSortKey={sortConfig.key}
+                      currentSortDirection={sortConfig.direction}
+                      onSort={requestSort}
+                      className="text-slate-600 dark:text-slate-200"
+                      align="right"
+                    >
                       Acciones
-                    </TableHead>
+                    </SortableTableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

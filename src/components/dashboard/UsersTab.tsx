@@ -36,7 +36,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -62,6 +61,8 @@ import {
   Trash2,
   UserRound,
 } from "lucide-react";
+import { useTableSort } from "@/hooks/useTableSort";
+import { SortableTableHead } from "./SortableTableHead";
 
 interface AdminUser {
   id: string;
@@ -123,6 +124,9 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
   const deferredSearch = useDeferredValue(searchInput);
   const [reloadFlag, setReloadFlag] = useState(0);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+
+  const { sortedData, sortConfig, requestSort } =
+    useTableSort<AdminUser>(users);
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState<UserFormState>(() =>
@@ -614,18 +618,60 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
                   <Table>
                     <TableHeader className="sticky top-0 z-10 bg-white/95 backdrop-blur-xl dark:bg-slate-900/80">
                       <TableRow className="border-white/60 dark:border-white/10">
-                        <TableHead>Usuario</TableHead>
-                        <TableHead>Rol</TableHead>
-                        <TableHead>Equipo</TableHead>
-                        <TableHead>API key</TableHead>
-                        <TableHead>Creado</TableHead>
-                        <TableHead className="w-[120px] text-right">
+                        <SortableTableHead
+                          column="username"
+                          currentSortKey={sortConfig.key}
+                          currentSortDirection={sortConfig.direction}
+                          onSort={requestSort}
+                        >
+                          Usuario
+                        </SortableTableHead>
+                        <SortableTableHead
+                          column="role"
+                          currentSortKey={sortConfig.key}
+                          currentSortDirection={sortConfig.direction}
+                          onSort={requestSort}
+                        >
+                          Rol
+                        </SortableTableHead>
+                        <SortableTableHead
+                          column="computer"
+                          currentSortKey={sortConfig.key}
+                          currentSortDirection={sortConfig.direction}
+                          onSort={requestSort}
+                        >
+                          Equipo
+                        </SortableTableHead>
+                        <SortableTableHead
+                          column="apiKey"
+                          currentSortKey={sortConfig.key}
+                          currentSortDirection={sortConfig.direction}
+                          onSort={requestSort}
+                        >
+                          API key
+                        </SortableTableHead>
+                        <SortableTableHead
+                          column="createdAt"
+                          currentSortKey={sortConfig.key}
+                          currentSortDirection={sortConfig.direction}
+                          onSort={requestSort}
+                        >
+                          Creado
+                        </SortableTableHead>
+                        <SortableTableHead
+                          column="id"
+                          currentSortKey={sortConfig.key}
+                          currentSortDirection={sortConfig.direction}
+                          onSort={requestSort}
+                          className="w-[120px]"
+                          align="right"
+                        >
                           Acciones
-                        </TableHead>
+                        </SortableTableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {users.map((user) => (
+                      {sortedData.map((user) => (
                         <TableRow
                           key={user.id}
                           className="group border border-white/70 bg-white/75 transition-all duration-150 hover:-translate-y-0.5 hover:border-slate-300/60 hover:bg-slate-50/70 dark:border-white/10 dark:bg-white/5 dark:hover:border-slate-500/40 dark:hover:bg-slate-900/40"

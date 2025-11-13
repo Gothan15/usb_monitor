@@ -62,6 +62,8 @@ export async function POST(req: Request) {
       );
     }
 
+    // Rol 'agent' eliminado: solo 'admin' y 'user'.
+
     // Validar que usuarios normales solo puedan iniciar sesión desde su PC asignada
     if (user.role === "user" && user.computer) {
       // Obtener el hostname de la computadora cliente

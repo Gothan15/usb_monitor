@@ -53,6 +53,8 @@ export default function BasicUserPage() {
         return;
       }
 
+      // Rol 'agent' eliminado: solo 'admin' y 'user'.
+
       setUser(data.user);
     } catch (sessionError) {
       const message =

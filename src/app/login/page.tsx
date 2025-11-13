@@ -20,7 +20,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [usbUnlocked, setUsbUnlocked] = useState(false);
+  // Flujo legacy de desbloqueo eliminado; se utiliza únicamente whitelist.
   const router = useRouter();
   const searchParams = useSearchParams();
   const pcName = searchParams.get("pcName");
@@ -73,53 +73,9 @@ export default function LoginPage() {
         return;
       }
 
-      // Si hay un pcName en la URL, intentar desbloquear el USB
-      if (pcName) {
-        try {
-          const csrfTokenFromHeader = res.headers.get("X-CSRF-Token");
-          const csrfToken = csrfTokenFromHeader || getCsrfTokenFromDocument();
+      // Rol 'agent' eliminado: solo 'admin' y 'user'.
 
-          if (!csrfToken) {
-            throw new Error(
-              "No se detectó token CSRF tras iniciar sesión. Actualiza la página e inténtalo nuevamente."
-            );
-          }
-
-          const unlockRes = await fetch("/api/usb-unlock", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-csrf-token": csrfToken,
-            },
-            credentials: "include",
-            body: JSON.stringify({ pcName }),
-          });
-
-          if (unlockRes.ok) {
-            const unlockData = await unlockRes.json();
-
-            // Si es usuario normal, mostrar mensaje y no redirigir
-            if (data.user?.role === "user") {
-              setUsbUnlocked(true);
-              setLoading(false);
-              return;
-            }
-
-            // Si es admin, redirigir al dashboard
-            if (data.user?.role === "admin") {
-              try {
-                const ch = new BroadcastChannel("auth-state");
-                ch.postMessage({ type: "login" });
-                ch.close();
-              } catch {}
-              router.push("/");
-              return;
-            }
-          }
-        } catch (unlockError) {
-          console.error("Error al desbloquear USB:", unlockError);
-        }
-      }
+      // Nota: se elimina el intento de desbloqueo via /api/usb-unlock (método legacy)
 
       // Login normal sin desbloqueo de USB - redirigir según el rol
       try {
@@ -166,7 +122,7 @@ export default function LoginPage() {
         transition={{ duration: 0.5 }}
         className="w-full max-w-sm"
       >
-        {usbUnlocked ? (
+        {false ? (
           <Card className="backdrop-blur supports-[backdrop-filter]:bg-background/70 border-border/60 shadow-lg">
             <CardHeader className="space-y-1">
               <div className="flex items-center gap-2">

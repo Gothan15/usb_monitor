@@ -46,6 +46,7 @@ model Computer {
   users            User[] // Relación con usuarios
 
   @@index([lastSeen])
+  @@index([ipAddress])
   @@map("computers")
 }
 
@@ -54,7 +55,7 @@ model User {
   username         String         @unique
   passwordHash     String
   apiKey           String         @unique
-  role             String         @default("user") // "admin" o "user"
+  role             Role           @default(USER)
   computerId       String? // Computadora asignada al usuario
   computer         Computer?      @relation(fields: [computerId], references: [id], onDelete: SetNull)
   createdAt        DateTime       @default(now())
@@ -66,18 +67,11 @@ model User {
   @@index([computerId])
 }
 
-model PendingUnlock {
-  id          String   @id @default(cuid())
-  pcName      String
-  driveLetter String
-  createdAt   DateTime @default(now())
-  expiresAt   DateTime
-  unlocked    Boolean  @default(false)
-
-  @@index([pcName, unlocked])
-  @@index([expiresAt])
-  @@map("pending_unlocks")
+enum Role {
+  ADMIN @map("admin")
+  USER  @map("user")
 }
+
 
 model USBConnection {
   id             String    @id @default(cuid())
@@ -92,7 +86,9 @@ model USBConnection {
   lastSeen       DateTime  @default(now())
   isConnected    Boolean   @default(true)
 
+  @@index([pcName, connectedAt])
   @@index([pcName, isConnected])
+  @@index([pcName, serialNumber, isConnected])
   @@index([serialNumber])
   @@index([connectedAt])
   @@index([disconnectedAt])

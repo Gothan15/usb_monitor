@@ -25,10 +25,11 @@ async function main() {
   const username = args[0];
   const password = args[1];
   const apiKeyProvided = args[2];
-  const role = args[3] || "user"; // Por defecto "user"
+  const role = (args[3] || "user").toLowerCase(); // Por defecto "user"
   const computerName = args[4]; // Nombre de la computadora (opcional)
 
-  if (role !== "admin" && role !== "user") {
+  const allowedRoles = new Set(["admin", "user"]);
+  if (!allowedRoles.has(role)) {
     console.error("ERROR: rol debe ser 'admin' o 'user'");
     process.exit(1);
   }
@@ -51,6 +52,8 @@ async function main() {
     computerId = computer.id;
   }
 
+  // Nota: el rol 'agent' fue eliminado.
+
   const passwordHash = await hashPassword(password);
   const apiKey = apiKeyProvided || generateApiKey();
   const user = await (db as any).user.create({
@@ -71,9 +74,7 @@ function printUsage(reason?: string) {
     "Uso: npm run user:create -- <username> <password> [apiKey] [role] [computerName]"
   );
   console.log("Roles disponibles: admin, user (por defecto: user)");
-  console.log(
-    "computerName: Nombre de la computadora a asignar (opcional, solo para usuarios)"
-  );
+  console.log("computerName: Nombre de la computadora a asignar (opcional)");
 }
 
 main().catch((e) => {

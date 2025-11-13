@@ -21,6 +21,7 @@ interface HitResult {
 }
 
 const redisUrl = process.env.REDIS_URL || process.env.UPSTASH_REDIS_REST_URL;
+const isProduction = process.env.NODE_ENV === "production";
 
 let redisClient: Redis | null = null;
 let redisInitAttempted = false;
@@ -32,7 +33,7 @@ function ensureRedis() {
   }
   redisInitAttempted = true;
   if (!redisUrl) {
-    if (!warnedAboutInMemory) {
+    if (!warnedAboutInMemory && isProduction) {
       warnedAboutInMemory = true;
       logWarn(
         "REDIS_URL no definido, usando rate limiting en memoria (desaconsejado en producción)"
@@ -71,24 +72,35 @@ export async function hit(
   const compositeKey = buildKey(key, context);
   const redis = ensureRedis();
   if (redis) {
-    const pipeline = redis.multi();
-    pipeline.incr(compositeKey);
-    pipeline.pttl(compositeKey);
-    const results = (await pipeline.exec()) || [];
-    const incrResult = results[0]?.[1] ?? 0;
-    const ttlResult = results[1]?.[1] ?? -1;
-    const count = Number(incrResult) || 0;
-    let ttl = Number(ttlResult);
-    if (ttl <= 0) {
-      await redis.pexpire(compositeKey, cfg.windowMs);
-      ttl = cfg.windowMs;
+    try {
+      const status = (redis as unknown as { status?: string }).status;
+      if (status !== "ready") {
+        await redis.connect();
+      }
+      const pipeline = redis.multi();
+      pipeline.incr(compositeKey);
+      pipeline.pttl(compositeKey);
+      const results = (await pipeline.exec()) || [];
+      const incrResult = results[0]?.[1] ?? 0;
+      const ttlResult = results[1]?.[1] ?? -1;
+      const count = Number(incrResult) || 0;
+      let ttl = Number(ttlResult);
+      if (ttl <= 0) {
+        await redis.pexpire(compositeKey, cfg.windowMs);
+        ttl = cfg.windowMs;
+      }
+      const allowed = count <= cfg.max;
+      return {
+        allowed,
+        remaining: allowed ? cfg.max - count : 0,
+        resetIn: ttl,
+      };
+    } catch (error) {
+      logWarn("Fallo usando Redis para rate limiting, se usa memoria", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+      // continua a fallback en memoria
     }
-    const allowed = count <= cfg.max;
-    return {
-      allowed,
-      remaining: allowed ? cfg.max - count : 0,
-      resetIn: ttl,
-    };
   }
 
   const now = getCurrentTimestamp();

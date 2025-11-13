@@ -13,7 +13,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -45,6 +44,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { DashboardPagination } from "./DashboardPagination";
+import { useTableSort } from "@/hooks/useTableSort";
+import { SortableTableHead } from "./SortableTableHead";
 
 interface Props {
   computers: Computer[];
@@ -73,6 +74,9 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Computer | null>(null);
 
+  const { sortedData, sortConfig, requestSort } =
+    useTableSort<Computer>(computers);
+
   const quickStats = useMemo(() => {
     if (loading) {
       return [
@@ -82,13 +86,13 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
       ];
     }
 
-    const activeCount = computers.filter(
+    const activeCount = sortedData.filter(
       (computer) => computer.isActive
     ).length;
-    const runningCount = computers.filter(
+    const runningCount = sortedData.filter(
       (computer) => computer.serviceRunning
     ).length;
-    const total = computers.length;
+    const total = sortedData.length;
 
     return [
       {
@@ -107,12 +111,12 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
         accent: "from-slate-400/20 via-slate-300/10",
       },
     ];
-  }, [computers, loading]);
+  }, [sortedData, loading]);
 
   const pageCount = useMemo(() => {
-    if (computers.length === 0) return 1;
-    return Math.max(1, Math.ceil(computers.length / Math.max(pageSize, 1)));
-  }, [computers.length, pageSize]);
+    if (sortedData.length === 0) return 1;
+    return Math.max(1, Math.ceil(sortedData.length / Math.max(pageSize, 1)));
+  }, [sortedData.length, pageSize]);
 
   useEffect(() => {
     if (page > pageCount) {
@@ -134,10 +138,10 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
   }, []);
 
   const paginatedComputers = useMemo(() => {
-    if (computers.length === 0) return [];
+    if (sortedData.length === 0) return [];
     const start = (page - 1) * pageSize;
-    return computers.slice(start, start + pageSize);
-  }, [computers, page, pageSize]);
+    return sortedData.slice(start, start + pageSize);
+  }, [sortedData, page, pageSize]);
 
   const handleConfirmDelete = useCallback(async () => {
     if (!onDelete || !pendingDelete) return;
@@ -330,28 +334,71 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                 <Table className="min-w-full">
                   <TableHeader className="sticky top-0 z-10 bg-white/95 backdrop-blur-xl dark:bg-slate-900/80">
                     <TableRow className="border-white/60 dark:border-white/10">
-                      <TableHead className="text-slate-600 dark:text-slate-200">
+                      <SortableTableHead
+                        column="name"
+                        currentSortKey={sortConfig.key}
+                        currentSortDirection={sortConfig.direction}
+                        onSort={requestSort}
+                        className="text-slate-600 dark:text-slate-200"
+                      >
                         Nombre
-                      </TableHead>
-                      <TableHead className="text-slate-600 dark:text-slate-200">
+                      </SortableTableHead>
+                      <SortableTableHead
+                        column="ipAddress"
+                        currentSortKey={sortConfig.key}
+                        currentSortDirection={sortConfig.direction}
+                        onSort={requestSort}
+                        className="text-slate-600 dark:text-slate-200"
+                      >
                         Dirección IP
-                      </TableHead>
-                      <TableHead className="text-slate-600 dark:text-slate-200">
+                      </SortableTableHead>
+                      <SortableTableHead
+                        column="isActive"
+                        currentSortKey={sortConfig.key}
+                        currentSortDirection={sortConfig.direction}
+                        onSort={requestSort}
+                        className="text-slate-600 dark:text-slate-200"
+                      >
                         Estado
-                      </TableHead>
-                      <TableHead className="text-slate-600 dark:text-slate-200">
+                      </SortableTableHead>
+                      <SortableTableHead
+                        column="serviceRunning"
+                        currentSortKey={sortConfig.key}
+                        currentSortDirection={sortConfig.direction}
+                        onSort={requestSort}
+                        className="text-slate-600 dark:text-slate-200"
+                      >
                         Servicio
-                      </TableHead>
-                      <TableHead className="text-slate-600 dark:text-slate-200">
+                      </SortableTableHead>
+                      <SortableTableHead
+                        column="lastSeen"
+                        currentSortKey={sortConfig.key}
+                        currentSortDirection={sortConfig.direction}
+                        onSort={requestSort}
+                        className="text-slate-600 dark:text-slate-200"
+                      >
                         Última conexión
-                      </TableHead>
-                      <TableHead className="text-slate-600 dark:text-slate-200">
+                      </SortableTableHead>
+                      <SortableTableHead
+                        column="createdAt"
+                        currentSortKey={sortConfig.key}
+                        currentSortDirection={sortConfig.direction}
+                        onSort={requestSort}
+                        className="text-slate-600 dark:text-slate-200"
+                      >
                         Fecha registro
-                      </TableHead>
+                      </SortableTableHead>
                       {onDelete && (
-                        <TableHead className="text-right text-slate-600 dark:text-slate-200">
+                        <SortableTableHead
+                          column="id"
+                          currentSortKey={sortConfig.key}
+                          currentSortDirection={sortConfig.direction}
+                          onSort={requestSort}
+                          className="text-slate-600 dark:text-slate-200"
+                          align="right"
+                        >
                           Acciones
-                        </TableHead>
+                        </SortableTableHead>
                       )}
                     </TableRow>
                   </TableHeader>

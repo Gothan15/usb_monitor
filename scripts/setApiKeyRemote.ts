@@ -24,7 +24,10 @@ async function setApiKeyRemotely(computerName: string, config?: RemoteConfig) {
       return;
     }
 
-    const apiKey = computer.users[0].apiKey;
+    const agentUser =
+      computer.users.find((user) => user.role === "user") || computer.users[0];
+
+    const apiKey = agentUser.apiKey;
     const targetHost = config?.hostname || computer.ipAddress;
 
     console.log(

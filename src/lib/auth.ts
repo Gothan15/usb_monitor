@@ -1,4 +1,5 @@
 import { randomBytes, scryptSync, timingSafeEqual, createHmac } from "crypto";
+import QuickLRU from "quick-lru";
 import argon2 from "argon2";
 import { db } from "./db";
 import { getCurrentTimestamp } from "./time";
@@ -37,6 +38,135 @@ const ARGON2_OPTS = {
 };
 // Inactividad máxima (sliding): si han pasado más de X segundos desde último uso => inválida
 const SESSION_INACTIVITY_LIMIT = 30 * 60; // 30 min
+const SESSION_CACHE_TTL_MS = 2 * 60 * 1000; // cache lookups for 2 minutos
+const SESSION_CACHE_MAX = 1000;
+const AGENT_CACHE_TTL_MS = 60 * 1000;
+const AGENT_CACHE_MAX = 200;
+
+type UserRole = "admin" | "user";
+
+type CachedUser = {
+  id: string;
+  username: string;
+  role: UserRole;
+  apiKey: string | null;
+  computerId: string | null;
+  computerName: string | null;
+};
+
+// Keeps hot user lookups in-memory so high-frequency endpoints avoid repetitive SQL hits.
+const sessionUserCache = new QuickLRU<
+  string,
+  { payload: CachedUser; expiresAt: number }
+>({
+  maxSize: SESSION_CACHE_MAX,
+});
+
+const agentServiceCache = new QuickLRU<
+  string,
+  { payload: AgentServiceIdentity; expiresAt: number }
+>({
+  maxSize: AGENT_CACHE_MAX,
+});
+
+function cacheKeyUser(id: string) {
+  return `uid:${id}`;
+}
+
+function cacheKeyApiKey(apiKey: string) {
+  return `ak:${apiKey}`;
+}
+
+function cacheKeyAgent(apiKey: string) {
+  return `svc:${apiKey}`;
+}
+
+function setCachedUser(key: string, user: CachedUser) {
+  sessionUserCache.set(key, {
+    payload: user,
+    expiresAt: Date.now() + SESSION_CACHE_TTL_MS,
+  });
+}
+
+function getCachedUser(key: string): CachedUser | null {
+  const cached = sessionUserCache.get(key);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    sessionUserCache.delete(key);
+    return null;
+  }
+  return cached.payload;
+}
+
+function cacheAgentIdentity(apiKey: string, identity: AgentServiceIdentity) {
+  agentServiceCache.set(cacheKeyAgent(apiKey), {
+    payload: identity,
+    expiresAt: Date.now() + AGENT_CACHE_TTL_MS,
+  });
+}
+
+function getCachedAgentIdentity(apiKey: string): AgentServiceIdentity | null {
+  const cached = agentServiceCache.get(cacheKeyAgent(apiKey));
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    agentServiceCache.delete(cacheKeyAgent(apiKey));
+    return null;
+  }
+  return cached.payload;
+}
+
+function normalizeUserRecord(user: any): CachedUser {
+  return {
+    id: user.id,
+    username: user.username,
+    role: (user.role?.toLowerCase?.() || user.role) as UserRole,
+    apiKey: user.apiKey ?? null,
+    computerId: user.computerId ?? null,
+    computerName: user.computer?.name ?? null,
+  };
+}
+
+function cacheUserRecord(user: CachedUser) {
+  setCachedUser(cacheKeyUser(user.id), user);
+  if (user.apiKey) {
+    setCachedUser(cacheKeyApiKey(user.apiKey), user);
+  }
+}
+
+function toUserAuthIdentity(
+  user: CachedUser,
+  sessionNeedsRotation?: boolean
+): UserAuthIdentity {
+  return {
+    type: "user",
+    userId: user.id,
+    username: user.username,
+    role: user.role,
+    apiKey: user.apiKey,
+    computerId: user.computerId,
+    computerName: user.computerName,
+    sessionNeedsRotation,
+  };
+}
+
+function asServiceIdentityFromAgent(
+  user: CachedUser
+): AgentServiceIdentity | null {
+  if (user.role !== "user") {
+    return null;
+  }
+  if (!user.apiKey) {
+    return null;
+  }
+  const serviceId = user.computerName?.trim() || `service:${user.id}`;
+  return {
+    type: "service",
+    serviceId,
+    token: user.apiKey,
+    agentUserId: user.id,
+    computerId: user.computerId,
+  };
+}
 
 type AuthIdentity = UserAuthIdentity | ServiceAuthIdentity;
 
@@ -44,8 +174,10 @@ export interface UserAuthIdentity {
   type: "user";
   userId: string;
   username: string;
-  role: string;
+  role: UserRole;
   apiKey: string | null;
+  computerId: string | null;
+  computerName?: string | null;
   sessionNeedsRotation?: boolean;
 }
 
@@ -53,11 +185,19 @@ export interface ServiceAuthIdentity {
   type: "service";
   serviceId: string;
   token: string;
+  agentUserId?: string;
+  computerId?: string | null;
 }
+
+type AgentServiceIdentity = ServiceAuthIdentity & {
+  agentUserId: string;
+  computerId: string | null;
+};
 
 const CSRF_COOKIE_NAME = "csrf-token";
 const CSRF_HEADER_NAME = "x-csrf-token";
 const SAFE_HTTP_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+const AUTHORIZATION_HEADER_PATTERN = /^ApiKey\s+(\S+)$/i;
 
 const SERVICE_API_KEYS = (() => {
   const raw = process.env.SERVICE_API_KEYS || "";
@@ -290,25 +430,32 @@ export async function authenticateRequest(
   if (sessionToken) {
     const verification = verifySessionInternal(sessionToken);
     if (verification) {
-      const user = await (db as any).user.findUnique({
-        where: { id: verification.payload.uid },
-        select: { id: true, apiKey: true, username: true, role: true },
-      });
+      let user = getCachedUser(cacheKeyUser(verification.payload.uid));
+      if (!user) {
+        const record = await (db as any).user.findUnique({
+          where: { id: verification.payload.uid },
+          select: {
+            id: true,
+            apiKey: true,
+            username: true,
+            role: true,
+            computerId: true,
+            computer: { select: { name: true } },
+          },
+        });
+        if (record) {
+          user = normalizeUserRecord(record);
+          cacheUserRecord(user);
+        }
+      }
       if (user) {
-        return {
-          type: "user",
-          userId: user.id,
-          username: user.username,
-          role: user.role,
-          apiKey: user.apiKey,
-          sessionNeedsRotation: verification.needsRotation,
-        };
+        return toUserAuthIdentity(user, verification.needsRotation);
       }
     }
   }
   // 2) API Key fallback
   const authHeader = req.headers.get("authorization") || "";
-  const apiKeyMatch = authHeader.match(/^ApiKey\s+(\S+)$/i);
+  const apiKeyMatch = authHeader.match(AUTHORIZATION_HEADER_PATTERN);
   if (apiKeyMatch) {
     const apiKey = apiKeyMatch[1];
     if (SERVICE_API_KEYS.has(apiKey)) {
@@ -318,18 +465,26 @@ export async function authenticateRequest(
         token: apiKey,
       };
     }
-    const user = await (db as any).user.findUnique({
-      where: { apiKey },
-      select: { id: true, apiKey: true, username: true, role: true },
-    });
+    let user = getCachedUser(cacheKeyApiKey(apiKey));
+    if (!user) {
+      const record = await (db as any).user.findUnique({
+        where: { apiKey },
+        select: {
+          id: true,
+          apiKey: true,
+          username: true,
+          role: true,
+          computerId: true,
+          computer: { select: { name: true } },
+        },
+      });
+      if (record) {
+        user = normalizeUserRecord(record);
+        cacheUserRecord(user);
+      }
+    }
     if (user) {
-      return {
-        type: "user",
-        userId: user.id,
-        username: user.username,
-        role: user.role,
-        apiKey: user.apiKey,
-      };
+      return toUserAuthIdentity(user);
     }
   }
   return null;
@@ -337,13 +492,16 @@ export async function authenticateRequest(
 
 export async function requireAuth(
   req: Request,
-  options: { role?: string; enforceCsrf?: boolean } = {}
+  options: { role?: UserRole; enforceCsrf?: boolean } = {}
 ): Promise<UserAuthIdentity> {
   const auth = await authenticateRequest(req);
   if (!auth || auth.type !== "user") {
     throw new Error(options.role ? "FORBIDDEN" : "UNAUTHORIZED");
   }
-  if (options.role && auth.role !== options.role) {
+  if (
+    options.role &&
+    auth.role?.toLowerCase() !== options.role?.toLowerCase()
+  ) {
     throw new Error("FORBIDDEN");
   }
   if (options.enforceCsrf !== false) {
@@ -355,11 +513,50 @@ export async function requireAuth(
 export async function requireServiceAuth(
   req: Request
 ): Promise<ServiceAuthIdentity> {
-  const auth = await authenticateRequest(req);
-  if (!auth || auth.type !== "service") {
-    throw new Error("UNAUTHORIZED");
+  const authHeader = req.headers.get("authorization") || "";
+  const apiKeyMatch = authHeader.match(AUTHORIZATION_HEADER_PATTERN);
+  const presentedApiKey = apiKeyMatch?.[1] ?? null;
+
+  if (presentedApiKey) {
+    const cached = getCachedAgentIdentity(presentedApiKey);
+    if (cached) {
+      return cached;
+    }
   }
-  return auth;
+
+  const auth = await authenticateRequest(req);
+  if (auth && auth.type === "service") {
+    return auth;
+  }
+
+  if (auth && auth.type === "user" && auth.role === "user") {
+    if (!auth.apiKey || !presentedApiKey || auth.apiKey !== presentedApiKey) {
+      throw new Error("UNAUTHORIZED");
+    }
+    const candidate: CachedUser = {
+      id: auth.userId,
+      username: auth.username,
+      role: auth.role,
+      apiKey: auth.apiKey,
+      computerId: auth.computerId ?? null,
+      computerName: auth.computerName ?? null,
+    };
+    const serviceIdentity = asServiceIdentityFromAgent(candidate);
+    if (!serviceIdentity) {
+      throw new Error("UNAUTHORIZED");
+    }
+    if (!serviceIdentity.computerId) {
+      const roleLabel = "user";
+      console.warn(
+        `[auth] ${roleLabel} ${auth.username} (${auth.userId}) lacks an assigned computer; rejecting service authentication.`
+      );
+      throw new Error("UNAUTHORIZED");
+    }
+    cacheAgentIdentity(presentedApiKey, serviceIdentity);
+    return serviceIdentity;
+  }
+
+  throw new Error("UNAUTHORIZED");
 }
 
 export async function simulatePasswordCheckDelay() {
@@ -433,4 +630,29 @@ export const sessionInternal = {
   verifySession,
   renewSessionToken,
   issueCsrfToken,
+};
+
+export const authTesting = {
+  clearCaches() {
+    sessionUserCache.clear();
+    agentServiceCache.clear();
+  },
+  seedApiKeyUserCache(seed: {
+    id: string;
+    username: string;
+    role: UserRole;
+    apiKey: string;
+    computerId?: string | null;
+    computerName?: string | null;
+  }) {
+    const cached: CachedUser = {
+      id: seed.id,
+      username: seed.username,
+      role: seed.role,
+      apiKey: seed.apiKey,
+      computerId: seed.computerId ?? null,
+      computerName: seed.computerName ?? null,
+    };
+    cacheUserRecord(cached);
+  },
 };
