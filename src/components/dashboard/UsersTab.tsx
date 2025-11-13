@@ -535,15 +535,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
                   className="w-[220px] rounded-full border-slate-200/70 pl-9 text-sm dark:border-slate-700"
                 />
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                className="rounded-full"
-                onClick={() => triggerReload()}
-              >
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Recargar
-              </Button>
+              {/* Botón de recarga unificado en AppShell (eliminado aquí) */}
               <Button
                 type="button"
                 className="rounded-full"

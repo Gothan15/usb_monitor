@@ -242,13 +242,21 @@ export function AppShell({
                     onClick={onRefresh}
                     className="hidden items-center gap-2 rounded-full border border-slate-200/80 bg-white px-4 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-100 disabled:opacity-70 md:flex dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                   >
-                    <RefreshCw
-                      className={cn(
-                        "h-4 w-4 text-slate-500",
-                        refreshing && "animate-spin"
-                      )}
-                    />
+                    <motion.span
+                      animate={{ rotate: refreshing ? 360 : 0 }}
+                      transition={{
+                        duration: 0.8,
+                        ease: [0.4, 0, 0.2, 1],
+                        repeat: refreshing ? Infinity : 0,
+                      }}
+                      className="inline-flex"
+                    >
+                      <RefreshCw className="h-4 w-4 text-slate-500" />
+                    </motion.span>
                     {refreshing ? "Sincronizando" : "Sincronizar"}
+                    {refreshing && (
+                      <span className="ml-1 inline-flex h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+                    )}
                   </Button>
                 )}
                 <Button

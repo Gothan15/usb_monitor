@@ -83,6 +83,13 @@ export function OverviewTab({
       return { label, allowed: 0, blocked: 0, total: 0 };
     });
 
+    // Mapear seriales en whitelist para clasificación precisa
+    const whitelistSerials = new Set(
+      whitelist
+        .map((w) => w.serialNumber?.trim().toLowerCase())
+        .filter((s): s is string => Boolean(s))
+    );
+
     events.forEach((event) => {
       const createdAt = new Date(event.createdAt);
       const diffHours =
@@ -92,14 +99,19 @@ export function OverviewTab({
       const bucket = buckets[bucketIndex];
       if (!bucket) return;
 
-      const tone = classifyEventTone(event.event);
-      if (tone === "allowed") bucket.allowed += 1;
-      if (tone === "blocked") bucket.blocked += 1;
+      const isWhitelisted =
+        Boolean(event.whitelisted) ||
+        (event.serialNumber
+          ? whitelistSerials.has(event.serialNumber.trim().toLowerCase())
+          : false);
+
+      if (isWhitelisted) bucket.allowed += 1;
+      else bucket.blocked += 1;
       bucket.total += 1;
     });
 
     return buckets;
-  }, [events]);
+  }, [events, whitelist]);
 
   const latestAlerts = useMemo(
     () =>
@@ -209,9 +221,9 @@ export function OverviewTab({
                   formatter={(value: number, name) => [
                     value,
                     name === "allowed"
-                      ? "Autorizados"
+                      ? "Whitelisted"
                       : name === "blocked"
-                      ? "Bloqueados"
+                      ? "Denegados/Apagado"
                       : "Total",
                   ]}
                 />

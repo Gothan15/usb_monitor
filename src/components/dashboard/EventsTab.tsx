@@ -22,8 +22,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   AlertTriangle,
   Clock3,
+  Info,
   Loader2,
   ShieldCheck,
   Siren,
@@ -365,156 +372,243 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
               </div>
 
               <ScrollArea className="hidden max-h-[min(60vh,460px)] pr-3 [--scrollbar-size:0px] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden md:block">
-                <div className="w-full overflow-x-auto">
-                  <Table className="min-w-[1100px]">
-                    <TableHeader className="sticky top-0 z-10 bg-white/95 backdrop-blur-xl dark:bg-slate-900/80">
-                      <TableRow className="border-white/60 dark:border-white/10">
-                        <SortableTableHead
-                          column="pcName"
-                          currentSortKey={sortConfig.key}
-                          currentSortDirection={sortConfig.direction}
-                          onSort={requestSort}
-                          className="text-slate-600 dark:text-slate-200"
-                        >
-                          Computadora
-                        </SortableTableHead>
-                        <SortableTableHead
-                          column="pcUser"
-                          currentSortKey={sortConfig.key}
-                          currentSortDirection={sortConfig.direction}
-                          onSort={requestSort}
-                          className="text-slate-600 dark:text-slate-200"
-                        >
-                          Usuario
-                        </SortableTableHead>
-                        <SortableTableHead
-                          column="pcIp"
-                          currentSortKey={sortConfig.key}
-                          currentSortDirection={sortConfig.direction}
-                          onSort={requestSort}
-                          className="text-slate-600 dark:text-slate-200"
-                        >
-                          IP
-                        </SortableTableHead>
-                        <SortableTableHead
-                          column="event"
-                          currentSortKey={sortConfig.key}
-                          currentSortDirection={sortConfig.direction}
-                          onSort={requestSort}
-                          className="text-slate-600 dark:text-slate-200"
-                        >
-                          Evento
-                        </SortableTableHead>
-                        <SortableTableHead
-                          column="driveLetter"
-                          currentSortKey={sortConfig.key}
-                          currentSortDirection={sortConfig.direction}
-                          onSort={requestSort}
-                          className="text-slate-600 dark:text-slate-200"
-                        >
-                          Unidad
-                        </SortableTableHead>
-                        <SortableTableHead
-                          column="serialNumber"
-                          currentSortKey={sortConfig.key}
-                          currentSortDirection={sortConfig.direction}
-                          onSort={requestSort}
-                          className="text-slate-600 dark:text-slate-200"
-                        >
-                          Serial
-                        </SortableTableHead>
-                        <SortableTableHead
-                          column="readonlyStatus"
-                          currentSortKey={sortConfig.key}
-                          currentSortDirection={sortConfig.direction}
-                          onSort={requestSort}
-                          className="text-slate-600 dark:text-slate-200"
-                        >
-                          Modo
-                        </SortableTableHead>
-                        <SortableTableHead
-                          column="whitelisted"
-                          currentSortKey={sortConfig.key}
-                          currentSortDirection={sortConfig.direction}
-                          onSort={requestSort}
-                          className="text-slate-600 dark:text-slate-200"
-                        >
-                          Whitelist
-                        </SortableTableHead>
-                        <SortableTableHead
-                          column="createdAt"
-                          currentSortKey={sortConfig.key}
-                          currentSortDirection={sortConfig.direction}
-                          onSort={requestSort}
-                          className="text-slate-600 dark:text-slate-200"
-                        >
-                          Fecha / Hora
-                        </SortableTableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {paginatedEvents.map((event) => {
-                        const occurredAt = event.timestamp ?? event.createdAt;
-                        const { badgeVariant, rowClassName } =
-                          classifyEvent(event);
-                        const badgeClass =
-                          badgeVariant === "default"
-                            ? "border border-slate-200 bg-slate-100 text-slate-700 shadow-sm dark:border-white/10 dark:bg-white/10 dark:text-white"
-                            : "border border-transparent shadow-sm";
-                        return (
-                          <TableRow
-                            key={event.id}
-                            className={cn(
-                              "group border border-white/70 bg-white/75 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-400/60 hover:bg-slate-100/70 dark:border-white/5 dark:bg-white/5 dark:hover:border-white/20",
-                              rowClassName
-                            )}
+                <TooltipProvider delayDuration={120}>
+                  <div className="w-full overflow-x-auto">
+                    <Table className="min-w-[850px]">
+                      <TableHeader className="sticky top-0 z-10 bg-white/95 backdrop-blur-xl dark:bg-slate-900/80">
+                        <TableRow className="border-white/60 dark:border-white/10">
+                          <SortableTableHead
+                            column="pcName"
+                            currentSortKey={sortConfig.key}
+                            currentSortDirection={sortConfig.direction}
+                            onSort={requestSort}
+                            className="text-slate-600 dark:text-slate-200"
                           >
-                            <TableCell className="font-semibold text-slate-700 dark:text-slate-100">
-                              {event.pcName}
-                            </TableCell>
-                            <TableCell className="text-slate-600 dark:text-slate-300/80">
-                              {event.pcUser}
-                            </TableCell>
-                            <TableCell className="text-slate-600 dark:text-slate-300/80">
-                              {event.pcIp}
-                            </TableCell>
-                            <TableCell>
-                              <Badge
-                                variant={badgeVariant}
-                                className={badgeClass}
-                              >
-                                {event.event}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-slate-600 dark:text-slate-300/80">
-                              {event.driveLetter || "—"}
-                            </TableCell>
-                            <TableCell className="text-slate-600 dark:text-slate-300/80">
-                              {event.serialNumber || "—"}
-                            </TableCell>
-                            <TableCell className="text-slate-600 dark:text-slate-300/80">
-                              {event.readonlyStatus ||
-                                (event.whitelisted ? "Whitelisted" : "—")}
-                            </TableCell>
-                            <TableCell className="text-slate-600 dark:text-slate-300/80">
-                              {event.whitelisted ? "Sí" : "No"}
-                            </TableCell>
-                            <TableCell className="text-slate-600 dark:text-slate-200">
-                              <div className="flex flex-col">
-                                <span className="font-semibold text-slate-700 dark:text-slate-100">
-                                  {formatDate(occurredAt)}
+                            Computadora
+                          </SortableTableHead>
+                          <SortableTableHead
+                            column="pcUser"
+                            currentSortKey={sortConfig.key}
+                            currentSortDirection={sortConfig.direction}
+                            onSort={requestSort}
+                            className="text-slate-600 dark:text-slate-200"
+                          >
+                            Usuario / IP
+                          </SortableTableHead>
+                          <SortableTableHead
+                            column="event"
+                            currentSortKey={sortConfig.key}
+                            currentSortDirection={sortConfig.direction}
+                            onSort={requestSort}
+                            className="text-slate-600 dark:text-slate-200"
+                          >
+                            Evento
+                          </SortableTableHead>
+                          <SortableTableHead
+                            column="serialNumber"
+                            currentSortKey={sortConfig.key}
+                            currentSortDirection={sortConfig.direction}
+                            onSort={requestSort}
+                            className="text-slate-600 dark:text-slate-200"
+                          >
+                            Detalle dispositivo
+                          </SortableTableHead>
+                          <SortableTableHead
+                            column="whitelisted"
+                            currentSortKey={sortConfig.key}
+                            currentSortDirection={sortConfig.direction}
+                            onSort={requestSort}
+                            className="text-slate-600 dark:text-slate-200"
+                          >
+                            Estado
+                          </SortableTableHead>
+                          <SortableTableHead
+                            column="createdAt"
+                            currentSortKey={sortConfig.key}
+                            currentSortDirection={sortConfig.direction}
+                            onSort={requestSort}
+                            className="text-slate-600 dark:text-slate-200"
+                          >
+                            Fecha / Hora
+                          </SortableTableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {paginatedEvents.map((event) => {
+                          const occurredAt = event.timestamp ?? event.createdAt;
+                          const { badgeVariant, rowClassName, tone } =
+                            classifyEvent(event);
+                          const toneLabel =
+                            tone === "success"
+                              ? "Autorizado"
+                              : tone === "error"
+                              ? "Alerta"
+                              : "Info";
+                          const toneIcon =
+                            tone === "success" ? (
+                              <ShieldCheck className="h-3.5 w-3.5" />
+                            ) : tone === "error" ? (
+                              <AlertTriangle className="h-3.5 w-3.5" />
+                            ) : (
+                              <Info className="h-3.5 w-3.5" />
+                            );
+                          const toneBadgeClass = cn(
+                            "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.22em]",
+                            badgeVariant === "default" &&
+                              "border border-slate-200 bg-white/70 text-slate-600 shadow-sm dark:border-white/10 dark:bg-white/10 dark:text-slate-200"
+                          );
+                          return (
+                            <TableRow
+                              key={event.id}
+                              className={cn(
+                                "group border border-white/70 bg-white/75 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-400/60 hover:bg-slate-100/70 dark:border-white/5 dark:bg-white/5 dark:hover:border-white/20",
+                                rowClassName
+                              )}
+                            >
+                              <TableCell className="max-w-[120px] font-semibold text-slate-700 dark:text-slate-100">
+                                <span
+                                  className="block truncate"
+                                  title={event.pcName}
+                                >
+                                  {event.pcName}
                                 </span>
-                                <span className="text-xs text-slate-500 dark:text-slate-300/80">
-                                  {formatTime(occurredAt)}
-                                </span>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
+                              </TableCell>
+                              <TableCell className="max-w-[140px] text-slate-600 dark:text-slate-300/80">
+                                <div className="flex flex-col gap-0.5">
+                                  <span
+                                    className="truncate"
+                                    title={event.pcUser}
+                                  >
+                                    {event.pcUser}
+                                  </span>
+                                  <span
+                                    className="truncate text-xs text-slate-500 dark:text-slate-400"
+                                    title={event.pcIp}
+                                  >
+                                    {event.pcIp}
+                                  </span>
+                                </div>
+                              </TableCell>
+                              <TableCell className="max-w-[200px] text-slate-600 dark:text-slate-300/80">
+                                <div className="flex flex-col gap-1">
+                                  <Badge
+                                    variant={badgeVariant}
+                                    className={toneBadgeClass}
+                                  >
+                                    {toneIcon}
+                                    <span className="hidden xl:inline">
+                                      {toneLabel}
+                                    </span>
+                                  </Badge>
+                                  <span
+                                    className="truncate text-xs text-slate-500 dark:text-slate-400"
+                                    title={event.event}
+                                  >
+                                    {event.event}
+                                  </span>
+                                </div>
+                              </TableCell>
+                              <TableCell className="max-w-[160px] text-slate-600 dark:text-slate-300/80">
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div className="cursor-help space-y-1 text-xs leading-tight">
+                                      <div
+                                        className="truncate font-mono"
+                                        title={
+                                          event.serialNumber || "Sin serial"
+                                        }
+                                      >
+                                        {event.serialNumber || "Sin serial"}
+                                      </div>
+                                      <div className="flex flex-wrap items-center gap-1">
+                                        {event.driveLetter && (
+                                          <Badge
+                                            variant="outline"
+                                            className="rounded-full border-white/60 bg-white/70 px-2 py-0 text-[10px] uppercase tracking-[0.18em] text-slate-600 dark:border-white/15 dark:bg-white/10 dark:text-slate-200"
+                                          >
+                                            {event.driveLetter}
+                                          </Badge>
+                                        )}
+                                        {event.readonlyStatus && (
+                                          <Badge
+                                            variant="outline"
+                                            className="max-w-[96px] truncate rounded-full border-white/60 bg-white/70 px-2 py-0 text-[10px] uppercase tracking-[0.18em] text-slate-600 dark:border-white/15 dark:bg-white/10 dark:text-slate-200"
+                                          >
+                                            {event.readonlyStatus}
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent
+                                    side="left"
+                                    align="start"
+                                    className="max-w-xs bg-slate-900/95 text-xs text-white"
+                                  >
+                                    <div className="space-y-1.5">
+                                      <p>
+                                        <span className="font-semibold">
+                                          Serial:
+                                        </span>{" "}
+                                        {event.serialNumber || "Sin serial"}
+                                      </p>
+                                      <p>
+                                        <span className="font-semibold">
+                                          Unidad:
+                                        </span>{" "}
+                                        {event.driveLetter || "Sin unidad"}
+                                      </p>
+                                      <p>
+                                        <span className="font-semibold">
+                                          Modo:
+                                        </span>{" "}
+                                        {event.readonlyStatus || "Sin modo"}
+                                      </p>
+                                    </div>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TableCell>
+                              <TableCell className="text-slate-600 dark:text-slate-300/80">
+                                <Badge
+                                  variant={
+                                    event.whitelisted ? "success" : "secondary"
+                                  }
+                                  className={cn(
+                                    "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold",
+                                    event.whitelisted
+                                      ? "border-emerald-200/60 bg-emerald-500/10 text-emerald-700 shadow-sm dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-100"
+                                      : "border-amber-200/60 bg-amber-50/80 text-amber-700 dark:border-amber-400/40 dark:bg-amber-500/15 dark:text-amber-100"
+                                  )}
+                                >
+                                  {event.whitelisted ? (
+                                    <ShieldCheck className="h-3.5 w-3.5" />
+                                  ) : (
+                                    <AlertTriangle className="h-3.5 w-3.5" />
+                                  )}
+                                  <span className="hidden xl:inline">
+                                    {event.whitelisted
+                                      ? "Autorizado"
+                                      : "Sin autorizar"}
+                                  </span>
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-slate-600 dark:text-slate-200">
+                                <div className="flex flex-col">
+                                  <span className="font-semibold text-slate-700 dark:text-slate-100">
+                                    {formatDate(occurredAt)}
+                                  </span>
+                                  <span className="text-xs text-slate-500 dark:text-slate-300/80">
+                                    {formatTime(occurredAt)}
+                                  </span>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </TooltipProvider>
               </ScrollArea>
               <DashboardPagination
                 page={page}
