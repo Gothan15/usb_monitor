@@ -82,6 +82,18 @@ npm run dev
 
 Accede al panel en: `http://localhost:3000`
 
+### 🔐 Configuración de Seguridad
+
+Para entornos productivos se añadieron controles obligatorios:
+
+- Define `ALLOWED_ORIGINS` con la lista de orígenes confiables separados por coma (ejemplo: `https://dashboard.empresa.com,https://usbmonitor.empresa.com`).
+- Habilita TLS aportando certificados mediante variables de entorno:
+  - `TLS_KEY_PATH` y `TLS_CERT_PATH` con rutas absolutas o relativas al proyecto, **o**
+  - `TLS_KEY` y `TLS_CERT` con el contenido PEM codificado (útil para orquestadores secretos).
+- Si la aplicación se sirve detrás de un proxy que ya termina TLS, deja `TLS_*` vacías y asegúrate de que el proxy envíe la cabecera `X-Forwarded-Proto`.
+- Usa `ENFORCE_HTTPS_REDIRECT=false` únicamente en entornos controlados donde mantengas tráfico HTTP por motivos de depuración.
+- Ajusta `ALLOWED_ORIGINS` para que coincida con la configuración del proxy/reverse proxy; estos valores se reutilizan en la política CSP y en la negociación de Socket.IO.
+
 ### 2. Cliente Windows
 
 #### Requisitos

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import type { LucideIcon } from "lucide-react";
 import { Bell, Menu, RefreshCw, X } from "lucide-react";
@@ -15,18 +16,20 @@ import { ThemeToggle } from "@/components/system/ThemeToggle";
 import { LogoutButton } from "@/components/system/LogoutButton";
 import { useAmbientScrollbar } from "@/hooks/useAmbientScrollbar";
 
+const MotionLink = motion.create(Link);
+
 export interface AppShellNavItem {
   key: string;
   label: string;
   description: string;
   icon: LucideIcon;
+  href: string;
   badge?: string | number;
 }
 
 interface AppShellProps {
   navItems: AppShellNavItem[];
   activeKey: string;
-  onNavigate: (key: string) => void;
   onRefresh?: () => void;
   refreshing?: boolean;
   lastUpdateLabel?: string;
@@ -36,13 +39,12 @@ interface AppShellProps {
     name?: string | null;
     role?: string | null;
   } | null;
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
 export function AppShell({
   navItems,
   activeKey,
-  onNavigate,
   onRefresh,
   refreshing = false,
   lastUpdateLabel,
@@ -87,6 +89,13 @@ export function AppShell({
   };
 
   const closeSidebar = () => setSidebarOpen(false);
+
+  const roleLower = user?.role?.toLowerCase();
+  const isBasicUser =
+    roleLower === "user" ||
+    roleLower === "usuario" ||
+    (roleLower?.includes("usuario") ?? false) ||
+    roleLower === "usuario básico";
 
   return (
     <div className="relative flex h-screen overflow-hidden bg-slate-100 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100">
@@ -144,14 +153,13 @@ export function AppShell({
         >
           {navItems.map((item) => {
             const isActive = item.key === activeItem.key;
-            const button = (
-              <motion.button
+            // next/link mantiene la navegación del sidebar sin recargar la página
+            const link = (
+              <MotionLink
                 key={item.key}
-                type="button"
-                onClick={() => {
-                  onNavigate(item.key);
-                  closeSidebar();
-                }}
+                href={item.href}
+                onClick={closeSidebar}
+                prefetch
                 whileHover={{ x: 4 }}
                 whileTap={{ scale: 0.98 }}
                 className={cn(
@@ -183,26 +191,41 @@ export function AppShell({
                     {item.badge}
                   </span>
                 )}
-              </motion.button>
+              </MotionLink>
             );
 
             return (
               <Tooltip key={item.key} disableHoverableContent={isDesktop}>
-                <TooltipTrigger asChild>{button}</TooltipTrigger>
+                <TooltipTrigger asChild>{link}</TooltipTrigger>
                 <TooltipContent side="right">{item.label}</TooltipContent>
               </Tooltip>
             );
           })}
         </nav>
 
-        <div className="mt-6 rounded-2xl border border-slate-200/70 bg-white/70 p-4 text-xs text-slate-500 shadow-sm dark:border-slate-800/80 dark:bg-slate-900/60 dark:text-slate-300">
-          <p className="font-semibold uppercase tracking-[0.28em]">
-            Última sync
-          </p>
-          <p className="mt-2 text-sm font-medium text-slate-700 dark:text-slate-100">
-            {lastUpdateLabel || "Sin datos"}
-          </p>
-        </div>
+        {isBasicUser ? (
+          <div className="mt-6 rounded-2xl border border-slate-200/70 bg-white/70 p-5 text-sm text-slate-600 shadow-sm dark:border-slate-800/80 dark:bg-slate-900/60 dark:text-slate-300">
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400 dark:text-slate-500">
+              Bienvenido
+            </p>
+            <p className="mt-2 text-base font-medium text-slate-700 dark:text-slate-100">
+              {user?.name || "Usuario"}
+            </p>
+            <p className="mt-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+              Gestiona tus dispositivos USB autorizados y revisa eventos
+              recientes. Mantén segura tu API Key.
+            </p>
+          </div>
+        ) : (
+          <div className="mt-6 rounded-2xl border border-slate-200/70 bg-white/70 p-4 text-xs text-slate-500 shadow-sm dark:border-slate-800/80 dark:bg-slate-900/60 dark:text-slate-300">
+            <p className="font-semibold uppercase tracking-[0.28em]">
+              Última sync
+            </p>
+            <p className="mt-2 text-sm font-medium text-slate-700 dark:text-slate-100">
+              {lastUpdateLabel || "Sin datos"}
+            </p>
+          </div>
+        )}
       </aside>
 
       <div className="relative flex flex-1 flex-col overflow-hidden">
@@ -259,7 +282,7 @@ export function AppShell({
                     )}
                   </Button>
                 )}
-                <Button
+                {/* <Button
                   type="button"
                   variant="ghost"
                   size="icon"
@@ -267,7 +290,7 @@ export function AppShell({
                 >
                   <Bell className="h-4 w-4" />
                   <span className="absolute right-2 top-2 inline-flex h-2 w-2 items-center justify-center rounded-full bg-emerald-500" />
-                </Button>
+                </Button> */}
                 <ThemeToggle />
                 <div className="hidden items-center gap-3 rounded-full border border-slate-200/70 bg-white px-4 py-2 text-sm shadow-sm md:flex dark:border-slate-700 dark:bg-slate-900">
                   <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-200">

@@ -18,6 +18,8 @@ export async function GET(req: Request) {
       where: { id: auth.userId },
       select: { username: true, role: true },
     });
+    const normalizedRole =
+      typeof user?.role === "string" ? user.role.toLowerCase() : user?.role;
 
     const cookieHeader = req.headers.get("cookie") || "";
     const cookies = Object.fromEntries(
@@ -50,7 +52,7 @@ export async function GET(req: Request) {
       user: {
         id: auth.userId,
         username: user?.username,
-        role: user?.role,
+        role: normalizedRole ?? null,
       },
       renewed: rotated,
     };

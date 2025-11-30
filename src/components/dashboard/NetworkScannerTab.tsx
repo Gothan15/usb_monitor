@@ -142,8 +142,9 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, ease: "easeOut" }}
+      className="w-full"
     >
-      <Card className="relative rounded-3xl border border-slate-200/70 bg-white/85 text-slate-900 shadow-xl supports-[backdrop-filter]:backdrop-blur-2xl dark:border-white/10 dark:bg-slate-900/50 dark:text-white">
+      <Card className="relative w-full rounded-3xl border border-slate-200/70 bg-white/85 text-slate-900 shadow-xl supports-[backdrop-filter]:backdrop-blur-2xl dark:border-white/10 dark:bg-slate-900/50 dark:text-white">
         <CardHeader className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-3">
             <span className="inline-flex size-12 items-center justify-center rounded-2xl border border-sky-200/60 bg-white/80 text-sky-600 shadow-sm dark:border-sky-400/40 dark:bg-white/10 dark:text-sky-200">
@@ -179,7 +180,7 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="flex flex-col gap-4">
           {scanError && (
             <Alert className="border-rose-200/60 bg-rose-50 text-rose-700 dark:border-rose-300/40 dark:bg-rose-500/10 dark:text-rose-100">
               <AlertDescription>{scanError}</AlertDescription>
@@ -198,8 +199,8 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
             </Badge>
           </div>
 
-          <ScrollArea className="max-h-[min(60vh,420px)] pr-3 [--scrollbar-size:0px] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-            <Table className="min-w-full">
+          <ScrollArea className="max-h-[min(65vh,480px)] pr-3 [--scrollbar-size:0px] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            <Table className="w-full">
               <TableHeader className="sticky top-0 z-10 bg-white/95 backdrop-blur-xl dark:bg-slate-900/80">
                 <TableRow className="border-white/60 dark:border-white/10">
                   <TableHead className="text-slate-600 dark:text-slate-200">

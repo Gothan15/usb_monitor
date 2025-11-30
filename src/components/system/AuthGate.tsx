@@ -75,17 +75,18 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
         .then((res) => res.json())
         .then((data) => {
           if (data.ok && data.user) {
-            if (data.user.role === "user") {
-              window.location.href = "/basic-user";
+            const role = data.user.role?.toLowerCase?.();
+            if (role === "user") {
+              window.location.href = "/user";
             } else {
-              window.location.href = "/";
+              window.location.href = "/admin";
             }
           } else {
-            window.location.href = "/";
+            window.location.href = "/admin";
           }
         })
         .catch(() => {
-          window.location.href = "/";
+          window.location.href = "/admin";
         });
     }
   }, [status]);
@@ -111,6 +112,6 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     return <FullscreenSpinner label="Redirigiendo" />;
   }
 
-  // Estado ok -> mostrar la app (incluyendo /basic-user para usuarios normales).
+  // Estado ok -> mostrar la app (incluyendo /user para usuarios normales).
   return <>{children}</>;
 }

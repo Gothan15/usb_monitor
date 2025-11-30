@@ -65,7 +65,7 @@ async function seedUsers(users: SeedUser[]): Promise<void> {
         username: user.username,
         passwordHash: user.passwordHash,
         apiKey: user.apiKey,
-        role: user.role,
+        role: user.role.toUpperCase() as "ADMIN" | "USER",
         computerId,
         failedAttempts: user.failedAttempts,
         lockedUntil: user.lockedUntil ? new Date(user.lockedUntil) : null,

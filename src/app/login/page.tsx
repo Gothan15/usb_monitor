@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import {
   Card,
   CardContent,
@@ -12,7 +12,6 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { motion } from "framer-motion";
 import { Eye, EyeOff, Loader2, Usb, CheckCircle2 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { getCsrfTokenFromDocument } from "@/lib/utils";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
@@ -23,7 +22,10 @@ export default function LoginPage() {
   // Flujo legacy de desbloqueo eliminado; se utiliza únicamente whitelist.
   const router = useRouter();
   const searchParams = useSearchParams();
-  const pcName = searchParams.get("pcName");
+  const pcName = useMemo(
+    () => searchParams?.get("pcName") ?? null,
+    [searchParams]
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -84,10 +86,12 @@ export default function LoginPage() {
         ch.close();
       } catch {}
 
-      if (data.user?.role === "user") {
-        router.push("/basic-user");
+      const role = data.user?.role?.toLowerCase?.() ?? null;
+
+      if (role === "user") {
+        router.push("/user");
       } else {
-        router.push("/");
+        router.push("/admin");
       }
     } catch (e: any) {
       setError(e.message || "Error de conexión");

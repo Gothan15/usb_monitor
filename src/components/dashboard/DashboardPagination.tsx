@@ -61,7 +61,7 @@ export function DashboardPagination({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 border-t border-white/60 pt-4 text-xs text-slate-600 dark:border-white/10 dark:text-slate-300/80 md:flex-row md:items-center md:justify-between",
+        "flex flex-col gap-3 text-xs text-slate-600 dark:text-slate-300/80 md:flex-row md:items-center md:justify-between",
         className
       )}
     >

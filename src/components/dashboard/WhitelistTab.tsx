@@ -196,8 +196,9 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: "easeOut" }}
+      className="w-full"
     >
-      <Card className="relative overflow-hidden rounded-3xl border border-slate-200/70 bg-white/80 text-slate-900 shadow-xl supports-[backdrop-filter]:backdrop-blur-2xl dark:border-white/10 dark:bg-slate-900/50 dark:text-white">
+      <Card className="relative w-full overflow-hidden rounded-3xl border border-slate-200/70 bg-white/80 text-slate-900 shadow-xl supports-[backdrop-filter]:backdrop-blur-2xl dark:border-white/10 dark:bg-slate-900/50 dark:text-white">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.16),transparent_55%),radial-gradient(circle_at_bottom_right,_rgba(56,189,248,0.12),transparent_55%)] dark:bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.18),transparent_45%),radial-gradient(circle_at_bottom_right,_rgba(99,102,241,0.18),transparent_55%)]" />
         <CardHeader className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-4">
@@ -325,7 +326,7 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
             </Alert>
           )}
 
-          <div className="space-y-5">
+          <div className="flex flex-col gap-5">
             <div className="space-y-3 md:hidden">
               {loading ? (
                 <div className="rounded-2xl border border-white/70 bg-white/80 p-6 text-center text-slate-500 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
@@ -391,8 +392,8 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
               )}
             </div>
 
-            <ScrollArea className="hidden max-h-[min(60vh,460px)] pr-3 [--scrollbar-size:0px] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden md:block">
-              <Table className="min-w-full">
+            <ScrollArea className="hidden max-h-[min(65vh,500px)] pr-3 [--scrollbar-size:0px] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden md:block">
+              <Table className="w-full">
                 <TableHeader className="sticky top-0 z-10 bg-white/95 backdrop-blur-xl dark:bg-slate-900/80">
                   <TableRow className="border-slate-200/80 dark:border-white/10">
                     <SortableTableHead
@@ -533,15 +534,18 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
                 </TableBody>
               </Table>
             </ScrollArea>
+
             {entries.length > 0 && !loading && (
-              <DashboardPagination
-                page={page}
-                pageSize={pageSize}
-                totalItems={entries.length}
-                onPageChange={handlePageChange}
-                onPageSizeChange={handlePageSizeChange}
-                label="seriales"
-              />
+              <div className="mt-4 w-full">
+                <DashboardPagination
+                  page={page}
+                  pageSize={pageSize}
+                  totalItems={entries.length}
+                  onPageChange={handlePageChange}
+                  onPageSizeChange={handlePageSizeChange}
+                  label="seriales"
+                />
+              </div>
             )}
           </div>
         </CardContent>

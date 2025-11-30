@@ -508,8 +508,9 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: "easeOut" }}
+      className="w-full"
     >
-      <Card className="overflow-hidden rounded-3xl border border-slate-200/70 bg-white/85 text-slate-900 shadow-xl supports-[backdrop-filter]:backdrop-blur-2xl dark:border-slate-800/80 dark:bg-slate-900/60 dark:text-white">
+      <Card className="w-full overflow-hidden rounded-3xl border border-slate-200/70 bg-white/85 text-slate-900 shadow-xl supports-[backdrop-filter]:backdrop-blur-2xl dark:border-slate-800/80 dark:bg-slate-900/60 dark:text-white">
         <CardHeader className="space-y-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="flex gap-3">
@@ -597,16 +598,16 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
           ) : users.length === 0 ? (
             renderEmptyState()
           ) : (
-            <div className="relative">
+            <div className="relative flex flex-col gap-6">
               <motion.div
                 animate={{
                   opacity: isSearching ? 0.45 : 1,
                   scale: isSearching ? 0.995 : 1,
                 }}
                 transition={{ duration: 0.25, ease: "easeInOut" }}
-                className="space-y-6"
+                className="flex flex-col gap-6"
               >
-                <ScrollArea className="max-h-[min(60vh,480px)] pr-3">
+                <ScrollArea className="max-h-[min(65vh,520px)] pr-3">
                   <Table>
                     <TableHeader className="sticky top-0 z-10 bg-white/95 backdrop-blur-xl dark:bg-slate-900/80">
                       <TableRow className="border-white/60 dark:border-white/10">
@@ -741,18 +742,21 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
                     </TableBody>
                   </Table>
                 </ScrollArea>
-                <DashboardPagination
-                  page={page}
-                  pageSize={pageSize}
-                  totalItems={total}
-                  onPageChange={(nextPage) => setPage(nextPage)}
-                  onPageSizeChange={(nextSize) => {
-                    setPageSize(nextSize);
-                    setPage(1);
-                  }}
-                  pageSizeOptions={PAGE_SIZE_OPTIONS}
-                  label="usuarios"
-                />
+
+                <div className="mt-4 w-full">
+                  <DashboardPagination
+                    page={page}
+                    pageSize={pageSize}
+                    totalItems={total}
+                    onPageChange={(nextPage) => setPage(nextPage)}
+                    onPageSizeChange={(nextSize) => {
+                      setPageSize(nextSize);
+                      setPage(1);
+                    }}
+                    pageSizeOptions={PAGE_SIZE_OPTIONS}
+                    label="usuarios"
+                  />
+                </div>
               </motion.div>
               {isSearching ? (
                 <motion.div

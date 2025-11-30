@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import type { PrismaClient } from "@prisma/client";
+import { resolve, TOKENS } from "@/lib/di/container";
 import { requireAuth } from "@/lib/auth"; // Sólo se usará para GET (consulta), no para POST (ingesta)
 import { usbEventPayloadSchema } from "@/lib/validators";
 import { getCurrentDate } from "@/lib/time";
 import { normalizeComputerName } from "@/lib/utils";
+
+const prisma = resolve<PrismaClient>(TOKENS.prisma);
 
 export async function POST(request: NextRequest) {
   try {
@@ -40,7 +43,7 @@ export async function POST(request: NextRequest) {
     // Guardar el evento USB en la base de datos
     const occurredAt = getCurrentDate();
 
-    const usbEvent = await db.uSBEvent.create({
+    const usbEvent = await prisma.uSBEvent.create({
       data: {
         pcName: computerName,
         pcIp: pc_ip,
@@ -55,7 +58,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Actualizar o crear registro de computadora
-    await db.computer.upsert({
+    await prisma.computer.upsert({
       where: { name: computerName },
       update: {
         ipAddress: pc_ip,
@@ -91,7 +94,7 @@ export async function POST(request: NextRequest) {
 export async function GET(req: Request) {
   try {
     await requireAuth(req); // JWT en Authorization: Bearer <token>
-    const events = await db.uSBEvent.findMany({
+    const events = await prisma.uSBEvent.findMany({
       orderBy: { createdAt: "desc" },
       take: 50, // Limitar a los últimos 50 eventos
     });
@@ -111,7 +114,7 @@ export async function GET(req: Request) {
 export async function DELETE(req: NextRequest) {
   try {
     const auth = await requireAuth(req);
-    const actor = await db.user.findUnique({
+    const actor = await prisma.user.findUnique({
       where: { id: auth.userId },
       select: { role: true },
     });
@@ -123,7 +126,7 @@ export async function DELETE(req: NextRequest) {
       );
     }
 
-    const deletedEvents = await db.uSBEvent.deleteMany();
+    const deletedEvents = await prisma.uSBEvent.deleteMany();
 
     return NextResponse.json({
       ok: true,

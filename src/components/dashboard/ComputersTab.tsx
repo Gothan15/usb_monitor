@@ -167,8 +167,9 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: "easeOut" }}
+      className="w-full"
     >
-      <Card className="relative overflow-hidden rounded-3xl border border-slate-200/70 bg-white/85 text-slate-900 shadow-xl supports-[backdrop-filter]:backdrop-blur-2xl dark:border-white/10 dark:bg-slate-900/50 dark:text-white">
+      <Card className="relative w-full overflow-hidden rounded-3xl border border-slate-200/70 bg-white/85 text-slate-900 shadow-xl supports-[backdrop-filter]:backdrop-blur-2xl dark:border-white/10 dark:bg-slate-900/50 dark:text-white">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.12),transparent_55%),radial-gradient(circle_at_bottom_right,_rgba(14,165,233,0.12),transparent_55%)] dark:bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.16),transparent_45%),radial-gradient(circle_at_bottom_right,_rgba(14,165,233,0.18),transparent_50%)]" />
         <CardHeader className="relative z-10 space-y-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -249,7 +250,7 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
               </AlertDescription>
             </Alert>
           ) : (
-            <>
+            <div className="flex flex-col gap-6">
               <div className="space-y-4 md:hidden">
                 {paginatedComputers.map((computer) => {
                   const canViewUsb =
@@ -364,8 +365,8 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                 })}
               </div>
 
-              <ScrollArea className="hidden max-h-[min(60vh,460px)] pr-3 [--scrollbar-size:0px] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden md:block">
-                <Table className="min-w-full">
+              <ScrollArea className="hidden max-h-[min(65vh,500px)] pr-3 [--scrollbar-size:0px] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden md:block">
+                <Table className="w-full">
                   <TableHeader className="sticky top-0 z-10 bg-white/95 backdrop-blur-xl dark:bg-slate-900/80">
                     <TableRow className="border-white/60 dark:border-white/10">
                       <SortableTableHead
@@ -554,15 +555,18 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                   </TableBody>
                 </Table>
               </ScrollArea>
-              <DashboardPagination
-                page={page}
-                pageSize={pageSize}
-                totalItems={computers.length}
-                onPageChange={handlePageChange}
-                onPageSizeChange={handlePageSizeChange}
-                label="computadoras"
-              />
-            </>
+
+              <div className="mt-4 w-full">
+                <DashboardPagination
+                  page={page}
+                  pageSize={pageSize}
+                  totalItems={computers.length}
+                  onPageChange={handlePageChange}
+                  onPageSizeChange={handlePageSizeChange}
+                  label="computadoras"
+                />
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>

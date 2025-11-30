@@ -34,7 +34,7 @@ import {
   formatDuration,
 } from "./types";
 import { useUsbHistoryRange } from "@/hooks/useUsbHistoryRange";
-import { formatBytes } from "@/app/basic-user/utils";
+import { formatBytes } from "@/app/user/utils";
 import { useAmbientScrollbar } from "@/hooks/useAmbientScrollbar";
 
 interface Props {

@@ -1,3 +1,4 @@
+import { db } from "@/lib/db";
 import { getCurrentTimestamp } from "@/lib/time";
 
 /**
@@ -134,4 +135,118 @@ export async function checkServiceHealth(ip: string): Promise<{
       statusText: "Sin respuesta",
     }
   );
+}
+
+type NotifyResult = {
+  success: boolean;
+  status?: number;
+  targetUrl?: string;
+  data?: unknown;
+  error?: string;
+};
+
+function normalizeDriveLetter(input: string): string | null {
+  const trimmed = input.trim().toUpperCase();
+  if (!trimmed) return null;
+  if (trimmed.length === 1) {
+    return /^[A-Z]$/.test(trimmed) ? `${trimmed}:` : null;
+  }
+  if (trimmed.length === 2 && /^[A-Z]:$/.test(trimmed)) return trimmed;
+  return null;
+}
+
+export async function notifyServiceUnlock(
+  pcName: string,
+  driveLetter: string
+): Promise<NotifyResult> {
+  if (!pcName?.trim()) {
+    return {
+      success: false,
+      error: "Nombre de PC requerido",
+    };
+  }
+
+  const normalizedDrive = normalizeDriveLetter(driveLetter ?? "");
+  if (!normalizedDrive) {
+    return {
+      success: false,
+      error: "driveLetter inválida",
+    };
+  }
+
+  const servicePort = process.env.USB_SERVICE_PORT || "5001";
+
+  const computer = await db.computer.findFirst({
+    where: {
+      name: {
+        equals: pcName.trim(),
+        mode: "insensitive",
+      },
+    },
+    select: {
+      name: true,
+      ipAddress: true,
+    },
+  });
+
+  if (!computer || !computer.ipAddress) {
+    return {
+      success: false,
+      error: "Computadora no encontrada o sin IP registrada",
+    };
+  }
+
+  const baseUrl = `http://${computer.ipAddress}:${servicePort}`;
+  const targetUrl = `${baseUrl}/unlock`;
+
+  try {
+    const response = await fetch(targetUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        pcName: computer.name,
+        driveLetter: normalizedDrive,
+      }),
+      signal: AbortSignal.timeout(3500),
+    });
+
+    const contentType = response.headers.get("content-type") || "";
+    const isJson = contentType.toLowerCase().includes("json");
+    const data = isJson
+      ? await response.json().catch(() => undefined)
+      : undefined;
+
+    if (!response.ok) {
+      const errorMessage =
+        (typeof data === "object" && data && "error" in data
+          ? String((data as Record<string, unknown>).error)
+          : undefined) ||
+        response.statusText ||
+        "Error al notificar";
+      return {
+        success: false,
+        status: response.status,
+        targetUrl,
+        data,
+        error: errorMessage,
+      };
+    }
+
+    return {
+      success: true,
+      status: response.status,
+      targetUrl,
+      data,
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Fallo al contactar servicio";
+    return {
+      success: false,
+      targetUrl,
+      error: message,
+    };
+  }
 }

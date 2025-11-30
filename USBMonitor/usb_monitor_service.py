@@ -112,6 +112,9 @@ WHITELIST_POSITIVE_TTL = 300.0
 WHITELIST_NEGATIVE_TTL = 60.0
 UNLOCK_NEGATIVE_BACKOFF = 5.0
 
+# Definir fallback IPv4 antes de usarlo en cachés
+DEFAULT_IPV4_FALLBACK = "127.0.0.1"
+
 _resolved_ip_cache: Dict[str, Any] = {"value": DEFAULT_IPV4_FALLBACK, "expires_at": 0.0}
 _whitelist_cache: Dict[str, Tuple[float, bool, Optional[Dict[str, Any]]]] = {}
 _unlock_backoff: Dict[str, Tuple[float, bool, Optional[str]]] = {}
@@ -185,7 +188,6 @@ def get_default_log_path() -> Path:
 DEFAULT_LISTEN_PORT = 5001  # Puerto donde el servicio escuchará peticiones
 SIGNAL_FILE = (PROGRAM_DATA_DIR / "browser_signal.json").resolve()
 HOSTNAME_RAW = (socket.gethostname() or "").strip() or "UNKNOWN_HOST"
-DEFAULT_IPV4_FALLBACK = "127.0.0.1"
 
 # Plan de telemetría (próxima iteración):
 #   - Registrar latencia de `unlock_usb` midiendo `time.perf_counter()` y enviar a `/api/metrics`:
@@ -528,6 +530,24 @@ class ApiKeyConfiguratorDialog(tk.Toplevel):
         )
         self.apply_button.pack(side=tk.RIGHT)
 
+        # Bloque de entrada manual correctamente indentado
+        manual_frame = ttk.Frame(self)
+        manual_frame.pack(fill=tk.X, padx=12, pady=(0, 12))
+
+        manual_label = ttk.Label(manual_frame, text="Pegar API key manualmente:")
+        manual_label.pack(anchor=tk.W)
+
+        self.manual_api_key = tk.StringVar()
+        manual_entry = ttk.Entry(manual_frame, textvariable=self.manual_api_key, width=60)
+        manual_entry.pack(side=tk.LEFT, padx=(0, 8))
+
+        manual_button = ttk.Button(
+            manual_frame,
+            text="Usar API key pegada",
+            command=self._handle_apply_manual,
+        )
+        manual_button.pack(side=tk.LEFT)
+
         self.status_var = tk.StringVar(value="Listo.")
         status_label = ttk.Label(self, textvariable=self.status_var, anchor=tk.W)
         status_label.pack(fill=tk.X, padx=12, pady=(0, 12))
@@ -586,6 +606,44 @@ class ApiKeyConfiguratorDialog(tk.Toplevel):
         )
         self._emit_log(f"API key configurada para {username}.")
 
+    def _handle_apply_manual(self) -> None:
+        api_key = self.manual_api_key.get().strip()
+
+        if not api_key:
+            messagebox.showerror(
+                "API key vacía",
+                "Debes pegar una API key válida.",
+                parent=self,
+            )
+            return
+
+        confirm = messagebox.askyesno(
+            "Confirmar",
+            "Se configurará la API key pegada manualmente.\n\n¿Continuar?",
+            parent=self,
+        )
+        if not confirm:
+            return
+
+        try:
+            run_setx(api_key)
+        except Exception as exc:
+            messagebox.showerror(
+                "Error",
+                f"No se pudo configurar la API key.\n\nDetalles: {exc}",
+                parent=self,
+            )
+            self._set_status("Error al configurar la API key manual.")
+            return
+
+        self._set_status("API key configurada manualmente. Reinicia el servicio para aplicar cambios.")
+        messagebox.showinfo(
+            "Éxito",
+            "API key configurada correctamente. Reinicia el servicio USBMonitorService para aplicar cambios.",
+            parent=self,
+        )
+        self._emit_log("API key manual aplicada correctamente.")
+
     def _populate_users(self) -> None:
         try:
             records = self.db_client.fetch_users()
@@ -606,7 +664,7 @@ class ApiKeyConfiguratorDialog(tk.Toplevel):
             item_values = (
                 record.get("username", ""),
                 record.get("role", ""),
-                record.get("apiKey", ""),
+                "••••••••" if record.get("apiKey") else "",
                 computer,
                 ip_address,
                 status,
@@ -810,7 +868,39 @@ def get_listen_port() -> int:
 def build_url(endpoint: str) -> str:
     host = get_server_host()
     port = get_server_port()
-    return f"http://{host}:{port}{endpoint}"
+    scheme_env = os.environ.get("USB_MONITOR_SERVER_SCHEME", "https")
+    scheme = (scheme_env or "").lower().strip()
+    if scheme not in ("http", "https"):
+        LOGGER.warning(
+            "USB_MONITOR_SERVER_SCHEME inválido ('%s'), usando HTTPS por defecto",
+            scheme_env,
+        )
+        scheme = "https"
+    return f"{scheme}://{host}:{port}{endpoint}"
+
+
+def get_requests_verify() -> any:
+    """Determina el valor para el parámetro 'verify' de requests.
+    
+    Reglas:
+      - Sólo aplica para HTTPS. Para HTTP se retorna True (no hay verificación TLS).
+      - Si USB_MONITOR_SSL_CERT está definido y apunta a un archivo existente,
+        se retorna esa ruta (requests verificará contra ese bundle personalizado).
+      - Si USB_MONITOR_SSL_VERIFY == 'false' (case-insensitive), retorna False.
+      - En cualquier otro caso, retorna True.
+    """
+    # Si el esquema es HTTP, la verificación SSL no aplica
+    scheme = (os.environ.get("USB_MONITOR_SERVER_SCHEME", "https") or "").lower().strip()
+    if scheme == "http":
+        return True
+
+    cert_path = os.environ.get("USB_MONITOR_SSL_CERT", "").strip()
+    if cert_path:
+        p = Path(cert_path)
+        if p.exists() and p.is_file():
+            return str(p)
+    verify_env = os.environ.get("USB_MONITOR_SSL_VERIFY", "true").lower()
+    return verify_env != "false"
 
 
 def get_auth_headers() -> Dict[str, str]:
@@ -1068,7 +1158,8 @@ def _send_event_request(payload: Dict[str, Any]) -> None:
     headers.update(get_auth_headers())
 
     try:
-        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        verify = get_requests_verify()
+        response = requests.post(url, json=payload, headers=headers, timeout=10, verify=verify)
         response.raise_for_status()
         LOGGER.info("Evento USB enviado correctamente: %s", json.dumps(payload))
     except Exception as exc:
@@ -1439,7 +1530,8 @@ def _check_whitelist_remote(normalized_serial: str) -> Tuple[bool, Optional[Dict
     headers = get_auth_headers()
 
     LOGGER.debug("    [Whitelist] Enviando petición GET a: %s", endpoint)
-    response = requests.get(url, headers=headers, timeout=8)
+    verify = get_requests_verify()
+    response = requests.get(url, headers=headers, timeout=8, verify=verify)
     response.raise_for_status()
 
     data = response.json()
@@ -1738,11 +1830,9 @@ def get_connected_usb_drives(conn: wmi.WMI) -> list:
                     }
                 )
                 LOGGER.debug(
-                    "Unidad USB detectada | letter=%s | modelo=%s | serie=%s | raw=%s | size=%s | libre=%s",
+                    "Unidad USB detectada | letter=%s | modelo=%s | size=%s | libre=%s",
                     drive_id,
                     model or "Unknown",
-                    serial_report,
-                    serial or "",
                     size,
                     free_space,
                 )
@@ -1778,7 +1868,8 @@ def send_connected_drives_status(pc_name: str, conn: wmi.WMI, drives: Optional[l
     }
 
     try:
-        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        verify = get_requests_verify()
+        response = requests.post(url, json=payload, headers=headers, timeout=10, verify=verify)
         response.raise_for_status()
     except requests.RequestException as exc:
         LOGGER.debug("  [Estado Conectadas] ✗ Error HTTP al enviar estado: %s", exc)
@@ -2854,6 +2945,80 @@ def _set_server_host(new_host: str) -> Tuple[bool, str]:
     return True, output_message
 
 
+def _toggle_server_scheme() -> Tuple[bool, str]:
+    """Alterna USB_MONITOR_SERVER_SCHEME entre http y https y persiste con setx."""
+    current = (os.environ.get("USB_MONITOR_SERVER_SCHEME", "https") or "").lower().strip()
+    new_value = "http" if current == "https" else "https"
+    try:
+        completed = subprocess.run(
+            ["setx", "USB_MONITOR_SERVER_SCHEME", new_value, "/M"],
+            capture_output=True,
+            text=True,
+            encoding='cp850',
+            check=True,
+        )
+    except FileNotFoundError:
+        LOGGER.error("setx no está disponible en este sistema")
+        return False, "No se encontró la utilidad setx."
+    except subprocess.CalledProcessError as exc:
+        LOGGER.error("setx devolvió un error al configurar USB_MONITOR_SERVER_SCHEME: %s", exc)
+        message = _merge_process_output(exc.stdout, exc.stderr)
+        if not message:
+            message = f"setx devolvió el código {exc.returncode}."
+        return False, message
+    except Exception as exc:
+        LOGGER.error("Error inesperado ejecutando setx: %s", exc)
+        return False, str(exc)
+
+    os.environ["USB_MONITOR_SERVER_SCHEME"] = new_value
+    output_message = _merge_process_output(completed.stdout, completed.stderr)
+    if output_message:
+        output_message += "\n"
+    output_message += (
+        f"Esquema del backend actualizado a '{new_value.upper()}'. Reinicia el servicio para aplicar los cambios."
+    )
+    LOGGER.info("USB_MONITOR_SERVER_SCHEME actualizado a %s", new_value)
+    return True, output_message
+
+
+def _toggle_ssl_verify() -> Tuple[bool, str]:
+    """Alterna USB_MONITOR_SSL_VERIFY entre 'true' y 'false' y persiste con setx."""
+    current = (os.environ.get("USB_MONITOR_SSL_VERIFY", "true") or "").lower().strip()
+    new_value = "false" if current == "true" else "true"
+    try:
+        completed = subprocess.run(
+            ["setx", "USB_MONITOR_SSL_VERIFY", new_value, "/M"],
+            capture_output=True,
+            text=True,
+            encoding='cp850',
+            check=True,
+        )
+    except FileNotFoundError:
+        LOGGER.error("setx no está disponible en este sistema")
+        return False, "No se encontró la utilidad setx."
+    except subprocess.CalledProcessError as exc:
+        LOGGER.error("setx devolvió un error al configurar USB_MONITOR_SSL_VERIFY: %s", exc)
+        message = _merge_process_output(exc.stdout, exc.stderr)
+        if not message:
+            message = f"setx devolvió el código {exc.returncode}."
+        return False, message
+    except Exception as exc:
+        LOGGER.error("Error inesperado ejecutando setx: %s", exc)
+        return False, str(exc)
+
+    os.environ["USB_MONITOR_SSL_VERIFY"] = new_value
+    output_message = _merge_process_output(completed.stdout, completed.stderr)
+    if output_message:
+        output_message += "\n"
+    output_message += (
+        "Verificación SSL {}. Reinicia el servicio para aplicar los cambios.".format(
+            "DESACTIVADA" if new_value == "false" else "ACTIVADA"
+        )
+    )
+    LOGGER.info("USB_MONITOR_SSL_VERIFY actualizado a %s", new_value)
+    return True, output_message
+
+
 def run_gui() -> None:
     root = tk.Tk()
     root.title("USB Monitor Service")
@@ -2877,7 +3042,7 @@ def run_gui() -> None:
 
     status_var = tk.StringVar()
     status_label = ttk.Label(container, textvariable=status_var, font=("Segoe UI", 11, "bold"))
-    status_label.grid(row=0, column=0, columnspan=2, sticky="w")
+    status_label.grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 2))
 
     # Variable para mostrar el estado del inicio automático
     autostart_status_var = tk.StringVar()
@@ -2889,13 +3054,38 @@ def run_gui() -> None:
     )
     autostart_status_label.grid(row=1, column=0, columnspan=2, sticky="w")
 
+    # Estado de esquema y SSL verify junto a "Inicio automático"
+    scheme_status_var = tk.StringVar()
+    ssl_status_var = tk.StringVar()
+
+    scheme_ssl_frame = ttk.Frame(container)
+    scheme_ssl_frame.grid(row=2, column=0, columnspan=2, sticky="w", pady=(2, 6))
+
+    scheme_status_label = ttk.Label(
+        scheme_ssl_frame,
+        textvariable=scheme_status_var,
+        font=("Segoe UI", 9),
+        foreground="#666666",
+        wraplength=360,
+    )
+    scheme_status_label.pack(anchor="w")
+
+    ssl_status_label = ttk.Label(
+        scheme_ssl_frame,
+        textvariable=ssl_status_var,
+        font=("Segoe UI", 9),
+        foreground="#666666",
+        wraplength=360,
+    )
+    ssl_status_label.pack(anchor="w")
+
     info_label = ttk.Label(
         container,
         text="Ejecuta esta herramienta como administrador para instalar o controlar el servicio.",
         wraplength=360,
         foreground="#444444",
     )
-    info_label.grid(row=2, column=0, columnspan=2, pady=(6, 10), sticky="w")
+    info_label.grid(row=3, column=0, columnspan=2, pady=(6, 10), sticky="w")
 
     log_box = ScrolledText(container, height=8, width=52, state="disabled", wrap="word")
     log_box.grid(row=3, column=0, columnspan=2, pady=(0, 12), sticky="nsew")
@@ -2937,6 +3127,16 @@ def run_gui() -> None:
                 autostart_status_var.set(f"Inicio automático: Tipo {start_type}")
         else:
             autostart_status_var.set("Inicio automático: Estado desconocido")
+
+        # Actualizar esquema y verificación SSL
+        scheme = os.environ.get("USB_MONITOR_SERVER_SCHEME", "https").lower()
+        scheme_status_var.set(f"Esquema del backend: {scheme.upper()}")
+        cert_path = os.environ.get("USB_MONITOR_SSL_CERT", "").strip()
+        verify_env = os.environ.get("USB_MONITOR_SSL_VERIFY", "true").lower()
+        if cert_path and Path(cert_path).exists():
+            ssl_status_var.set(f"Verificación SSL: CA personalizada ({cert_path})")
+        else:
+            ssl_status_var.set("Verificación SSL: Activada" if verify_env != "false" else "Verificación SSL: Desactivada")
 
     def finish_command(success: bool, message: str) -> None:
         set_buttons_state("normal")
@@ -2998,6 +3198,26 @@ def run_gui() -> None:
         set_buttons_state("disabled")
         threading.Thread(target=worker, daemon=True).start()
 
+    def configure_server_scheme_async() -> None:
+        def worker() -> None:
+            success, message = _toggle_server_scheme()
+            root.after(0, lambda: finish_command(success, message))
+
+        append_log("Alternando esquema HTTP/HTTPS...")
+        LOGGER.info("GUI: se solicitó alternar USB_MONITOR_SERVER_SCHEME")
+        set_buttons_state("disabled")
+        threading.Thread(target=worker, daemon=True).start()
+
+    def configure_ssl_verify_async() -> None:
+        def worker() -> None:
+            success, message = _toggle_ssl_verify()
+            root.after(0, lambda: finish_command(success, message))
+
+        append_log("Alternando verificación SSL...")
+        LOGGER.info("GUI: se solicitó alternar USB_MONITOR_SSL_VERIFY")
+        set_buttons_state("disabled")
+        threading.Thread(target=worker, daemon=True).start()
+
     def open_api_key_configurator_dialog() -> None:
         append_log("Abriendo configurador de API key...")
         try:
@@ -3047,6 +3267,22 @@ def run_gui() -> None:
     )
     api_key_button.grid(row=8, column=0, columnspan=2, padx=4, pady=(8, 0), sticky="ew")
     command_buttons.append(api_key_button)
+
+    scheme_button = ttk.Button(
+        container,
+        text="Alternar HTTP/HTTPS",
+        command=configure_server_scheme_async,
+    )
+    scheme_button.grid(row=12, column=0, columnspan=2, padx=4, pady=(8, 0), sticky="ew")
+    command_buttons.append(scheme_button)
+
+    ssl_button = ttk.Button(
+        container,
+        text="Alternar verificación SSL",
+        command=configure_ssl_verify_async,
+    )
+    ssl_button.grid(row=13, column=0, columnspan=2, padx=4, pady=(8, 0), sticky="ew")
+    command_buttons.append(ssl_button)
 
     refresh_button = ttk.Button(container, text="Actualizar estado", command=update_status)
     refresh_button.grid(row=9, column=0, columnspan=2, pady=(8, 0), sticky="ew")

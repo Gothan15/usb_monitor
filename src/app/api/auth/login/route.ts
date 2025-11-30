@@ -65,7 +65,10 @@ export async function POST(req: Request) {
     // Rol 'agent' eliminado: solo 'admin' y 'user'.
 
     // Validar que usuarios normales solo puedan iniciar sesión desde su PC asignada
-    if (user.role === "user" && user.computer) {
+    const normalizedRole =
+      typeof user.role === "string" ? user.role.toLowerCase() : user.role;
+
+    if (normalizedRole === "user" && user.computer) {
       // Obtener el hostname de la computadora cliente
       const clientHostname = req.headers.get("x-client-hostname");
 
@@ -152,7 +155,11 @@ export async function POST(req: Request) {
     const csrfToken = issueCsrfToken();
     const response = NextResponse.json({
       ok: true,
-      user: { id: user.id, username: user.username, role: user.role },
+      user: {
+        id: user.id,
+        username: user.username,
+        role: normalizedRole ?? null,
+      },
       // Frontend ya no necesita guardar nada; token sólo en cookie
     });
     response.headers.append("Set-Cookie", buildSessionCookie(token));

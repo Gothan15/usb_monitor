@@ -580,7 +580,12 @@ export async function verifySessionFromRequest(
     select: { username: true, role: true },
   });
 
-  return user;
+  if (!user) return null;
+
+  return {
+    username: user.username,
+    role: user.role?.toLowerCase?.() ?? user.role,
+  };
 }
 
 export function buildSessionCookie(
