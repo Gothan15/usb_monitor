@@ -16,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -32,7 +32,6 @@ import {
 import {
   AlertTriangle,
   Cpu,
-  Loader2,
   MonitorSmartphone,
   Router,
   Sparkles,
@@ -48,6 +47,7 @@ import { DashboardPagination } from "./DashboardPagination";
 import { useTableSort } from "@/hooks/useTableSort";
 import { SortableTableHead } from "./SortableTableHead";
 import { USBDevicesSheet } from "./USBDevicesSheet";
+import { Spinner } from "@/components/ui/spinner";
 
 interface Props {
   computers: Computer[];
@@ -306,7 +306,7 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                               )}
                             >
                               {deletingId === computer.id ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                <Spinner size={14} />
                               ) : (
                                 <Trash2 className="h-3.5 w-3.5 transition-transform group-hover:scale-110" />
                               )}
@@ -365,8 +365,8 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                 })}
               </div>
 
-              <ScrollArea className="hidden max-h-[min(65vh,500px)] pr-3 [--scrollbar-size:0px] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden md:block">
-                <Table className="w-full">
+              <ScrollArea className="hidden max-h-[min(65vh,500px)] pr-3 md:block">
+                <Table className="w-full min-w-[1100px]">
                   <TableHeader className="sticky top-0 z-10 bg-white/95 backdrop-blur-xl dark:bg-slate-900/80">
                     <TableRow className="border-white/60 dark:border-white/10">
                       <SortableTableHead
@@ -539,7 +539,7 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                                 )}
                               >
                                 {deletingId === computer.id ? (
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  <Spinner size={14} />
                                 ) : (
                                   <Trash2 className="h-3.5 w-3.5 transition-transform group-hover:scale-110" />
                                 )}
@@ -554,6 +554,7 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                     ))}
                   </TableBody>
                 </Table>
+                <ScrollBar orientation="horizontal" />
               </ScrollArea>
 
               <div className="mt-4 w-full">

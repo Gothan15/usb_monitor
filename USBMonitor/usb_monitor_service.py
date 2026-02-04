@@ -834,7 +834,7 @@ def ensure_ipv4(value: Optional[str], default: str = DEFAULT_IPV4_FALLBACK) -> s
 
 
 HOSTNAME = sanitize_required_string(
-    HOSTNAME_RAW.upper(), max_length=120, fallback="UNKNOWN_HOST"
+    HOSTNAME_RAW, max_length=120, fallback="UNKNOWN_HOST"
 )
 
 

@@ -16,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -31,12 +31,12 @@ import {
   AlertTriangle,
   Clock3,
   Info,
-  Loader2,
   ShieldCheck,
   Siren,
   Trash2,
   Usb,
 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { USBEvent, formatDate, formatTime } from "./types";
 import { DashboardPagination } from "./DashboardPagination";
@@ -240,7 +240,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                   disabled={clearDisabled}
                 >
                   {clearing ? (
-                    <Loader2 className="size-4 animate-spin" />
+                    <Spinner size={16} />
                   ) : (
                     <Trash2 className="size-4" />
                   )}
@@ -372,9 +372,9 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                 })}
               </div>
 
-              <ScrollArea className="hidden max-h-[min(65vh,500px)] pr-3 [--scrollbar-size:0px] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden md:block">
+              <ScrollArea className="hidden max-h-[min(65vh,500px)] pr-3 md:block">
                 <TooltipProvider delayDuration={120}>
-                  <div className="w-full overflow-x-auto overflow-y-visible">
+                  <div className="w-full">
                     <Table className="w-full min-w-[850px]">
                       <TableHeader className="sticky top-0 z-10 bg-white/95 backdrop-blur-xl dark:bg-slate-900/80">
                         <TableRow className="border-white/60 dark:border-white/10">
@@ -610,6 +610,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                     </Table>
                   </div>
                 </TooltipProvider>
+                <ScrollBar orientation="horizontal" />
               </ScrollArea>
 
               <div className="mt-4 w-full">

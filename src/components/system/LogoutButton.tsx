@@ -2,10 +2,11 @@
 
 import { useCallback, useState } from "react";
 import type { ComponentProps } from "react";
-import { LogOut, Loader2 } from "lucide-react";
+import { LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { cn, getCsrfTokenFromDocument } from "@/lib/utils";
+import { Spinner } from "@/components/ui/spinner";
 
 type ButtonProps = ComponentProps<typeof Button>;
 
@@ -81,7 +82,7 @@ export const LogoutButton = ({
       {...buttonProps}
     >
       {loading ? (
-        <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+        <Spinner size={16} />
       ) : (
         <LogOut className="h-4 w-4 text-slate-500 dark:text-slate-300" />
       )}

@@ -4,6 +4,7 @@ import { requireServiceAuth } from "@/lib/auth";
 import { getCurrentDate } from "@/lib/time";
 import { hit } from "@/lib/rateLimit";
 import { logError } from "@/lib/logger";
+import { normalizeComputerName } from "@/lib/utils";
 
 /**
  * POST /api/usb-event/connected-status
@@ -35,7 +36,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const normalizedPcName = pcName.trim();
+    const normalizedPcName = normalizeComputerName(pcName);
     const clientIp =
       (req.headers.get("x-forwarded-for") || "").split(",")[0].trim() ||
       "unknown";

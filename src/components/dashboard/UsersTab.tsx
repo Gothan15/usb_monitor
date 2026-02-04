@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import {
   Table,
   TableBody,
@@ -53,7 +53,6 @@ import { formatDateTime, type Computer } from "./types";
 import {
   AlertCircle,
   KeyRound,
-  Loader2,
   Pencil,
   Plus,
   RefreshCw,
@@ -63,6 +62,7 @@ import {
 } from "lucide-react";
 import { useTableSort } from "@/hooks/useTableSort";
 import { SortableTableHead } from "./SortableTableHead";
+import { Spinner } from "@/components/ui/spinner";
 
 interface AdminUser {
   id: string;
@@ -608,7 +608,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
                 className="flex flex-col gap-6"
               >
                 <ScrollArea className="max-h-[min(65vh,520px)] pr-3">
-                  <Table>
+                  <Table className="min-w-[800px]">
                     <TableHeader className="sticky top-0 z-10 bg-white/95 backdrop-blur-xl dark:bg-slate-900/80">
                       <TableRow className="border-white/60 dark:border-white/10">
                         <SortableTableHead
@@ -741,6 +741,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
                       ))}
                     </TableBody>
                   </Table>
+                  <ScrollBar orientation="horizontal" />
                 </ScrollArea>
 
                 <div className="mt-4 w-full">
@@ -765,7 +766,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
                   className="pointer-events-none absolute inset-0 flex items-center justify-center"
                 >
                   <div className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/90 px-3 py-1 text-xs font-medium text-slate-600 shadow-sm dark:border-white/10 dark:bg-slate-900/80 dark:text-slate-200">
-                    <Loader2 className="h-3 w-3 animate-spin" />
+                    <Spinner size={12} />
                     Buscando usuarios...
                   </div>
                 </motion.div>

@@ -5,12 +5,12 @@ import {
   Eye,
   EyeOff,
   Key,
-  Loader2,
   RefreshCw,
   Shield,
   Copy,
   Check,
 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -138,13 +138,13 @@ export const ApiKeyDisplay = ({ userId }: ApiKeyDisplayProps) => {
           disabled={refreshing}
           onClick={() => loadApiKey(undefined, true)}
         >
-          <RefreshCw
-            className={`h-4 w-4 ${
-              refreshing
-                ? "animate-spin text-slate-400"
-                : "text-slate-500 dark:text-slate-300"
-            }`}
-          />
+          {refreshing ? (
+            <div className="mr-2">
+              <Spinner size={16} />
+            </div>
+          ) : (
+            <RefreshCw className="mr-2 h-4 w-4 text-slate-500 dark:text-slate-300" />
+          )}
           {refreshing ? "Actualizando..." : "Actualizar"}
         </Button>
       </CardHeader>
@@ -159,7 +159,7 @@ export const ApiKeyDisplay = ({ userId }: ApiKeyDisplayProps) => {
 
         {loading && (
           <div className="flex h-32 items-center justify-center">
-            <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+            <Spinner size={32} />
           </div>
         )}
 

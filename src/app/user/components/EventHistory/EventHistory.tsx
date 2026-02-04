@@ -20,6 +20,7 @@ import { formatDateTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { fetchBasicUserSnapshot } from "../../utils";
 import type { UsbConnection, UsbEvent } from "../../types";
+import { Spinner } from "@/components/ui/spinner";
 
 interface EventHistoryProps {
   userId: string;
@@ -169,20 +170,20 @@ export const EventHistory = ({ userId }: EventHistoryProps) => {
           disabled={refreshing}
           onClick={() => loadHistory(undefined, true)}
         >
-          <RefreshCw
-            className={`h-4 w-4 ${
-              refreshing
-                ? "animate-spin text-slate-400"
-                : "text-slate-500 dark:text-slate-300"
-            }`}
-          />
+          {refreshing ? (
+            <div className="mr-2">
+              <Spinner size={16} />
+            </div>
+          ) : (
+            <RefreshCw className="mr-2 h-4 w-4 text-slate-500 dark:text-slate-300" />
+          )}
           {refreshing ? "Actualizando..." : "Actualizar"}
         </Button>
       </CardHeader>
       <CardContent className="space-y-4">
         {loading && (
           <div className="flex h-48 items-center justify-center">
-            <div className="h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-slate-500" />
+            <Spinner />
           </div>
         )}
 

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth";
 import { logError } from "@/lib/logger";
+import { normalizeComputerName } from "@/lib/utils";
 
 type RouteContext = {
   params: Promise<{

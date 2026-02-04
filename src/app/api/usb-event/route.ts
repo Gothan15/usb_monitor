@@ -119,7 +119,7 @@ export async function DELETE(req: NextRequest) {
       select: { role: true },
     });
 
-    if (!actor || actor.role !== "admin") {
+    if (!actor || actor.role.toUpperCase() !== "ADMIN") {
       return NextResponse.json(
         { ok: false, error: "Solo un administrador puede limpiar eventos." },
         { status: 403 }

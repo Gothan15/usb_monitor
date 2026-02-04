@@ -21,10 +21,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Network, Radar } from "lucide-react";
+import { Network, Radar } from "lucide-react";
 import { getCurrentIsoString } from "@/lib/time";
 import { formatDateTime } from "@/components/dashboard/types";
 import { getCsrfTokenFromDocument } from "@/lib/utils";
+import { Spinner } from "@/components/ui/spinner";
 
 interface ScanResult {
   ip: string;
@@ -172,7 +173,9 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
               className="border border-white/70 bg-white/80 text-slate-700 shadow-sm transition-colors hover:border-sky-300 hover:text-slate-900 dark:border-white/10 dark:bg-white/10 dark:text-slate-100 dark:hover:border-sky-400/40"
             >
               {scanning ? (
-                <Loader2 className="mr-2 size-4 animate-spin" />
+                <div className="mr-2">
+                  <Spinner size={16} />
+                </div>
               ) : (
                 <Network className="mr-2 size-4" />
               )}

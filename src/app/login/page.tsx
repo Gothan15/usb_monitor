@@ -10,8 +10,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { motion } from "framer-motion";
-import { Eye, EyeOff, Loader2, Usb, CheckCircle2 } from "lucide-react";
+import { Eye, EyeOff, Usb, CheckCircle2 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Spinner } from "@/components/ui/spinner";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
@@ -236,7 +237,7 @@ export default function LoginPage() {
                 >
                   {loading ? (
                     <span className="inline-flex items-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin" /> Verificando…
+                      <Spinner size={16} /> Verificando…
                     </span>
                   ) : pcName ? (
                     "Desbloquear USB"

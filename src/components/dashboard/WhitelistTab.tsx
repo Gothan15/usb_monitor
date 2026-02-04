@@ -19,13 +19,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Textarea } from "@/components/ui/textarea";
 import { WhitelistEntry, formatDateTime } from "./types";
 import {
   CheckCircle2,
-  Loader2,
   NotebookPen,
   ShieldCheck,
   Trash2,
@@ -37,6 +36,7 @@ import { cn } from "@/lib/utils";
 import { DashboardPagination } from "./DashboardPagination";
 import { useTableSort } from "@/hooks/useTableSort";
 import { SortableTableHead } from "./SortableTableHead";
+import { Spinner } from "@/components/ui/spinner";
 
 interface CreatePayload {
   serialNumber: string;
@@ -311,7 +311,9 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
                 className="w-full rounded-2xl border border-cyan-200/60 bg-cyan-500/10 px-6 py-3 text-cyan-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-cyan-300 hover:bg-cyan-500/20 sm:w-auto dark:border-cyan-400/40 dark:bg-cyan-500/15 dark:text-cyan-100"
               >
                 {creating ? (
-                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  <div className="mr-2">
+                    <Spinner size={16} />
+                  </div>
                 ) : (
                   <NotebookPen className="mr-2 size-4" />
                 )}
@@ -379,7 +381,9 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
                           )}
                         >
                           {isDeleting ? (
-                            <Loader2 className="mr-2 size-3.5 animate-spin" />
+                            <div className="mr-2">
+                              <Spinner size={14} />
+                            </div>
                           ) : (
                             <Trash2 className="mr-2 size-3.5" />
                           )}
@@ -392,8 +396,8 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
               )}
             </div>
 
-            <ScrollArea className="hidden max-h-[min(65vh,500px)] pr-3 [--scrollbar-size:0px] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden md:block">
-              <Table className="w-full">
+            <ScrollArea className="hidden max-h-[min(65vh,500px)] pr-3 md:block">
+              <Table className="w-full min-w-[800px]">
                 <TableHeader className="sticky top-0 z-10 bg-white/95 backdrop-blur-xl dark:bg-slate-900/80">
                   <TableRow className="border-slate-200/80 dark:border-white/10">
                     <SortableTableHead
@@ -521,7 +525,9 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
                             )}
                           >
                             {deletingId === entry.id ? (
-                              <Loader2 className="mr-2 size-4 animate-spin" />
+                              <div className="mr-2">
+                                <Spinner size={16} />
+                              </div>
                             ) : (
                               <Trash2 className="mr-2 size-4" />
                             )}
@@ -533,6 +539,7 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
                   )}
                 </TableBody>
               </Table>
+              <ScrollBar orientation="horizontal" />
             </ScrollArea>
 
             {entries.length > 0 && !loading && (

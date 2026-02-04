@@ -14,7 +14,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import {
   Usb,
@@ -170,17 +170,13 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
                 onClick={handleRefresh}
                 disabled={isRefreshing || loadingConnected || loadingHistory}
               >
-                <motion.span
-                  animate={{ rotate: isRefreshing ? 360 : 0 }}
-                  transition={{
-                    duration: 0.6,
-                    ease: "easeInOut",
-                    repeat: isRefreshing ? Infinity : 0,
-                  }}
-                  className="inline-flex"
-                >
+                {isRefreshing ? (
+                  <div className="mr-2">
+                    <Spinner size={16} />
+                  </div>
+                ) : (
                   <RefreshCw className="mr-2 h-4 w-4" />
-                </motion.span>
+                )}
                 {isRefreshing ? "Actualizando" : "Actualizar"}
               </Button>
             </div>
@@ -199,12 +195,9 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
                 >
                   <div className="grid gap-3">
                     {loadingConnected ? (
-                      Array.from({ length: 4 }).map((_, i) => (
-                        <Skeleton
-                          key={i}
-                          className="h-20 rounded-2xl bg-slate-100/80 dark:bg-white/10"
-                        />
-                      ))
+                      <div className="flex h-64 items-center justify-center">
+                        <Spinner />
+                      </div>
                     ) : connected.length === 0 ? (
                       <div className="rounded-2xl border border-white/70 bg-white/80 p-4 text-center text-slate-500 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
                         No hay dispositivos conectados actualmente.
@@ -319,12 +312,9 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
                 >
                   <div className="grid gap-3">
                     {loadingHistory ? (
-                      Array.from({ length: 4 }).map((_, i) => (
-                        <Skeleton
-                          key={i}
-                          className="h-20 rounded-2xl bg-slate-100/80 dark:bg-white/10"
-                        />
-                      ))
+                      <div className="flex h-64 items-center justify-center">
+                        <Spinner />
+                      </div>
                     ) : history.length === 0 ? (
                       <div className="rounded-2xl border border-white/70 bg-white/80 p-4 text-center text-slate-500 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
                         No hay registros en el rango seleccionado.
