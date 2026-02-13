@@ -96,26 +96,26 @@ function StatsCardsComponent({
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
       >
-        <Card className="relative h-full overflow-hidden rounded-3xl border border-slate-200/70 bg-white/70 text-slate-800 shadow-xl dark:border-slate-700/80 dark:bg-slate-900/70 dark:text-slate-100">
+        <Card className="relative h-full overflow-hidden rounded-2xl border bg-card/80 backdrop-blur-sm shadow-lg hover:shadow-xl transition-all duration-300">
           <CardContent className="flex h-full flex-col justify-between gap-6 p-6">
             <div className="flex items-center justify-between gap-6">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                   Estado en vivo
                 </p>
                 <h2 className="mt-2 text-3xl font-semibold tracking-tight">
                   {liveStatus.label}
                 </h2>
-                <p className="mt-2 text-sm text-slate-500 dark:text-slate-300">
+                <p className="mt-2 text-sm text-muted-foreground">
                   {liveStatus.description}
                 </p>
               </div>
-              <span className="inline-flex h-16 w-16 items-center justify-center rounded-2xl border border-slate-200/70 bg-white text-slate-700 shadow-sm dark:border-slate-700/80 dark:bg-slate-900 dark:text-slate-200">
+              <span className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-sm">
                 <ShieldCheck className="h-8 w-8" />
               </span>
             </div>
-            <div className="flex items-center justify-between rounded-2xl border border-slate-200/70 bg-white/70 px-4 py-3 text-sm font-semibold shadow-sm dark:border-slate-700/80 dark:bg-slate-900/60">
-              <span className="text-xs uppercase tracking-[0.28em] text-slate-400 dark:text-slate-500">
+            <div className="flex items-center justify-between rounded-xl bg-muted/50 px-4 py-3 text-sm font-semibold shadow-sm">
+              <span className="text-xs uppercase tracking-[0.28em] text-muted-foreground">
                 Cobertura
               </span>
               <Badge
@@ -123,11 +123,11 @@ function StatsCardsComponent({
                 className={cn(
                   "rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.24em] shadow-sm",
                   liveStatus.tone === "emerald" &&
-                    "border-emerald-400/60 bg-emerald-500/10 text-emerald-600 dark:text-emerald-200",
+                    "border-emerald-400/60 bg-emerald-500/15 text-emerald-600 dark:text-emerald-300",
                   liveStatus.tone === "amber" &&
-                    "border-amber-400/60 bg-amber-500/10 text-amber-500 dark:text-amber-200",
+                    "border-amber-400/60 bg-amber-500/15 text-amber-600 dark:text-amber-300",
                   liveStatus.tone === "rose" &&
-                    "border-rose-400/60 bg-rose-500/10 text-rose-500 dark:text-rose-200"
+                    "border-rose-400/60 bg-rose-500/15 text-rose-600 dark:text-rose-300"
                 )}
               >
                 {liveStatus.chip}
@@ -145,21 +145,21 @@ function StatsCardsComponent({
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.05 * (index + 1) }}
         >
-          <Card className="relative overflow-hidden rounded-3xl border border-slate-200/70 bg-white/70 px-5 py-6 text-slate-800 shadow-xl transition-all duration-300 hover:-translate-y-1 dark:border-slate-700/80 dark:bg-slate-900/70 dark:text-slate-100">
+          <Card className="relative overflow-hidden rounded-2xl bg-card/80 backdrop-blur-sm shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1 px-5 py-6">
             <div className="relative flex flex-col gap-4">
               <div className="flex items-center justify-between">
-                <p className="text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">
+                <p className="text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                   {card.title}
                 </p>
                 <span
                   className={cn(
-                    "inline-flex h-9 w-9 items-center justify-center rounded-xl border text-slate-600 shadow-sm dark:text-slate-200",
+                    "inline-flex h-9 w-9 items-center justify-center rounded-xl shadow-sm transition-transform duration-200 group-hover:scale-110",
                     card.tone === "emerald" &&
-                      "border-emerald-400/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-200",
+                      "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300",
                     card.tone === "amber" &&
-                      "border-amber-400/50 bg-amber-500/10 text-amber-500 dark:text-amber-200",
+                      "bg-amber-500/15 text-amber-600 dark:text-amber-300",
                     card.tone === "slate" &&
-                      "border-slate-300/60 bg-slate-200/40 text-slate-600 dark:border-slate-700/60 dark:bg-slate-800/60 dark:text-slate-200"
+                      "bg-muted text-muted-foreground"
                   )}
                 >
                   {card.icon}
@@ -174,7 +174,7 @@ function StatsCardsComponent({
               >
                 {card.value}
               </motion.span>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+              <p className="text-xs text-muted-foreground">
                 {card.description}
               </p>
             </div>
