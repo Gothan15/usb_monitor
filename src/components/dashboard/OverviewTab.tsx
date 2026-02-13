@@ -1,41 +1,53 @@
 "use client";
 
 import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { fetchJson } from "@/lib/http";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatsCards } from "@/components/dashboard/StatsCards";
 import {
-  type USBEvent,
-  type Computer,
-  type WhitelistEntry,
   formatDateTime,
   formatHour,
 } from "@/components/dashboard/types";
 import {
   Activity,
   AlertTriangle,
-  Clock3,
   HardDrive,
   ShieldCheck,
 } from "lucide-react";
-import {
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-  Tooltip as ChartTooltip,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-} from "recharts";
+import dynamic from "next/dynamic";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { getCurrentDate, getCurrentTimestamp } from "@/lib/time";
+import { Skeleton } from "@/components/ui/skeleton";
 
-interface OverviewTabProps {
-  events: USBEvent[];
-  computers: Computer[];
-  whitelist: WhitelistEntry[];
-  loading: boolean;
+interface DashboardStats {
+  totalComputers: number;
+  onlineComputers: number;
+  totalEvents: number;
+  pendingEvents: number;
+  recentEvents: {
+    createdAt: string;
+    whitelisted: boolean;
+    event: string;
+    serialNumber?: string;
+  }[];
+  latestAlerts: {
+    id: string;
+    pcName: string;
+    pcUser: string;
+    event: string;
+    createdAt: string;
+  }[];
+  whitelistCount: number;
+  serviceRunningCount: number;
+  serviceRespondingCount: number;
 }
+
+const OverviewChart = dynamic(() => import("./OverviewChart"), {
+  ssr: false,
+  loading: () => <div className="h-full w-full animate-pulse bg-slate-100/50 dark:bg-white/5 rounded-xl" />,
+});
 
 const classifyEventTone = (message: string) => {
   const normalized = message.toLowerCase();
@@ -56,23 +68,18 @@ const classifyEventTone = (message: string) => {
   return "neutral" as const;
 };
 
-export function OverviewTab({
-  events,
-  computers,
-  whitelist,
-  loading,
-}: OverviewTabProps) {
-  const activeComputers = computers.filter(
-    (computer) => computer.isActive
-  ).length;
-  const totalEvents = events.length;
-  const recentEvents = events.filter((event) => {
-    const eventDate = new Date(event.createdAt);
-    const oneHourAgo = getCurrentTimestamp() - 60 * 60 * 1000;
-    return eventDate.getTime() >= oneHourAgo;
-  }).length;
+export function OverviewTab() {
+  const { data: stats, isLoading } = useQuery<DashboardStats>({
+    queryKey: ["dashboard-stats"],
+    queryFn: () => fetchJson<DashboardStats>("/api/dashboard/stats"),
+    refetchInterval: 30000,
+  });
+
+  const loading = isLoading;
 
   const trendData = useMemo(() => {
+    if (!stats) return [];
+    
     const hours = 12;
     const now = getCurrentDate();
     const buckets = new Array(hours).fill(0).map((_, index) => {
@@ -83,14 +90,7 @@ export function OverviewTab({
       return { label, allowed: 0, blocked: 0, total: 0 };
     });
 
-    // Mapear seriales en whitelist para clasificación precisa
-    const whitelistSerials = new Set(
-      whitelist
-        .map((w) => w.serialNumber?.trim().toLowerCase())
-        .filter((s): s is string => Boolean(s))
-    );
-
-    events.forEach((event) => {
+    stats.recentEvents.forEach((event) => {
       const createdAt = new Date(event.createdAt);
       const diffHours =
         (now.getTime() - createdAt.getTime()) / (60 * 60 * 1000);
@@ -99,62 +99,67 @@ export function OverviewTab({
       const bucket = buckets[bucketIndex];
       if (!bucket) return;
 
-      const isWhitelisted =
-        Boolean(event.whitelisted) ||
-        (event.serialNumber
-          ? whitelistSerials.has(event.serialNumber.trim().toLowerCase())
-          : false);
-
-      if (isWhitelisted) bucket.allowed += 1;
+      if (event.whitelisted) bucket.allowed += 1;
       else bucket.blocked += 1;
       bucket.total += 1;
     });
 
     return buckets;
-  }, [events, whitelist]);
-
-  const latestAlerts = useMemo(
-    () =>
-      [...events]
-        .filter((event) => classifyEventTone(event.event) !== "neutral")
-        .slice(0, 6),
-    [events]
-  );
+  }, [stats]);
 
   const serviceSummary = useMemo(() => {
-    const running = computers.filter(
-      (computer) => computer.serviceRunning
-    ).length;
-    const responding = computers.filter(
-      (computer) => computer.lastServiceCheck
-    ).length;
-    const offline = computers.length - running;
+    if (!stats) return { running: 0, responding: 0, offline: 0, total: 0 };
     return {
-      running,
-      responding,
-      offline,
-      total: computers.length,
+      running: stats.serviceRunningCount,
+      responding: stats.serviceRespondingCount,
+      offline: stats.totalComputers - stats.serviceRunningCount,
+      total: stats.totalComputers,
     };
-  }, [computers]);
+  }, [stats]);
 
-  const whitelistStats = useMemo(() => {
-    const withNotes = whitelist.filter((item) =>
-      Boolean(item.notes?.trim())
-    ).length;
-    const withLabel = whitelist.filter((item) =>
-      Boolean(item.label?.trim())
-    ).length;
-    return { total: whitelist.length, withNotes, withLabel };
-  }, [whitelist]);
+  if (loading && !stats) {
+    return (
+      <div className="space-y-8">
+         <div className="grid gap-4 lg:grid-cols-5">
+            {[...Array(5)].map((_, i) => (
+              <Skeleton key={i} className="h-32 rounded-3xl" />
+            ))}
+         </div>
+         <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
+            <Skeleton className="h-[350px] rounded-3xl" />
+            <Skeleton className="h-[350px] rounded-3xl" />
+         </div>
+      </div>
+    );
+  }
+  
+  // Safe default if stats is null but loading is false (error state)
+  const safeStats = stats || {
+      totalComputers: 0,
+      onlineComputers: 0,
+      totalEvents: 0,
+      pendingEvents: 0,
+      recentEvents: [],
+      latestAlerts: [],
+      whitelistCount: 0,
+      serviceRunningCount: 0,
+      serviceRespondingCount: 0
+  };
+
+  const recentEventsCount = safeStats.recentEvents.filter((event) => {
+      const eventDate = new Date(event.createdAt);
+      const oneHourAgo = getCurrentTimestamp() - 60 * 60 * 1000;
+      return eventDate.getTime() >= oneHourAgo;
+  }).length;
 
   return (
     <div className="space-y-8">
       <StatsCards
-        activeComputers={activeComputers}
-        totalComputers={computers.length}
-        totalEvents={totalEvents}
-        recentEvents={recentEvents}
-        whitelistCount={whitelist.length}
+        activeComputers={safeStats.onlineComputers}
+        totalComputers={safeStats.totalComputers}
+        totalEvents={safeStats.totalEvents}
+        recentEvents={recentEventsCount}
+        whitelistCount={safeStats.whitelistCount}
       />
 
       <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
@@ -170,79 +175,11 @@ export function OverviewTab({
             </div>
             <Badge className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-200">
               <Activity className="mr-2 h-3.5 w-3.5" />
-              {totalEvents} total
+              {safeStats.totalEvents} total
             </Badge>
           </CardHeader>
           <CardContent className="h-[280px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart
-                data={trendData}
-                margin={{ left: 0, right: 0, top: 20, bottom: 10 }}
-              >
-                <defs>
-                  <linearGradient id="allowed" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.35} />
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="blocked" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="5%" stopColor="#f97316" stopOpacity={0.4} />
-                    <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke="rgba(15,23,42,0.08)"
-                />
-                <XAxis
-                  dataKey="label"
-                  stroke="rgba(15,23,42,0.35)"
-                  tickLine={false}
-                  axisLine={false}
-                  fontSize={12}
-                />
-                <YAxis
-                  stroke="rgba(15,23,42,0.35)"
-                  tickLine={false}
-                  axisLine={false}
-                  fontSize={12}
-                  allowDecimals={false}
-                />
-                <ChartTooltip
-                  cursor={{
-                    stroke: "rgba(148,163,184,0.3)",
-                    strokeDasharray: 4,
-                  }}
-                  contentStyle={{
-                    background: "rgba(15,23,42,0.9)",
-                    border: "1px solid rgba(148,163,184,0.3)",
-                    borderRadius: 16,
-                    color: "white",
-                  }}
-                  formatter={(value: number, name) => [
-                    value,
-                    name === "allowed"
-                      ? "Whitelisted"
-                      : name === "blocked"
-                      ? "Denegados/Apagado"
-                      : "Total",
-                  ]}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="allowed"
-                  stroke="#10b981"
-                  fill="url(#allowed)"
-                  strokeWidth={2}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="blocked"
-                  stroke="#f97316"
-                  fill="url(#blocked)"
-                  strokeWidth={2}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+            <OverviewChart data={trendData} />
           </CardContent>
         </Card>
 
@@ -254,14 +191,12 @@ export function OverviewTab({
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {loading ? (
-              <div className="h-[180px] animate-pulse rounded-2xl bg-slate-200/40 dark:bg-slate-800/40" />
-            ) : latestAlerts.length === 0 ? (
+             {safeStats.latestAlerts.length === 0 ? (
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                No se detectaron alertas críticas en las últimas horas.
+                No se detectaron alertas críticas recientes.
               </p>
             ) : (
-              latestAlerts.map((event) => {
+              safeStats.latestAlerts.map((event) => {
                 const tone = classifyEventTone(event.event);
                 const toneClasses = cn(
                   "rounded-2xl border px-4 py-3 shadow-sm transition",
@@ -381,7 +316,7 @@ export function OverviewTab({
                   Seriales autorizados
                 </p>
                 <p className="text-2xl font-semibold text-slate-800 dark:text-white">
-                  {whitelistStats.total}
+                  {safeStats.whitelistCount}
                 </p>
               </div>
               <Badge
@@ -391,23 +326,12 @@ export function OverviewTab({
                 Activo
               </Badge>
             </div>
-            <div className="rounded-2xl border border-slate-200/70 bg-white/70 px-4 py-3 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/70">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
-                Documentados
-              </p>
-              <p className="mt-1">
-                {whitelistStats.withNotes} dispositivos cuentan con notas
-                operativas y {whitelistStats.withLabel} tienen un alias
-                asignado.
-              </p>
-            </div>
-            <div className="rounded-2xl border border-slate-200/70 bg-white/70 px-4 py-3 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/70">
+             <div className="rounded-2xl border border-slate-200/70 bg-white/70 px-4 py-3 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/70">
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
                 Recomendación
               </p>
               <p className="mt-1">
-                Mantén la whitelist sincronizada en menos de 15 minutos tras
-                cambios críticos para asegurar el cumplimiento normativo.
+                Mantén la whitelist sincronizada para asegurar el cumplimiento normativo y reducir alertas.
               </p>
             </div>
           </CardContent>

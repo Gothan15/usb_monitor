@@ -101,37 +101,57 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-background via-muted/40 to-background flex items-center justify-center p-4">
-      <div className="absolute inset-0 -z-10 opacity-[0.15] [mask-image:radial-gradient(circle_at_center,black,transparent)]">
+    <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-background via-muted/30 to-background flex items-center justify-center p-4">
+      {/* Animated background pattern */}
+      <div className="absolute inset-0 -z-10 opacity-[0.08] [mask-image:radial-gradient(circle_at_center,black,transparent)]">
         <svg className="w-full h-full" preserveAspectRatio="none">
           <defs>
             <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
               <stop offset="0%" stopColor="hsl(var(--primary))" />
+              <stop offset="50%" stopColor="hsl(var(--accent))" />
               <stop offset="100%" stopColor="hsl(var(--muted-foreground))" />
             </linearGradient>
           </defs>
-          {Array.from({ length: 28 }).map((_, i) => (
+          {Array.from({ length: 32 }).map((_, i) => (
             <circle
               key={i}
               cx={Math.random() * 100 + "%"}
               cy={Math.random() * 100 + "%"}
-              r={Math.random() * 2 + 0.4}
+              r={Math.random() * 2.5 + 0.5}
               fill="url(#g)"
+              opacity={Math.random() * 0.5 + 0.3}
             />
           ))}
         </svg>
       </div>
+      
+      {/* Subtle gradient orbs for depth */}
+      <div className="absolute top-1/4 -left-48 w-96 h-96 bg-primary/5 rounded-full blur-3xl animate-pulse" 
+        style={{ animationDuration: "4s" }} 
+      />
+      <div className="absolute bottom-1/4 -right-48 w-96 h-96 bg-accent/5 rounded-full blur-3xl animate-pulse" 
+        style={{ animationDuration: "6s" }} 
+      />
+      
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="w-full max-w-sm"
+        initial={{ opacity: 0, y: 20, scale: 0.95 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ 
+          duration: 0.6,
+          ease: [0.4, 0, 0.2, 1]
+        }}
+        className="w-full max-w-sm relative z-10"
       >
         {false ? (
-          <Card className="backdrop-blur supports-[backdrop-filter]:bg-background/70 border-border/60 shadow-lg">
+          <Card className="backdrop-blur-xl supports-[backdrop-filter]:bg-background/80 border-border/50 shadow-2xl">
             <CardHeader className="space-y-1">
-              <div className="flex items-center gap-2">
-                <div className="h-10 w-10 rounded-lg bg-green-500/10 flex items-center justify-center text-green-500">
+              <motion.div 
+                className="flex items-center gap-2"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.2 }}
+              >
+                <div className="h-10 w-10 rounded-lg bg-green-500/10 flex items-center justify-center text-green-500 shadow-sm">
                   <CheckCircle2 className="h-5 w-5" />
                 </div>
                 <div>
@@ -142,28 +162,44 @@ export default function LoginPage() {
                     Acceso autorizado
                   </CardDescription>
                 </div>
-              </div>
+              </motion.div>
             </CardHeader>
             <CardContent>
-              <Alert className="border-green-500/50 bg-green-500/10">
-                <CheckCircle2 className="h-4 w-4 text-green-500" />
-                <AlertDescription className="text-green-700 dark:text-green-300">
-                  Tu memoria USB ha sido desbloqueada exitosamente. Ahora puedes
-                  leer y escribir archivos en ella.
-                </AlertDescription>
-              </Alert>
-              <div className="mt-4 text-center">
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+              >
+                <Alert className="border-green-500/50 bg-green-500/10">
+                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+                  <AlertDescription className="text-green-700 dark:text-green-300">
+                    Tu memoria USB ha sido desbloqueada exitosamente. Ahora puedes
+                    leer y escribir archivos en ella.
+                  </AlertDescription>
+                </Alert>
+              </motion.div>
+              <motion.div 
+                className="mt-4 text-center"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.4 }}
+              >
                 <p className="text-sm text-muted-foreground">
                   Puedes cerrar esta ventana.
                 </p>
-              </div>
+              </motion.div>
             </CardContent>
           </Card>
         ) : (
-          <Card className="backdrop-blur supports-[backdrop-filter]:bg-background/70 border-border/60 shadow-lg">
+          <Card className="backdrop-blur-xl supports-[backdrop-filter]:bg-background/80 border-border/50 shadow-2xl overflow-hidden">
             <CardHeader className="space-y-1">
-              <div className="flex items-center gap-2">
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+              <motion.div 
+                className="flex items-center gap-2"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.2 }}
+              >
+                <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center text-primary shadow-sm">
                   <Usb className="h-5 w-5" />
                 </div>
                 <div>
@@ -176,36 +212,60 @@ export default function LoginPage() {
                       : "Acceso seguro al panel"}
                   </CardDescription>
                 </div>
-              </div>
+              </motion.div>
             </CardHeader>
             <CardContent>
               {error && (
-                <Alert variant="destructive" className="mb-4">
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  className="mb-4"
+                >
+                  <Alert variant="destructive">
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                </motion.div>
               )}
               <form onSubmit={handleSubmit} className="space-y-5">
-                <div className="space-y-2">
+                <motion.div 
+                  className="space-y-2"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 }}
+                >
                   <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Usuario
                   </label>
                   <input
-                    className="w-full rounded-md bg-background border border-border/70 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                    className="w-full rounded-md bg-background/50 border border-border/70 px-3 py-2 text-sm 
+                      transition-all duration-200
+                      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 
+                      focus-visible:border-primary/50 focus-visible:bg-background
+                      hover:border-border"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     placeholder="admin"
                     required
                     autoComplete="username"
                   />
-                </div>
-                <div className="space-y-2">
+                </motion.div>
+                <motion.div 
+                  className="space-y-2"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.4 }}
+                >
                   <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Contraseña
                   </label>
                   <div className="relative">
                     <input
                       type={showPassword ? "text" : "password"}
-                      className="w-full rounded-md bg-background border border-border/70 px-3 py-2 text-sm pr-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                      className="w-full rounded-md bg-background/50 border border-border/70 px-3 py-2 text-sm pr-10 
+                        transition-all duration-200
+                        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 
+                        focus-visible:border-primary/50 focus-visible:bg-background
+                        hover:border-border"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
@@ -215,7 +275,10 @@ export default function LoginPage() {
                     <button
                       type="button"
                       onClick={() => setShowPassword((s) => !s)}
-                      className="absolute inset-y-0 right-2 flex items-center justify-center rounded-full p-2 text-muted-foreground transition-colors hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
+                      className="absolute inset-y-0 right-2 flex items-center justify-center rounded-full p-2 
+                        text-muted-foreground transition-all duration-200 
+                        hover:text-primary hover:bg-primary/10
+                        focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
                     >
                       {showPassword ? (
                         <EyeOff className="h-4 w-4" />
@@ -229,26 +292,28 @@ export default function LoginPage() {
                       </span>
                     </button>
                   </div>
-                </div>
-                <Button
-                  type="submit"
-                  className="w-full font-medium"
-                  disabled={loading}
+                </motion.div>
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.5 }}
                 >
-                  {loading ? (
-                    <span className="inline-flex items-center gap-2">
-                      <Spinner size={16} /> Verificando…
-                    </span>
-                  ) : pcName ? (
-                    "Desbloquear USB"
-                  ) : (
-                    "Entrar"
-                  )}
-                </Button>
-                {/* <p className="text-[11px] text-center text-muted-foreground leading-relaxed">
-                  La creación de cuentas sólo está permitida mediante script CLI
-                  autorizado.
-                </p> */}
+                  <Button
+                    type="submit"
+                    className="w-full font-medium shadow-lg hover:shadow-xl transition-shadow"
+                    disabled={loading}
+                  >
+                    {loading ? (
+                      <span className="inline-flex items-center gap-2">
+                        <Spinner size={16} /> Verificando…
+                      </span>
+                    ) : pcName ? (
+                      "Desbloquear USB"
+                    ) : (
+                      "Entrar"
+                    )}
+                  </Button>
+                </motion.div>
               </form>
             </CardContent>
           </Card>

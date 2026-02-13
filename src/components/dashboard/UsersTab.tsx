@@ -2,6 +2,8 @@
 
 import { memo, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
+import { useQueryClient } from "@tanstack/react-query";
+import { fetchJson } from "@/lib/http";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -142,6 +144,16 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
 
   const [deletingUser, setDeletingUser] = useState<AdminUser | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  const queryClient = useQueryClient();
+
+  const prefetchUser = (id: string) => {
+    queryClient.prefetchQuery({
+      queryKey: ["user", id],
+      queryFn: () => fetchJson(`/api/users/${id}`),
+      staleTime: 1000 * 30,
+    });
+  };
 
   const sortedComputers = useMemo(() => {
     return [...computers].sort((a, b) =>
@@ -667,6 +679,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
                       {sortedData.map((user) => (
                         <TableRow
                           key={user.id}
+                          onMouseEnter={() => prefetchUser(user.id)}
                           className="group border border-white/70 bg-white/75 transition-all duration-150 hover:-translate-y-0.5 hover:border-slate-300/60 hover:bg-slate-50/70 dark:border-white/10 dark:bg-white/5 dark:hover:border-slate-500/40 dark:hover:bg-slate-900/40"
                         >
                           <TableCell className="font-semibold text-slate-700 dark:text-slate-100">

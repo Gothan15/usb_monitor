@@ -13,6 +13,8 @@ import { hit } from "@/lib/rateLimit";
 import { addMillisecondsToNow, getCurrentTimestamp } from "@/lib/time";
 import { logError } from "@/lib/logger";
 
+const DUMMY_HASH = "argon2id$$argon2id$v=19$m=19456,t=2,p=1$IuDLuVQfIwdfPKuqoontAg$44IwfdCHo8Gke6R3pUr4QfhLPDX0hqxYpe5ZJXLbMNjG/rYfcY/BkeewfRNbEjTy6ymKGGPTuazsQ68n3b5ysg";
+
 export async function POST(req: Request) {
   try {
     const { username, password } = await req.json();
@@ -52,7 +54,7 @@ export async function POST(req: Request) {
       include: { computer: true },
     });
     if (!user) {
-      await simulatePasswordCheckDelay();
+      await verifyPasswordFast(password, DUMMY_HASH);
       return NextResponse.json(
         {
           ok: false,
@@ -62,39 +64,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Rol 'agent' eliminado: solo 'admin' y 'user'.
-
-    // Validar que usuarios normales solo puedan iniciar sesión desde su PC asignada
-    const normalizedRole =
-      typeof user.role === "string" ? user.role.toLowerCase() : user.role;
-
-    if (normalizedRole === "user" && user.computer) {
-      // Obtener el hostname de la computadora cliente
-      const clientHostname = req.headers.get("x-client-hostname");
-
-      // Validar que el hostname coincida (case-insensitive)
-      if (
-        clientHostname &&
-        clientHostname.toUpperCase() !== user.computer.name.toUpperCase()
-      ) {
-        await simulatePasswordCheckDelay();
-        return NextResponse.json(
-          {
-            ok: false,
-            error: {
-              code: "WRONG_COMPUTER",
-              message: `Solo puede iniciar sesión desde la computadora asignada: ${user.computer.name}`,
-              details: {
-                assignedComputer: user.computer.name,
-                attemptedComputer: clientHostname,
-              },
-            },
-          },
-          { status: 403 }
-        );
-      }
-    }
-    // Verificar lockout
+    // Verificar lockout antes de verificar password
     if (
       user.lockedUntil &&
       new Date(user.lockedUntil).getTime() > getCurrentTimestamp()
@@ -129,6 +99,39 @@ export async function POST(req: Request) {
         { status: 401 }
       );
     }
+
+    // Rol 'agent' eliminado: solo 'admin' y 'user'.
+    const normalizedRole =
+      typeof user.role === "string" ? user.role.toLowerCase() : user.role;
+
+    // Validar que usuarios normales solo puedan iniciar sesión desde su PC asignada
+    // Se hace DESPUÉS de validar password para evitar enumeración de usuarios
+    if (normalizedRole === "user" && user.computer) {
+      // Obtener el hostname de la computadora cliente
+      const clientHostname = req.headers.get("x-client-hostname");
+
+      // Validar que el hostname coincida (case-insensitive)
+      if (
+        clientHostname &&
+        clientHostname.toUpperCase() !== user.computer.name.toUpperCase()
+      ) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: {
+              code: "WRONG_COMPUTER",
+              message: `Solo puede iniciar sesión desde la computadora asignada: ${user.computer.name}`,
+              details: {
+                assignedComputer: user.computer.name,
+                attemptedComputer: clientHostname,
+              },
+            },
+          },
+          { status: 403 }
+        );
+      }
+    }
+
     // Reset intentos fallidos
     if (user.failedAttempts > 0 || user.lockedUntil) {
       try {

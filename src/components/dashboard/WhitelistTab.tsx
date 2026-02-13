@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { fetchJson } from "@/lib/http";
+import { getCsrfTokenFromDocument } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 import {
   Card,
   CardContent,
@@ -44,14 +48,7 @@ interface CreatePayload {
   notes?: string;
 }
 
-interface Props {
-  entries: WhitelistEntry[];
-  loading: boolean;
-  onCreate: (payload: CreatePayload) => Promise<void>;
-  onDelete: (id: string) => Promise<void>;
-}
-
-export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
+export function WhitelistTab() {
   const [serialNumber, setSerialNumber] = useState("");
   const [label, setLabel] = useState("");
   const [notes, setNotes] = useState("");
@@ -60,6 +57,73 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const { data: whitelistData, isLoading } = useQuery<WhitelistEntry[] | { items: WhitelistEntry[] }>({
+    queryKey: ["whitelist"],
+    queryFn: () => fetchJson<WhitelistEntry[] | { items: WhitelistEntry[] }>("/api/whitelist"),
+  });
+
+  const entries: WhitelistEntry[] = Array.isArray(whitelistData)
+    ? whitelistData
+    : whitelistData?.items || [];
+  
+  const loading = isLoading;
+
+  const onCreate = useCallback(async (payload: CreatePayload) => {
+      const csrfToken = getCsrfTokenFromDocument();
+      if (!csrfToken) {
+        throw new Error("Sesión sin token de seguridad.");
+      }
+      const response = await fetch("/api/whitelist", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": csrfToken,
+        },
+        body: JSON.stringify(payload),
+        credentials: "include",
+      });
+
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.ok) {
+         throw new Error(data?.error || `Error HTTP ${response.status}`);
+      }
+      
+      await queryClient.invalidateQueries({ queryKey: ["whitelist"] });
+      toast({
+        title: "Serial autorizado",
+        description: `El dispositivo ${payload.serialNumber} fue agregado.`,
+      });
+  }, [queryClient, toast]);
+
+  const onDelete = useCallback(async (id: string) => {
+      const csrfToken = getCsrfTokenFromDocument();
+      if (!csrfToken) {
+        throw new Error("Sesión sin token de seguridad.");
+      }
+      const response = await fetch(`/api/whitelist/${id}`, {
+        method: "DELETE",
+        headers: {
+          "x-csrf-token": csrfToken,
+        },
+        credentials: "include",
+      });
+
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.ok) {
+        throw new Error(data?.error || `Error HTTP ${response.status}`);
+      }
+      
+      await queryClient.invalidateQueries({ queryKey: ["whitelist"] });
+      toast({
+        title: "Serial removido",
+        description: "El dispositivo fue eliminado de la whitelist.",
+      });
+  }, [queryClient, toast]);
+
 
   const { sortedData, sortConfig, requestSort } =
     useTableSort<WhitelistEntry>(entries);
@@ -330,7 +394,7 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
 
           <div className="flex flex-col gap-5">
             <div className="space-y-3 md:hidden">
-              {loading ? (
+              {loading && !whitelistData ? (
                 <div className="rounded-2xl border border-white/70 bg-white/80 p-6 text-center text-slate-500 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
                   Cargando whitelist...
                 </div>
@@ -458,7 +522,7 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {loading ? (
+                  {loading && !whitelistData ? (
                     <TableRow>
                       <TableCell
                         colSpan={6}

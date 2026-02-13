@@ -2,7 +2,6 @@
 
 import dynamic from "next/dynamic";
 import { DashboardFallback } from "./_components/DashboardFallback";
-import { useAdminDashboard } from "./_providers/AdminDashboardProvider";
 
 // Cargamos el bloque principal bajo demanda para reducir el bundle inicial del dashboard.
 const OverviewTab = dynamic(
@@ -14,14 +13,5 @@ const OverviewTab = dynamic(
 );
 
 export default function AdminOverviewPage() {
-  const { events, computers, whitelist, loading } = useAdminDashboard();
-
-  return (
-    <OverviewTab
-      events={events}
-      computers={computers}
-      whitelist={whitelist}
-      loading={loading}
-    />
-  );
+  return <OverviewTab />;
 }

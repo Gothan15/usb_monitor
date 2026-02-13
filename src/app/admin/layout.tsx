@@ -55,9 +55,9 @@ function AdminLayoutContent({
 }) {
   const {
     activeKey,
-    events,
-    computers,
-    whitelist,
+    events = [],
+    computers = [],
+    whitelist = [],
     usersCount,
     user,
     refreshing,
