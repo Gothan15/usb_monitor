@@ -12,12 +12,11 @@ const UsersTab = dynamic(
 );
 
 export default function AdminUsersPage() {
-  const { computers, handleUsersSummaryChange } = useAdminDashboard();
+  const { } = useAdminDashboard();
 
   return (
     <UsersTab
-      onSummaryChange={handleUsersSummaryChange}
-      computers={computers}
+      // onSummaryChange={handleUsersSummaryChange} // Removed as provider doesn't track this anymore
     />
   );
 }

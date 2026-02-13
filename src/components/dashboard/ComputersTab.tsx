@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Card,
   CardContent,
@@ -13,6 +14,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -42,18 +44,12 @@ import {
 import { Computer, formatDateTime, formatTime } from "./types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { cn, getCsrfTokenFromDocument } from "@/lib/utils";
 import { DashboardPagination } from "./DashboardPagination";
-import { useTableSort } from "@/hooks/useTableSort";
-import { SortableTableHead } from "./SortableTableHead";
 import { USBDevicesSheet } from "./USBDevicesSheet";
 import { Spinner } from "@/components/ui/spinner";
-
-interface Props {
-  computers: Computer[];
-  loading: boolean;
-  onDelete?: (id: string) => Promise<void> | void;
-}
+import { fetchJson, HttpError } from "@/lib/http";
+import { useToast } from "@/hooks/use-toast";
 
 function StatusBadge({ active }: { active: boolean }) {
   return (
@@ -70,7 +66,17 @@ function StatusBadge({ active }: { active: boolean }) {
   );
 }
 
-export function ComputersTab({ computers, loading, onDelete }: Props) {
+interface ComputersResponse {
+  data: Computer[];
+  meta: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+}
+
+export function ComputersTab() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -79,62 +85,62 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
     null
   );
 
-  const { sortedData, sortConfig, requestSort } =
-    useTableSort<Computer>(computers);
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const { data, isLoading, isPlaceholderData } = useQuery<ComputersResponse>({
+    queryKey: ["computers", page, pageSize],
+    queryFn: () =>
+      fetchJson<ComputersResponse>(
+        `/api/computers?page=${page}&limit=${pageSize}`
+      ),
+    placeholderData: (previousData) => previousData,
+    staleTime: 10000,
+  });
+
+  const computers = data?.data || [];
+  const meta = data?.meta || { total: 0, totalPages: 1 };
+  const loading = isLoading;
 
   const quickStats = useMemo(() => {
-    if (loading) {
+    if (loading && !data) {
       return [
-        { label: "Activos", value: "--", accent: "from-emerald-400/30" },
-        { label: "Servicios", value: "--", accent: "from-cyan-400/30" },
         { label: "Total", value: "--", accent: "from-slate-300/30" },
+        { label: "En línea", value: "--", accent: "from-emerald-400/30" },
+        { label: "Página", value: "--", accent: "from-cyan-400/30" },
       ];
     }
 
-    const activeCount = sortedData.filter(
-      (computer) => computer.isActive
-    ).length;
-    const runningCount = sortedData.filter(
-      (computer) => computer.serviceRunning
-    ).length;
-    const total = sortedData.length;
-
+    // Since we only have page data, we can't calculate global stats easily on client side accurately
+    // except for Total which comes from meta.
+    // We'll show Total from meta, and maybe "Visible" count?
+    // Or just simple stats.
+    
     return [
       {
-        label: "Activos",
-        value: activeCount.toString(),
-        accent: "from-emerald-400/25 via-emerald-300/10",
-      },
-      {
-        label: "Servicio OK",
-        value: runningCount.toString(),
-        accent: "from-sky-400/25 via-cyan-300/10",
-      },
-      {
-        label: "Inventario",
-        value: total.toString(),
+        label: "Total",
+        value: meta.total.toString(),
         accent: "from-slate-400/20 via-slate-300/10",
       },
+      {
+        label: "Página",
+        value: `${page}/${meta.totalPages}`,
+        accent: "from-sky-400/25 via-cyan-300/10",
+      },
+       {
+        label: "Visibles",
+        value: computers.length.toString(),
+        accent: "from-emerald-400/25 via-emerald-300/10",
+      },
     ];
-  }, [sortedData, loading]);
-
-  const pageCount = useMemo(() => {
-    if (sortedData.length === 0) return 1;
-    return Math.max(1, Math.ceil(sortedData.length / Math.max(pageSize, 1)));
-  }, [sortedData.length, pageSize]);
-
-  useEffect(() => {
-    if (page > pageCount) {
-      setPage(pageCount);
-    }
-  }, [page, pageCount]);
+  }, [loading, data, meta, page, computers.length]);
 
   const handlePageChange = useCallback(
     (nextPage: number) => {
-      const clamped = Math.min(Math.max(nextPage, 1), pageCount);
+      const clamped = Math.min(Math.max(nextPage, 1), meta.totalPages);
       setPage(clamped);
     },
-    [pageCount]
+    [meta.totalPages]
   );
 
   const handlePageSizeChange = useCallback((nextSize: number) => {
@@ -142,25 +148,61 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
     setPage(1);
   }, []);
 
-  const paginatedComputers = useMemo(() => {
-    if (sortedData.length === 0) return [];
-    const start = (page - 1) * pageSize;
-    return sortedData.slice(start, start + pageSize);
-  }, [sortedData, page, pageSize]);
+  const handleDelete = useCallback(async (id: string) => {
+      const csrfToken = getCsrfTokenFromDocument();
+      if (!csrfToken) {
+        throw new Error(
+          "Sesión sin token de seguridad. Vuelve a iniciar sesión."
+        );
+      }
+      const response = await fetch(`/api/computers/${id}`, {
+        method: "DELETE",
+        headers: {
+          "x-csrf-token": csrfToken,
+        },
+        credentials: "include",
+      });
+
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.ok) {
+         throw new Error(data?.error || `Error HTTP ${response.status}`);
+      }
+      return data;
+  }, []);
+
+  const prefetchComputer = useCallback((id: string) => {
+    queryClient.prefetchQuery({
+      queryKey: ["computer", id],
+      queryFn: () => fetchJson(`/api/computers/${id}`),
+      staleTime: 1000 * 30, // 30s
+    });
+  }, [queryClient]);
 
   const handleConfirmDelete = useCallback(async () => {
-    if (!onDelete || !pendingDelete) return;
+    if (!pendingDelete) return;
 
     try {
       setDeletingId(pendingDelete.id);
-      await onDelete(pendingDelete.id);
+      await handleDelete(pendingDelete.id);
+      
+      await queryClient.invalidateQueries({ queryKey: ["computers"] });
+      
+      toast({
+        title: "Equipo eliminado",
+        description: `Se eliminó ${pendingDelete.name} del inventario.`,
+      });
       setPendingDelete(null);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error al eliminar computadora", error);
+       toast({
+        title: "No se pudo eliminar el equipo",
+        description: error.message || "Error desconocido",
+        variant: "destructive",
+      });
     } finally {
       setDeletingId(null);
     }
-  }, [onDelete, pendingDelete]);
+  }, [pendingDelete, handleDelete, queryClient, toast]);
 
   return (
     <motion.section
@@ -219,10 +261,10 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                     </p>
                   </div>
                   <span className="inline-flex size-9 items-center justify-center rounded-xl border border-white/60 bg-white/80 text-slate-500 shadow-sm dark:border-white/15 dark:bg-white/10 dark:text-slate-200">
-                    {stat.label === "Activos" ? (
+                    {stat.label === "Total" ? (
                       <Cpu className="size-4" />
-                    ) : stat.label === "Servicio OK" ? (
-                      <Sparkles className="size-4" />
+                    ) : stat.label === "Página" ? (
+                       <Sparkles className="size-4" />
                     ) : (
                       <MonitorSmartphone className="size-4" />
                     )}
@@ -233,7 +275,7 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
           </div>
         </CardHeader>
         <CardContent className="relative z-10 space-y-6">
-          {loading ? (
+          {loading && !data ? (
             <div className="space-y-3">
               {[...Array(5)].map((_, i) => (
                 <Skeleton
@@ -246,13 +288,13 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
             <Alert className="rounded-2xl border-amber-200/60 bg-amber-50/90 text-amber-700 shadow-sm dark:border-amber-300/40 dark:bg-amber-500/10 dark:text-amber-100">
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription>
-                No hay computadoras monitoreadas aún.
+                No hay computadoras en esta vista.
               </AlertDescription>
             </Alert>
           ) : (
             <div className="flex flex-col gap-6">
               <div className="space-y-4 md:hidden">
-                {paginatedComputers.map((computer) => {
+                {computers.map((computer) => {
                   const canViewUsb =
                     computer.isActive && computer.serviceRunning;
                   return (
@@ -290,29 +332,27 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                             <Usb className="h-3.5 w-3.5 transition-transform group-hover:scale-110" />
                             <span className="hidden lg:inline">Ver USB</span>
                           </Button>
-                          {onDelete && (
-                            <Button
-                              type="button"
-                              size="sm"
-                              disabled={deletingId === computer.id}
-                              onClick={() => setPendingDelete(computer)}
-                              aria-label={`Eliminar ${computer.name}`}
-                              title="Eliminar equipo"
-                              className={cn(
-                                "group relative h-8 gap-1.5 rounded-full px-3 text-xs font-semibold transition-all duration-200",
-                                deletingId === computer.id
-                                  ? "cursor-wait border border-rose-300/60 bg-rose-500/20 text-rose-50 dark:border-rose-400/40 dark:bg-rose-500/25 dark:text-rose-100"
-                                  : "border border-rose-200/60 bg-rose-500/10 text-rose-700 shadow-sm hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-500/20 hover:shadow-md dark:border-rose-400/40 dark:bg-rose-500/15 dark:text-rose-100"
-                              )}
-                            >
-                              {deletingId === computer.id ? (
-                                <Spinner size={14} />
-                              ) : (
-                                <Trash2 className="h-3.5 w-3.5 transition-transform group-hover:scale-110" />
-                              )}
-                              <span className="hidden sm:inline">Eliminar</span>
-                            </Button>
-                          )}
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={deletingId === computer.id}
+                            onClick={() => setPendingDelete(computer)}
+                            aria-label={`Eliminar ${computer.name}`}
+                            title="Eliminar equipo"
+                            className={cn(
+                              "group relative h-8 gap-1.5 rounded-full px-3 text-xs font-semibold transition-all duration-200",
+                              deletingId === computer.id
+                                ? "cursor-wait border border-rose-300/60 bg-rose-500/20 text-rose-50 dark:border-rose-400/40 dark:bg-rose-500/25 dark:text-rose-100"
+                                : "border border-rose-200/60 bg-rose-500/10 text-rose-700 shadow-sm hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-500/20 hover:shadow-md dark:border-rose-400/40 dark:bg-rose-500/15 dark:text-rose-100"
+                            )}
+                          >
+                            {deletingId === computer.id ? (
+                              <Spinner size={14} />
+                            ) : (
+                              <Trash2 className="h-3.5 w-3.5 transition-transform group-hover:scale-110" />
+                            )}
+                            <span className="hidden sm:inline">Eliminar</span>
+                          </Button>
                         </div>
                       </div>
                       <div className="mt-4 grid gap-3 text-xs text-slate-600 dark:text-slate-300">
@@ -369,87 +409,40 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                 <Table className="w-full min-w-[1100px]">
                   <TableHeader className="sticky top-0 z-10 bg-white/95 backdrop-blur-xl dark:bg-slate-900/80">
                     <TableRow className="border-white/60 dark:border-white/10">
-                      <SortableTableHead
-                        column="name"
-                        currentSortKey={sortConfig.key}
-                        currentSortDirection={sortConfig.direction}
-                        onSort={requestSort}
-                        className="text-slate-600 dark:text-slate-200"
-                      >
+                      <TableHead className="text-slate-600 dark:text-slate-200">
                         Nombre
-                      </SortableTableHead>
-                      <SortableTableHead
-                        column="ipAddress"
-                        currentSortKey={sortConfig.key}
-                        currentSortDirection={sortConfig.direction}
-                        onSort={requestSort}
-                        className="text-slate-600 dark:text-slate-200"
-                      >
+                      </TableHead>
+                      <TableHead className="text-slate-600 dark:text-slate-200">
                         Dirección IP
-                      </SortableTableHead>
-                      <SortableTableHead
-                        column="isActive"
-                        currentSortKey={sortConfig.key}
-                        currentSortDirection={sortConfig.direction}
-                        onSort={requestSort}
-                        className="text-slate-600 dark:text-slate-200"
-                      >
+                      </TableHead>
+                      <TableHead className="text-slate-600 dark:text-slate-200">
                         Estado
-                      </SortableTableHead>
-                      <SortableTableHead
-                        column="serviceRunning"
-                        currentSortKey={sortConfig.key}
-                        currentSortDirection={sortConfig.direction}
-                        onSort={requestSort}
-                        className="text-slate-600 dark:text-slate-200"
-                      >
+                      </TableHead>
+                      <TableHead className="text-slate-600 dark:text-slate-200">
                         Servicio
-                      </SortableTableHead>
-                      <SortableTableHead
-                        column="lastSeen"
-                        currentSortKey={sortConfig.key}
-                        currentSortDirection={sortConfig.direction}
-                        onSort={requestSort}
-                        className="text-slate-600 dark:text-slate-200"
-                      >
+                      </TableHead>
+                      <TableHead className="text-slate-600 dark:text-slate-200">
                         Última conexión
-                      </SortableTableHead>
-                      <SortableTableHead
-                        column="createdAt"
-                        currentSortKey={sortConfig.key}
-                        currentSortDirection={sortConfig.direction}
-                        onSort={requestSort}
-                        className="text-slate-600 dark:text-slate-200"
-                      >
+                      </TableHead>
+                      <TableHead className="text-slate-600 dark:text-slate-200">
                         Fecha registro
-                      </SortableTableHead>
-                      <SortableTableHead
-                        column="id"
-                        currentSortKey={sortConfig.key}
-                        currentSortDirection={sortConfig.direction}
-                        onSort={requestSort}
-                        className="text-slate-600 dark:text-slate-200"
-                      >
+                      </TableHead>
+                      <TableHead className="text-slate-600 dark:text-slate-200">
                         USB
-                      </SortableTableHead>
-                      {onDelete && (
-                        <SortableTableHead
-                          column="id"
-                          currentSortKey={sortConfig.key}
-                          currentSortDirection={sortConfig.direction}
-                          onSort={requestSort}
-                          className="text-slate-600 dark:text-slate-200"
-                          align="right"
-                        >
-                          Acciones
-                        </SortableTableHead>
-                      )}
+                      </TableHead>
+                      <TableHead
+                        className="text-slate-600 dark:text-slate-200"
+                        align="right"
+                      >
+                        Acciones
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {paginatedComputers.map((computer) => (
+                    {computers.map((computer) => (
                       <TableRow
                         key={computer.id}
+                        onMouseEnter={() => prefetchComputer(computer.id)}
                         className="group border border-white/70 bg-white/75 transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-300/60 hover:bg-emerald-50/60 dark:border-white/5 dark:bg-white/5 dark:hover:border-emerald-400/30 dark:hover:bg-emerald-500/10"
                       >
                         <TableCell className="font-semibold text-slate-700 dark:text-slate-100">
@@ -521,35 +514,33 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                             );
                           })()}
                         </TableCell>
-                        {onDelete && (
-                          <TableCell className="text-center">
-                            <div className="flex justify-center">
-                              <Button
-                                type="button"
-                                size="sm"
-                                disabled={deletingId === computer.id}
-                                onClick={() => setPendingDelete(computer)}
-                                aria-label={`Eliminar ${computer.name}`}
-                                title="Eliminar equipo"
-                                className={cn(
-                                  "group relative h-8 gap-1.5 rounded-full px-3 text-xs font-semibold transition-all duration-200",
-                                  deletingId === computer.id
-                                    ? "cursor-wait border border-rose-300/60 bg-rose-500/20 text-rose-50 dark:border-rose-400/40 dark:bg-rose-500/25 dark:text-rose-100"
-                                    : "border border-rose-200/60 bg-rose-500/10 text-rose-700 shadow-sm hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-500/20 hover:shadow-md dark:border-rose-400/40 dark:bg-rose-500/15 dark:text-rose-100"
-                                )}
-                              >
-                                {deletingId === computer.id ? (
-                                  <Spinner size={14} />
-                                ) : (
-                                  <Trash2 className="h-3.5 w-3.5 transition-transform group-hover:scale-110" />
-                                )}
-                                <span className="hidden xl:inline">
-                                  Eliminar
-                                </span>
-                              </Button>
-                            </div>
-                          </TableCell>
-                        )}
+                        <TableCell className="text-center">
+                          <div className="flex justify-center">
+                            <Button
+                              type="button"
+                              size="sm"
+                              disabled={deletingId === computer.id}
+                              onClick={() => setPendingDelete(computer)}
+                              aria-label={`Eliminar ${computer.name}`}
+                              title="Eliminar equipo"
+                              className={cn(
+                                "group relative h-8 gap-1.5 rounded-full px-3 text-xs font-semibold transition-all duration-200",
+                                deletingId === computer.id
+                                  ? "cursor-wait border border-rose-300/60 bg-rose-500/20 text-rose-50 dark:border-rose-400/40 dark:bg-rose-500/25 dark:text-rose-100"
+                                  : "border border-rose-200/60 bg-rose-500/10 text-rose-700 shadow-sm hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-500/20 hover:shadow-md dark:border-rose-400/40 dark:bg-rose-500/15 dark:text-rose-100"
+                              )}
+                            >
+                              {deletingId === computer.id ? (
+                                <Spinner size={14} />
+                              ) : (
+                                <Trash2 className="h-3.5 w-3.5 transition-transform group-hover:scale-110" />
+                              )}
+                              <span className="hidden xl:inline">
+                                Eliminar
+                              </span>
+                            </Button>
+                          </div>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -561,7 +552,7 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                 <DashboardPagination
                   page={page}
                   pageSize={pageSize}
-                  totalItems={computers.length}
+                  totalItems={meta.total}
                   onPageChange={handlePageChange}
                   onPageSizeChange={handlePageSizeChange}
                   label="computadoras"
@@ -606,7 +597,6 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
       </AlertDialog>
 
       {selectedComputer && (
-        // Sheet para ver dispositivos USB del equipo seleccionado
         <USBDevicesSheet
           computer={selectedComputer}
           open={Boolean(selectedComputer)}

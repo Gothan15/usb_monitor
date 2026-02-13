@@ -5,7 +5,7 @@ USB, envía una notificación HTTP POST al backend de Monitor_USB y establece la
 unidad detectada en modo solo lectura mediante `diskpart`.
 
 Requisitos:
-    pip install pywin32 wmi requests
+    pip install pywin32 wmi requests cryptography
 
 Uso:
     python usb_monitor_service.py install   # Instala el servicio
@@ -14,12 +14,13 @@ Uso:
     python usb_monitor_service.py remove    # Elimina el servicio
     python usb_monitor_service.py debug     # Ejecuta en modo consola (debug)
 
-Variables de entorno opcionales:
+Variables de entorno (pueden definirse en un archivo .env en el mismo directorio):
     USB_MONITOR_SERVER_HOST  -> host del backend (por defecto 172.20.10.12)
     USB_MONITOR_SERVER_PORT  -> puerto del backend (por defecto 3000)
     USB_MONITOR_ENDPOINT     -> ruta del endpoint (por defecto /api/usb-event)
     USB_MONITOR_LOG_PATH     -> ruta del archivo de log
-
+    USB_MONITOR_LOCAL_TOKEN  -> Token para autenticar peticiones locales a /unlock
+    USB_MONITOR_DATABASE_URL -> URL de conexión a la BD (Requerido para configuración de GUI)
 """
 from __future__ import annotations
 
@@ -39,6 +40,7 @@ from concurrent.futures import Future
 from queue import Queue, Full
 from contextlib import redirect_stderr, redirect_stdout
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from urllib.parse import urlparse, parse_qs, quote
@@ -93,6 +95,37 @@ except ImportError:  # pragma: no cover
     except ImportError:  # pragma: no cover
         DATABASE_DRIVER = None
 
+# --- Carga de variables de entorno desde .env ---
+def load_env_from_file():
+    """Carga variables de entorno desde un archivo .env si existe."""
+    try:
+        app_dir = Path(__file__).resolve().parent
+        if getattr(sys, "frozen", False):
+            app_dir = Path(sys.executable).resolve().parent
+            
+        env_path = app_dir / ".env"
+        if not env_path.exists():
+            return
+
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "=" in line:
+                    key, value = line.split("=", 1)
+                    key = key.strip()
+                    value = value.strip()
+                    # Remove quotes if present
+                    if (value.startswith('"') and value.endswith('"')) or \
+                       (value.startswith("'") and value.endswith("'")):
+                        value = value[1:-1]
+                    if key and key not in os.environ:
+                        os.environ[key] = value
+    except Exception:
+        pass # Logging no está listo aún
+
+load_env_from_file()
 
 DEFAULT_HOST = "172.20.10.12"
 DEFAULT_PORT = 3000
@@ -100,9 +133,9 @@ DEFAULT_ENDPOINT = "/api/usb-event"
 PROGRAM_DATA_DIR = Path(os.environ.get("ProgramData", "C:/ProgramData")) / "USBMonitor"
 LOG_FILE_NAME = "usb_monitor_service.log"
 LEGACY_LOG_FILE_NAME = "usb_monitor.log"
-SERVICE_API_VERSION = "1.0.0"
+SERVICE_API_VERSION = "1.0.1"
 DATABASE_URL_ENV_VAR = "USB_MONITOR_DATABASE_URL"
-DEFAULT_DATABASE_URL = "postgresql://usb_app:usbapp123@localhost:5432/monitor_usb?schema=public"
+# REMOVED: DEFAULT_DATABASE_URL hardcoded credentials
 
 # Cache para evitar registrar advertencias duplicadas al descartar discos no USB
 DISCARDED_DISK_CACHE: Set[str] = set()
@@ -188,22 +221,6 @@ def get_default_log_path() -> Path:
 DEFAULT_LISTEN_PORT = 5001  # Puerto donde el servicio escuchará peticiones
 SIGNAL_FILE = (PROGRAM_DATA_DIR / "browser_signal.json").resolve()
 HOSTNAME_RAW = (socket.gethostname() or "").strip() or "UNKNOWN_HOST"
-
-# Plan de telemetría (próxima iteración):
-#   - Registrar latencia de `unlock_usb` midiendo `time.perf_counter()` y enviar a `/api/metrics`:
-#     ```python
-#     def push_metric(name: str, value: float) -> None:
-#         submit_network_task(
-#             requests.post,
-#             build_url("/api/metrics"),
-#             expect_result=False,
-#             json={"name": name, "value": value},
-#             headers=get_auth_headers(),
-#             timeout=5,
-#         )
-#     ```
-#   - Incluir contador de consultas whitelist/pendientes en `send_event` para comparar contra el tamaño
-#     de la caché y ajustar `WHITELIST_POSITIVE_TTL` durante despliegues futuros.
 
 CONTROL_CHARS_REGEX = re.compile(r"[\x00-\x1F\x7F]")
 VALID_IPV4_REGEX = re.compile(r"^(?:\d{1,3}\.){3}\d{1,3}$")
@@ -713,15 +730,17 @@ def launch_api_key_configurator(
             on_log("No se pudo abrir el configurador de API key: se requieren privilegios de administrador.")
         return
 
-    db_url = os.environ.get(DATABASE_URL_ENV_VAR, DEFAULT_DATABASE_URL)
+    # Usar variable de entorno exclusivamente
+    db_url = os.environ.get(DATABASE_URL_ENV_VAR)
     if not db_url:
         messagebox.showerror(
-            "Configuración inválida",
-            "No se encontró una cadena de conexión válida en USB_MONITOR_DATABASE_URL.",
+            "Configuración requerida",
+            f"No se encontró la variable de entorno {DATABASE_URL_ENV_VAR}.\n\n"
+            "Por favor configúrala manualmente o usa un archivo .env.",
             parent=parent,
         )
         if on_log:
-            on_log("No se pudo abrir el configurador de API key: DATABASE_URL ausente.")
+            on_log(f"No se pudo abrir el configurador de API key: {DATABASE_URL_ENV_VAR} ausente.")
         return
 
     try:
@@ -880,16 +899,7 @@ def build_url(endpoint: str) -> str:
 
 
 def get_requests_verify() -> any:
-    """Determina el valor para el parámetro 'verify' de requests.
-    
-    Reglas:
-      - Sólo aplica para HTTPS. Para HTTP se retorna True (no hay verificación TLS).
-      - Si USB_MONITOR_SSL_CERT está definido y apunta a un archivo existente,
-        se retorna esa ruta (requests verificará contra ese bundle personalizado).
-      - Si USB_MONITOR_SSL_VERIFY == 'false' (case-insensitive), retorna False.
-      - En cualquier otro caso, retorna True.
-    """
-    # Si el esquema es HTTP, la verificación SSL no aplica
+    """Determina el valor para el parámetro 'verify' de requests."""
     scheme = (os.environ.get("USB_MONITOR_SERVER_SCHEME", "https") or "").lower().strip()
     if scheme == "http":
         return True
@@ -949,7 +959,7 @@ def resolve_log_path() -> Path:
 
 
 def get_logger() -> logging.Logger:
-    """Configura y devuelve un logger compartido."""
+    """Configura y devuelve un logger compartido con rotación."""
     logger = logging.getLogger("usb_monitor_service")
     if not logger.handlers:
         logger.setLevel(logging.INFO)
@@ -957,7 +967,13 @@ def get_logger() -> logging.Logger:
         pending_warning: Optional[str] = None
 
         try:
-            handler: logging.Handler = logging.FileHandler(log_file, encoding="utf-8")
+            # Usar RotatingFileHandler: max 5MB, 5 backups
+            handler: logging.Handler = RotatingFileHandler(
+                log_file,
+                maxBytes=5 * 1024 * 1024,
+                backupCount=5,
+                encoding="utf-8"
+            )
         except OSError as exc:
             fallback_paths = [
                 (PROGRAM_DATA_DIR / get_log_file_name()).resolve(),
@@ -970,7 +986,12 @@ def get_logger() -> logging.Logger:
                     continue
                 try:
                     candidate.parent.mkdir(parents=True, exist_ok=True)
-                    handler = logging.FileHandler(candidate, encoding="utf-8")
+                    handler = RotatingFileHandler(
+                        candidate,
+                        maxBytes=5 * 1024 * 1024,
+                        backupCount=5,
+                        encoding="utf-8"
+                    )
                     pending_warning = (
                         "No se pudo crear el log en %s (%s). Se usará %s."
                         % (log_file, exc, candidate)
@@ -1045,14 +1066,17 @@ def log_initial_configuration() -> None:
 
     try:
         api_key_present = "sí" if os.environ.get("USB_MONITOR_API_KEY") else "no"
+        db_url_present = "sí" if os.environ.get(DATABASE_URL_ENV_VAR) else "no"
+        
         LOGGER.info(
-            "Configuración inicial | frozen=%s | destino=%s:%s | endpoint=%s | puerto_http=%s | api_key=%s",
+            "Configuración inicial | frozen=%s | destino=%s:%s | endpoint=%s | puerto_http=%s | api_key=%s | db_configured=%s",
             getattr(sys, "frozen", False),
             get_server_host(),
             get_server_port(),
             os.environ.get("USB_MONITOR_ENDPOINT", DEFAULT_ENDPOINT),
             get_listen_port(),
             api_key_present,
+            db_url_present
         )
         LOGGER.debug("Ruta efectiva de log: %s", resolve_log_path())
         LOGGER.debug("Argumentos de ejecución: %s", sys.argv)
@@ -1894,7 +1918,7 @@ class UnlockHTTPHandler(BaseHTTPRequestHandler):
     def _apply_cors_headers(self) -> None:
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
     def _send_json_response(self, status_code: int, payload: Dict[str, Any]) -> None:
         body = json.dumps(payload).encode("utf-8")
@@ -1975,6 +1999,44 @@ class UnlockHTTPHandler(BaseHTTPRequestHandler):
         if parsed.path != "/unlock":
             self._send_json_response(404, {"ok": False, "error": "Ruta no encontrada"})
             return
+        
+        # --- Verificación de Autenticación Local ---
+        auth_header = self.headers.get("Authorization", "").strip()
+        local_token = os.environ.get("USB_MONITOR_LOCAL_TOKEN")
+        
+        # Si existe un token local configurado, validarlo estrictamente
+        if local_token:
+            if not auth_header or auth_header != f"Bearer {local_token}":
+                # Intentar también verificar si usaron el formato ApiKey
+                api_key_match = False
+                if auth_header and auth_header.startswith("ApiKey "):
+                    # Comparar contra la API Key desencriptada del sistema si se usa ese formato
+                    system_api_key = decrypt_api_key(os.environ.get("USB_MONITOR_API_KEY", ""))
+                    # Remover prefix
+                    token_sent = auth_header.split(" ", 1)[1]
+                    if token_sent == system_api_key or token_sent == local_token:
+                        api_key_match = True
+                
+                if not api_key_match:
+                    LOGGER.warning("Intento de acceso no autorizado a /unlock desde %s", self.client_address)
+                    self._send_json_response(401, {"ok": False, "error": "No autorizado"})
+                    return
+        # Si no hay token local, pero hay API Key global, intentar validarla si se envía
+        elif os.environ.get("USB_MONITOR_API_KEY"):
+             system_api_key = decrypt_api_key(os.environ.get("USB_MONITOR_API_KEY", ""))
+             if auth_header:
+                 token_sent = auth_header
+                 if token_sent.startswith("Bearer ") or token_sent.startswith("ApiKey "):
+                     token_sent = token_sent.split(" ", 1)[1]
+                 
+                 if token_sent != system_api_key:
+                     LOGGER.warning("Intento de acceso con credenciales inválidas a /unlock")
+                     self._send_json_response(401, {"ok": False, "error": "Credenciales inválidas"})
+                     return
+             else:
+                 # Si no se envía auth, y no hay token local forzado, permitimos por ser localhost 
+                 # (binding 127.0.0.1) pero logueamos advertencia.
+                 LOGGER.info("Acceso a /unlock sin credenciales (permitido por ser local)")
 
         try:
             content_length = int(self.headers.get("Content-Length", "0") or "0")
@@ -1998,6 +2060,7 @@ class UnlockHTTPHandler(BaseHTTPRequestHandler):
 
         raw_drive = data.get("driveLetter")
         drive_letter = sanitize_drive_letter(raw_drive) if isinstance(raw_drive, str) else None
+        
         if drive_letter is None and isinstance(raw_drive, str):
             candidate = raw_drive.strip().upper()
             if len(candidate) == 1 and candidate.isalpha():
@@ -2336,8 +2399,8 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
             # Configurar el handler con referencia al servicio
             UnlockHTTPHandler.service_instance = self
             
-            # Crear el servidor HTTP
-            self.http_server = HTTPServer(("0.0.0.0", listen_port), UnlockHTTPHandler)
+            # Crear el servidor HTTP escuchando SOLO en localhost para seguridad
+            self.http_server = HTTPServer(("127.0.0.1", listen_port), UnlockHTTPHandler)
             
             # Iniciar en un thread separado
             self.http_thread = threading.Thread(
@@ -2347,7 +2410,7 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
             self.http_thread.start()
             
             LOGGER.info(
-                "Servidor HTTP iniciado en puerto %s para recibir notificaciones",
+                "Servidor HTTP iniciado en 127.0.0.1:%s para recibir notificaciones locales",
                 listen_port
             )
         except Exception as exc:

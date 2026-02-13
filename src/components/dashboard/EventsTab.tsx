@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { fetchJson } from "@/lib/http";
+import { getCsrfTokenFromDocument } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 import {
   Card,
   CardContent,
@@ -43,16 +47,58 @@ import { DashboardPagination } from "./DashboardPagination";
 import { useTableSort } from "@/hooks/useTableSort";
 import { SortableTableHead } from "./SortableTableHead";
 
-interface Props {
-  events: USBEvent[];
-  loading: boolean;
-  onClear?: () => void;
-  clearing?: boolean;
-}
-
-export function EventsTab({ events, loading, onClear, clearing }: Props) {
+export function EventsTab() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [clearing, setClearing] = useState(false);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const { data: events = [], isLoading } = useQuery<USBEvent[]>({
+    queryKey: ["events"],
+    queryFn: () => fetchJson<USBEvent[]>("/api/usb-event"),
+    refetchInterval: 30000,
+  });
+
+  const loading = isLoading;
+
+  const handleClear = useCallback(async () => {
+    if (clearing) return;
+    setClearing(true);
+    try {
+      const csrfToken = getCsrfTokenFromDocument();
+      if (!csrfToken) {
+        throw new Error(
+          "Sesión sin token de seguridad. Vuelve a iniciar sesión."
+        );
+      }
+      const response = await fetch("/api/usb-event", {
+        method: "DELETE",
+        headers: {
+          "x-csrf-token": csrfToken,
+        },
+        credentials: "include",
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || data?.ok !== true) {
+        throw new Error(data?.error || `Error HTTP ${response.status}`);
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ["events"] });
+      toast({
+        title: "Historial limpiado",
+        description: "Los eventos se limpiaron correctamente.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "No se pudo limpiar el historial",
+        description: error.message || "Error desconocido",
+        variant: "destructive",
+      });
+    } finally {
+      setClearing(false);
+    }
+  }, [clearing, queryClient, toast]);
 
   const classifyEvent = (event: USBEvent) => {
     if (event.whitelisted) {
@@ -187,12 +233,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
     return sortedData.slice(start, start + pageSize);
   }, [sortedData, page, pageSize]);
 
-  const handleClear = useCallback(() => {
-    if (!onClear) return;
-    onClear();
-  }, [onClear]);
-
-  const clearDisabled = loading || clearing || events.length === 0;
+  const clearDisabled = loading || clearing || events.length ===0;
 
   return (
     <motion.section
@@ -230,23 +271,21 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                   Últimas 24h
                 </span>
               </div>
-              {onClear && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="inline-flex items-center gap-2 font-semibold text-slate-700 dark:text-slate-100"
-                  onClick={handleClear}
-                  disabled={clearDisabled}
-                >
-                  {clearing ? (
-                    <Spinner size={16} />
-                  ) : (
-                    <Trash2 className="size-4" />
-                  )}
-                  {clearing ? "Limpiando..." : "Limpiar historial"}
-                </Button>
-              )}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="inline-flex items-center gap-2 font-semibold text-slate-700 dark:text-slate-100"
+                onClick={handleClear}
+                disabled={clearDisabled}
+              >
+                {clearing ? (
+                  <Spinner size={16} />
+                ) : (
+                  <Trash2 className="size-4" />
+                )}
+                {clearing ? "Limpiando..." : "Limpiar historial"}
+              </Button>
             </div>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

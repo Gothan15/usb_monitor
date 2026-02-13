@@ -5,13 +5,44 @@ import { requireAuth } from "@/lib/auth"; // Sólo se usará para GET (consulta)
 import { usbEventPayloadSchema } from "@/lib/validators";
 import { getCurrentDate } from "@/lib/time";
 import { normalizeComputerName } from "@/lib/utils";
+import { LRUCache } from "lru-cache";
 
 const prisma = resolve<PrismaClient>(TOKENS.prisma);
 
+const apiKeyCache = new LRUCache<string, string>({
+  max: 500,
+  ttl: 1000 * 60 * 5, // 5 minutes
+});
+
 export async function POST(request: NextRequest) {
   try {
-    // Ingesta abierta: NO requiere autenticación (según petición).
-    // Considera en el futuro: firma compartida, lista blanca IP o token simple.
+    // 1. Validación de Seguridad: API Key
+    const apiKey = request.headers.get("x-api-key");
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: "Falta API Key" },
+        { status: 401 }
+      );
+    }
+
+    let userId = apiKeyCache.get(apiKey);
+
+    if (!userId) {
+      const authorizedUser = await prisma.user.findUnique({
+        where: { apiKey },
+        select: { id: true },
+      });
+
+      if (!authorizedUser) {
+        return NextResponse.json(
+          { error: "API Key inválida" },
+          { status: 401 }
+        );
+      }
+      userId = authorizedUser.id;
+      apiKeyCache.set(apiKey, userId);
+    }
+
     const body = await request.json();
     const parsed = usbEventPayloadSchema.safeParse(body);
 
@@ -43,35 +74,38 @@ export async function POST(request: NextRequest) {
     // Guardar el evento USB en la base de datos
     const occurredAt = getCurrentDate();
 
-    const usbEvent = await prisma.uSBEvent.create({
-      data: {
-        pcName: computerName,
-        pcIp: pc_ip,
-        pcUser: pc_user,
-        event,
-        timestamp: occurredAt,
-        driveLetter: normalizedDrive,
-        serialNumber: normalizedSerial,
-        readonlyStatus: normalizedReadonly,
-        whitelisted: whitelistedFlag,
-      },
-    });
-
-    // Actualizar o crear registro de computadora
-    await prisma.computer.upsert({
-      where: { name: computerName },
-      update: {
-        ipAddress: pc_ip,
-        lastSeen: occurredAt,
-        isActive: true,
-      },
-      create: {
-        name: computerName,
-        ipAddress: pc_ip,
-        lastSeen: occurredAt,
-        isActive: true,
-      },
-    });
+    const [usbEvent] = await Promise.all([
+      prisma.uSBEvent.create({
+        data: {
+          pcName: computerName,
+          pcIp: pc_ip,
+          pcUser: pc_user,
+          event,
+          timestamp: occurredAt,
+          driveLetter: normalizedDrive,
+          serialNumber: normalizedSerial,
+          readonlyStatus: normalizedReadonly,
+          whitelisted: whitelistedFlag,
+        },
+        select: { id: true },
+      }),
+      // Actualizar o crear registro de computadora
+      prisma.computer.upsert({
+        where: { name: computerName },
+        update: {
+          ipAddress: pc_ip,
+          lastSeen: occurredAt,
+          isActive: true,
+        },
+        create: {
+          name: computerName,
+          ipAddress: pc_ip,
+          lastSeen: occurredAt,
+          isActive: true,
+        },
+        select: { id: true },
+      }),
+    ]);
 
     console.log(
       `Evento USB recibido: ${event} desde ${computerName} (${pc_ip})`

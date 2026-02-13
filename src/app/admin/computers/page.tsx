@@ -2,7 +2,6 @@
 
 import dynamic from "next/dynamic";
 import { DashboardFallback } from "../_components/DashboardFallback";
-import { useAdminDashboard } from "../_providers/AdminDashboardProvider";
 
 const ComputersTab = dynamic(
   () =>
@@ -17,13 +16,5 @@ const ComputersTab = dynamic(
 );
 
 export default function AdminComputersPage() {
-  const { computers, loading, handleDeleteComputer } = useAdminDashboard();
-
-  return (
-    <ComputersTab
-      computers={computers}
-      loading={loading}
-      onDelete={handleDeleteComputer}
-    />
-  );
+  return <ComputersTab />;
 }

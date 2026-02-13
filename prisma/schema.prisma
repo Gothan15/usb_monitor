@@ -15,19 +15,21 @@ datasource db {
 }
 
 model USBEvent {
-  id        String   @id @default(cuid())
-  pcName    String
-  pcIp      String
-  pcUser    String
-  event     String
+  id             String   @id @default(cuid())
+  pcName         String
+  pcIp           String
+  pcUser         String
+  event          String
   driveLetter    String?
   serialNumber   String?
   readonlyStatus String?
   whitelisted    Boolean  @default(false)
-  timestamp DateTime @default(now())
-  createdAt DateTime @default(now())
+  timestamp      DateTime @default(now())
+  createdAt      DateTime @default(now())
 
   @@index([createdAt])
+  @@index([pcName])
+  @@index([serialNumber])
   @@map("usb_events")
 }
 
@@ -71,7 +73,6 @@ enum Role {
   ADMIN @map("admin")
   USER  @map("user")
 }
-
 
 model USBConnection {
   id             String    @id @default(cuid())

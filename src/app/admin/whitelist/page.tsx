@@ -2,7 +2,6 @@
 
 import dynamic from "next/dynamic";
 import { DashboardFallback } from "../_components/DashboardFallback";
-import { useAdminDashboard } from "../_providers/AdminDashboardProvider";
 
 const WhitelistTab = dynamic(
   () =>
@@ -15,15 +14,5 @@ const WhitelistTab = dynamic(
 );
 
 export default function AdminWhitelistPage() {
-  const { whitelist, loading, handleCreateWhitelist, handleDeleteWhitelist } =
-    useAdminDashboard();
-
-  return (
-    <WhitelistTab
-      entries={whitelist}
-      loading={loading && whitelist.length === 0}
-      onCreate={handleCreateWhitelist}
-      onDelete={handleDeleteWhitelist}
-    />
-  );
+  return <WhitelistTab />;
 }
