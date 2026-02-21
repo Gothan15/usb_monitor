@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { checkServiceHealth } from "@/lib/serviceNotifier";
 import { getCurrentDate, getCurrentTimestamp } from "@/lib/time";
 import { normalizeComputerName } from "@/lib/utils";
+import { remoteInstall, summarize } from "@/lib/winrmService";
 
 const execAsync = util.promisify(exec);
 
@@ -270,11 +271,13 @@ export async function scanNetwork(
 export async function remoteInstallAndStart(
   ip: string
 ): Promise<{ success: boolean; message: string }> {
-  // Placeholder: se necesitará WinRM, SSH o un agente preinstalado. Aquí devolvemos no implementado.
+  const result = await remoteInstall(ip);
+  const summary = summarize(result, "install");
   return {
-    success: false,
-    message:
-      "Instalación remota no implementada aún. Requiere canal seguro (WinRM/SSH/Agent).",
+    success: summary.success,
+    message: summary.success
+      ? summary.output || "Instalación completada"
+      : summary.error || "Error en la instalación remota",
   };
 }
 

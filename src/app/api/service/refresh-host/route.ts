@@ -4,6 +4,7 @@ import { requireAuth } from "@/lib/auth";
 import { getCurrentDate } from "@/lib/time";
 import { hit } from "@/lib/rateLimit";
 import { logError } from "@/lib/logger";
+import { remoteStatus, summarize } from "@/lib/winrmService";
 
 async function tryHealth(ip: string) {
   try {
@@ -39,13 +40,8 @@ export async function POST(req: NextRequest) {
     const health = await tryHealth(normalizedIp);
     const serviceInstalled = !!health;
     const serviceRunning = !!health;
-    const winrm = {
-      success: false,
-      action: "status",
-      error: "WinRM deshabilitado",
-      serviceInstalled: null,
-      serviceRunning: null,
-    };
+    const winrmResult = await remoteStatus(normalizedIp);
+    const winrm = summarize(winrmResult, "status");
     const checkedAt = getCurrentDate();
     await db.computer.upsert({
       where: { name: normalizedIp },
