@@ -3,6 +3,7 @@ import { remoteInstallAndStart } from "@/lib/networkScanner";
 import { hit } from "@/lib/rateLimit";
 import { requireAuth } from "@/lib/auth";
 import { logError } from "@/lib/logger";
+import { isValidIPv4 } from "@/lib/validators";
 
 export async function POST(req: NextRequest) {
   try {
@@ -25,6 +26,8 @@ export async function POST(req: NextRequest) {
     const ip = body.ip as string;
     if (typeof ip !== "string" || !ip.trim())
       return NextResponse.json({ error: "Falta ip" }, { status: 400 });
+    if (!isValidIPv4(ip.trim()))
+      return NextResponse.json({ error: "IP inválida" }, { status: 400 });
     const result = await remoteInstallAndStart(ip.trim());
     const res = NextResponse.json(result, {
       status: result.success ? 200 : 501,

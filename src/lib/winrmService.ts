@@ -1,5 +1,6 @@
 import { exec } from "child_process";
 import util from "util";
+import { isValidIPv4 } from "./validators";
 
 const execAsync = util.promisify(exec);
 
@@ -49,9 +50,12 @@ function buildCredentialScript(user: string, pass: string) {
 }
 
 async function invokeRemote(ip: string, scriptBlock: string) {
+  if (!isValidIPv4(ip)) {
+    return { success: false, message: "Dirección IP inválida" };
+  }
   const { user, pass } = getCreds();
   const cred = buildCredentialScript(user, pass);
-  const cmd = `${cred} Invoke-Command -ComputerName ${ip} -Credential $cred -ScriptBlock { ${scriptBlock} }`;
+  const cmd = `${cred} Invoke-Command -ComputerName "${ip}" -Credential $cred -ScriptBlock { ${scriptBlock} }`;
   return runPs(cmd);
 }
 
@@ -81,6 +85,9 @@ export async function remoteUninstall(ip: string) {
 }
 
 export async function remoteInstall(ip: string) {
+  if (!isValidIPv4(ip)) {
+    return { success: false, message: "Dirección IP inválida" };
+  }
   // Copiar ejecutable y registrar servicio si no existe
   // Nota: Requiere que WinRM permita copia de archivos vía New-PSSession + Copy-Item
   const { user, pass } = getCreds();
@@ -89,7 +96,7 @@ export async function remoteInstall(ip: string) {
   const script = `
 ${cred}
 if (-not (Test-Path '${REMOTE_PATH}')) { New-Item -ItemType Directory -Path '${REMOTE_PATH}' | Out-Null }
-$sess = New-PSSession -ComputerName ${ip} -Credential $cred
+$sess = New-PSSession -ComputerName "${ip}" -Credential $cred
 Copy-Item -Path \"${LOCAL_AGENT_EXE}\" -Destination \"${REMOTE_PATH}\\${exeName}\" -ToSession $sess -Force
 Invoke-Command -Session $sess -ScriptBlock { sc.exe create ${SERVICE_NAME} binPath= '${REMOTE_PATH}\\${exeName} --console' start= auto } | Out-Null
 Invoke-Command -Session $sess -ScriptBlock { sc.exe start ${SERVICE_NAME} } | Out-Null
