@@ -1,11 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
+import {
+  remoteStatus,
+  remoteStart,
+  remoteStop,
+  remoteInstall,
+  remoteUninstall,
+  summarize,
+} from "@/lib/winrmService";
 
 type ServiceAction = "install" | "uninstall" | "start" | "stop" | "status";
 
+const actionMap: Record<
+  ServiceAction,
+  (ip: string) => ReturnType<typeof remoteStatus>
+> = {
+  status: remoteStatus,
+  start: remoteStart,
+  stop: remoteStop,
+  install: remoteInstall,
+  uninstall: remoteUninstall,
+};
+
 export async function POST(
   req: NextRequest,
-  { params }: { params: { action: ServiceAction } }
+  { params }: { params: Promise<{ action: ServiceAction }> }
 ) {
   try {
     await requireAuth(req, { role: "admin" });
@@ -13,15 +32,14 @@ export async function POST(
     if (typeof ip !== "string" || !ip.trim()) {
       return NextResponse.json({ error: "Falta ip" }, { status: 400 });
     }
-
-    return NextResponse.json(
-      {
-        error: "El control remoto del agente está deshabilitado temporalmente",
-        action: params.action,
-        ip: ip.trim(),
-      },
-      { status: 503 }
-    );
+    const { action } = await params;
+    const fn = actionMap[action];
+    if (!fn) {
+      return NextResponse.json({ error: "Acción inválida" }, { status: 400 });
+    }
+    const result = await fn(ip.trim());
+    const summary = summarize(result, action);
+    return NextResponse.json(summary, { status: summary.success ? 200 : 502 });
   } catch (error: any) {
     if (error?.message === "UNAUTHORIZED")
       return NextResponse.json({ error: "No autorizado" }, { status: 401 });
