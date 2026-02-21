@@ -4,6 +4,7 @@ import { requireAuth } from "@/lib/auth";
 import { getCurrentDate } from "@/lib/time";
 import { hit } from "@/lib/rateLimit";
 import { logError } from "@/lib/logger";
+import { isValidIPv4 } from "@/lib/validators";
 
 async function tryHealth(ip: string) {
   try {
@@ -24,6 +25,8 @@ export async function POST(req: NextRequest) {
     const { ip } = await req.json();
     if (typeof ip !== "string" || !ip.trim())
       return NextResponse.json({ error: "Falta ip" }, { status: 400 });
+    if (!isValidIPv4(ip.trim()))
+      return NextResponse.json({ error: "IP inválida" }, { status: 400 });
     const normalizedIp = ip.trim();
     const clientIp =
       (req.headers.get("x-forwarded-for") || "").split(",")[0].trim() ||

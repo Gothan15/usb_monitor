@@ -3,7 +3,7 @@ import { z } from "zod";
 const CONTROL_CHARS_REGEX = /[\u0000-\u001F\u007F]/g;
 const IPV4_REGEX = /^(?:\d{1,3}\.){3}\d{1,3}$/;
 
-function isValidIPv4(value: string) {
+export function isValidIPv4(value: string) {
   if (!IPV4_REGEX.test(value)) return false;
   return value.split(".").every((part) => {
     const num = Number(part);

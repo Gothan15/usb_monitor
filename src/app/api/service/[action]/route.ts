@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
+import { isValidIPv4 } from "@/lib/validators";
 
 type ServiceAction = "install" | "uninstall" | "start" | "stop" | "status";
 
@@ -12,6 +13,9 @@ export async function POST(
     const { ip } = await req.json();
     if (typeof ip !== "string" || !ip.trim()) {
       return NextResponse.json({ error: "Falta ip" }, { status: 400 });
+    }
+    if (!isValidIPv4(ip.trim())) {
+      return NextResponse.json({ error: "IP inválida" }, { status: 400 });
     }
 
     return NextResponse.json(
