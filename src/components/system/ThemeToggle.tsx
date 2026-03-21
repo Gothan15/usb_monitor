@@ -19,7 +19,7 @@ export function ThemeToggle() {
       variant="ghost"
       size="icon"
       aria-label="Cambiar tema"
-      className="relative h-10 w-10 rounded-full border border-slate-300/60 bg-white/70 text-slate-600 backdrop-blur transition hover:bg-white dark:border-slate-700/60 dark:bg-slate-900/40 dark:text-slate-200 dark:hover:bg-slate-800"
+      className="relative h-10 w-10 rounded-full border border-border/40 bg-card/80 text-muted-foreground backdrop-blur transition hover:bg-muted/60"
       onClick={() => setTheme(isDark ? "light" : "dark")}
     >
       <span className="sr-only">Cambiar tema</span>

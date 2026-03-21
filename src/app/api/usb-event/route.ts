@@ -5,6 +5,7 @@ import { requireAuth } from "@/lib/auth"; // Sólo se usará para GET (consulta)
 import { usbEventPayloadSchema } from "@/lib/validators";
 import { getCurrentDate } from "@/lib/time";
 import { normalizeComputerName } from "@/lib/utils";
+import { broadcastUSBEvent, broadcastComputerStatus } from "@/lib/socket";
 
 const prisma = resolve<PrismaClient>(TOKENS.prisma);
 
@@ -19,7 +20,7 @@ export async function POST(request: NextRequest) {
       const firstIssue = parsed.error.issues.at(0)?.message || "invalid body";
       return NextResponse.json(
         { error: "Payload invalido", detail: firstIssue },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -74,8 +75,30 @@ export async function POST(request: NextRequest) {
     });
 
     console.log(
-      `Evento USB recibido: ${event} desde ${computerName} (${pc_ip})`
+      `Evento USB recibido: ${event} desde ${computerName} (${pc_ip})`,
     );
+
+    // Broadcast vía Socket.IO a todos los clientes conectados
+    broadcastUSBEvent({
+      id: usbEvent.id,
+      pcName: computerName,
+      pcIp: pc_ip,
+      pcUser: pc_user,
+      event,
+      driveLetter: normalizedDrive,
+      serialNumber: normalizedSerial,
+      readonlyStatus: normalizedReadonly,
+      whitelisted: whitelistedFlag,
+      timestamp: occurredAt.toISOString(),
+      createdAt: usbEvent.createdAt.toISOString(),
+    });
+
+    broadcastComputerStatus({
+      name: computerName,
+      ipAddress: pc_ip,
+      isActive: true,
+      lastSeen: occurredAt.toISOString(),
+    });
 
     return NextResponse.json({
       success: true,
@@ -86,7 +109,7 @@ export async function POST(request: NextRequest) {
     console.error("Error al procesar evento USB:", error);
     return NextResponse.json(
       { error: "Error interno del servidor" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -106,7 +129,7 @@ export async function GET(req: Request) {
     console.error("Error al obtener eventos USB:", error);
     return NextResponse.json(
       { error: "Error interno del servidor" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -122,7 +145,7 @@ export async function DELETE(req: NextRequest) {
     if (!actor || actor.role.toUpperCase() !== "ADMIN") {
       return NextResponse.json(
         { ok: false, error: "Solo un administrador puede limpiar eventos." },
-        { status: 403 }
+        { status: 403 },
       );
     }
 
@@ -136,7 +159,7 @@ export async function DELETE(req: NextRequest) {
     console.error("Error al limpiar eventos USB:", error);
     return NextResponse.json(
       { ok: false, error: "No se pudo limpiar el historial." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

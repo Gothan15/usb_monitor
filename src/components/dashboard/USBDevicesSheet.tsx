@@ -142,7 +142,7 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
         side="bottom"
         className={cn(
           "mx-auto h-[80vh] w-full max-w-3xl rounded-t-3xl border-t px-0",
-          "border-white/10 bg-white/90 shadow-2xl supports-[backdrop-filter]:backdrop-blur-3xl dark:border-white/10 dark:bg-slate-900/80",
+          "border-border/40 bg-card/95 shadow-2xl backdrop-blur-3xl",
           "sm:left-1/2 sm:right-auto sm:-translate-x-1/2"
         )}
       >
@@ -152,14 +152,14 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
           className="flex h-full flex-col"
         >
           <SheetHeader>
-            <SheetTitle className="text-slate-900 dark:text-white">
+            <SheetTitle className="text-foreground">
               Dispositivos USB — {computer?.name ?? ""}
             </SheetTitle>
-            <SheetDescription className="text-slate-600 dark:text-slate-300/80">
+            <SheetDescription className="text-muted-foreground">
               {headerSubtitle}
             </SheetDescription>
             <div className="flex items-center justify-between gap-2">
-              <TabsList className="rounded-2xl border border-white/60 bg-white/80 p-1 shadow-sm dark:border-white/15 dark:bg-white/10">
+              <TabsList className="rounded-xl border border-border/40 bg-muted/30 p-1 shadow-sm">
                 <TabsTrigger value="connected">Conectados</TabsTrigger>
                 <TabsTrigger value="history">Historial</TabsTrigger>
               </TabsList>
@@ -199,7 +199,7 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
                         <Spinner />
                       </div>
                     ) : connected.length === 0 ? (
-                      <div className="rounded-2xl border border-white/70 bg-white/80 p-4 text-center text-slate-500 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+                      <div className="rounded-xl border border-border/40 bg-card/80 p-4 text-center text-muted-foreground shadow-sm">
                         No hay dispositivos conectados actualmente.
                       </div>
                     ) : (
@@ -208,22 +208,22 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
                           key={d.id}
                           whileHover={{ y: -4 }}
                           transition={{ duration: 0.2 }}
-                          className="relative overflow-hidden rounded-2xl border border-white/70 bg-white/85 p-4 shadow-lg supports-[backdrop-filter]:backdrop-blur-xl dark:border-white/10 dark:bg-white/5"
+                          className="relative overflow-hidden rounded-xl border border-border/40 bg-card/80 p-4 shadow-lg backdrop-blur-xl"
                           style={{ animationDelay: `${index * 60}ms` }}
                         >
                           <div className="relative flex items-start gap-3">
-                            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/60 bg-white/80 text-slate-500 shadow-sm dark:border-white/15 dark:bg-white/10 dark:text-slate-200">
+                            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border/40 bg-muted/30 text-muted-foreground shadow-sm">
                               <Usb className="h-5 w-5" />
                             </span>
                             <div className="flex-1">
                               <div className="flex items-center justify-between gap-2">
-                                <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                                <p className="text-sm font-semibold text-foreground">
                                   {d.volumeName}
                                 </p>
                                 <div className="flex items-center gap-1">
                                   <Badge
                                     variant="secondary"
-                                    className="rounded-full border border-white/60 bg-white/80 text-slate-600 dark:border-white/15 dark:bg-white/10 dark:text-slate-200"
+                                    className="rounded-full border border-border/40 bg-muted/30 text-muted-foreground"
                                   >
                                     <HardDrive className="mr-1 h-3.5 w-3.5" />
                                     {d.driveLetter}
@@ -247,7 +247,7 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
                                   )}
                                 </div>
                               </div>
-                              <div className="mt-1 grid grid-cols-2 gap-2 text-xs text-slate-600 dark:text-slate-300">
+                              <div className="mt-1 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
                                 <div>
                                   <span className="font-medium">Serie:</span>{" "}
                                   {d.serialNumber}
@@ -277,7 +277,7 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
 
             <TabsContent value="history" className="h-full">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <div className="text-xs text-slate-600 dark:text-slate-300 p-5">
+                <div className="text-xs text-muted-foreground p-5">
                   Rango de historial
                 </div>
                 <div className="flex items-center gap-1">
@@ -290,7 +290,7 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
                       className={cn(
                         "h-7 rounded-full px-3 text-xs",
                         opt === historyRange
-                          ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900"
+                          ? "bg-foreground text-background"
                           : ""
                       )}
                       onClick={() => setHistoryRange(opt as HistoryRange)}
@@ -316,7 +316,7 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
                         <Spinner />
                       </div>
                     ) : history.length === 0 ? (
-                      <div className="rounded-2xl border border-white/70 bg-white/80 p-4 text-center text-slate-500 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+                      <div className="rounded-xl border border-border/40 bg-card/80 p-4 text-center text-muted-foreground shadow-sm">
                         No hay registros en el rango seleccionado.
                       </div>
                     ) : (
@@ -325,22 +325,22 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
                           key={d.id}
                           whileHover={{ y: -4 }}
                           transition={{ duration: 0.2 }}
-                          className="relative overflow-hidden rounded-2xl border border-white/70 bg-white/85 p-4 shadow-lg supports-[backdrop-filter]:backdrop-blur-xl dark:border-white/10 dark:bg-white/5"
+                          className="relative overflow-hidden rounded-xl border border-border/40 bg-card/80 p-4 shadow-lg backdrop-blur-xl"
                           style={{ animationDelay: `${index * 60}ms` }}
                         >
                           <div className="relative flex items-start gap-3">
-                            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/60 bg-white/80 text-rose-600 shadow-sm dark:border-white/15 dark:bg-white/10 dark:text-rose-200">
+                            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border/40 bg-muted/30 text-destructive shadow-sm">
                               <Unplug className="h-5 w-5" />
                             </span>
                             <div className="flex-1">
                               <div className="flex items-center justify-between gap-2">
-                                <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                                <p className="text-sm font-semibold text-foreground">
                                   {d.volumeName}
                                 </p>
                                 <div className="flex items-center gap-1">
                                   <Badge
                                     variant="secondary"
-                                    className="rounded-full border border-white/60 bg-white/80 text-slate-600 dark:border-white/15 dark:bg-white/10 dark:text-slate-200"
+                                    className="rounded-full border border-border/40 bg-muted/30 text-muted-foreground"
                                   >
                                     <HardDrive className="mr-1 h-3.5 w-3.5" />
                                     {d.driveLetter}
@@ -364,7 +364,7 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
                                   )}
                                 </div>
                               </div>
-                              <div className="mt-1 grid grid-cols-2 gap-2 text-xs text-slate-600 dark:text-slate-300">
+                              <div className="mt-1 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
                                 <div>
                                   <span className="font-medium">Serie:</span>{" "}
                                   {d.serialNumber}

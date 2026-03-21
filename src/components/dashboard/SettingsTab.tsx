@@ -87,10 +87,10 @@ export function SettingsTab() {
 
   return (
     <div className="grid gap-6 2xl:grid-cols-2">
-      <Card className="rounded-3xl border border-slate-200/70 bg-white/70 shadow-xl dark:border-slate-800 dark:bg-slate-900/60">
+      <Card className="rounded-xl border border-border/60 bg-card/80 shadow-xl backdrop-blur-xl">
         <CardHeader className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <CardTitle className="flex items-center gap-2 text-lg font-semibold text-slate-800 dark:text-slate-100">
+            <CardTitle className="flex items-center gap-2 text-lg font-semibold text-foreground">
               <ShieldCheck className="h-4 w-4 text-emerald-500" />
               Autenticación y acceso
             </CardTitle>
@@ -101,19 +101,19 @@ export function SettingsTab() {
           </div>
           <Badge
             variant="outline"
-            className="rounded-full border-slate-300/80 bg-white/70 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-900"
+            className="rounded-full border-border/40 bg-muted/30 text-xs text-muted-foreground"
           >
             Sesión segura
           </Badge>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="flex items-center justify-between rounded-2xl border border-slate-200/70 bg-white/70 px-4 py-3 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/60">
+            <div className="flex items-center justify-between rounded-xl border border-border/40 bg-card/80 px-4 py-3 shadow-sm">
               <div>
-                <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">
+                <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                   MFA obligatorio
                 </Label>
-                <p className="text-sm text-slate-600 dark:text-slate-300">
+                <p className="text-sm text-muted-foreground">
                   Solicitar segundo factor en cada inicio.
                 </p>
               </div>
@@ -124,8 +124,8 @@ export function SettingsTab() {
                 }
               />
             </div>
-            <div className="rounded-2xl border border-slate-200/70 bg-white/70 px-4 py-3 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/60">
-              <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">
+            <div className="rounded-xl border border-border/40 bg-card/80 px-4 py-3 shadow-sm">
+              <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                 Duración de sesión (h)
               </Label>
               <Select
@@ -145,8 +145,8 @@ export function SettingsTab() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="rounded-2xl border border-slate-200/70 bg-white/70 px-4 py-3 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/60">
-              <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">
+            <div className="rounded-xl border border-border/40 bg-card/80 px-4 py-3 shadow-sm">
+              <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                 Intentos antes de bloqueo
               </Label>
               <Input
@@ -162,12 +162,12 @@ export function SettingsTab() {
                 className="mt-2"
               />
             </div>
-            <div className="flex items-center justify-between rounded-2xl border border-slate-200/70 bg-white/70 px-4 py-3 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/60">
+            <div className="flex items-center justify-between rounded-xl border border-border/40 bg-card/80 px-4 py-3 shadow-sm">
               <div>
-                <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">
+                <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                   Alertas de nuevos dispositivos
                 </Label>
-                <p className="text-sm text-slate-600 dark:text-slate-300">
+                <p className="text-sm text-muted-foreground">
                   Enviar correo cuando un usuario solicita acceso.
                 </p>
               </div>
@@ -188,10 +188,10 @@ export function SettingsTab() {
         </CardContent>
       </Card>
 
-      <Card className="rounded-3xl border border-slate-200/70 bg-white/70 shadow-xl dark:border-slate-800 dark:bg-slate-900/60">
+      <Card className="rounded-xl border border-border/60 bg-card/80 shadow-xl backdrop-blur-xl">
         <CardHeader className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <CardTitle className="flex items-center gap-2 text-lg font-semibold text-slate-800 dark:text-slate-100">
+            <CardTitle className="flex items-center gap-2 text-lg font-semibold text-foreground">
               <Server className="h-4 w-4 text-sky-500" />
               API y automatización
             </CardTitle>
@@ -201,15 +201,15 @@ export function SettingsTab() {
           </div>
           <Badge
             variant="outline"
-            className="rounded-full border-slate-300/80 bg-white/70 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-900"
+            className="rounded-full border-border/40 bg-muted/30 text-xs text-muted-foreground"
           >
             Integraciones
           </Badge>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-2xl border border-slate-200/70 bg-white/70 px-4 py-3 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/60 md:col-span-2">
-              <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">
+            <div className="rounded-xl border border-border/40 bg-card/80 px-4 py-3 shadow-sm md:col-span-2">
+              <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                 URL base del API
               </Label>
               <Input
@@ -221,8 +221,8 @@ export function SettingsTab() {
                 placeholder="https://"
               />
             </div>
-            <div className="rounded-2xl border border-slate-200/70 bg-white/70 px-4 py-3 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/60">
-              <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">
+            <div className="rounded-xl border border-border/40 bg-card/80 px-4 py-3 shadow-sm">
+              <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                 Límite de peticiones (min)
               </Label>
               <Input
@@ -233,12 +233,12 @@ export function SettingsTab() {
                 className="mt-2"
               />
             </div>
-            <div className="flex items-center justify-between rounded-2xl border border-slate-200/70 bg-white/70 px-4 py-3 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/60">
+            <div className="flex items-center justify-between rounded-xl border border-border/40 bg-card/80 px-4 py-3 shadow-sm">
               <div>
-                <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">
+                <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                   WebSockets activos
                 </Label>
-                <p className="text-sm text-slate-600 dark:text-slate-300">
+                <p className="text-sm text-muted-foreground">
                   Permite métricas en tiempo real.
                 </p>
               </div>
@@ -249,12 +249,12 @@ export function SettingsTab() {
                 }
               />
             </div>
-            <div className="flex items-center justify-between rounded-2xl border border-slate-200/70 bg-white/70 px-4 py-3 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/60 md:col-span-2">
+            <div className="flex items-center justify-between rounded-xl border border-border/40 bg-card/80 px-4 py-3 shadow-sm md:col-span-2">
               <div>
-                <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">
+                <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                   Permitir instalación remota
                 </Label>
-                <p className="text-sm text-slate-600 dark:text-slate-300">
+                <p className="text-sm text-muted-foreground">
                   Autoriza despliegue automatizado del servicio.
                 </p>
               </div>
@@ -275,11 +275,11 @@ export function SettingsTab() {
         </CardContent>
       </Card>
 
-      <Card className="rounded-3xl border border-slate-200/70 bg-white/70 shadow-xl dark:border-slate-800 dark:bg-slate-900/60">
+      <Card className="rounded-xl border border-border/60 bg-card/80 shadow-xl backdrop-blur-xl">
         <CardHeader className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <CardTitle className="flex items-center gap-2 text-lg font-semibold text-slate-800 dark:text-slate-100">
-              <FileText className="h-4 w-4 text-slate-500" />
+            <CardTitle className="flex items-center gap-2 text-lg font-semibold text-foreground">
+              <FileText className="h-4 w-4 text-muted-foreground" />
               Registro y evidencias
             </CardTitle>
             <CardDescription>
@@ -288,15 +288,15 @@ export function SettingsTab() {
           </div>
           <Badge
             variant="outline"
-            className="rounded-full border-slate-300/80 bg-white/70 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-900"
+            className="rounded-full border-border/40 bg-muted/30 text-xs text-muted-foreground"
           >
             Compliance
           </Badge>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-2xl border border-slate-200/70 bg-white/70 px-4 py-3 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/60">
-              <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">
+            <div className="rounded-xl border border-border/40 bg-card/80 px-4 py-3 shadow-sm">
+              <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                 Retención (días)
               </Label>
               <Input
@@ -312,12 +312,12 @@ export function SettingsTab() {
                 className="mt-2"
               />
             </div>
-            <div className="flex items-center justify-between rounded-2xl border border-slate-200/70 bg-white/70 px-4 py-3 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/60">
+            <div className="flex items-center justify-between rounded-xl border border-border/40 bg-card/80 px-4 py-3 shadow-sm">
               <div>
-                <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">
+                <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                   Enviar a Syslog
                 </Label>
-                <p className="text-sm text-slate-600 dark:text-slate-300">
+                <p className="text-sm text-muted-foreground">
                   Replica eventos críticos en tu SIEM.
                 </p>
               </div>
@@ -328,8 +328,8 @@ export function SettingsTab() {
                 }
               />
             </div>
-            <div className="rounded-2xl border border-slate-200/70 bg-white/70 px-4 py-3 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/60 md:col-span-2">
-              <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">
+            <div className="rounded-xl border border-border/40 bg-card/80 px-4 py-3 shadow-sm md:col-span-2">
+              <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                 Servidor Syslog
               </Label>
               <Input
@@ -345,12 +345,12 @@ export function SettingsTab() {
                 disabled={!logging.forwardSyslog}
               />
             </div>
-            <div className="flex items-center justify-between rounded-2xl border border-slate-200/70 bg-white/70 px-4 py-3 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/60 md:col-span-2">
+            <div className="flex items-center justify-between rounded-xl border border-border/40 bg-card/80 px-4 py-3 shadow-sm md:col-span-2">
               <div>
-                <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">
+                <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                   Enmascarar datos sensibles
                 </Label>
-                <p className="text-sm text-slate-600 dark:text-slate-300">
+                <p className="text-sm text-muted-foreground">
                   Oculta PII en exportaciones y reportes automáticos.
                 </p>
               </div>
@@ -371,10 +371,10 @@ export function SettingsTab() {
         </CardContent>
       </Card>
 
-      <Card className="rounded-3xl border border-slate-200/70 bg-white/70 shadow-xl dark:border-slate-800 dark:bg-slate-900/60">
+      <Card className="rounded-xl border border-border/60 bg-card/80 shadow-xl backdrop-blur-xl">
         <CardHeader className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <CardTitle className="flex items-center gap-2 text-lg font-semibold text-slate-800 dark:text-slate-100">
+            <CardTitle className="flex items-center gap-2 text-lg font-semibold text-foreground">
               <Wrench className="h-4 w-4 text-amber-500" />
               Políticas operativas
             </CardTitle>
@@ -385,19 +385,19 @@ export function SettingsTab() {
           </div>
           <Badge
             variant="outline"
-            className="rounded-full border-slate-300/80 bg-white/70 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-900"
+            className="rounded-full border-border/40 bg-muted/30 text-xs text-muted-foreground"
           >
             Control central
           </Badge>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="flex items-center justify-between rounded-2xl border border-slate-200/70 bg-white/70 px-4 py-3 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/60">
+            <div className="flex items-center justify-between rounded-xl border border-border/40 bg-card/80 px-4 py-3 shadow-sm">
               <div>
-                <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">
+                <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                   Cuarentena automática
                 </Label>
-                <p className="text-sm text-slate-600 dark:text-slate-300">
+                <p className="text-sm text-muted-foreground">
                   Bloquea dispositivos no listados inmediatamente.
                 </p>
               </div>
@@ -408,8 +408,8 @@ export function SettingsTab() {
                 }
               />
             </div>
-            <div className="rounded-2xl border border-slate-200/70 bg-white/70 px-4 py-3 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/60">
-              <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">
+            <div className="rounded-xl border border-border/40 bg-card/80 px-4 py-3 shadow-sm">
+              <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                 Duración desbloqueo (min)
               </Label>
               <Input
@@ -423,8 +423,8 @@ export function SettingsTab() {
                 className="mt-2"
               />
             </div>
-            <div className="rounded-2xl border border-slate-200/70 bg-white/70 px-4 py-3 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/60">
-              <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">
+            <div className="rounded-xl border border-border/40 bg-card/80 px-4 py-3 shadow-sm">
+              <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                 Aprobaciones requeridas
               </Label>
               <Select
@@ -446,8 +446,8 @@ export function SettingsTab() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="rounded-2xl border border-slate-200/70 bg-white/70 px-4 py-3 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/60 md:col-span-2">
-              <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">
+            <div className="rounded-xl border border-border/40 bg-card/80 px-4 py-3 shadow-sm md:col-span-2">
+              <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                 Escalar incidentes a
               </Label>
               <Input

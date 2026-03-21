@@ -7,11 +7,16 @@ import { useAdminDashboard } from "../_providers/AdminDashboardProvider";
 const WhitelistTab = dynamic(
   () =>
     import("@/components/dashboard/WhitelistTab").then(
-      (mod) => mod.WhitelistTab
+      (mod) => mod.WhitelistTab,
     ),
   {
-    loading: () => <DashboardFallback label="Cargando whitelist corporativa" />,
-  }
+    loading: () => (
+      <DashboardFallback
+        label="Cargando whitelist corporativa"
+        variant="table"
+      />
+    ),
+  },
 );
 
 export default function AdminWhitelistPage() {

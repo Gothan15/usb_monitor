@@ -145,21 +145,21 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
       transition={{ duration: 0.3, ease: "easeOut" }}
       className="w-full"
     >
-      <Card className="relative w-full rounded-3xl border border-slate-200/70 bg-white/85 text-slate-900 shadow-xl supports-[backdrop-filter]:backdrop-blur-2xl dark:border-white/10 dark:bg-slate-900/50 dark:text-white">
+      <Card className="relative w-full rounded-xl border border-border/60 bg-card/80 shadow-xl backdrop-blur-xl">
         <CardHeader className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-3">
-            <span className="inline-flex size-12 items-center justify-center rounded-2xl border border-sky-200/60 bg-white/80 text-sky-600 shadow-sm dark:border-sky-400/40 dark:bg-white/10 dark:text-sky-200">
+            <span className="inline-flex size-12 items-center justify-center rounded-xl border border-border/40 bg-muted/30 text-info shadow-sm">
               <Radar className="size-5" />
             </span>
             <div>
-              <CardTitle className="text-2xl font-semibold text-slate-900 dark:text-slate-100">
+              <CardTitle className="text-2xl font-semibold text-foreground">
                 Escaneo de red LAN
               </CardTitle>
-              <CardDescription className="text-sm text-slate-600 dark:text-slate-300/80">
+              <CardDescription className="text-sm text-muted-foreground">
                 Detecta equipos activos en la red local y valida el puerto 3000
                 del servicio USBMonitor.
               </CardDescription>
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              <p className="mt-1 text-xs text-muted-foreground">
                 Último escaneo: {formatTimestamp(lastScanAt)}
               </p>
             </div>
@@ -170,7 +170,7 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
               size="sm"
               disabled={scanning}
               onClick={triggerScan}
-              className="border border-white/70 bg-white/80 text-slate-700 shadow-sm transition-colors hover:border-sky-300 hover:text-slate-900 dark:border-white/10 dark:bg-white/10 dark:text-slate-100 dark:hover:border-sky-400/40"
+              className="border border-border/40 bg-card/80 text-foreground shadow-sm transition-colors hover:border-primary/40"
             >
               {scanning ? (
                 <div className="mr-2">
@@ -190,8 +190,8 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
             </Alert>
           )}
 
-          <div className="flex items-center justify-between rounded-2xl border border-slate-200/70 bg-white/80 px-4 py-3 text-sm shadow-sm dark:border-white/10 dark:bg-white/10">
-            <span className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
+          <div className="flex items-center justify-between rounded-xl border border-border/40 bg-card/80 px-4 py-3 text-sm shadow-sm">
+            <span className="flex items-center gap-2 text-muted-foreground">
               <Radar className="size-4" /> Equipos encontrados
             </span>
             <Badge
@@ -204,18 +204,18 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
 
           <ScrollArea className="max-h-[min(65vh,480px)] pr-3 [--scrollbar-size:0px] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             <Table className="w-full">
-              <TableHeader className="sticky top-0 z-10 bg-white/95 backdrop-blur-xl dark:bg-slate-900/80">
-                <TableRow className="border-white/60 dark:border-white/10">
-                  <TableHead className="text-slate-600 dark:text-slate-200">
+              <TableHeader className="sticky top-0 z-10 bg-card/95 backdrop-blur-xl">
+                <TableRow className="border-border/40">
+                  <TableHead className="text-muted-foreground">
                     IP
                   </TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-200">
+                  <TableHead className="text-muted-foreground">
                     Nombre
                   </TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-200">
+                  <TableHead className="text-muted-foreground">
                     Puerto 3000
                   </TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-200">
+                  <TableHead className="text-muted-foreground">
                     Latencia
                   </TableHead>
                 </TableRow>
@@ -225,7 +225,7 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
                   <TableRow>
                     <TableCell
                       colSpan={4}
-                      className="py-6 text-center text-xs text-slate-500 dark:text-slate-300/70"
+                      className="py-6 text-center text-xs text-muted-foreground"
                     >
                       No hay equipos activos en la red local.
                     </TableCell>
@@ -241,12 +241,12 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
                     return (
                       <TableRow
                         key={result.ip}
-                        className="border border-white/70 bg-white/75 transition-colors hover:border-sky-300/60 hover:bg-sky-50/60 dark:border-white/5 dark:bg-white/5 dark:hover:border-sky-400/30 dark:hover:bg-sky-500/10"
+                        className="transition-colors duration-150"
                       >
-                        <TableCell className="font-semibold text-slate-700 dark:text-slate-100">
+                        <TableCell className="font-semibold text-foreground">
                           {result.ip}
                         </TableCell>
-                        <TableCell className="text-xs text-slate-600 dark:text-slate-300">
+                        <TableCell className="text-xs text-muted-foreground">
                           {result.hostname || "Sin nombre"}
                         </TableCell>
                         <TableCell>
@@ -257,7 +257,7 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
                             {serviceOk ? "Activo" : "Sin respuesta"}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-xs text-slate-600 dark:text-slate-300">
+                        <TableCell className="text-xs text-muted-foreground">
                           {typeof result.latencyMs === "number"
                             ? `${Math.max(0, Math.round(result.latencyMs))} ms`
                             : "—"}

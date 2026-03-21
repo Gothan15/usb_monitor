@@ -1,0 +1,451 @@
+"use client";
+
+import { useEffect, useMemo, useState, useRef, type ReactNode } from "react";
+import Link from "next/link";
+import Image from "next/image";
+import { motion, AnimatePresence } from "framer-motion";
+import type { LucideIcon } from "lucide-react";
+import { ChevronRight, Keyboard, Menu, RefreshCw, Search, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { ThemeToggle } from "@/components/system/ThemeToggle";
+import { LogoutButton } from "@/components/system/LogoutButton";
+import {
+  NotificationCenter,
+  NotificationProvider,
+} from "@/components/shell/NotificationCenter";
+import { KeyboardShortcutsDialog } from "@/components/shell/KeyboardShortcutsDialog";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+
+/* ────── Types ────── */
+export interface AppShellNavItem {
+  key: string;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+  href: string;
+  badge?: string | number;
+}
+
+interface AppShellProps {
+  navItems: AppShellNavItem[];
+  activeKey: string;
+  onRefresh?: () => void;
+  refreshing?: boolean;
+  lastUpdateLabel?: string;
+  subtitle?: string;
+  title?: string;
+  user?: {
+    name?: string | null;
+    role?: string | null;
+  } | null;
+  children: ReactNode;
+}
+
+/* ────── Constants ────── */
+const SIDEBAR_COLLAPSED = 56;
+const SIDEBAR_EXPANDED = 224;
+
+/* ────── Component ────── */
+export function AppShell({
+  navItems,
+  activeKey,
+  onRefresh,
+  refreshing = false,
+  lastUpdateLabel,
+  subtitle,
+  title = "Panel corporativo",
+  user,
+  children,
+}: AppShellProps) {
+  const [sidebarExpanded, setSidebarExpanded] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const sidebarRef = useRef<HTMLDivElement>(null);
+  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+  const [isDesktop, setIsDesktop] = useState(false);
+
+  useKeyboardShortcuts(navItems, {
+    onRefresh,
+    onOpenShortcuts: () => setShortcutsOpen(true),
+  });
+
+  useEffect(() => {
+    const query = window.matchMedia("(min-width: 1280px)");
+    const handleChange = (event: MediaQueryListEvent) => {
+      setIsDesktop(event.matches);
+      if (event.matches) setMobileMenuOpen(false);
+    };
+    setIsDesktop(query.matches);
+    query.addEventListener("change", handleChange);
+    return () => query.removeEventListener("change", handleChange);
+  }, []);
+
+  const activeItem = useMemo(
+    () => navItems.find((item) => item.key === activeKey) ?? navItems[0],
+    [activeKey, navItems],
+  );
+
+  const handleSidebarEnter = () => {
+    clearTimeout(hoverTimeoutRef.current);
+    hoverTimeoutRef.current = setTimeout(() => setSidebarExpanded(true), 180);
+  };
+  const handleSidebarLeave = () => {
+    clearTimeout(hoverTimeoutRef.current);
+    hoverTimeoutRef.current = setTimeout(() => setSidebarExpanded(false), 300);
+  };
+
+  const initials = user?.name ? user.name.slice(0, 2).toUpperCase() : "US";
+
+  return (
+    <NotificationProvider>
+      <div className="relative flex h-screen overflow-hidden bg-background text-foreground">
+        {/* ── Mobile overlay ── */}
+        {!isDesktop && mobileMenuOpen && (
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen(false)}
+            className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
+            aria-label="Cerrar menú"
+          />
+        )}
+
+        {/* ═══ SIDEBAR ═══ */}
+        <aside
+          ref={sidebarRef}
+          data-tour="sidebar"
+          onMouseEnter={isDesktop ? handleSidebarEnter : undefined}
+          onMouseLeave={isDesktop ? handleSidebarLeave : undefined}
+          style={{
+            width: isDesktop
+              ? sidebarExpanded
+                ? SIDEBAR_EXPANDED
+                : SIDEBAR_COLLAPSED
+              : SIDEBAR_EXPANDED,
+          }}
+          className={cn(
+            "z-50 flex h-full flex-shrink-0 flex-col bg-sidebar border-r border-sidebar-border",
+            "transition-[width] duration-300 ease-[var(--ease-out-expo)]",
+            /* Mobile positioning */
+            !isDesktop && "fixed inset-y-0 left-0",
+            !isDesktop && !mobileMenuOpen && "-translate-x-full",
+            isDesktop && "relative",
+          )}
+        >
+          {/* Brand */}
+          <div className="flex h-14 items-center px-3.5 border-b border-sidebar-border">
+            <div className="flex size-8 items-center justify-center overflow-hidden rounded-lg bg-background/70 ring-1 ring-sidebar-border/80">
+              <Image
+                src="/favicon.svg"
+                alt="USB Monitor"
+                width={20}
+                height={20}
+                className="size-5"
+              />
+            </div>
+            <AnimatePresence>
+              {(sidebarExpanded || !isDesktop) && (
+                <motion.div
+                  initial={{ opacity: 0, width: 0 }}
+                  animate={{ opacity: 1, width: "auto" }}
+                  exit={{ opacity: 0, width: 0 }}
+                  transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                  className="overflow-hidden"
+                >
+                  <div className="ml-3 flex flex-col whitespace-nowrap">
+                    <span className="text-xs font-bold uppercase tracking-[0.2em] text-sidebar-foreground/60">
+                      USB Monitor
+                    </span>
+                    <span className="text-[10px] text-sidebar-foreground/40">
+                      Centro de control
+                    </span>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            {!isDesktop && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="ml-auto size-8 text-sidebar-foreground"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                <X className="size-4" />
+              </Button>
+            )}
+          </div>
+
+          {/* Navigation */}
+          <nav className="flex-1 overflow-y-auto overflow-x-hidden py-2 scrollbar-thin">
+            <div className="flex flex-col gap-0.5 px-2">
+              {navItems.map((item) => {
+                const isActive = item.key === activeKey;
+                return (
+                  <Tooltip key={item.key}>
+                    <TooltipTrigger asChild>
+                      <Link
+                        href={item.href}
+                        prefetch
+                        onClick={() => setMobileMenuOpen(false)}
+                        className={cn(
+                          "group relative flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition-all duration-150",
+                          isActive
+                            ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                            : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground",
+                        )}
+                      >
+                        {/* Active indicator bar */}
+                        {isActive && (
+                          <motion.div
+                            layoutId="sidebar-active"
+                            className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-primary"
+                            transition={{
+                              type: "spring",
+                              stiffness: 350,
+                              damping: 30,
+                            }}
+                          />
+                        )}
+
+                        <item.icon
+                          className={cn(
+                            "size-[18px] shrink-0 transition-colors",
+                            isActive
+                              ? "text-primary"
+                              : "text-sidebar-foreground/50 group-hover:text-sidebar-foreground/80",
+                          )}
+                        />
+
+                        <AnimatePresence>
+                          {(sidebarExpanded || !isDesktop) && (
+                            <motion.span
+                              initial={{ opacity: 0, width: 0 }}
+                              animate={{ opacity: 1, width: "auto" }}
+                              exit={{ opacity: 0, width: 0 }}
+                              transition={{
+                                duration: 0.2,
+                                ease: [0.16, 1, 0.3, 1],
+                              }}
+                              className="truncate whitespace-nowrap"
+                            >
+                              {item.label}
+                            </motion.span>
+                          )}
+                        </AnimatePresence>
+
+                        {/* Badge */}
+                        {item.badge !== undefined && (
+                          <AnimatePresence>
+                            {sidebarExpanded || !isDesktop ? (
+                              <motion.span
+                                initial={{ opacity: 0, scale: 0.8 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.8 }}
+                                className="ml-auto inline-flex min-w-[20px] items-center justify-center rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground"
+                              >
+                                {item.badge}
+                              </motion.span>
+                            ) : (
+                              <span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-primary" />
+                            )}
+                          </AnimatePresence>
+                        )}
+                      </Link>
+                    </TooltipTrigger>
+                    {!sidebarExpanded && isDesktop && (
+                      <TooltipContent side="right" className="font-medium">
+                        <div>{item.label}</div>
+                        <div className="text-[10px] opacity-60">
+                          {item.description}
+                        </div>
+                      </TooltipContent>
+                    )}
+                  </Tooltip>
+                );
+              })}
+            </div>
+          </nav>
+
+          {/* Sidebar footer */}
+          <div className="flex flex-col gap-1 border-t border-sidebar-border p-2">
+            <div className="flex items-center justify-center">
+              <ThemeToggle />
+            </div>
+            <AnimatePresence>
+              {(sidebarExpanded || !isDesktop) && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.15 }}
+                  className="px-1 py-1.5"
+                >
+                  {lastUpdateLabel && (
+                    <p className="text-[10px] text-sidebar-foreground/40 text-center">
+                      Sincronizado: {lastUpdateLabel}
+                    </p>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </aside>
+
+        {/* ═══ MAIN AREA ═══ */}
+        <div className="relative flex flex-1 flex-col overflow-hidden">
+          {/* ── Header ── */}
+          <header className="z-30 flex h-14 flex-shrink-0 items-center gap-4 border-b border-border bg-background/80 backdrop-blur-xl px-4 lg:px-6">
+            {/* Mobile menu trigger */}
+            {!isDesktop && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8 lg:hidden"
+                onClick={() => setMobileMenuOpen(true)}
+              >
+                <Menu className="size-4" />
+              </Button>
+            )}
+
+            {/* Breadcrumb */}
+            <div className="flex items-center gap-1.5 text-sm">
+              <span className="text-muted-foreground/60 font-medium">
+                {user?.role === "ADMIN" ? "Admin" : "Panel"}
+              </span>
+              <ChevronRight className="size-3 text-muted-foreground/40" />
+              <span className="font-semibold text-foreground">{title}</span>
+            </div>
+
+            {/* Command Palette trigger (center) */}
+            <div
+              className="hidden flex-1 justify-center lg:flex"
+              data-tour="command-trigger"
+            >
+              <button
+                type="button"
+                className="flex h-8 w-full max-w-sm items-center gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/50 hover:border-border"
+                onClick={() => {
+                  /* Abre la paleta con el atajo */
+                  document.dispatchEvent(
+                    new KeyboardEvent("keydown", { key: "k", metaKey: true }),
+                  );
+                }}
+              >
+                <Search className="size-3.5" />
+                <span className="flex-1 text-left">
+                  Buscar o ejecutar comando...
+                </span>
+                <kbd className="pointer-events-none hidden h-5 select-none items-center gap-1 rounded border border-border/50 bg-muted/60 px-1.5 text-[10px] font-mono font-medium text-muted-foreground/70 lg:flex">
+                  ⌘K
+                </kbd>
+              </button>
+            </div>
+
+            {/* Right actions */}
+            <div className="ml-auto flex items-center gap-2">
+              {/* Refresh */}
+              {onRefresh && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-8"
+                  disabled={refreshing}
+                  onClick={onRefresh}
+                >
+                  <motion.span
+                    animate={{ rotate: refreshing ? 360 : 0 }}
+                    transition={{
+                      duration: 0.8,
+                      ease: [0.4, 0, 0.2, 1],
+                      repeat: refreshing ? Infinity : 0,
+                    }}
+                    className="inline-flex"
+                  >
+                    <RefreshCw className="size-3.5" />
+                  </motion.span>
+                </Button>
+              )}
+
+              {/* Notification bell placeholder */}
+              <div data-tour="notifications">
+                <NotificationCenter />
+              </div>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-8"
+                    onClick={() => setShortcutsOpen(true)}
+                    aria-label="Atajos de teclado"
+                  >
+                    <Keyboard className="size-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Atajos (Ctrl/⌘ + /)</TooltipContent>
+              </Tooltip>
+
+              {/* User info */}
+              <div className="hidden items-center gap-2.5 rounded-lg border border-border/50 bg-muted/20 px-3 py-1.5 text-sm lg:flex">
+                <div className="flex size-7 items-center justify-center rounded-md bg-primary/10 text-primary text-xs font-bold">
+                  {initials}
+                </div>
+                <div className="flex flex-col leading-tight">
+                  <span className="text-xs font-semibold text-foreground">
+                    {user?.name ?? "Usuario"}
+                  </span>
+                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    {user?.role ?? "Admin"}
+                  </span>
+                </div>
+              </div>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <LogoutButton
+                      iconOnly
+                      variant="ghost"
+                      size="icon"
+                      className="size-8 rounded-lg"
+                    />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Cerrar sesión</TooltipContent>
+              </Tooltip>
+            </div>
+          </header>
+
+          {/* ── Subtitle bar (optional) ── */}
+          {subtitle && (
+            <div className="flex items-center gap-2 border-b border-border/50 bg-muted/10 px-4 py-1.5 lg:px-6">
+              <p className="text-xs text-muted-foreground">{subtitle}</p>
+              {refreshing && (
+                <span className="inline-flex size-1.5 animate-pulse rounded-full bg-primary" />
+              )}
+            </div>
+          )}
+
+          {/* ── Content area ── */}
+          <main className="flex-1 overflow-y-auto scrollbar-thin">
+            <div className="mx-auto w-full max-w-[1400px] px-4 py-6 lg:px-6 lg:py-8">
+              {children}
+            </div>
+          </main>
+        </div>
+      </div>
+      <KeyboardShortcutsDialog
+        open={shortcutsOpen}
+        onOpenChange={setShortcutsOpen}
+      />
+    </NotificationProvider>
+  );
+}

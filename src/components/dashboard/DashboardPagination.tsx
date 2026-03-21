@@ -61,8 +61,8 @@ export function DashboardPagination({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 text-xs text-slate-600 dark:text-slate-300/80 md:flex-row md:items-center md:justify-between",
-        className
+        "flex flex-col gap-3 text-xs text-muted-foreground md:flex-row md:items-center md:justify-between",
+        className,
       )}
     >
       <div className="flex flex-wrap items-center gap-2">
@@ -77,7 +77,7 @@ export function DashboardPagination({
           <SelectTrigger
             aria-label="Elementos por página"
             size="sm"
-            className="h-8 rounded-full border-slate-200/70 bg-white/90 pr-7 text-xs font-medium dark:border-white/15 dark:bg-white/10"
+            className="h-8 rounded-full border-border/60 bg-card/90 pr-7 text-xs font-medium"
           >
             <SelectValue />
           </SelectTrigger>
@@ -119,7 +119,7 @@ export function DashboardPagination({
               </Button>
             </PaginationItem>
             <PaginationItem>
-              <span className="rounded-full border border-slate-200/70 bg-white/80 px-3 py-1 font-medium text-slate-700 shadow-sm dark:border-white/15 dark:bg-white/10 dark:text-slate-200">
+              <span className="rounded-full border border-border/40 bg-card/80 px-3 py-1 font-medium text-foreground shadow-sm">
                 Página {currentPage.toLocaleString()} de{" "}
                 {pageCount.toLocaleString()}
               </span>

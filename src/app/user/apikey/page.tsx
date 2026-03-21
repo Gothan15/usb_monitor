@@ -4,19 +4,19 @@ import dynamic from "next/dynamic";
 import { UserWelcomeCard } from "../_components/UserWelcomeCard";
 import { useUserDashboard } from "../_providers/UserDashboardProvider";
 
-// Diferimos la carga del visor de API key hasta que el usuario lo solicita.
+// Diferimos la carga del visor de clave API hasta que el usuario lo solicita.
 const ApiKeyDisplay = dynamic(
   () =>
     import("../components/ApiKeyDisplay/ApiKeyDisplay").then(
-      (mod) => mod.ApiKeyDisplay
+      (mod) => mod.ApiKeyDisplay,
     ),
   {
     loading: () => (
-      <div className="rounded-2xl border border-slate-200/60 bg-white/60 p-8 text-center text-sm text-slate-500 shadow-sm dark:border-slate-800/60 dark:bg-slate-900/60 dark:text-slate-300">
-        Preparando API key asignada…
+      <div className="rounded-xl border border-border/40 bg-card/80 p-8 text-center text-sm text-muted-foreground shadow-sm">
+        Preparando clave API asignada...
       </div>
     ),
-  }
+  },
 );
 
 export default function UserApiKeyPage() {

@@ -1,15 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  Eye,
-  EyeOff,
-  Key,
-  RefreshCw,
-  Shield,
-  Copy,
-  Check,
-} from "lucide-react";
+import { Eye, EyeOff, Key, RefreshCw, Shield, Copy, Check } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -37,7 +29,7 @@ export const ApiKeyDisplay = ({ userId }: ApiKeyDisplayProps) => {
     return apiKey
       .split("")
       .map((char, index) =>
-        char === "-" ? "-" : index < apiKey.length - 4 ? "•" : char
+        char === "-" ? "-" : index < apiKey.length - 4 ? "•" : char,
       )
       .join("");
   }, [apiKey, visible]);
@@ -57,14 +49,14 @@ export const ApiKeyDisplay = ({ userId }: ApiKeyDisplayProps) => {
         if (manual) {
           toast({
             title: "Clave sincronizada",
-            description: "La API key se actualizó correctamente.",
+            description: "La clave API se actualizó correctamente.",
           });
         }
       } catch (fetchError) {
         const message =
           fetchError instanceof Error
             ? fetchError.message
-            : "No se pudo obtener la API key.";
+            : "No se pudo obtener la clave API.";
         setError(message);
         if (manual) {
           toast({
@@ -81,7 +73,7 @@ export const ApiKeyDisplay = ({ userId }: ApiKeyDisplayProps) => {
         }
       }
     },
-    [toast, userId]
+    [toast, userId],
   );
 
   useEffect(() => {
@@ -97,7 +89,7 @@ export const ApiKeyDisplay = ({ userId }: ApiKeyDisplayProps) => {
     if (!apiKey) {
       toast({
         title: "No hay clave para copiar",
-        description: "Aún no se ha generado una API key para este usuario.",
+        description: "Aún no se ha generado una clave API para este usuario.",
         variant: "destructive",
       });
       return;
@@ -106,7 +98,7 @@ export const ApiKeyDisplay = ({ userId }: ApiKeyDisplayProps) => {
       await navigator.clipboard.writeText(apiKey);
       setCopied(true);
       toast({
-        title: "API key copiada",
+        title: "Clave API copiada",
         description: "La clave se copió al portapapeles de manera segura.",
       });
       setTimeout(() => setCopied(false), 2000);
@@ -114,9 +106,9 @@ export const ApiKeyDisplay = ({ userId }: ApiKeyDisplayProps) => {
       const message =
         copyError instanceof Error
           ? copyError.message
-          : "No se pudo copiar la API key.";
+          : "No se pudo copiar la clave API.";
       toast({
-        title: "No se pudo copiar la API key",
+        title: "No se pudo copiar la clave API",
         description: message,
         variant: "destructive",
       });
@@ -124,17 +116,17 @@ export const ApiKeyDisplay = ({ userId }: ApiKeyDisplayProps) => {
   }, [apiKey, toast]);
 
   return (
-    <Card className="border-slate-200/80 bg-gradient-to-br from-white via-white to-slate-50 shadow-sm dark:border-slate-800/80 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+    <Card className="border-border/60 bg-card/80 shadow-sm backdrop-blur-xl">
       <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="flex items-center gap-2 text-lg text-slate-800 dark:text-slate-100">
-          <Key className="h-5 w-5 text-slate-500 dark:text-slate-300" />
-          API key personal
+        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
+          <Key className="h-5 w-5 text-muted-foreground" />
+          Clave API personal
         </CardTitle>
         <Button
           type="button"
           size="sm"
           variant="outline"
-          className="inline-flex items-center gap-2 border-slate-200 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+          className="inline-flex items-center gap-2 border-border/60 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted/50"
           disabled={refreshing}
           onClick={() => loadApiKey(undefined, true)}
         >
@@ -143,13 +135,13 @@ export const ApiKeyDisplay = ({ userId }: ApiKeyDisplayProps) => {
               <Spinner size={16} />
             </div>
           ) : (
-            <RefreshCw className="mr-2 h-4 w-4 text-slate-500 dark:text-slate-300" />
+            <RefreshCw className="mr-2 h-4 w-4 text-muted-foreground" />
           )}
           {refreshing ? "Actualizando..." : "Actualizar"}
         </Button>
       </CardHeader>
       <CardContent className="space-y-4">
-        <Alert className="border-blue-200 bg-blue-50 text-sm text-blue-900 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-200">
+        <Alert className="border-slate-300 bg-slate-50 text-sm text-slate-800 dark:border-slate-700 dark:bg-slate-900/30 dark:text-slate-200">
           <AlertDescription className="flex items-center gap-2">
             <Shield className="h-4 w-4" />
             Mantenga su clave segura. Si sospecha de un compromiso, solicite una
@@ -176,12 +168,12 @@ export const ApiKeyDisplay = ({ userId }: ApiKeyDisplayProps) => {
                 type="text"
                 value={maskedValue}
                 readOnly
-                className="font-mono text-sm tracking-wide transition-all duration-300 focus-visible:ring-slate-400 dark:bg-slate-900"
+                className="font-mono text-sm tracking-wide transition-all duration-300 focus-visible:ring-primary/40"
               />
               <button
                 type="button"
-                aria-label={visible ? "Ocultar API key" : "Mostrar API key"}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 transition-colors hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                aria-label={visible ? "Ocultar clave API" : "Mostrar clave API"}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
                 onClick={() => setVisible((prev) => !prev)}
               >
                 {visible ? (
@@ -195,7 +187,7 @@ export const ApiKeyDisplay = ({ userId }: ApiKeyDisplayProps) => {
               <Button
                 type="button"
                 onClick={handleCopy}
-                className="inline-flex items-center gap-2 bg-slate-800 text-white transition-colors hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600"
+                className="inline-flex items-center gap-2 bg-foreground text-background transition-colors hover:bg-foreground/90"
               >
                 {copied ? (
                   <Check className="h-4 w-4" />
@@ -207,7 +199,7 @@ export const ApiKeyDisplay = ({ userId }: ApiKeyDisplayProps) => {
               <Button
                 type="button"
                 variant="outline"
-                className="inline-flex items-center gap-2 border-slate-200 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                className="inline-flex items-center gap-2 border-border/60 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted/50"
                 onClick={() => setVisible((prev) => !prev)}
               >
                 {visible ? "Ocultar" : "Mostrar"} clave completa

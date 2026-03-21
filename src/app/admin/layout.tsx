@@ -2,7 +2,6 @@
 
 import { useMemo, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
-import { AnimatePresence, motion } from "framer-motion";
 import {
   LayoutDashboard,
   MonitorSmartphone,
@@ -12,7 +11,13 @@ import {
   Users,
   Wrench,
 } from "lucide-react";
-import { AppShell, type AppShellNavItem } from "@/components/system/AppShell";
+import { AppShell, type AppShellNavItem } from "@/components/shell/AppShell";
+import { CommandPalette } from "@/components/shell/CommandPalette";
+import { PageTransition } from "@/components/shell/PageTransition";
+import { LiveDataProvider } from "@/components/providers/LiveDataProvider";
+import { TourEngine } from "@/components/onboarding/TourEngine";
+import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
+import { adminTour } from "@/lib/tours";
 import { FullscreenSpinner } from "@/components/ui/spinner";
 import {
   AdminDashboardProvider,
@@ -69,7 +74,7 @@ function AdminLayoutContent({
 
   const navItems = useMemo<AppShellNavItem[]>(() => {
     const activeComputers = computers.filter(
-      (computer) => computer.isActive
+      (computer) => computer.isActive,
     ).length;
     return [
       {
@@ -107,7 +112,7 @@ function AdminLayoutContent({
       },
       {
         key: "whitelist",
-        label: "Whitelist",
+        label: "Lista blanca",
         description: "Gestiona los dispositivos autorizados",
         icon: ShieldCheck,
         badge: whitelist.length || undefined,
@@ -132,7 +137,7 @@ function AdminLayoutContent({
 
   const activeItem = useMemo(
     () => navItems.find((item) => item.key === activeKey) ?? navItems[0],
-    [activeKey, navItems]
+    [activeKey, navItems],
   );
 
   const lastUpdateLabel = lastUpdate ? formatTime(lastUpdate) : "Sin datos";
@@ -154,24 +159,22 @@ function AdminLayoutContent({
       title={activeItem.label}
       user={user}
     >
+      <CommandPalette role="ADMIN" />
+      <TourEngine tour={adminTour} />
       {/* Animación suave entre subrutas usando la key del pathname actual */}
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={pathname ?? "admin-root"}
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -16 }}
-          transition={{ duration: 0.22, ease: "easeOut" }}
-          className="space-y-6"
-        >
+      <PageTransition
+        transitionKey={pathname ?? "admin-root"}
+        className="space-y-6"
+      >
+        <ErrorBoundary>
           {errorMsg && (
             <div className="flex items-start gap-3 rounded-2xl border border-rose-200/70 bg-rose-50 px-4 py-3 text-sm text-rose-700 shadow-sm dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
               {errorMsg}
             </div>
           )}
           {children}
-        </motion.div>
-      </AnimatePresence>
+        </ErrorBoundary>
+      </PageTransition>
     </AppShell>
   );
 }
@@ -182,8 +185,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
   return (
     <AdminDashboardProvider activeKey={activeKey}>
-      {/* Provider comparte estado/data entre subrutas sin volver a cargar la página */}
-      <AdminLayoutContent pathname={pathname}>{children}</AdminLayoutContent>
+      <LiveDataProvider>
+        <AdminLayoutContent pathname={pathname}>{children}</AdminLayoutContent>
+      </LiveDataProvider>
     </AdminDashboardProvider>
   );
 }

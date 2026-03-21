@@ -29,10 +29,10 @@ export function SortableTableHead<T>({
   return (
     <TableHead
       className={cn(
-        "group cursor-pointer select-none transition-colors hover:bg-slate-100/70 dark:hover:bg-white/5",
+        "group cursor-pointer select-none transition-colors hover:bg-muted/50",
         align === "right" && "text-right",
         align === "center" && "text-center",
-        className
+        className,
       )}
       onClick={() => onSort(column)}
     >
@@ -40,7 +40,7 @@ export function SortableTableHead<T>({
         className={cn(
           "flex items-center gap-2",
           align === "right" && "justify-end",
-          align === "center" && "justify-center"
+          align === "center" && "justify-center",
         )}
       >
         <span>{children}</span>
@@ -48,8 +48,8 @@ export function SortableTableHead<T>({
           className={cn(
             "inline-flex size-4 items-center justify-center transition-all",
             isActive
-              ? "text-slate-700 dark:text-slate-200"
-              : "text-slate-400 opacity-0 group-hover:opacity-100 dark:text-slate-500"
+              ? "text-foreground"
+              : "text-muted-foreground/50 opacity-0 group-hover:opacity-100",
           )}
         >
           {!isActive && <ArrowUpDown className="size-3.5" />}

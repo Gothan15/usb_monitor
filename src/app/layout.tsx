@@ -1,15 +1,21 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
+import "@fontsource-variable/jetbrains-mono";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import AuthGate from "@/components/system/AuthGate";
 import { ThemeProvider } from "@/components/system/ThemeProvider";
 import { QueryProvider } from "@/components/system/QueryProvider";
 
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const jakarta = Plus_Jakarta_Sans({
+  variable: "--font-jakarta",
   subsets: ["latin"],
+  display: "swap",
+});
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-jetbrains",
+  subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -67,7 +73,7 @@ export default function RootLayout({
         <meta httpEquiv="Permissions-Policy" content="usb=()" />
       </head> */}
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
+        className={`${jakarta.variable} ${jetbrainsMono.variable} antialiased`}
       >
         <ThemeProvider>
           <QueryProvider>

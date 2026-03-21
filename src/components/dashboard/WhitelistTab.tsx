@@ -198,32 +198,32 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
       transition={{ duration: 0.35, ease: "easeOut" }}
       className="w-full"
     >
-      <Card className="relative w-full overflow-hidden rounded-3xl border border-slate-200/70 bg-white/80 text-slate-900 shadow-xl supports-[backdrop-filter]:backdrop-blur-2xl dark:border-white/10 dark:bg-slate-900/50 dark:text-white">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.16),transparent_55%),radial-gradient(circle_at_bottom_right,_rgba(56,189,248,0.12),transparent_55%)] dark:bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.18),transparent_45%),radial-gradient(circle_at_bottom_right,_rgba(99,102,241,0.18),transparent_55%)]" />
+      <Card className="relative w-full overflow-hidden rounded-xl border border-border/60 bg-card/80 shadow-xl backdrop-blur-xl">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_oklch(0.82_0.01_250/0.14),transparent_55%),radial-gradient(circle_at_bottom_right,_oklch(0.78_0.015_250/0.10),transparent_55%)] dark:bg-[radial-gradient(circle_at_top_left,_oklch(0.75_0.01_250/0.12),transparent_45%),radial-gradient(circle_at_bottom_right,_oklch(0.70_0.015_250/0.12),transparent_55%)]" />
         <CardHeader className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-4">
-            <span className="inline-flex size-12 items-center justify-center rounded-2xl border border-white/60 bg-white/80 text-cyan-600 shadow-sm dark:border-white/15 dark:bg-white/10 dark:text-cyan-200">
+            <span className="inline-flex size-12 items-center justify-center rounded-xl border border-border/40 bg-muted/30 text-primary shadow-sm">
               <ShieldCheck className="size-5" />
             </span>
             <div>
-              <CardTitle className="text-2xl font-semibold text-slate-900 dark:text-slate-100">
+              <CardTitle className="text-2xl font-semibold text-foreground">
                 Whitelist de dispositivos USB
               </CardTitle>
-              <CardDescription className="text-sm text-slate-600 dark:text-slate-300/80">
+              <CardDescription className="text-sm text-muted-foreground">
                 Autoriza memorias seguras, mantén control y elimina desbloqueos
                 manuales repetitivos.
               </CardDescription>
             </div>
           </div>
-          <div className="flex flex-col items-start gap-2 text-xs font-medium text-slate-600 sm:flex-row sm:items-center dark:text-slate-300/80">
+          <div className="flex flex-col items-start gap-2 text-xs font-medium text-muted-foreground sm:flex-row sm:items-center">
             <Badge
               variant="secondary"
-              className="rounded-full border border-white/50 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-slate-600 shadow-sm backdrop-blur-sm dark:border-white/15 dark:bg-white/10 dark:text-slate-200"
+              className="rounded-full border border-border/40 bg-muted/30 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground shadow-sm backdrop-blur-sm"
             >
               {totalEntries} permitido{totalEntries === 1 ? "" : "s"}
             </Badge>
             {latestCreatedAt && (
-              <span className="inline-flex items-center gap-2 rounded-full border border-white/50 bg-white/80 px-3 py-1 text-slate-600 shadow-sm backdrop-blur-sm dark:border-white/15 dark:bg-white/10 dark:text-slate-200">
+              <span className="inline-flex items-center gap-2 rounded-full border border-border/40 bg-muted/30 px-3 py-1 text-muted-foreground shadow-sm backdrop-blur-sm">
                 <CheckCircle2 className="size-3.5" />
                 Último alta: {formatDateTime(latestCreatedAt)}
               </span>
@@ -237,7 +237,7 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
                 key={stat.label}
                 whileHover={{ y: -4 }}
                 transition={{ duration: 0.25 }}
-                className="relative overflow-hidden rounded-2xl border border-white/60 bg-white/75 p-4 shadow-lg supports-[backdrop-filter]:backdrop-blur-xl dark:border-white/10 dark:bg-white/5"
+                className="relative overflow-hidden rounded-xl border border-border/40 bg-card/80 p-4 shadow-lg backdrop-blur-xl"
               >
                 <div
                   className={cn(
@@ -247,17 +247,17 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
                 />
                 <div className="relative flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
                       {stat.label}
                     </p>
-                    <p className="mt-3 text-2xl font-semibold text-slate-900 dark:text-white">
+                    <p className="mt-3 text-2xl font-semibold text-foreground">
                       {stat.value}
                     </p>
-                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-300/80">
+                    <p className="mt-1 text-xs text-muted-foreground">
                       {stat.description}
                     </p>
                   </div>
-                  <span className="inline-flex size-9 items-center justify-center rounded-lg border border-white/60 bg-white/80 text-slate-500 shadow-sm dark:border-white/15 dark:bg-white/10 dark:text-slate-200">
+                  <span className="inline-flex size-9 items-center justify-center rounded-lg border border-border/40 bg-muted/30 text-muted-foreground shadow-sm">
                     {stat.icon}
                   </span>
                 </div>
@@ -267,10 +267,10 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
 
           <form
             onSubmit={handleSubmit}
-            className="grid gap-4 rounded-3xl border border-white/70 bg-white/80 p-5 shadow-xl supports-[backdrop-filter]:backdrop-blur-xl sm:grid-cols-2 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] dark:border-white/10 dark:bg-white/5"
+            className="grid gap-4 rounded-xl border border-border/40 bg-card/80 p-5 shadow-xl backdrop-blur-xl sm:grid-cols-2 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]"
           >
             <div className="flex flex-col gap-2">
-              <label className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-300/80">
+              <label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                 Serial del dispositivo
               </label>
               <Input
@@ -278,22 +278,22 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
                 onChange={(event) => setSerialNumber(event.target.value)}
                 placeholder="Ej. 1234-ABCD-5678"
                 required
-                className="h-11 rounded-2xl border border-slate-200/60 bg-white/95 text-slate-700 placeholder:text-slate-400 shadow-sm focus-visible:ring-2 focus-visible:ring-cyan-300/70 dark:border-white/10 dark:bg-slate-900/40 dark:text-white"
+                className="h-11 rounded-xl border border-border/60 bg-card/90 text-foreground placeholder:text-muted-foreground/60 shadow-sm focus-visible:ring-2 focus-visible:ring-primary/40"
               />
             </div>
             <div className="flex flex-col gap-2">
-              <label className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-300/80">
+              <label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                 Alias / etiqueta
               </label>
               <Input
                 value={label}
                 onChange={(event) => setLabel(event.target.value)}
                 placeholder="Departamento, usuario o ubicación"
-                className="h-11 rounded-2xl border border-slate-200/60 bg-white/95 text-slate-700 placeholder:text-slate-400 shadow-sm focus-visible:ring-2 focus-visible:ring-cyan-300/70 dark:border-white/10 dark:bg-slate-900/40 dark:text-white"
+                className="h-11 rounded-xl border border-border/60 bg-card/90 text-foreground placeholder:text-muted-foreground/60 shadow-sm focus-visible:ring-2 focus-visible:ring-primary/40"
               />
             </div>
             <div className="flex flex-col gap-2 sm:col-span-2 lg:col-span-1">
-              <label className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-300/80">
+              <label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                 Notas (opcional)
               </label>
               <Textarea
@@ -301,7 +301,7 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
                 onChange={(event) => setNotes(event.target.value)}
                 placeholder="Caducidad, propósito o detalles relevantes"
                 rows={3}
-                className="min-h-[45px] resize-none rounded-2xl border border-slate-200/60 bg-white/95 text-slate-700 placeholder:text-slate-400 shadow-sm focus-visible:ring-2 focus-visible:ring-cyan-300/70 dark:border-white/10 dark:bg-slate-900/40 dark:text-white"
+                className="min-h-[45px] resize-none rounded-xl border border-border/60 bg-card/90 text-foreground placeholder:text-muted-foreground/60 shadow-sm focus-visible:ring-2 focus-visible:ring-primary/40"
               />
             </div>
             <div className="flex items-end justify-end sm:col-span-2 lg:col-span-1">
@@ -331,11 +331,11 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
           <div className="flex flex-col gap-5">
             <div className="space-y-3 md:hidden">
               {loading ? (
-                <div className="rounded-2xl border border-white/70 bg-white/80 p-6 text-center text-slate-500 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+                <div className="rounded-xl border border-border/40 bg-card/80 p-6 text-center text-muted-foreground shadow-sm">
                   Cargando whitelist...
                 </div>
               ) : entries.length === 0 ? (
-                <div className="rounded-2xl border border-white/70 bg-white/80 p-6 text-center text-slate-500 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+                <div className="rounded-xl border border-border/40 bg-card/80 p-6 text-center text-muted-foreground shadow-sm">
                   No hay dispositivos registrados aún. Agrega el primero usando
                   el formulario.
                 </div>
@@ -345,28 +345,28 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
                   return (
                     <div
                       key={entry.id}
-                      className="rounded-3xl border border-white/70 bg-white/85 p-5 shadow-lg transition-shadow hover:shadow-xl dark:border-white/10 dark:bg-white/5"
+                      className="rounded-xl border border-border/40 bg-card/80 p-5 shadow-lg transition-shadow hover:shadow-xl backdrop-blur-sm"
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <p className="font-mono text-sm text-cyan-700 dark:text-cyan-200">
                             {entry.serialNumber}
                           </p>
-                          <p className="text-xs uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
+                          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground/60">
                             {formatDateTime(entry.createdAt)}
                           </p>
                         </div>
                         <Badge
                           variant="secondary"
-                          className="rounded-full border border-white/70 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600 shadow-sm dark:border-white/15 dark:bg-white/10 dark:text-slate-200"
+                          className="rounded-full border border-border/40 bg-muted/30 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground shadow-sm"
                         >
                           {entry.label || "Sin alias"}
                         </Badge>
                       </div>
-                      <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
+                      <p className="mt-3 text-sm text-muted-foreground">
                         {entry.notes || "Sin notas adicionales"}
                       </p>
-                      <div className="mt-4 flex items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-300">
+                      <div className="mt-4 flex items-center justify-between gap-3 text-xs text-muted-foreground">
                         <span>
                           Autor: {entry.createdBy?.username || "Sistema"}
                         </span>
@@ -376,7 +376,7 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
                           onClick={() => handleDelete(entry.id)}
                           disabled={isDeleting}
                           className={cn(
-                            "rounded-full border border-slate-200/70 px-3 py-1 text-rose-600 shadow-sm transition-colors hover:border-rose-300 hover:bg-rose-100 disabled:opacity-70 dark:border-rose-400/40 dark:bg-rose-500/10 dark:text-rose-100",
+                            "rounded-full border border-rose-200/60 bg-rose-500/10 px-3 py-1 text-rose-600 shadow-sm transition-colors hover:border-rose-300 hover:bg-rose-500/20 disabled:opacity-70 dark:border-rose-400/30 dark:bg-rose-500/15 dark:text-rose-100",
                             isDeleting && "opacity-70"
                           )}
                         >
@@ -398,14 +398,14 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
 
             <ScrollArea className="hidden max-h-[min(65vh,500px)] pr-3 md:block">
               <Table className="w-full min-w-[800px]">
-                <TableHeader className="sticky top-0 z-10 bg-white/95 backdrop-blur-xl dark:bg-slate-900/80">
-                  <TableRow className="border-slate-200/80 dark:border-white/10">
+                <TableHeader className="sticky top-0 z-10 bg-card/95 backdrop-blur-xl">
+                  <TableRow className="border-border/40">
                     <SortableTableHead
                       column="serialNumber"
                       currentSortKey={sortConfig.key}
                       currentSortDirection={sortConfig.direction}
                       onSort={requestSort}
-                      className="text-slate-600 dark:text-slate-200"
+                      className="text-muted-foreground"
                     >
                       Serial
                     </SortableTableHead>
@@ -414,7 +414,7 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
                       currentSortKey={sortConfig.key}
                       currentSortDirection={sortConfig.direction}
                       onSort={requestSort}
-                      className="text-slate-600 dark:text-slate-200"
+                      className="text-muted-foreground"
                     >
                       Alias
                     </SortableTableHead>
@@ -423,7 +423,7 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
                       currentSortKey={sortConfig.key}
                       currentSortDirection={sortConfig.direction}
                       onSort={requestSort}
-                      className="text-slate-600 dark:text-slate-200"
+                      className="text-muted-foreground"
                     >
                       Notas
                     </SortableTableHead>
@@ -432,7 +432,7 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
                       currentSortKey={sortConfig.key}
                       currentSortDirection={sortConfig.direction}
                       onSort={requestSort}
-                      className="text-slate-600 dark:text-slate-200"
+                      className="text-muted-foreground"
                     >
                       Creado
                     </SortableTableHead>
@@ -441,7 +441,7 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
                       currentSortKey={sortConfig.key}
                       currentSortDirection={sortConfig.direction}
                       onSort={requestSort}
-                      className="text-slate-600 dark:text-slate-200"
+                      className="text-muted-foreground"
                     >
                       Autor
                     </SortableTableHead>
@@ -450,7 +450,7 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
                       currentSortKey={sortConfig.key}
                       currentSortDirection={sortConfig.direction}
                       onSort={requestSort}
-                      className="text-slate-600 dark:text-slate-200"
+                      className="text-muted-foreground"
                       align="right"
                     >
                       Acciones
@@ -462,7 +462,7 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
                     <TableRow>
                       <TableCell
                         colSpan={6}
-                        className="py-6 text-center text-slate-500 dark:text-slate-300"
+                        className="py-6 text-center text-muted-foreground"
                       >
                         Cargando whitelist...
                       </TableCell>
@@ -471,7 +471,7 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
                     <TableRow>
                       <TableCell
                         colSpan={6}
-                        className="py-6 text-center text-slate-500 dark:text-slate-300"
+                        className="py-6 text-center text-muted-foreground"
                       >
                         No hay dispositivos registrados. Agrega uno usando el
                         formulario.
@@ -481,36 +481,36 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
                     paginatedEntries.map((entry) => (
                       <TableRow
                         key={entry.id}
-                        className="group border border-white/70 bg-white/70 transition-colors hover:border-cyan-300/60 hover:bg-cyan-50/60 dark:border-white/5 dark:bg-white/5 dark:hover:border-cyan-400/30 dark:hover:bg-cyan-500/10"
+                        className="group transition-colors duration-150"
                       >
                         <TableCell className="font-mono text-sm text-cyan-700 dark:text-cyan-200">
                           {entry.serialNumber}
                         </TableCell>
-                        <TableCell className="text-slate-600 dark:text-slate-300/80">
+                        <TableCell className="text-muted-foreground">
                           {entry.label ? (
                             <Badge
                               variant="secondary"
-                              className="rounded-full border border-white/60 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600 shadow-sm dark:border-white/15 dark:bg-white/10 dark:text-slate-200"
+                              className="rounded-full border border-border/40 bg-muted/30 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground shadow-sm"
                             >
                               {entry.label}
                             </Badge>
                           ) : (
-                            <span className="text-xs uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+                            <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground/50">
                               —
                             </span>
                           )}
                         </TableCell>
-                        <TableCell className="max-w-[280px] text-sm text-slate-600 dark:text-slate-300">
+                        <TableCell className="max-w-[280px] text-sm text-muted-foreground">
                           {entry.notes || (
-                            <span className="text-xs uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+                            <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground/50">
                               Sin notas
                             </span>
                           )}
                         </TableCell>
-                        <TableCell className="text-xs text-slate-500 dark:text-slate-300/80">
+                        <TableCell className="text-xs text-muted-foreground">
                           {formatDateTime(entry.createdAt)}
                         </TableCell>
-                        <TableCell className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                        <TableCell className="text-xs font-medium text-muted-foreground">
                           {entry.createdBy?.username || "Sistema"}
                         </TableCell>
                         <TableCell className="text-right">
@@ -520,7 +520,7 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
                             onClick={() => handleDelete(entry.id)}
                             disabled={deletingId === entry.id}
                             className={cn(
-                              "rounded-full border border-slate-200/70 bg-white/85 px-4 py-2 text-rose-600 shadow-sm transition-all hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-100 disabled:opacity-70 dark:border-rose-400/40 dark:bg-rose-500/15 dark:text-rose-100",
+                              "rounded-full border border-rose-200/60 bg-rose-500/10 px-4 py-2 text-rose-600 shadow-sm transition-all hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-500/20 disabled:opacity-70 dark:border-rose-400/30 dark:bg-rose-500/15 dark:text-rose-100",
                               deletingId === entry.id && "opacity-70"
                             )}
                           >

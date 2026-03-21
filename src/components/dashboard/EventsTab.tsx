@@ -126,10 +126,10 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
 
     const total = events.length;
     const unlocks = events.filter(
-      (event) => classifyEvent(event).tone === "success"
+      (event) => classifyEvent(event).tone === "success",
     ).length;
     const alerts = events.filter(
-      (event) => classifyEvent(event).tone === "error"
+      (event) => classifyEvent(event).tone === "error",
     ).length;
 
     return [
@@ -170,7 +170,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
       const clamped = Math.min(Math.max(nextPage, 1), pageCount);
       setPage(clamped);
     },
-    [pageCount]
+    [pageCount],
   );
 
   const handlePageSizeChange = useCallback((nextSize: number) => {
@@ -201,31 +201,31 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
       transition={{ duration: 0.35, ease: "easeOut" }}
       className="w-full"
     >
-      <Card className="relative w-full overflow-hidden rounded-3xl border border-slate-200/70 bg-white/85 text-slate-900 shadow-xl supports-[backdrop-filter]:backdrop-blur-2xl dark:border-white/10 dark:bg-slate-900/50 dark:text-white">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(147,51,234,0.12),transparent_55%),radial-gradient(circle_at_bottom_right,_rgba(99,102,241,0.12),transparent_55%)] dark:bg-[radial-gradient(circle_at_top_left,_rgba(147,51,234,0.16),transparent_45%),radial-gradient(circle_at_bottom_right,_rgba(99,102,241,0.18),transparent_50%)]" />
+      <Card className="relative w-full overflow-hidden rounded-2xl border border-border/60 bg-card/80 text-card-foreground shadow-xl backdrop-blur-xl">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,oklch(0.80_0.01_250/0.10),transparent_55%)]" />
         <CardHeader className="relative z-10 space-y-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-3">
-              <span className="inline-flex size-12 items-center justify-center rounded-2xl border border-purple-200/60 bg-white/80 text-purple-600 shadow-sm dark:border-purple-400/40 dark:bg-white/10 dark:text-purple-200">
+              <span className="inline-flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
                 <Usb className="size-5" />
               </span>
               <div>
-                <CardTitle className="text-2xl font-semibold text-slate-900 dark:text-slate-100">
+                <CardTitle className="text-lg font-semibold text-foreground">
                   Eventos USB recientes
                 </CardTitle>
-                <CardDescription className="text-sm text-slate-600 dark:text-slate-300/80">
+                <CardDescription className="text-xs text-muted-foreground">
                   Audita accesos, bloqueos y riesgos con contexto visual
                   inmediato.
                 </CardDescription>
               </div>
             </div>
-            <div className="flex flex-col gap-2 text-xs font-medium text-slate-600 dark:text-slate-300/80 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-2 text-xs font-medium text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center gap-1 rounded-full border border-white/70 bg-white/80 px-3 py-1 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-white/10">
-                  <span className="size-2 rounded-full bg-emerald-500 dark:bg-emerald-400" />
-                  Tiempo real sincronizado
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-muted/30 px-3 py-1 text-[11px]">
+                  <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Sincronizado
                 </span>
-                <span className="inline-flex items-center gap-1 rounded-full border border-white/70 bg-white/80 px-3 py-1 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-white/10">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-muted/30 px-3 py-1 text-[11px]">
                   <Clock3 className="size-3" />
                   Últimas 24h
                 </span>
@@ -235,7 +235,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="inline-flex items-center gap-2 font-semibold text-slate-700 dark:text-slate-100"
+                  className="inline-flex items-center gap-2 font-semibold text-foreground"
                   onClick={handleClear}
                   disabled={clearDisabled}
                 >
@@ -253,24 +253,24 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
             {quickStats.map((stat) => (
               <div
                 key={stat.label}
-                className="relative overflow-hidden rounded-2xl border border-white/70 bg-white/85 p-4 text-slate-700 shadow-md supports-[backdrop-filter]:backdrop-blur-xl dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
+                className="relative overflow-hidden rounded-xl border border-border/40 bg-card/50 p-4 backdrop-blur-sm"
               >
                 <div
                   className={cn(
-                    "pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br opacity-70",
-                    stat.accent
+                    "pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-br opacity-50",
+                    stat.accent,
                   )}
                 />
                 <div className="relative flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                       {stat.label}
                     </p>
-                    <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
+                    <p className="mt-1.5 text-xl font-bold tabular-nums text-foreground">
                       {stat.value}
                     </p>
                   </div>
-                  <span className="inline-flex size-9 items-center justify-center rounded-xl border border-white/60 bg-white/80 text-slate-500 shadow-sm dark:border-white/15 dark:bg-white/10 dark:text-slate-200">
+                  <span className="inline-flex size-8 items-center justify-center rounded-lg bg-muted/50 text-muted-foreground">
                     {stat.icon}
                   </span>
                 </div>
@@ -282,14 +282,11 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
           {loading ? (
             <div className="space-y-3">
               {[...Array(5)].map((_, i) => (
-                <Skeleton
-                  key={i}
-                  className="h-12 rounded-2xl bg-slate-100/80 dark:bg-white/10"
-                />
+                <Skeleton key={i} className="h-12 rounded-lg bg-muted/40" />
               ))}
             </div>
           ) : events.length === 0 ? (
-            <Alert className="rounded-2xl border-amber-200/60 bg-amber-50/90 text-amber-700 shadow-sm dark:border-amber-300/40 dark:bg-amber-500/10 dark:text-amber-100">
+            <Alert className="rounded-xl border-amber-200/60 bg-amber-50/90 text-amber-700 shadow-sm dark:border-amber-300/40 dark:bg-amber-500/10 dark:text-amber-100">
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription>
                 No se han registrado eventos USB aún.
@@ -304,44 +301,43 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                   return (
                     <motion.div
                       key={event.id}
-                      whileHover={{ y: -4 }}
-                      transition={{ duration: 0.2 }}
+                      whileHover={{ y: -2 }}
+                      transition={{ duration: 0.15 }}
                       className={cn(
-                        "rounded-3xl border border-white/70 bg-white/85 p-5 shadow-lg supports-[backdrop-filter]:backdrop-blur-xl dark:border-white/10 dark:bg-white/5",
+                        "rounded-xl border border-border/50 bg-card/80 p-4 backdrop-blur-sm",
                         tone === "success" &&
-                          "border-emerald-200/60 bg-emerald-50/70 dark:border-emerald-400/30 dark:bg-emerald-500/10",
-                        tone === "error" &&
-                          "border-rose-200/60 bg-rose-50/70 dark:border-rose-400/30 dark:bg-rose-500/10"
+                          "border-emerald-500/20 bg-emerald-500/5",
+                        tone === "error" && "border-rose-500/20 bg-rose-500/5",
                       )}
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div>
-                          <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                          <p className="text-sm font-medium text-foreground">
                             {event.pcName}
                           </p>
-                          <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
                             {event.pcUser} · {event.pcIp}
                           </p>
                         </div>
                         <Badge
                           variant={badgeVariant}
                           className={cn(
-                            "rounded-full px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.18em]",
+                            "rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase",
                             badgeVariant === "default" &&
-                              "border border-slate-200 bg-slate-100 text-slate-700 shadow-sm dark:border-white/10 dark:bg-white/10 dark:text-white"
+                              "border border-border/50 bg-muted/40 text-muted-foreground",
                           )}
                         >
                           {badgeVariant === "success"
                             ? "Autorizado"
                             : badgeVariant === "destructive"
-                            ? "Alerta"
-                            : "Info"}
+                              ? "Alerta"
+                              : "Info"}
                         </Badge>
                       </div>
-                      <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
+                      <p className="mt-3 text-sm text-muted-foreground">
                         {event.event}
                       </p>
-                      <div className="mt-3 grid gap-2 text-xs text-slate-500 dark:text-slate-300">
+                      <div className="mt-2 grid gap-1 text-xs text-muted-foreground font-mono">
                         {event.driveLetter && (
                           <span>{`Unidad: ${event.driveLetter}`}</span>
                         )}
@@ -355,14 +351,16 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                           event.whitelisted ? "Sí" : "No"
                         }`}</span>
                       </div>
-                      <div className="mt-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-300">
-                        <div className="flex flex-col text-left text-slate-600 dark:text-slate-200">
-                          <span className="text-sm font-medium text-slate-700 dark:text-slate-100">
+                      <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium text-foreground">
                             {formatDate(occurredAt)}
                           </span>
-                          <span>{formatTime(occurredAt)}</span>
+                          <span className="font-mono">
+                            {formatTime(occurredAt)}
+                          </span>
                         </div>
-                        <span className="inline-flex items-center gap-1 rounded-full border border-white/70 bg-white/80 px-2 py-0.5 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-white/10">
+                        <span className="inline-flex items-center gap-1 rounded-full border border-border/50 bg-muted/30 px-2 py-0.5 text-[10px]">
                           <Usb className="size-3" />
                           Evento USB
                         </span>
@@ -376,14 +374,14 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                 <TooltipProvider delayDuration={120}>
                   <div className="w-full">
                     <Table className="w-full min-w-[850px]">
-                      <TableHeader className="sticky top-0 z-10 bg-white/95 backdrop-blur-xl dark:bg-slate-900/80">
-                        <TableRow className="border-white/60 dark:border-white/10">
+                      <TableHeader className="sticky top-0 z-10 bg-card/95 backdrop-blur-xl">
+                        <TableRow>
                           <SortableTableHead
                             column="pcName"
                             currentSortKey={sortConfig.key}
                             currentSortDirection={sortConfig.direction}
                             onSort={requestSort}
-                            className="text-slate-600 dark:text-slate-200"
+                            className="text-muted-foreground"
                           >
                             Computadora
                           </SortableTableHead>
@@ -392,7 +390,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                             currentSortKey={sortConfig.key}
                             currentSortDirection={sortConfig.direction}
                             onSort={requestSort}
-                            className="text-slate-600 dark:text-slate-200"
+                            className="text-muted-foreground"
                           >
                             Usuario / IP
                           </SortableTableHead>
@@ -401,7 +399,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                             currentSortKey={sortConfig.key}
                             currentSortDirection={sortConfig.direction}
                             onSort={requestSort}
-                            className="text-slate-600 dark:text-slate-200"
+                            className="text-muted-foreground"
                           >
                             Evento
                           </SortableTableHead>
@@ -410,7 +408,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                             currentSortKey={sortConfig.key}
                             currentSortDirection={sortConfig.direction}
                             onSort={requestSort}
-                            className="text-slate-600 dark:text-slate-200"
+                            className="text-muted-foreground"
                           >
                             Detalle dispositivo
                           </SortableTableHead>
@@ -419,7 +417,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                             currentSortKey={sortConfig.key}
                             currentSortDirection={sortConfig.direction}
                             onSort={requestSort}
-                            className="text-slate-600 dark:text-slate-200"
+                            className="text-muted-foreground"
                           >
                             Estado
                           </SortableTableHead>
@@ -428,7 +426,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                             currentSortKey={sortConfig.key}
                             currentSortDirection={sortConfig.direction}
                             onSort={requestSort}
-                            className="text-slate-600 dark:text-slate-200"
+                            className="text-muted-foreground"
                           >
                             Fecha / Hora
                           </SortableTableHead>
@@ -443,8 +441,8 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                             tone === "success"
                               ? "Autorizado"
                               : tone === "error"
-                              ? "Alerta"
-                              : "Info";
+                                ? "Alerta"
+                                : "Info";
                           const toneIcon =
                             tone === "success" ? (
                               <ShieldCheck className="h-3.5 w-3.5" />
@@ -454,19 +452,19 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                               <Info className="h-3.5 w-3.5" />
                             );
                           const toneBadgeClass = cn(
-                            "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.22em]",
+                            "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.2em]",
                             badgeVariant === "default" &&
-                              "border border-slate-200 bg-white/70 text-slate-600 shadow-sm dark:border-white/10 dark:bg-white/10 dark:text-slate-200"
+                              "border border-border/50 bg-muted/40 text-muted-foreground",
                           );
                           return (
                             <TableRow
                               key={event.id}
                               className={cn(
-                                "group border border-white/70 bg-white/75 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-400/60 hover:bg-slate-100/70 dark:border-white/5 dark:bg-white/5 dark:hover:border-white/20",
-                                rowClassName
+                                "group transition-colors duration-150",
+                                rowClassName,
                               )}
                             >
-                              <TableCell className="max-w-[120px] font-semibold text-slate-700 dark:text-slate-100">
+                              <TableCell className="max-w-[120px] font-medium text-foreground">
                                 <span
                                   className="block truncate"
                                   title={event.pcName}
@@ -474,7 +472,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                                   {event.pcName}
                                 </span>
                               </TableCell>
-                              <TableCell className="max-w-[140px] text-slate-600 dark:text-slate-300/80">
+                              <TableCell className="max-w-[140px] text-muted-foreground">
                                 <div className="flex flex-col gap-0.5">
                                   <span
                                     className="truncate"
@@ -483,14 +481,14 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                                     {event.pcUser}
                                   </span>
                                   <span
-                                    className="truncate text-xs text-slate-500 dark:text-slate-400"
+                                    className="truncate text-xs font-mono text-muted-foreground/70"
                                     title={event.pcIp}
                                   >
                                     {event.pcIp}
                                   </span>
                                 </div>
                               </TableCell>
-                              <TableCell className="max-w-[200px] text-slate-600 dark:text-slate-300/80">
+                              <TableCell className="max-w-[200px] text-muted-foreground">
                                 <div className="flex flex-col gap-1">
                                   <Badge
                                     variant={badgeVariant}
@@ -502,14 +500,14 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                                     </span>
                                   </Badge>
                                   <span
-                                    className="truncate text-xs text-slate-500 dark:text-slate-400"
+                                    className="truncate text-xs text-muted-foreground/70"
                                     title={event.event}
                                   >
                                     {event.event}
                                   </span>
                                 </div>
                               </TableCell>
-                              <TableCell className="max-w-[160px] text-slate-600 dark:text-slate-300/80">
+                              <TableCell className="max-w-[160px] text-muted-foreground">
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <div className="cursor-help space-y-1 text-xs leading-tight">
@@ -525,7 +523,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                                         {event.driveLetter && (
                                           <Badge
                                             variant="outline"
-                                            className="rounded-full border-white/60 bg-white/70 px-2 py-0 text-[10px] uppercase tracking-[0.18em] text-slate-600 dark:border-white/15 dark:bg-white/10 dark:text-slate-200"
+                                            className="rounded-full px-2 py-0 text-[10px] uppercase tracking-wider"
                                           >
                                             {event.driveLetter}
                                           </Badge>
@@ -533,7 +531,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                                         {event.readonlyStatus && (
                                           <Badge
                                             variant="outline"
-                                            className="max-w-[96px] truncate rounded-full border-white/60 bg-white/70 px-2 py-0 text-[10px] uppercase tracking-[0.18em] text-slate-600 dark:border-white/15 dark:bg-white/10 dark:text-slate-200"
+                                            className="max-w-[96px] truncate rounded-full px-2 py-0 text-[10px] uppercase tracking-wider"
                                           >
                                             {event.readonlyStatus}
                                           </Badge>
@@ -544,7 +542,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                                   <TooltipContent
                                     side="left"
                                     align="start"
-                                    className="max-w-xs bg-slate-900/95 text-xs text-white"
+                                    className="max-w-xs text-xs"
                                   >
                                     <div className="space-y-1.5">
                                       <p>
@@ -569,16 +567,16 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                                   </TooltipContent>
                                 </Tooltip>
                               </TableCell>
-                              <TableCell className="text-slate-600 dark:text-slate-300/80">
+                              <TableCell className="text-muted-foreground">
                                 <Badge
                                   variant={
                                     event.whitelisted ? "success" : "secondary"
                                   }
                                   className={cn(
-                                    "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold",
+                                    "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold",
                                     event.whitelisted
-                                      ? "border-emerald-200/60 bg-emerald-500/10 text-emerald-700 shadow-sm dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-100"
-                                      : "border-amber-200/60 bg-amber-50/80 text-amber-700 dark:border-amber-400/40 dark:bg-amber-500/15 dark:text-amber-100"
+                                      ? "border-emerald-200/60 bg-emerald-500/10 text-emerald-700 dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-100"
+                                      : "border-amber-200/60 bg-amber-50/80 text-amber-700 dark:border-amber-400/40 dark:bg-amber-500/15 dark:text-amber-100",
                                   )}
                                 >
                                   {event.whitelisted ? (
@@ -593,12 +591,12 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                                   </span>
                                 </Badge>
                               </TableCell>
-                              <TableCell className="text-slate-600 dark:text-slate-200">
+                              <TableCell className="text-muted-foreground">
                                 <div className="flex flex-col">
-                                  <span className="font-semibold text-slate-700 dark:text-slate-100">
+                                  <span className="font-medium text-foreground text-sm">
                                     {formatDate(occurredAt)}
                                   </span>
-                                  <span className="text-xs text-slate-500 dark:text-slate-300/80">
+                                  <span className="text-xs font-mono text-muted-foreground/70">
                                     {formatTime(occurredAt)}
                                   </span>
                                 </div>

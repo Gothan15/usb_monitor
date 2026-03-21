@@ -9,9 +9,12 @@ const EventsTab = dynamic(
   () => import("@/components/dashboard/EventsTab").then((mod) => mod.EventsTab),
   {
     loading: () => (
-      <DashboardFallback label="Preparando historial de eventos" />
+      <DashboardFallback
+        label="Preparando historial de eventos"
+        variant="table"
+      />
     ),
-  }
+  },
 );
 
 export default function AdminEventsPage() {

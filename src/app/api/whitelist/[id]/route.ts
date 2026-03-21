@@ -10,25 +10,25 @@ import {
 function unauthorized() {
   return NextResponse.json(
     { ok: false, error: "No autorizado" },
-    { status: 401 }
+    { status: 401 },
   );
 }
 
 function notFound() {
   return NextResponse.json(
     { ok: false, error: "Elemento no encontrado" },
-    { status: 404 }
+    { status: 404 },
   );
 }
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const admin = await requireAdminUser(req);
   if (!admin) return unauthorized();
 
-  const id = params?.id;
+  const { id } = await params;
   if (!id) return notFound();
 
   try {
@@ -52,19 +52,19 @@ export async function DELETE(
     console.error("Error eliminando elemento de whitelist:", error);
     return NextResponse.json(
       { ok: false, error: "Error interno del servidor" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const admin = await requireAdminUser(req);
   if (!admin) return unauthorized();
 
-  const id = params?.id;
+  const { id } = await params;
   if (!id) return notFound();
 
   let body: any;
@@ -73,7 +73,7 @@ export async function PATCH(
   } catch {
     return NextResponse.json(
       { ok: false, error: "JSON inválido" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -93,7 +93,7 @@ export async function PATCH(
   if (!hasUpdates) {
     return NextResponse.json(
       { ok: false, error: "No hay cambios para aplicar" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -119,7 +119,7 @@ export async function PATCH(
     console.error("Error actualizando whitelist:", error);
     return NextResponse.json(
       { ok: false, error: "Error interno del servidor" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
