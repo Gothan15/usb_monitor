@@ -417,7 +417,7 @@ export function OverviewTab({
         {/* ── Recent Alerts ── */}
         <GlassPanel variant="elevated" padding="none">
           <div className="flex items-center gap-2 border-b border-border/50 px-5 py-4">
-            <AlertTriangle className="size-4 text-amber-500" />
+            <AlertTriangle className="size-4 text-[oklch(0.60_0.12_85)]" />
             <h3 className="text-sm font-semibold text-foreground">
               Alertas recientes
             </h3>
@@ -448,7 +448,7 @@ export function OverviewTab({
                         "px-4 py-3 transition-colors hover:bg-muted/30",
                         tone === "blocked" && "border-l-2 border-l-rose-500/60",
                         tone === "allowed" &&
-                          "border-l-2 border-l-emerald-500/60",
+                          "border-l-2 border-l-[oklch(0.55_0.12_160/0.60)]",
                       )}
                     >
                       <p className="text-xs font-medium text-foreground">
@@ -474,7 +474,7 @@ export function OverviewTab({
         <GlassPanel variant="elevated" padding="none">
           <div className="border-b border-border/50 px-5 py-4">
             <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-              <ShieldCheck className="size-4 text-emerald-500" />
+              <ShieldCheck className="size-4 text-[oklch(0.55_0.12_160)]" />
               Salud de agentes y servicios
             </h3>
             <p className="mt-0.5 text-xs text-muted-foreground">
@@ -487,19 +487,19 @@ export function OverviewTab({
                 label: "En ejecución",
                 value: serviceSummary.running,
                 total: serviceSummary.total,
-                color: "bg-emerald-500",
+                color: "bg-[oklch(0.55_0.12_160)]",
               },
               {
                 label: "Con pulso reciente",
                 value: serviceSummary.responding,
                 total: serviceSummary.total,
-                color: "bg-sky-500",
+                color: "bg-[oklch(0.65_0.08_250)]",
               },
               {
                 label: "En observación",
                 value: serviceSummary.offline,
                 total: serviceSummary.total,
-                color: "bg-amber-500",
+                color: "bg-[oklch(0.60_0.12_85)]",
               },
               {
                 label: "Inventario total",

@@ -66,6 +66,7 @@ export function AppShell({
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+
   const sidebarRef = useRef<HTMLDivElement>(null);
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
@@ -188,86 +189,75 @@ export function AppShell({
               {navItems.map((item) => {
                 const isActive = item.key === activeKey;
                 return (
-                  <Tooltip key={item.key}>
-                    <TooltipTrigger asChild>
-                      <Link
-                        href={item.href}
-                        prefetch
-                        onClick={() => setMobileMenuOpen(false)}
-                        className={cn(
-                          "group relative flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition-all duration-150",
-                          isActive
-                            ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                            : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground",
-                        )}
-                      >
-                        {/* Active indicator bar */}
-                        {isActive && (
-                          <motion.div
-                            layoutId="sidebar-active"
-                            className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-primary"
-                            transition={{
-                              type: "spring",
-                              stiffness: 350,
-                              damping: 30,
-                            }}
-                          />
-                        )}
-
-                        <item.icon
-                          className={cn(
-                            "size-[18px] shrink-0 transition-colors",
-                            isActive
-                              ? "text-primary"
-                              : "text-sidebar-foreground/50 group-hover:text-sidebar-foreground/80",
-                          )}
-                        />
-
-                        <AnimatePresence>
-                          {(sidebarExpanded || !isDesktop) && (
-                            <motion.span
-                              initial={{ opacity: 0, width: 0 }}
-                              animate={{ opacity: 1, width: "auto" }}
-                              exit={{ opacity: 0, width: 0 }}
-                              transition={{
-                                duration: 0.2,
-                                ease: [0.16, 1, 0.3, 1],
-                              }}
-                              className="truncate whitespace-nowrap"
-                            >
-                              {item.label}
-                            </motion.span>
-                          )}
-                        </AnimatePresence>
-
-                        {/* Badge */}
-                        {item.badge !== undefined && (
-                          <AnimatePresence>
-                            {sidebarExpanded || !isDesktop ? (
-                              <motion.span
-                                initial={{ opacity: 0, scale: 0.8 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                exit={{ opacity: 0, scale: 0.8 }}
-                                className="ml-auto inline-flex min-w-[20px] items-center justify-center rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground"
-                              >
-                                {item.badge}
-                              </motion.span>
-                            ) : (
-                              <span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-primary" />
-                            )}
-                          </AnimatePresence>
-                        )}
-                      </Link>
-                    </TooltipTrigger>
-                    {!sidebarExpanded && isDesktop && (
-                      <TooltipContent side="right" className="font-medium">
-                        <div>{item.label}</div>
-                        <div className="text-[10px] opacity-60">
-                          {item.description}
-                        </div>
-                      </TooltipContent>
+                  <Link
+                    key={item.key}
+                    href={item.href}
+                    prefetch
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={cn(
+                      "group relative flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition-all duration-150",
+                      isActive
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground",
                     )}
-                  </Tooltip>
+                  >
+                    {/* Active indicator bar */}
+                    {isActive && (
+                      <motion.div
+                        layoutId="sidebar-active"
+                        className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-primary"
+                        transition={{
+                          type: "spring",
+                          stiffness: 350,
+                          damping: 30,
+                        }}
+                      />
+                    )}
+
+                    <item.icon
+                      className={cn(
+                        "size-[18px] shrink-0 transition-colors",
+                        isActive
+                          ? "text-primary"
+                          : "text-sidebar-foreground/50 group-hover:text-sidebar-foreground/80",
+                      )}
+                    />
+
+                    <AnimatePresence>
+                      {(sidebarExpanded || !isDesktop) && (
+                        <motion.span
+                          initial={{ opacity: 0, width: 0 }}
+                          animate={{ opacity: 1, width: "auto" }}
+                          exit={{ opacity: 0, width: 0 }}
+                          transition={{
+                            duration: 0.2,
+                            ease: [0.16, 1, 0.3, 1],
+                          }}
+                          className="truncate whitespace-nowrap"
+                        >
+                          {item.label}
+                        </motion.span>
+                      )}
+                    </AnimatePresence>
+
+                    {/* Badge */}
+                    {item.badge !== undefined && (
+                      <AnimatePresence>
+                        {sidebarExpanded || !isDesktop ? (
+                          <motion.span
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.8 }}
+                            className="ml-auto inline-flex min-w-[20px] items-center justify-center rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground"
+                          >
+                            {item.badge}
+                          </motion.span>
+                        ) : (
+                          <span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-primary" />
+                        )}
+                      </AnimatePresence>
+                    )}
+                  </Link>
                 );
               })}
             </div>

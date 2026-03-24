@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Card,
@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DashboardPagination } from "./DashboardPagination";
+import { usePagination } from "@/hooks/usePagination";
 import { useTableSort } from "@/hooks/useTableSort";
 import { SortableTableHead } from "./SortableTableHead";
 import { Spinner } from "@/components/ui/spinner";
@@ -58,11 +59,13 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
   const [formError, setFormError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
 
   const { sortedData, sortConfig, requestSort } =
     useTableSort<WhitelistEntry>(entries);
+
+  const { page, pageSize, setPage, setPageSize } = usePagination({
+    totalItems: sortedData.length,
+  });
 
   const totalEntries = sortedData.length;
   const latestCreatedAt = useMemo(() => {
@@ -81,7 +84,7 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
         icon: <ShieldCheck className="size-4" />,
         value: numberFormatter.format(totalEntries),
         accent:
-          "from-emerald-400/30 via-emerald-300/20 to-transparent dark:from-emerald-500/20 dark:via-emerald-500/10",
+          "from-[oklch(0.82_0.04_170/0.25)] via-[oklch(0.85_0.03_170/0.12)] to-transparent dark:from-[oklch(0.45_0.04_170/0.18)] dark:via-[oklch(0.40_0.03_170/0.08)]",
       },
       {
         label: "Último alta",
@@ -91,7 +94,7 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
         icon: <Clock3 className="size-4" />,
         value: latestCreatedAt ? "Activo" : "Pendiente",
         accent:
-          "from-cyan-400/30 via-cyan-300/20 to-transparent dark:from-cyan-500/15 dark:via-cyan-500/10",
+          "from-[oklch(0.80_0.04_230/0.25)] via-[oklch(0.84_0.03_230/0.12)] to-transparent dark:from-[oklch(0.45_0.04_230/0.18)] dark:via-[oklch(0.40_0.03_230/0.08)]",
       },
       {
         label: "Último autor",
@@ -99,7 +102,7 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
         icon: <UserCheck className="size-4" />,
         value: latestCreatedBy ? "Manual" : "Automático",
         accent:
-          "from-indigo-400/25 via-indigo-300/15 to-transparent dark:from-indigo-500/15",
+          "from-[oklch(0.78_0.04_280/0.22)] via-[oklch(0.82_0.03_280/0.10)] to-transparent dark:from-[oklch(0.42_0.04_280/0.18)] dark:via-[oklch(0.38_0.03_280/0.08)]",
       },
       {
         label: "Estado",
@@ -111,7 +114,7 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
         icon: <Sparkles className="size-4" />,
         value: creating || deletingId ? "En curso" : "Listo",
         accent:
-          "from-amber-400/30 via-amber-300/20 to-transparent dark:from-amber-500/15",
+          "from-[oklch(0.82_0.04_85/0.25)] via-[oklch(0.85_0.03_85/0.12)] to-transparent dark:from-[oklch(0.48_0.04_85/0.18)] dark:via-[oklch(0.42_0.03_85/0.08)]",
       },
     ],
     [
@@ -123,30 +126,6 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
       totalEntries,
     ]
   );
-
-  const pageCount = useMemo(() => {
-    if (sortedData.length === 0) return 1;
-    return Math.max(1, Math.ceil(sortedData.length / Math.max(pageSize, 1)));
-  }, [sortedData.length, pageSize]);
-
-  useEffect(() => {
-    if (page > pageCount) {
-      setPage(pageCount);
-    }
-  }, [page, pageCount]);
-
-  const handlePageChange = useCallback(
-    (nextPage: number) => {
-      const clamped = Math.min(Math.max(nextPage, 1), pageCount);
-      setPage(clamped);
-    },
-    [pageCount]
-  );
-
-  const handlePageSizeChange = useCallback((nextSize: number) => {
-    setPageSize(nextSize);
-    setPage(1);
-  }, []);
 
   const paginatedEntries = useMemo(() => {
     if (sortedData.length === 0) return [];
@@ -308,7 +287,7 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
               <Button
                 type="submit"
                 disabled={creating || !serialNumber.trim()}
-                className="w-full rounded-2xl border border-cyan-200/60 bg-cyan-500/10 px-6 py-3 text-cyan-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-cyan-300 hover:bg-cyan-500/20 sm:w-auto dark:border-cyan-400/40 dark:bg-cyan-500/15 dark:text-cyan-100"
+                className="w-full rounded-2xl border border-primary/20 bg-primary/10 px-6 py-3 text-primary shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:bg-primary/20 sm:w-auto dark:border-primary/30 dark:bg-primary/15 dark:text-primary"
               >
                 {creating ? (
                   <div className="mr-2">
@@ -328,7 +307,7 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
             </Alert>
           )}
 
-          <div className="flex flex-col gap-5">
+          <div className="flex flex-col overflow-hidden rounded-xl border border-border/40 bg-card/60 shadow-inner backdrop-blur-sm">
             <div className="space-y-3 md:hidden">
               {loading ? (
                 <div className="rounded-xl border border-border/40 bg-card/80 p-6 text-center text-muted-foreground shadow-sm">
@@ -349,7 +328,7 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div>
-                          <p className="font-mono text-sm text-cyan-700 dark:text-cyan-200">
+                          <p className="font-mono text-sm text-primary">
                             {entry.serialNumber}
                           </p>
                           <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground/60">
@@ -396,7 +375,8 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
               )}
             </div>
 
-            <ScrollArea className="hidden max-h-[min(65vh,500px)] pr-3 md:block">
+            <div className="flex-1 overflow-hidden">
+              <ScrollArea className="hidden max-h-[min(75vh,650px)] w-full pr-3 md:block">
               <Table className="w-full min-w-[800px]">
                 <TableHeader className="sticky top-0 z-10 bg-card/95 backdrop-blur-xl">
                   <TableRow className="border-border/40">
@@ -483,7 +463,7 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
                         key={entry.id}
                         className="group transition-colors duration-150"
                       >
-                        <TableCell className="font-mono text-sm text-cyan-700 dark:text-cyan-200">
+                        <TableCell className="font-mono text-sm text-primary">
                           {entry.serialNumber}
                         </TableCell>
                         <TableCell className="text-muted-foreground">
@@ -541,19 +521,21 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
               </Table>
               <ScrollBar orientation="horizontal" />
             </ScrollArea>
+            </div>
 
-            {entries.length > 0 && !loading && (
-              <div className="mt-4 w-full">
+            <div className="shrink-0 border-t border-border/40 bg-card/50 p-4">
+              {/* Floating Pagination */}
+              {entries.length > 0 && !loading && (
                 <DashboardPagination
                   page={page}
                   pageSize={pageSize}
                   totalItems={entries.length}
-                  onPageChange={handlePageChange}
-                  onPageSizeChange={handlePageSizeChange}
+                  onPageChange={setPage}
+                  onPageSizeChange={setPageSize}
                   label="seriales"
                 />
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>

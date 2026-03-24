@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   Card,
@@ -40,6 +40,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { USBEvent, formatDate, formatTime } from "./types";
 import { DashboardPagination } from "./DashboardPagination";
+import { usePagination } from "@/hooks/usePagination";
 import { useTableSort } from "@/hooks/useTableSort";
 import { SortableTableHead } from "./SortableTableHead";
 
@@ -51,15 +52,16 @@ interface Props {
 }
 
 export function EventsTab({ events, loading, onClear, clearing }: Props) {
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const { page, pageSize, setPage, setPageSize } = usePagination({
+    totalItems: events.length,
+  });
 
   const classifyEvent = (event: USBEvent) => {
     if (event.whitelisted) {
       return {
         badgeVariant: "success" as const,
         rowClassName:
-          "bg-emerald-50/60 dark:bg-emerald-500/10 transition-colors",
+          "bg-[oklch(0.92_0.03_160)] dark:bg-[oklch(0.55_0.12_160/0.10)] transition-colors",
         tone: "success" as const,
       };
     }
@@ -112,7 +114,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
         {
           label: "Desbloqueos",
           value: "--",
-          accent: "from-emerald-400/25",
+          accent: "from-[oklch(0.75_0.12_160/0.25)]",
           icon: <ShieldCheck className="size-4" />,
         },
         {
@@ -136,47 +138,25 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
       {
         label: "Eventos",
         value: total.toString(),
-        accent: "from-purple-400/25 via-indigo-400/10",
+        accent: "from-[oklch(0.70_0.05_280/0.20)] via-[oklch(0.65_0.04_280/0.08)]",
         icon: <Usb className="size-4" />,
       },
       {
         label: "Desbloqueos",
         value: unlocks.toString(),
-        accent: "from-emerald-400/25 via-emerald-300/10",
+        accent: "from-[oklch(0.75_0.12_160/0.25)] via-[oklch(0.80_0.08_160/0.10)]",
         icon: <ShieldCheck className="size-4" />,
       },
       {
         label: "Alertas",
         value: alerts.toString(),
-        accent: "from-rose-400/30 via-amber-300/10",
+        accent: "from-rose-400/30 via-[oklch(0.80_0.10_85/0.10)]",
         icon: <Siren className="size-4" />,
       },
     ];
   }, [events, loading]);
 
-  const pageCount = useMemo(() => {
-    if (events.length === 0) return 1;
-    return Math.max(1, Math.ceil(events.length / Math.max(pageSize, 1)));
-  }, [events.length, pageSize]);
 
-  useEffect(() => {
-    if (page > pageCount) {
-      setPage(pageCount);
-    }
-  }, [page, pageCount]);
-
-  const handlePageChange = useCallback(
-    (nextPage: number) => {
-      const clamped = Math.min(Math.max(nextPage, 1), pageCount);
-      setPage(clamped);
-    },
-    [pageCount],
-  );
-
-  const handlePageSizeChange = useCallback((nextSize: number) => {
-    setPageSize(nextSize);
-    setPage(1);
-  }, []);
 
   const { sortedData, sortConfig, requestSort } =
     useTableSort<USBEvent>(events);
@@ -187,10 +167,10 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
     return sortedData.slice(start, start + pageSize);
   }, [sortedData, page, pageSize]);
 
-  const handleClear = useCallback(() => {
+  const handleClear = () => {
     if (!onClear) return;
     onClear();
-  }, [onClear]);
+  };
 
   const clearDisabled = loading || clearing || events.length === 0;
 
@@ -222,7 +202,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
             <div className="flex flex-col gap-2 text-xs font-medium text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-muted/30 px-3 py-1 text-[11px]">
-                  <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="size-1.5 rounded-full bg-[oklch(0.55_0.12_160)] animate-pulse" />
                   Sincronizado
                 </span>
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-muted/30 px-3 py-1 text-[11px]">
@@ -286,7 +266,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
               ))}
             </div>
           ) : events.length === 0 ? (
-            <Alert className="rounded-xl border-amber-200/60 bg-amber-50/90 text-amber-700 shadow-sm dark:border-amber-300/40 dark:bg-amber-500/10 dark:text-amber-100">
+            <Alert className="rounded-xl border-[oklch(0.80_0.10_85/0.40)] bg-[oklch(0.95_0.03_85)] text-[oklch(0.45_0.10_85)] shadow-sm dark:border-[oklch(0.65_0.08_85/0.30)] dark:bg-[oklch(0.80_0.10_85/0.10)] dark:text-[oklch(0.90_0.04_85)]">
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription>
                 No se han registrado eventos USB aún.
@@ -306,7 +286,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                       className={cn(
                         "rounded-xl border border-border/50 bg-card/80 p-4 backdrop-blur-sm",
                         tone === "success" &&
-                          "border-emerald-500/20 bg-emerald-500/5",
+                          "border-[oklch(0.75_0.12_160/0.20)] bg-[oklch(0.75_0.12_160/0.06)]",
                         tone === "error" && "border-rose-500/20 bg-rose-500/5",
                       )}
                     >
@@ -370,7 +350,9 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                 })}
               </div>
 
-              <ScrollArea className="hidden max-h-[min(65vh,500px)] pr-3 md:block">
+              <div className="flex flex-col overflow-hidden rounded-xl border border-border/40 bg-card/60 shadow-inner backdrop-blur-sm">
+                <div className="flex-1 overflow-hidden">
+                  <ScrollArea className="hidden max-h-[min(75vh,650px)] w-full pr-3 md:block">
                 <TooltipProvider delayDuration={120}>
                   <div className="w-full">
                     <Table className="w-full min-w-[850px]">
@@ -575,8 +557,8 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                                   className={cn(
                                     "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold",
                                     event.whitelisted
-                                      ? "border-emerald-200/60 bg-emerald-500/10 text-emerald-700 dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-100"
-                                      : "border-amber-200/60 bg-amber-50/80 text-amber-700 dark:border-amber-400/40 dark:bg-amber-500/15 dark:text-amber-100",
+                                      ? "border-[oklch(0.75_0.12_160/0.30)] bg-[oklch(0.75_0.12_160/0.10)] text-[oklch(0.40_0.12_160)] dark:border-[oklch(0.65_0.10_160/0.30)] dark:bg-[oklch(0.55_0.12_160/0.15)] dark:text-[oklch(0.90_0.04_160)]"
+                                      : "border-[oklch(0.80_0.10_85/0.40)] bg-[oklch(0.95_0.03_85)] text-[oklch(0.45_0.10_85)] dark:border-[oklch(0.65_0.08_85/0.30)] dark:bg-[oklch(0.80_0.10_85/0.15)] dark:text-[oklch(0.90_0.04_85)]",
                                   )}
                                 >
                                   {event.whitelisted ? (
@@ -610,16 +592,21 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                 </TooltipProvider>
                 <ScrollBar orientation="horizontal" />
               </ScrollArea>
+              </div>
 
-              <div className="mt-4 w-full">
-                <DashboardPagination
-                  page={page}
-                  pageSize={pageSize}
-                  totalItems={events.length}
-                  onPageChange={handlePageChange}
-                  onPageSizeChange={handlePageSizeChange}
-                  label="eventos"
-                />
+                <div className="shrink-0 border-t border-border/40 bg-card/50 p-4">
+                  {/* Floating Pagination */}
+                  {!loading && events.length > 0 && (
+                    <DashboardPagination
+                      page={page}
+                      pageSize={pageSize}
+                      totalItems={events.length}
+                      onPageChange={setPage}
+                      onPageSizeChange={setPageSize}
+                      label="eventos"
+                    />
+                  )}
+                </div>
               </div>
             </div>
           )}

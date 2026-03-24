@@ -47,7 +47,7 @@ function classifyEvent(message: string) {
 
 const dotColors = {
   blocked: "bg-rose-500",
-  allowed: "bg-emerald-500",
+  allowed: "bg-[oklch(0.55_0.12_160)]",
   neutral: "bg-muted-foreground/50",
 } as const;
 

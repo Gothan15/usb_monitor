@@ -49,6 +49,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { getCsrfTokenFromDocument } from "@/lib/utils";
 import { DashboardPagination } from "./DashboardPagination";
+import { usePagination } from "@/hooks/usePagination";
 import { formatDateTime, type Computer } from "./types";
 import {
   AlertCircle,
@@ -115,8 +116,6 @@ function generateRandomPassword(length = 16) {
 function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
   const { toast } = useToast();
   const [users, setUsers] = useState<AdminUser[]>([]);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -124,6 +123,11 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
   const deferredSearch = useDeferredValue(searchInput);
   const [reloadFlag, setReloadFlag] = useState(0);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+
+  const { page, pageSize, pageCount, setPage, setPageSize } = usePagination({
+    totalItems: total,
+    pageSizeOptions: PAGE_SIZE_OPTIONS,
+  });
 
   const { sortedData, sortConfig, requestSort } =
     useTableSort<AdminUser>(users);
@@ -195,22 +199,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
 
   useEffect(() => {
     setPage(1);
-  }, [deferredSearch]);
-
-  useEffect(() => {
-    const maxPage = Math.max(
-      1,
-      Math.ceil(Math.max(total, 0) / Math.max(pageSize, 1)),
-    );
-    if (page > maxPage) {
-      setPage(maxPage);
-    }
-  }, [page, pageSize, total]);
-
-  const pageCount = useMemo(() => {
-    if (total === 0) return 1;
-    return Math.max(1, Math.ceil(total / Math.max(pageSize, 1)));
-  }, [total, pageSize]);
+  }, [deferredSearch, setPage]);
 
   const triggerReload = () => setReloadFlag((value) => value + 1);
 
@@ -597,16 +586,18 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
             renderEmptyState()
           ) : (
             <div className="relative flex flex-col gap-6">
-              <motion.div
-                animate={{
-                  opacity: isSearching ? 0.45 : 1,
-                  scale: isSearching ? 0.995 : 1,
-                }}
-                transition={{ duration: 0.25, ease: "easeInOut" }}
-                className="flex flex-col gap-6"
-              >
-                <ScrollArea className="max-h-[min(65vh,520px)] pr-3">
-                  <Table className="min-w-[800px]">
+              <div className="relative flex flex-col overflow-hidden rounded-xl border border-border/40 bg-card/60 shadow-inner backdrop-blur-sm">
+                <motion.div
+                  animate={{
+                    opacity: isSearching ? 0.45 : 1,
+                    scale: isSearching ? 0.995 : 1,
+                  }}
+                  transition={{ duration: 0.25, ease: "easeInOut" }}
+                  className="flex flex-col"
+                >
+                  <div className="flex-1 overflow-hidden">
+                    <ScrollArea className="max-h-[min(75vh,650px)] w-full pr-3">
+                    <Table className="min-w-[800px]">
                     <TableHeader className="sticky top-0 z-10 bg-card/95 backdrop-blur-xl">
                       <TableRow className="border-border/40">
                         <SortableTableHead
@@ -741,34 +732,35 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
                   </Table>
                   <ScrollBar orientation="horizontal" />
                 </ScrollArea>
+                  </div>
+                </motion.div>
 
-                <div className="mt-4 w-full">
+                <div className="shrink-0 border-t border-border/40 bg-card/50 p-4">
+                  {/* Floating Pagination */}
                   <DashboardPagination
                     page={page}
                     pageSize={pageSize}
                     totalItems={total}
-                    onPageChange={(nextPage) => setPage(nextPage)}
-                    onPageSizeChange={(nextSize) => {
-                      setPageSize(nextSize);
-                      setPage(1);
-                    }}
+                    onPageChange={setPage}
+                    onPageSizeChange={setPageSize}
                     pageSizeOptions={PAGE_SIZE_OPTIONS}
                     label="usuarios"
                   />
                 </div>
-              </motion.div>
-              {isSearching ? (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="pointer-events-none absolute inset-0 flex items-center justify-center"
-                >
-                  <div className="inline-flex items-center gap-2 rounded-full border border-border/40 bg-card/90 px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur-sm">
-                    <Spinner size={12} />
-                    Buscando usuarios...
-                  </div>
-                </motion.div>
-              ) : null}
+                
+                {isSearching ? (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="pointer-events-none absolute inset-0 flex items-center justify-center"
+                  >
+                    <div className="inline-flex items-center gap-2 rounded-full border border-border/40 bg-card/90 px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur-sm">
+                      <Spinner size={12} />
+                      Buscando usuarios...
+                    </div>
+                  </motion.div>
+                ) : null}
+              </div>
             </div>
           )}
         </CardContent>

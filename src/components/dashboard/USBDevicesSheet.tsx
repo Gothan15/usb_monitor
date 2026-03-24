@@ -166,7 +166,7 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
               <Button
                 type="button"
                 size="sm"
-                className="rounded-full border border-emerald-200/60 bg-emerald-500/10 text-emerald-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-500/20 dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-100"
+                className="rounded-full border border-primary/20 bg-primary/10 text-primary shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:bg-primary/20 dark:border-primary/30 dark:bg-primary/15 dark:text-primary"
                 onClick={handleRefresh}
                 disabled={isRefreshing || loadingConnected || loadingHistory}
               >
@@ -239,7 +239,7 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
                                   ) : (
                                     <Badge
                                       variant="secondary"
-                                      className="rounded-full border border-amber-200/60 bg-amber-50/80 text-amber-700 dark:border-amber-400/40 dark:bg-amber-500/15 dark:text-amber-100"
+                                      className="rounded-full border border-[oklch(0.80_0.10_85/0.40)] bg-[oklch(0.95_0.03_85)] text-[oklch(0.45_0.10_85)] dark:border-[oklch(0.65_0.08_85/0.30)] dark:bg-[oklch(0.80_0.10_85/0.15)] dark:text-[oklch(0.90_0.04_85)]"
                                     >
                                       <AlertTriangle className="mr-1 h-3.5 w-3.5" />{" "}
                                       Sin autorizar
@@ -356,7 +356,7 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
                                   ) : (
                                     <Badge
                                       variant="secondary"
-                                      className="rounded-full border border-amber-200/60 bg-amber-50/80 text-amber-700 dark:border-amber-400/40 dark:bg-amber-500/15 dark:text-amber-100"
+                                      className="rounded-full border border-[oklch(0.80_0.10_85/0.40)] bg-[oklch(0.95_0.03_85)] text-[oklch(0.45_0.10_85)] dark:border-[oklch(0.65_0.08_85/0.30)] dark:bg-[oklch(0.80_0.10_85/0.15)] dark:text-[oklch(0.90_0.04_85)]"
                                     >
                                       <AlertTriangle className="mr-1 h-3.5 w-3.5" />{" "}
                                       Sin autorizar

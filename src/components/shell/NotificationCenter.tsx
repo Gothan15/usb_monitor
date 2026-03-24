@@ -102,8 +102,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 /* ────── Bell + Panel ────── */
 const toneColors: Record<string, string> = {
   default: "bg-muted-foreground/20",
-  success: "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400",
-  warning: "bg-amber-500/20 text-amber-600 dark:text-amber-400",
+  success: "bg-[oklch(0.75_0.12_160/0.20)] text-[oklch(0.45_0.12_160)] dark:text-[oklch(0.80_0.10_160)]",
+  warning: "bg-[oklch(0.80_0.10_85/0.20)] text-[oklch(0.50_0.12_85)] dark:text-[oklch(0.82_0.08_85)]",
   danger: "bg-rose-500/20 text-rose-600 dark:text-rose-400",
   info: "bg-slate-400/20 text-slate-600 dark:text-slate-300",
 };

@@ -52,7 +52,7 @@ export function FleetStatusWidget({ computers }: FleetStatusWidgetProps) {
             className={cn(
               "flex size-8 items-center justify-center rounded-lg",
               pc.isActive
-                ? "bg-emerald-500/10 text-emerald-500"
+                ? "bg-[oklch(0.75_0.12_160/0.12)] text-[oklch(0.55_0.12_160)]"
                 : "bg-muted/50 text-muted-foreground/50",
             )}
           >
@@ -74,14 +74,14 @@ export function FleetStatusWidget({ computers }: FleetStatusWidgetProps) {
             <span
               className={cn(
                 "inline-flex items-center gap-1 text-[10px] font-medium",
-                pc.isActive ? "text-emerald-500" : "text-muted-foreground/50",
+                pc.isActive ? "text-[oklch(0.55_0.12_160)]" : "text-muted-foreground/50",
               )}
             >
               <span
                 className={cn(
                   "size-1.5 rounded-full",
                   pc.isActive
-                    ? "bg-emerald-500 animate-pulse"
+                    ? "bg-[oklch(0.55_0.12_160)] animate-pulse"
                     : "bg-muted-foreground/30",
                 )}
               />

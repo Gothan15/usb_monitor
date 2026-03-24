@@ -84,8 +84,8 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
   const quickStats = useMemo(() => {
     if (loading) {
       return [
-        { label: "Activos", value: "--", accent: "from-emerald-400/30" },
-        { label: "Servicios", value: "--", accent: "from-cyan-400/30" },
+        { label: "Activos", value: "--", accent: "from-[oklch(0.75_0.12_160/0.25)]" },
+        { label: "Servicios", value: "--", accent: "from-[oklch(0.72_0.05_250/0.25)]" },
         { label: "Total", value: "--", accent: "from-muted/40" },
       ];
     }
@@ -102,12 +102,12 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
       {
         label: "Activos",
         value: activeCount.toString(),
-        accent: "from-emerald-400/25 via-emerald-300/10",
+        accent: "from-[oklch(0.75_0.12_160/0.25)] via-[oklch(0.80_0.08_160/0.10)]",
       },
       {
         label: "Servicio OK",
         value: runningCount.toString(),
-        accent: "from-sky-400/25 via-cyan-300/10",
+        accent: "from-[oklch(0.72_0.05_250/0.25)] via-[oklch(0.78_0.03_250/0.10)]",
       },
       {
         label: "Inventario",
@@ -173,7 +173,7 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
         <CardHeader className="relative z-10 space-y-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-3">
-              <span className="inline-flex size-12 items-center justify-center rounded-xl border border-emerald-200/60 bg-emerald-500/10 text-emerald-600 shadow-sm dark:border-emerald-400/30 dark:bg-emerald-500/15 dark:text-emerald-300">
+              <span className="inline-flex size-12 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary shadow-sm dark:border-primary/30 dark:bg-primary/15 dark:text-primary">
                 <MonitorSmartphone className="size-5" />
               </span>
               <div>
@@ -239,7 +239,7 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
               ))}
             </div>
           ) : computers.length === 0 ? (
-            <Alert className="rounded-xl border-amber-200/60 bg-amber-50/90 text-amber-700 shadow-sm dark:border-amber-300/40 dark:bg-amber-500/10 dark:text-amber-100">
+            <Alert className="rounded-xl border-[oklch(0.80_0.10_85/0.40)] bg-[oklch(0.95_0.03_85)] text-[oklch(0.45_0.10_85)] shadow-sm dark:border-[oklch(0.65_0.08_85/0.30)] dark:bg-[oklch(0.80_0.10_85/0.10)] dark:text-[oklch(0.90_0.04_85)]">
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription>
                 No hay computadoras monitoreadas aún.
@@ -279,7 +279,7 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                             className={cn(
                               "group relative h-8 gap-1.5 rounded-full px-3 text-xs font-semibold transition-all duration-200",
                               canViewUsb
-                                ? "border border-emerald-200/60 bg-emerald-500/10 text-emerald-700 shadow-sm hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-500/20 hover:shadow-md dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-100"
+                                ? "border border-primary/20 bg-primary/10 text-primary shadow-sm hover:-translate-y-0.5 hover:border-primary/40 hover:bg-primary/20 hover:shadow-md dark:border-primary/30 dark:bg-primary/15 dark:text-primary"
                                 : "cursor-not-allowed border border-border/30 bg-muted/20 text-muted-foreground/40",
                             )}
                           >
@@ -361,7 +361,9 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                 })}
               </div>
 
-              <ScrollArea className="hidden max-h-[min(65vh,500px)] pr-3 md:block">
+              <div className="flex flex-col overflow-hidden rounded-xl border border-border/40 bg-card/60 shadow-inner backdrop-blur-sm">
+                <div className="flex-1 overflow-hidden">
+                  <ScrollArea className="hidden max-h-[min(75vh,650px)] w-full pr-3 md:block">
                 <Table className="w-full min-w-[1100px]">
                   <TableHeader className="sticky top-0 z-10 bg-card/95 backdrop-blur-xl">
                     <TableRow className="border-border/40">
@@ -505,7 +507,7 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                                 className={cn(
                                   "group relative h-8 gap-1.5 rounded-full px-3 text-xs font-semibold transition-all duration-200",
                                   canViewUsb
-                                    ? "border border-emerald-200/60 bg-emerald-500/10 text-emerald-700 shadow-sm hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-500/20 hover:shadow-md dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-100"
+                                    ? "border border-primary/20 bg-primary/10 text-primary shadow-sm hover:-translate-y-0.5 hover:border-primary/40 hover:bg-primary/20 hover:shadow-md dark:border-primary/30 dark:bg-primary/15 dark:text-primary"
                                     : "cursor-not-allowed border border-border/30 bg-muted/20 text-muted-foreground/40",
                                 )}
                               >
@@ -552,16 +554,19 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                 </Table>
                 <ScrollBar orientation="horizontal" />
               </ScrollArea>
+              </div>
 
-              <div className="mt-4 w-full">
-                <DashboardPagination
-                  page={page}
-                  pageSize={pageSize}
-                  totalItems={computers.length}
-                  onPageChange={handlePageChange}
-                  onPageSizeChange={handlePageSizeChange}
-                  label="computadoras"
-                />
+                <div className="shrink-0 border-t border-border/40 bg-card/50 p-4">
+                  {/* Static / Floating Pagination */}
+                  <DashboardPagination
+                    page={page}
+                    pageSize={pageSize}
+                    totalItems={computers.length}
+                    onPageChange={handlePageChange}
+                    onPageSizeChange={handlePageSizeChange}
+                    label="computadoras"
+                  />
+                </div>
               </div>
             </div>
           )}
@@ -602,7 +607,6 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
       </AlertDialog>
 
       {selectedComputer && (
-        // Sheet para ver dispositivos USB del equipo seleccionado
         <USBDevicesSheet
           computer={selectedComputer}
           open={Boolean(selectedComputer)}

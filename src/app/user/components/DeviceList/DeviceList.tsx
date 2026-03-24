@@ -225,7 +225,7 @@ export const DeviceList = ({ userId }: DeviceListProps) => {
       </CardHeader>
       <CardContent className="space-y-4">
         {state.warnings.length > 0 && (
-          <Alert className="border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
+          <Alert className="border-[oklch(0.80_0.10_85/0.40)] bg-[oklch(0.95_0.03_85)] text-[oklch(0.45_0.10_85)] dark:border-[oklch(0.65_0.08_85/0.30)] dark:bg-[oklch(0.80_0.10_85/0.10)] dark:text-[oklch(0.90_0.04_85)]">
             <AlertDescription className="space-y-2">
               {state.warnings.map((warning, index) => (
                 <p key={index}>{warning}</p>

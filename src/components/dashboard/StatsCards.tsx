@@ -90,9 +90,9 @@ function StatsCardsComponent({
               className={cn(
                 "flex size-10 items-center justify-center rounded-xl",
                 liveStatus.tone === "success" &&
-                  "bg-emerald-500/10 text-emerald-500",
+                  "bg-[oklch(0.75_0.12_160/0.12)] text-[oklch(0.55_0.12_160)]",
                 liveStatus.tone === "warning" &&
-                  "bg-amber-500/10 text-amber-500",
+                  "bg-[oklch(0.80_0.10_85/0.12)] text-[oklch(0.60_0.12_85)]",
                 liveStatus.tone === "danger" && "bg-rose-500/10 text-rose-500",
               )}
             >
@@ -103,9 +103,9 @@ function StatsCardsComponent({
             className={cn(
               "flex items-center justify-between rounded-lg border px-3 py-2 text-xs font-medium",
               liveStatus.tone === "success" &&
-                "border-emerald-500/20 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400",
+                "border-[oklch(0.75_0.12_160/0.20)] bg-[oklch(0.75_0.12_160/0.06)] text-[oklch(0.45_0.12_160)] dark:text-[oklch(0.80_0.10_160)]",
               liveStatus.tone === "warning" &&
-                "border-amber-500/20 bg-amber-500/5 text-amber-600 dark:text-amber-400",
+                "border-[oklch(0.80_0.10_85/0.20)] bg-[oklch(0.80_0.10_85/0.06)] text-[oklch(0.50_0.12_85)] dark:text-[oklch(0.82_0.08_85)]",
               liveStatus.tone === "danger" &&
                 "border-rose-500/20 bg-rose-500/5 text-rose-600 dark:text-rose-400",
             )}

@@ -22,7 +22,8 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { ShieldCheck, Wrench, Server, FileText } from "lucide-react";
+import { ShieldCheck, Wrench, Server, FileText, LayoutTemplate, RotateCcw } from "lucide-react";
+import { usePaginationSettings, PaginationStyle } from "@/hooks/usePaginationSettings";
 
 interface AuthenticationSettings {
   enforceMfa: boolean;
@@ -79,6 +80,8 @@ export function SettingsTab() {
     escalationEmail: "seguridad@empresa.com",
   });
 
+  const { style, setStyle, setPosition } = usePaginationSettings();
+
   const showSavedToast = (label: string) =>
     toast({
       title: `${label} actualizado`,
@@ -91,7 +94,7 @@ export function SettingsTab() {
         <CardHeader className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <CardTitle className="flex items-center gap-2 text-lg font-semibold text-foreground">
-              <ShieldCheck className="h-4 w-4 text-emerald-500" />
+              <ShieldCheck className="h-4 w-4 text-[oklch(0.55_0.12_160)]" />
               Autenticación y acceso
             </CardTitle>
             <CardDescription>
@@ -375,7 +378,7 @@ export function SettingsTab() {
         <CardHeader className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <CardTitle className="flex items-center gap-2 text-lg font-semibold text-foreground">
-              <Wrench className="h-4 w-4 text-amber-500" />
+              <Wrench className="h-4 w-4 text-[oklch(0.60_0.12_85)]" />
               Políticas operativas
             </CardTitle>
             <CardDescription>
@@ -474,6 +477,77 @@ export function SettingsTab() {
           >
             Guardar cambios
           </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="md:col-span-1 2xl:col-span-2 rounded-xl border border-border/60 bg-card/80 shadow-xl backdrop-blur-xl">
+        <CardHeader className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-lg font-semibold text-foreground">
+              <LayoutTemplate className="h-4 w-4 text-emerald-500" />
+              Interfaz y Navegación
+            </CardTitle>
+            <CardDescription>
+              Personaliza la experiencia visual y los componentes del dashboard.
+            </CardDescription>
+          </div>
+          <Badge
+            variant="outline"
+            className="rounded-full border-border/40 bg-muted/30 text-xs text-muted-foreground"
+          >
+            Visual UI
+          </Badge>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="rounded-xl border border-border/40 bg-card/80 px-4 py-3 shadow-sm">
+              <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                Estilo de Paginación
+              </Label>
+              <Select
+                value={style}
+                onValueChange={(value) => setStyle(value as PaginationStyle)}
+              >
+                <SelectTrigger className="mt-2">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="floating">Dinámica (Flotante)</SelectItem>
+                  <SelectItem value="static">Estática (En línea)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="mt-2 text-xs text-muted-foreground">
+                El modo flotante te permite mantener la paginación a la vista en cualquier momento. Puedes arrastrar la barra flotante manteniendo presionado el clic por 3 segundos.
+              </p>
+            </div>
+            
+            <div className="flex flex-col justify-center rounded-xl border border-border/40 bg-card/80 px-4 py-4 shadow-sm md:items-center">
+              <div className="text-center">
+                  <Label className="block text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                     Posición del Paginado
+                  </Label>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                     Restaura la ubicación flotante por defecto al centro inferior.
+                   </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-4 rounded-full"
+                    onClick={() => {
+                      setPosition(null);
+                      toast({
+                        title: "Posición restaurada",
+                        description: "La paginación flotante volvió a su posición central por defecto.",
+                      });
+                    }}
+                    disabled={style === "static"}
+                  >
+                    <RotateCcw className="mr-2 h-3.5 w-3.5" />
+                    Restaurar posición
+                  </Button>
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>
