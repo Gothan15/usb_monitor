@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Card,
@@ -17,15 +17,52 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Network, Radar } from "lucide-react";
+import { Network, Radar, Download, Wifi, MonitorSmartphone } from "lucide-react";
 import { getCurrentIsoString } from "@/lib/time";
 import { formatDateTime } from "@/components/dashboard/types";
 import { getCsrfTokenFromDocument } from "@/lib/utils";
 import { Spinner } from "@/components/ui/spinner";
+import { RemoteInstallDialog } from "@/components/dashboard/RemoteInstallDialog";
+
+interface NetworkInterfaceInfo {
+  name: string;
+  address: string;
+  cidr: string;
+  mac: string;
+  netmask: string;
+  type: "wifi" | "ethernet" | "vpn" | "other";
+}
+
+const IFACE_TYPE_LABELS: Record<NetworkInterfaceInfo["type"], string> = {
+  wifi: "Wi-Fi",
+  ethernet: "Ethernet",
+  vpn: "VPN",
+  other: "Red",
+};
+
+function InterfaceIcon({ type }: { type: NetworkInterfaceInfo["type"] }) {
+  switch (type) {
+    case "wifi":
+      return <Wifi className="size-3.5 shrink-0 text-sky-500" />;
+    case "ethernet":
+      return <Network className="size-3.5 shrink-0 text-emerald-500" />;
+    case "vpn":
+      return <MonitorSmartphone className="size-3.5 shrink-0 text-amber-500" />;
+    default:
+      return <Network className="size-3.5 shrink-0 text-muted-foreground" />;
+  }
+}
 
 interface ScanResult {
   ip: string;
@@ -84,6 +121,38 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
   const [scanResults, setScanResults] = useState<ScanResult[]>([]);
   const [scanError, setScanError] = useState<string | null>(null);
   const [lastScanAt, setLastScanAt] = useState<string | null>(null);
+  const [installDialogOpen, setInstallDialogOpen] = useState(false);
+  const [installTarget, setInstallTarget] = useState<ScanResult | null>(null);
+
+  // Network interface selector
+  const [interfaces, setInterfaces] = useState<NetworkInterfaceInfo[]>([]);
+  const [selectedCidr, setSelectedCidr] = useState<string>("auto");
+  const [loadingInterfaces, setLoadingInterfaces] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/network-interfaces", {
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        if (!cancelled && Array.isArray(data?.interfaces)) {
+          setInterfaces(data.interfaces);
+          // Auto-select if only one interface
+          if (data.interfaces.length === 1) {
+            setSelectedCidr(data.interfaces[0].cidr);
+          }
+        }
+      } catch {
+        // silently ignore – selector will simply not appear
+      } finally {
+        if (!cancelled) setLoadingInterfaces(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const triggerScan = useCallback(async () => {
     try {
@@ -96,6 +165,9 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
         );
       }
       const payload: Record<string, unknown> = { force: true };
+      if (selectedCidr && selectedCidr !== "auto") {
+        payload.cidr = selectedCidr;
+      }
       const res = await fetch("/api/network-scan", {
         method: "POST",
         headers: {
@@ -129,7 +201,7 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
     } finally {
       setScanning(false);
     }
-  }, [onRefreshComputers]);
+  }, [onRefreshComputers, selectedCidr]);
 
   const results = useMemo(() => scanResults, [scanResults]);
 
@@ -164,7 +236,48 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+
+          {/* Interface selector + scan button row */}
+          <div className="flex flex-wrap items-center gap-3">
+            {!loadingInterfaces && interfaces.length > 0 && (
+              <Select
+                value={selectedCidr}
+                onValueChange={setSelectedCidr}
+                disabled={scanning}
+              >
+                <SelectTrigger
+                  size="sm"
+                  className="min-w-[220px] border-border/40 bg-card/80 shadow-sm"
+                  id="network-interface-selector"
+                >
+                  <SelectValue placeholder="Seleccionar interfaz" />
+                </SelectTrigger>
+                <SelectContent>
+                  {interfaces.length > 1 && (
+                    <SelectItem value="auto">
+                      <span className="flex items-center gap-2">
+                        <Radar className="size-3.5 shrink-0 text-muted-foreground" />
+                        <span>Automática</span>
+                        <span className="text-[0.65rem] text-muted-foreground">
+                          (primera disponible)
+                        </span>
+                      </span>
+                    </SelectItem>
+                  )}
+                  {interfaces.map((iface) => (
+                    <SelectItem key={iface.cidr} value={iface.cidr}>
+                      <span className="flex items-center gap-2">
+                        <InterfaceIcon type={iface.type} />
+                        <span>{IFACE_TYPE_LABELS[iface.type]}</span>
+                        <span className="text-[0.65rem] text-muted-foreground">
+                          {iface.cidr}
+                        </span>
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -218,13 +331,16 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
                   <TableHead className="text-muted-foreground">
                     Latencia
                   </TableHead>
+                  <TableHead className="text-right text-muted-foreground">
+                    Acciones
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {results.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={4}
+                      colSpan={5}
                       className="py-6 text-center text-xs text-muted-foreground"
                     >
                       No hay equipos activos en la red local.
@@ -262,6 +378,22 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
                             ? `${Math.max(0, Math.round(result.latencyMs))} ms`
                             : "—"}
                         </TableCell>
+                        <TableCell className="text-right">
+                          {!serviceOk && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setInstallTarget(result);
+                                setInstallDialogOpen(true);
+                              }}
+                              className="h-7 border-border/40 px-2.5 text-xs"
+                            >
+                              <Download className="mr-1.5 size-3" />
+                              Instalar
+                            </Button>
+                          )}
+                        </TableCell>
                       </TableRow>
                     );
                   })
@@ -271,6 +403,19 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
           </ScrollArea>
         </CardContent>
       </Card>
+
+      {installTarget && (
+        <RemoteInstallDialog
+          open={installDialogOpen}
+          onOpenChange={(open) => {
+            setInstallDialogOpen(open);
+            if (!open) setInstallTarget(null);
+          }}
+          targetIp={installTarget.ip}
+          targetHostname={installTarget.hostname}
+          onInstallComplete={onRefreshComputers}
+        />
+      )}
     </motion.section>
   );
 }

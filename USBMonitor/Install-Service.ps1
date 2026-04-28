@@ -1,4 +1,4 @@
-# USB Monitor Service - Script de Instalación Automática
+# USB Monitor Service - Script de Instalacion Automatica
 # Debe ejecutarse como Administrador
 
 param(
@@ -18,7 +18,7 @@ function Write-Status {
     param($Message, $Status)
     
     $color = if ($Status -eq "OK") { $Green } elseif ($Status -eq "ERROR") { $Red } else { $Yellow }
-    $symbol = if ($Status -eq "OK") { "✓" } elseif ($Status -eq "ERROR") { "✗" } else { "→" }
+    $symbol = if ($Status -eq "OK") { "[OK]" } elseif ($Status -eq "ERROR") { "[X]" } else { "[>]" }
     
     Write-Host "$symbol " -ForegroundColor $color -NoNewline
     Write-Host $Message
@@ -41,9 +41,9 @@ function Initialize-LogDirectory {
 }
 
 function Install-Service {
-    Write-Host "`n╔════════════════════════════════════════╗" -ForegroundColor $Cyan
-    Write-Host "║     Instalando USB Monitor Service     ║" -ForegroundColor $Cyan
-    Write-Host "╚════════════════════════════════════════╝`n" -ForegroundColor $Cyan
+    Write-Host "`n========================================" -ForegroundColor $Cyan
+    Write-Host "     Instalando USB Monitor Service     " -ForegroundColor $Cyan
+    Write-Host "========================================`n" -ForegroundColor $Cyan
     
     # Verificar permisos
     if (-not (Test-Admin)) {
@@ -58,7 +58,7 @@ function Install-Service {
     $servicePath = Join-Path $exePath "USBMonitorService.exe"
     
     if (-not (Test-Path $servicePath)) {
-        Write-Status "No se encontró el ejecutable en: $servicePath" "ERROR"
+        Write-Status "No se encontro el ejecutable en: $servicePath" "ERROR"
         exit 1
     }
     
@@ -68,7 +68,7 @@ function Install-Service {
     Initialize-LogDirectory
     
     # Configurar variables de entorno
-    Write-Host "`n→ Configurando variables de entorno..." -ForegroundColor $Yellow
+    Write-Host "`n[>] Configurando variables de entorno..." -ForegroundColor $Yellow
     
     $envVars = @{
         "USB_MONITOR_SERVER_HOST" = $ServerHost
@@ -84,7 +84,7 @@ function Install-Service {
     }
     
     # Instalar servicio
-    Write-Host "`n→ Instalando servicio Windows..." -ForegroundColor $Yellow
+    Write-Host "`n[>] Instalando servicio Windows..." -ForegroundColor $Yellow
     & $servicePath install
     
     if ($?) {
@@ -95,7 +95,7 @@ function Install-Service {
     }
     
     # Iniciar servicio
-    Write-Host "`n→ Iniciando servicio..." -ForegroundColor $Yellow
+    Write-Host "`n[>] Iniciando servicio..." -ForegroundColor $Yellow
     & $servicePath start
     
     Start-Sleep -Seconds 2
@@ -108,24 +108,24 @@ function Install-Service {
         exit 1
     }
     
-    Write-Host "`n╔════════════════════════════════════════╗" -ForegroundColor $Green
-    Write-Host "║        ✓ INSTALACIÓN COMPLETADA      ║" -ForegroundColor $Green
-    Write-Host "╚════════════════════════════════════════╝" -ForegroundColor $Green
+    Write-Host "`n========================================" -ForegroundColor $Green
+    Write-Host "     [OK] INSTALACION COMPLETADA        " -ForegroundColor $Green
+    Write-Host "========================================" -ForegroundColor $Green
     
-    Write-Host "`nℹ Información del servicio:" -ForegroundColor $Cyan
-    Write-Host "  📁 Ejecutable: $servicePath"
-    Write-Host "  📂 Logs: $LogPath"
-    Write-Host "  🖥️  Servidor: $ServerHost`:$ServerPort"
-    Write-Host "`nℹ Próximos pasos:" -ForegroundColor $Cyan
+    Write-Host "`n[i] Informacion del servicio:" -ForegroundColor $Cyan
+    Write-Host "  Ejecutable: $servicePath"
+    Write-Host "  Logs: $LogPath"
+    Write-Host "  Servidor: $ServerHost`:$ServerPort"
+    Write-Host "`n[i] Proximos pasos:" -ForegroundColor $Cyan
     Write-Host "  1. Verifica los logs: Get-Content '$LogPath\usb_monitor_service.log' -Wait -Tail 30"
     Write-Host "  2. Prueba insertando una USB autorizada"
     Write-Host "  3. Verifica que el servicio permanezca activo"
 }
 
 function Uninstall-Service {
-    Write-Host "`n╔════════════════════════════════════════╗" -ForegroundColor $Red
-    Write-Host "║    Desinstalando USB Monitor Service   ║" -ForegroundColor $Red
-    Write-Host "╚════════════════════════════════════════╝`n" -ForegroundColor $Red
+    Write-Host "`n========================================" -ForegroundColor $Red
+    Write-Host "    Desinstalando USB Monitor Service   " -ForegroundColor $Red
+    Write-Host "========================================`n" -ForegroundColor $Red
     
     if (-not (Test-Admin)) {
         Write-Status "Este script requiere permisos de Administrador" "ERROR"
@@ -147,7 +147,7 @@ function Uninstall-Service {
     $service = Get-Service -Name "USBMonitorService" -ErrorAction SilentlyContinue
     if (-not $service) {
         Write-Status "Servicio desinstalado correctamente" "OK"
-        Write-Host "`n✓ El servicio ha sido removido de Windows" -ForegroundColor $Green
+        Write-Host "`n[OK] El servicio ha sido removido de Windows" -ForegroundColor $Green
     } else {
         Write-Status "Error al desinstalar el servicio" "ERROR"
         exit 1
@@ -155,7 +155,7 @@ function Uninstall-Service {
 }
 
 function Restart-Service {
-    Write-Host "`n→ Reiniciando servicio..." -ForegroundColor $Yellow
+    Write-Host "`n[>] Reiniciando servicio..." -ForegroundColor $Yellow
     
     $exePath = Split-Path -Parent $PSCommandPath
     $servicePath = Join-Path $exePath "USBMonitorService.exe"
@@ -175,23 +175,24 @@ function Restart-Service {
 }
 
 function Show-Status {
-    Write-Host "`n╔════════════════════════════════════════╗" -ForegroundColor $Cyan
-    Write-Host "║      Estado del USB Monitor Service    ║" -ForegroundColor $Cyan
-    Write-Host "╚════════════════════════════════════════╝`n" -ForegroundColor $Cyan
+    Write-Host "`n========================================" -ForegroundColor $Cyan
+    Write-Host "      Estado del USB Monitor Service    " -ForegroundColor $Cyan
+    Write-Host "========================================`n" -ForegroundColor $Cyan
     
     $service = Get-Service -Name "USBMonitorService" -ErrorAction SilentlyContinue
     
     if ($service) {
         Write-Status "Servicio encontrado" "OK"
-        Write-Status "Estado: $($service.Status)" if ($service.Status -eq "Running") { "OK" } else { "ERROR" }
+        $statusLabel = if ($service.Status -eq "Running") { "OK" } else { "ERROR" }
+        Write-Status "Estado: $($service.Status)" $statusLabel
         Write-Status "Tipo de inicio: $($service.StartType)" "OK"
         
-        Write-Host "`nℹ Variables de entorno configuradas:" -ForegroundColor $Cyan
+        Write-Host "`n[i] Variables de entorno configuradas:" -ForegroundColor $Cyan
         Get-ChildItem Env:USB_MONITOR* | ForEach-Object {
             Write-Host "  $($_.Name) = $($_.Value)"
         }
         
-        Write-Host "`nℹ Últimas líneas del log:" -ForegroundColor $Cyan
+        Write-Host "`n[i] Ultimas lineas del log:" -ForegroundColor $Cyan
         $logPath = [Environment]::GetEnvironmentVariable("USB_MONITOR_LOG_PATH", "Machine")
         if (-not $logPath) { $logPath = $LogPath }
         $logFile = Join-Path $logPath "usb_monitor_service.log"
@@ -202,7 +203,7 @@ function Show-Status {
             Write-Status "Archivo de log no encontrado" "ERROR"
         }
     } else {
-        Write-Status "Servicio no está instalado" "ERROR"
+        Write-Status "Servicio no esta instalado" "ERROR"
     }
 }
 
@@ -214,16 +215,16 @@ function Show-Logs {
     $logFile = Join-Path $logPath "usb_monitor_service.log"
     
     if (Test-Path $logFile) {
-        Write-Host "`n╔════════════════════════════════════════╗" -ForegroundColor $Cyan
-        Write-Host "║           Últimas $Lines líneas del log             ║" -ForegroundColor $Cyan
-        Write-Host "╚════════════════════════════════════════╝`n" -ForegroundColor $Cyan
+        Write-Host "`n========================================" -ForegroundColor $Cyan
+        Write-Host "      Ultimas $Lines lineas del log      " -ForegroundColor $Cyan
+        Write-Host "========================================`n" -ForegroundColor $Cyan
         
         Get-Content $logFile -Tail $Lines | ForEach-Object {
             if ($_ -match "ERROR") {
                 Write-Host $_ -ForegroundColor $Red
             } elseif ($_ -match "WARNING") {
                 Write-Host $_ -ForegroundColor $Yellow
-            } elseif ($_ -match "✓") {
+            } elseif ($_ -match "\[OK\]") {
                 Write-Host $_ -ForegroundColor $Green
             } else {
                 Write-Host $_
@@ -253,18 +254,18 @@ switch ($Action.ToLower()) {
     }
     default {
         Write-Host @"
-╔════════════════════════════════════════════════════════════════╗
-║       USB Monitor Service - Script de Instalación              ║
-╚════════════════════════════════════════════════════════════════╝
+================================================================
+       USB Monitor Service - Script de Instalacion
+================================================================
 
-Uso: .\Install-Service.ps1 -Action <acción> [opciones]
+Uso: .\Install-Service.ps1 -Action <accion> [opciones]
 
 Acciones disponibles:
   install      - Instala y inicia el servicio (por defecto)
   uninstall    - Desinstala el servicio
   restart      - Reinicia el servicio
   status       - Muestra el estado del servicio
-  logs         - Muestra las últimas líneas del log
+  logs         - Muestra las ultimas lineas del log
 
 Opciones:
   -ServerHost   - Host del servidor backend (defecto: 172.20.10.12)

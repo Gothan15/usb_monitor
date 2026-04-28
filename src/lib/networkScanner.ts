@@ -26,6 +26,46 @@ const execAsync = util.promisify(exec);
   `prisma.$on("query", ...)` cuando se habilite la canalización de observabilidad.
 */
 
+export interface NetworkInterfaceInfo {
+  name: string;
+  address: string;
+  cidr: string;
+  mac: string;
+  netmask: string;
+  /** Heuristic type based on interface name */
+  type: "wifi" | "ethernet" | "vpn" | "other";
+}
+
+function guessInterfaceType(name: string): NetworkInterfaceInfo["type"] {
+  const lower = name.toLowerCase();
+  if (lower.includes("wi-fi") || lower.includes("wifi") || lower.includes("wlan") || lower.includes("wireless")) return "wifi";
+  if (lower.includes("ethernet") || lower.includes("eth") || lower.includes("local area")) return "ethernet";
+  if (lower.includes("vpn") || lower.includes("tun") || lower.includes("tap") || lower.includes("wg")) return "vpn";
+  return "other";
+}
+
+export function getAllLocalNetworks(): NetworkInterfaceInfo[] {
+  const ifaces = os.networkInterfaces();
+  const results: NetworkInterfaceInfo[] = [];
+  for (const [name, entries] of Object.entries(ifaces)) {
+    if (!entries) continue;
+    for (const net of entries) {
+      if (net.family !== "IPv4" || net.internal) continue;
+      // Skip link-local addresses (169.254.x.x)
+      if (net.address.startsWith("169.254.")) continue;
+      results.push({
+        name,
+        address: net.address,
+        cidr: `${net.address}/24`,
+        mac: net.mac || "",
+        netmask: net.netmask || "255.255.255.0",
+        type: guessInterfaceType(name),
+      });
+    }
+  }
+  return results;
+}
+
 export interface HostScanResult {
   ip: string;
   alive: boolean;
@@ -267,16 +307,8 @@ export async function scanNetwork(
   return results;
 }
 
-export async function remoteInstallAndStart(
-  ip: string
-): Promise<{ success: boolean; message: string }> {
-  // Placeholder: se necesitará WinRM, SSH o un agente preinstalado. Aquí devolvemos no implementado.
-  return {
-    success: false,
-    message:
-      "Instalación remota no implementada aún. Requiere canal seguro (WinRM/SSH/Agent).",
-  };
-}
+
+
 
 export function startScanJob(cidr?: string): ScanJob {
   const net = cidr || getLocalCIDR();
