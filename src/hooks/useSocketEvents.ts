@@ -35,6 +35,8 @@ interface UseSocketEventsOptions {
   onComputerStatus?: (status: SocketComputerStatus) => void;
   /** Callback fired when whitelist changes. */
   onWhitelistChange?: () => void;
+  /** Callback fired when users change. */
+  onUserChange?: () => void;
   /** Disable the connection entirely. */
   enabled?: boolean;
 }
@@ -45,6 +47,7 @@ export function useSocketEvents({
   onUSBEvent,
   onComputerStatus,
   onWhitelistChange,
+  onUserChange,
   enabled = true,
 }: UseSocketEventsOptions = {}) {
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
@@ -54,6 +57,7 @@ export function useSocketEvents({
   const onUSBEventRef = useRef(onUSBEvent);
   const onComputerStatusRef = useRef(onComputerStatus);
   const onWhitelistChangeRef = useRef(onWhitelistChange);
+  const onUserChangeRef = useRef(onUserChange);
 
   useEffect(() => {
     onUSBEventRef.current = onUSBEvent;
@@ -64,6 +68,9 @@ export function useSocketEvents({
   useEffect(() => {
     onWhitelistChangeRef.current = onWhitelistChange;
   }, [onWhitelistChange]);
+  useEffect(() => {
+    onUserChangeRef.current = onUserChange;
+  }, [onUserChange]);
 
   useEffect(() => {
     if (!enabled) {
@@ -101,6 +108,10 @@ export function useSocketEvents({
 
     socket.on("whitelist:change", () => {
       onWhitelistChangeRef.current?.();
+    });
+
+    socket.on("user:change", () => {
+      onUserChangeRef.current?.();
     });
 
     return () => {

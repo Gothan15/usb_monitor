@@ -9,12 +9,13 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import {
   useSocketEvents,
   type ConnectionStatus,
   type SocketUSBEvent,
 } from "@/hooks/useSocketEvents";
+import { useLiveSyncStore } from "@/store/useLiveSyncStore";
 
 /* ── Context types ── */
 
@@ -35,6 +36,23 @@ const LiveDataContext = createContext<LiveDataContextValue | null>(null);
 
 const MAX_LIVE_EVENTS = 50;
 
+function createDebouncedInvalidator(queryClient: QueryClient, delay: number) {
+  const pendingKeys = new Set<string>();
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+
+  return (queryKey: string[]) => {
+    pendingKeys.add(JSON.stringify(queryKey));
+    if (timeout) clearTimeout(timeout);
+    timeout = setTimeout(() => {
+      const keys = Array.from(pendingKeys).map((k) => JSON.parse(k) as string[]);
+      pendingKeys.clear();
+      keys.forEach((key) => {
+        void queryClient.invalidateQueries({ queryKey: key });
+      });
+    }, delay);
+  };
+}
+
 interface LiveDataProviderProps {
   children: ReactNode;
   /** Disable socket connection (useful during initial loading) */
@@ -50,6 +68,12 @@ export function LiveDataProvider({
   const eventCountRef = useRef(0);
   const [liveEventCount, setLiveEventCount] = useState(0);
 
+  const invalidatorRef = useRef<ReturnType<typeof createDebouncedInvalidator> | null>(null);
+  if (!invalidatorRef.current) {
+    invalidatorRef.current = createDebouncedInvalidator(queryClient, 3000);
+  }
+  const debouncedInvalidate = invalidatorRef.current;
+
   const onUSBEvent = useCallback(
     (event: SocketUSBEvent) => {
       // Append to local live feed
@@ -57,25 +81,37 @@ export function LiveDataProvider({
       eventCountRef.current += 1;
       setLiveEventCount(eventCountRef.current);
 
-      // Invalidate React Query caches so tables/stats refresh
-      void queryClient.invalidateQueries({ queryKey: ["events"] });
-      void queryClient.invalidateQueries({ queryKey: ["computers"] });
+      if (useLiveSyncStore.getState().isLiveSyncEnabled) {
+        debouncedInvalidate(["events"]);
+        debouncedInvalidate(["computers"]);
+      }
     },
-    [queryClient],
+    [debouncedInvalidate],
   );
 
   const onComputerStatus = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: ["computers"] });
-  }, [queryClient]);
+    if (useLiveSyncStore.getState().isLiveSyncEnabled) {
+      debouncedInvalidate(["computers"]);
+    }
+  }, [debouncedInvalidate]);
 
   const onWhitelistChange = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: ["whitelist"] });
-  }, [queryClient]);
+    if (useLiveSyncStore.getState().isLiveSyncEnabled) {
+      debouncedInvalidate(["whitelist"]);
+    }
+  }, [debouncedInvalidate]);
+
+  const onUserChange = useCallback(() => {
+    if (useLiveSyncStore.getState().isLiveSyncEnabled) {
+      debouncedInvalidate(["users", "summary"]);
+    }
+  }, [debouncedInvalidate]);
 
   const { status } = useSocketEvents({
     onUSBEvent,
     onComputerStatus,
     onWhitelistChange,
+    onUserChange,
     enabled,
   });
 

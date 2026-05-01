@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import {
   Clock,
   Key,
@@ -15,9 +16,12 @@ import {
   Usb,
   Users,
   Wrench,
+  SlidersHorizontal,
+  Loader2
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import type { LucideIcon } from "lucide-react";
+
 import {
   CommandDialog,
   CommandEmpty,
@@ -27,6 +31,15 @@ import {
   CommandList,
   CommandSeparator,
 } from "@/components/ui/command";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 
 /* ────── Types ────── */
 interface CommandEntry {
@@ -44,11 +57,36 @@ interface CommandPaletteProps {
   role?: "ADMIN" | "USER" | null;
 }
 
+const CATEGORIES = [
+  { id: "events", label: "Eventos" },
+  { id: "users", label: "Usuarios" },
+  { id: "computers", label: "Equipos" },
+  { id: "whitelist", label: "Lista Blanca" },
+];
+
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+    return () => clearTimeout(handler);
+  }, [value, delay]);
+  return debouncedValue;
+}
+
 /* ────── Component ────── */
 export function CommandPalette({ role }: CommandPaletteProps) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const { setTheme, theme } = useTheme();
+
+  // Search State
+  const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearch = useDebounce(searchQuery, 300);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(
+    CATEGORIES.map((c) => c.id)
+  );
 
   /* ── Keyboard shortcut ── */
   useEffect(() => {
@@ -70,7 +108,7 @@ export function CommandPalette({ role }: CommandPaletteProps) {
     [router],
   );
 
-  /* ── Commands list ── */
+  /* ── Navigation Commands list ── */
   const commands = useMemo<CommandEntry[]>(() => {
     const entries: CommandEntry[] = [];
 
@@ -194,44 +232,202 @@ export function CommandPalette({ role }: CommandPaletteProps) {
   const navCommands = commands.filter((c) => c.group === "navigation");
   const themeCommands = commands.filter((c) => c.group === "theme");
 
+  /* ── Search Query ── */
+  const { data: searchResults, isFetching } = useQuery({
+    queryKey: ["globalSearch", debouncedSearch, selectedCategories],
+    queryFn: async () => {
+      if (!debouncedSearch || debouncedSearch.length < 2) return null;
+      const params = new URLSearchParams();
+      params.set("q", debouncedSearch);
+      params.set("categories", selectedCategories.join(","));
+      const res = await fetch(`/api/search?${params.toString()}`);
+      if (!res.ok) throw new Error("Search failed");
+      return res.json();
+    },
+    enabled: debouncedSearch.length >= 2,
+    staleTime: 1000 * 60,
+  });
+
+  const toggleCategory = (id: string, checked: boolean) => {
+    setSelectedCategories((prev) =>
+      checked ? [...prev, id] : prev.filter((c) => c !== id)
+    );
+  };
+
+  const isSearching = debouncedSearch.length >= 2;
+  const hasResults =
+    searchResults &&
+    (searchResults.users?.length > 0 ||
+      searchResults.computers?.length > 0 ||
+      searchResults.whitelist?.length > 0 ||
+      searchResults.events?.length > 0);
+
   return (
     <CommandDialog
       open={open}
       onOpenChange={setOpen}
-      title="Paleta de comandos"
-      description="Busca secciones y acciones rápidas"
+      title="Búsqueda global"
+      description="Busca en todas las entidades o ejecuta un comando..."
+      shouldFilter={!isSearching} // Disable local filter when fetching results
     >
-      <CommandInput placeholder="Buscar sección o acción..." />
+      <CommandInput
+        placeholder="Buscar sección, usuario, equipo o evento..."
+        value={searchQuery}
+        onValueChange={setSearchQuery}
+        endAdornment={
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7 mr-2 text-muted-foreground hover:bg-muted"
+                aria-label="Filtrar resultados"
+              >
+                <SlidersHorizontal className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuLabel>Filtros de búsqueda</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {CATEGORIES.map((cat) => (
+                <DropdownMenuCheckboxItem
+                  key={cat.id}
+                  checked={selectedCategories.includes(cat.id)}
+                  onCheckedChange={(checked) => toggleCategory(cat.id, checked)}
+                >
+                  {cat.label}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        }
+      />
+      
       <CommandList>
-        <CommandEmpty>Sin resultados.</CommandEmpty>
+        {isFetching && (
+          <div className="py-6 flex items-center justify-center text-sm text-muted-foreground">
+            <Loader2 className="mr-2 size-4 animate-spin" />
+            Buscando resultados...
+          </div>
+        )}
 
-        <CommandGroup heading="Navegación">
-          {navCommands.map((cmd) => (
-            <CommandItem
-              key={cmd.id}
-              value={`${cmd.label} ${cmd.keywords ?? ""}`}
-              onSelect={cmd.action}
-            >
-              <cmd.icon className="mr-2 size-4 shrink-0 opacity-60" />
-              <span>{cmd.label}</span>
-            </CommandItem>
-          ))}
-        </CommandGroup>
+        {!isFetching && isSearching && !hasResults && (
+          <CommandEmpty>No se encontraron resultados para "{searchQuery}" en las categorías seleccionadas.</CommandEmpty>
+        )}
+        
+        {!isFetching && !isSearching && (
+          <CommandEmpty>Sin resultados.</CommandEmpty>
+        )}
 
-        <CommandSeparator />
+        {isSearching && searchResults ? (
+          <>
+            {searchResults.users?.length > 0 && (
+              <CommandGroup heading="Usuarios">
+                {searchResults.users.map((user: any) => (
+                  <CommandItem
+                    key={`user-${user.id}`}
+                    value={`user ${user.username}`}
+                    onSelect={() => navigate(`/admin/users?search=${user.username}`)}
+                  >
+                    <Users className="mr-2 size-4 shrink-0 opacity-60" />
+                    <div className="flex flex-col">
+                      <span>{user.username}</span>
+                      <span className="text-xs text-muted-foreground uppercase">{user.role}</span>
+                    </div>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
 
-        <CommandGroup heading="Apariencia">
-          {themeCommands.map((cmd) => (
-            <CommandItem
-              key={cmd.id}
-              value={`${cmd.label} ${cmd.keywords ?? ""}`}
-              onSelect={cmd.action}
-            >
-              <cmd.icon className="mr-2 size-4 shrink-0 opacity-60" />
-              <span>{cmd.label}</span>
-            </CommandItem>
-          ))}
-        </CommandGroup>
+            {searchResults.computers?.length > 0 && (
+              <CommandGroup heading="Equipos">
+                {searchResults.computers.map((computer: any) => (
+                  <CommandItem
+                    key={`comp-${computer.id}`}
+                    value={`computer ${computer.name} ${computer.ipAddress}`}
+                    onSelect={() => navigate(`/admin/computers?search=${computer.name}`)}
+                  >
+                    <MonitorSmartphone className="mr-2 size-4 shrink-0 opacity-60" />
+                    <div className="flex flex-col">
+                      <span>{computer.name}</span>
+                      <span className="text-xs text-muted-foreground">{computer.ipAddress}</span>
+                    </div>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+
+            {searchResults.whitelist?.length > 0 && (
+              <CommandGroup heading="Lista Blanca">
+                {searchResults.whitelist.map((wl: any) => (
+                  <CommandItem
+                    key={`wl-${wl.id}`}
+                    value={`whitelist ${wl.serialNumber} ${wl.label ?? ""}`}
+                    onSelect={() => navigate(`/admin/whitelist?search=${wl.serialNumber}`)}
+                  >
+                    <ShieldCheck className="mr-2 size-4 shrink-0 opacity-60" />
+                    <div className="flex flex-col">
+                      <span>{wl.serialNumber}</span>
+                      {wl.label && <span className="text-xs text-muted-foreground">{wl.label}</span>}
+                    </div>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+
+            {searchResults.events?.length > 0 && (
+              <CommandGroup heading="Eventos">
+                {searchResults.events.map((ev: any) => (
+                  <CommandItem
+                    key={`ev-${ev.id}`}
+                    value={`event ${ev.pcName} ${ev.event}`}
+                    onSelect={() => navigate(`/admin/events`)}
+                  >
+                    <Usb className="mr-2 size-4 shrink-0 opacity-60" />
+                    <div className="flex flex-col">
+                      <span>{ev.event} en {ev.pcName}</span>
+                      <span className="text-xs text-muted-foreground">{new Date(ev.timestamp).toLocaleString()}</span>
+                    </div>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+          </>
+        ) : (
+          <>
+            {!isSearching && (
+              <>
+                <CommandGroup heading="Navegación">
+                  {navCommands.map((cmd) => (
+                    <CommandItem
+                      key={cmd.id}
+                      value={`${cmd.label} ${cmd.keywords ?? ""}`}
+                      onSelect={cmd.action}
+                    >
+                      <cmd.icon className="mr-2 size-4 shrink-0 opacity-60" />
+                      <span>{cmd.label}</span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+
+                <CommandSeparator />
+
+                <CommandGroup heading="Apariencia">
+                  {themeCommands.map((cmd) => (
+                    <CommandItem
+                      key={cmd.id}
+                      value={`${cmd.label} ${cmd.keywords ?? ""}`}
+                      onSelect={cmd.action}
+                    >
+                      <cmd.icon className="mr-2 size-4 shrink-0 opacity-60" />
+                      <span>{cmd.label}</span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </>
+            )}
+          </>
+        )}
       </CommandList>
     </CommandDialog>
   );

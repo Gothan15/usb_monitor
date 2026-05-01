@@ -1,7 +1,11 @@
 import { requireAdminUser } from "@/lib/admin";
 
 export function normalizeSerial(serial: string): string {
-  const collapsed = serial.replace(/\s+/g, "");
+  if (!serial) return "";
+  // Implement strict .trim().toUpperCase() plus removing invalid characters
+  // to ensure exact match between frontend input, database, and python service
+  const trimmed = serial.trim();
+  const collapsed = trimmed.replace(/\s+/g, "");
   const sanitized = collapsed.replace(/[^0-9a-zA-Z._-]/g, "");
   return sanitized.toUpperCase();
 }

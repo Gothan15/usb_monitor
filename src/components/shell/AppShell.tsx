@@ -21,6 +21,8 @@ import {
 } from "@/components/shell/NotificationCenter";
 import { KeyboardShortcutsDialog } from "@/components/shell/KeyboardShortcutsDialog";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { useLiveSyncStore } from "@/store/useLiveSyncStore";
+import { Switch } from "@/components/ui/switch";
 
 /* ────── Types ────── */
 export interface AppShellNavItem {
@@ -48,8 +50,8 @@ interface AppShellProps {
 }
 
 /* ────── Constants ────── */
-const SIDEBAR_COLLAPSED = 56;
-const SIDEBAR_EXPANDED = 224;
+const SIDEBAR_COLLAPSED = 80;
+const SIDEBAR_EXPANDED = 240;
 
 /* ────── Component ────── */
 export function AppShell({
@@ -72,6 +74,8 @@ export function AppShell({
     undefined,
   );
   const [isDesktop, setIsDesktop] = useState(false);
+  const { isLiveSyncEnabled, toggleLiveSync } = useLiveSyncStore();
+  const [mounted, setMounted] = useState(false);
 
   useKeyboardShortcuts(navItems, {
     onRefresh,
@@ -79,6 +83,7 @@ export function AppShell({
   });
 
   useEffect(() => {
+    setMounted(true);
     const query = window.matchMedia("(min-width: 1280px)");
     const handleChange = (event: MediaQueryListEvent) => {
       setIsDesktop(event.matches);
@@ -141,14 +146,14 @@ export function AppShell({
           )}
         >
           {/* Brand */}
-          <div className="flex h-14 items-center px-3.5 border-b border-sidebar-border">
-            <div className="flex size-8 items-center justify-center overflow-hidden rounded-lg bg-background/70 ring-1 ring-sidebar-border/80">
+          <div className="flex h-20 items-center px-5 border-b border-sidebar-border">
+            <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-background/70 ring-1 ring-sidebar-border/80">
               <Image
                 src="/favicon.svg"
                 alt="USB Monitor"
-                width={20}
-                height={20}
-                className="size-5"
+                width={24}
+                height={24}
+                className="size-6"
               />
             </div>
             <AnimatePresence>
@@ -160,11 +165,11 @@ export function AppShell({
                   transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
                   className="overflow-hidden"
                 >
-                  <div className="ml-3 flex flex-col whitespace-nowrap">
-                    <span className="text-xs font-bold uppercase tracking-[0.2em] text-sidebar-foreground/60">
+                  <div className="ml-4 flex flex-col whitespace-nowrap">
+                    <span className="text-sm font-bold uppercase tracking-[0.2em] text-sidebar-foreground/80">
                       USB Monitor
                     </span>
-                    <span className="text-[10px] text-sidebar-foreground/40">
+                    <span className="text-xs text-sidebar-foreground/50">
                       Centro de control
                     </span>
                   </div>
@@ -184,8 +189,8 @@ export function AppShell({
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 overflow-y-auto overflow-x-hidden py-2 scrollbar-thin">
-            <div className="flex flex-col gap-0.5 px-2">
+          <nav className="flex-1 overflow-y-auto overflow-x-hidden py-6 scrollbar-thin">
+            <div className="flex flex-col space-y-4 px-3">
               {navItems.map((item) => {
                 const isActive = item.key === activeKey;
                 return (
@@ -195,33 +200,43 @@ export function AppShell({
                     prefetch
                     onClick={() => setMobileMenuOpen(false)}
                     className={cn(
-                      "group relative flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition-all duration-150",
+                      "group relative flex items-center gap-4 rounded-xl p-3 text-sm font-medium outline-none transition-colors",
                       isActive
-                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground",
+                        ? "text-sidebar-accent-foreground"
+                        : "text-sidebar-foreground/70"
                     )}
                   >
-                    {/* Active indicator bar */}
+                    {/* Hover Background */}
+                    <div className="absolute inset-0 rounded-xl bg-sidebar-accent/50 opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+                    
+                    {/* Active Background */}
                     {isActive && (
                       <motion.div
-                        layoutId="sidebar-active"
-                        className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-primary"
-                        transition={{
-                          type: "spring",
-                          stiffness: 350,
-                          damping: 30,
-                        }}
+                        layoutId="sidebar-active-bg"
+                        className="absolute inset-0 rounded-xl bg-sidebar-accent"
+                        transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
                       />
                     )}
 
-                    <item.icon
-                      className={cn(
-                        "size-[18px] shrink-0 transition-colors",
-                        isActive
-                          ? "text-primary"
-                          : "text-sidebar-foreground/50 group-hover:text-sidebar-foreground/80",
-                      )}
-                    />
+                    {/* Active indicator bar */}
+                    {isActive && (
+                      <motion.div
+                        layoutId="sidebar-active-indicator"
+                        className="absolute -left-3 top-1/2 h-8 w-1 -translate-y-1/2 rounded-r-full bg-primary"
+                        transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                      />
+                    )}
+
+                    <div className="relative z-10 flex size-8 shrink-0 items-center justify-center">
+                      <item.icon
+                        className={cn(
+                          "size-6 transition-colors duration-200",
+                          isActive
+                            ? "text-primary"
+                            : "text-sidebar-foreground/50 group-hover:text-sidebar-foreground/80"
+                        )}
+                      />
+                    </div>
 
                     <AnimatePresence>
                       {(sidebarExpanded || !isDesktop) && (
@@ -233,7 +248,7 @@ export function AppShell({
                             duration: 0.2,
                             ease: [0.16, 1, 0.3, 1],
                           }}
-                          className="truncate whitespace-nowrap"
+                          className="relative z-10 truncate whitespace-nowrap text-base"
                         >
                           {item.label}
                         </motion.span>
@@ -248,12 +263,12 @@ export function AppShell({
                             initial={{ opacity: 0, scale: 0.8 }}
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 0.8 }}
-                            className="ml-auto inline-flex min-w-[20px] items-center justify-center rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground"
+                            className="relative z-10 ml-auto inline-flex min-w-[24px] items-center justify-center rounded-md bg-muted px-2 py-0.5 text-xs font-semibold tabular-nums text-muted-foreground"
                           >
                             {item.badge}
                           </motion.span>
                         ) : (
-                          <span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-primary" />
+                          <span className="absolute right-2 top-2 size-2 rounded-full bg-primary" />
                         )}
                       </AnimatePresence>
                     )}
@@ -264,21 +279,21 @@ export function AppShell({
           </nav>
 
           {/* Sidebar footer */}
-          <div className="flex flex-col gap-1 border-t border-sidebar-border p-2">
-            <div className="flex items-center justify-center">
+          <div className="flex flex-col gap-2 border-t border-sidebar-border p-4">
+            <div className="flex h-10 items-center justify-center">
               <ThemeToggle />
             </div>
             <AnimatePresence>
               {(sidebarExpanded || !isDesktop) && (
                 <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
                   transition={{ duration: 0.15 }}
-                  className="px-1 py-1.5"
+                  className="overflow-hidden"
                 >
                   {lastUpdateLabel && (
-                    <p className="text-[10px] text-sidebar-foreground/40 text-center">
+                    <p className="pt-2 text-center text-[11px] text-sidebar-foreground/40">
                       Sincronizado: {lastUpdateLabel}
                     </p>
                   )}
@@ -340,15 +355,35 @@ export function AppShell({
 
             {/* Right actions */}
             <div className="ml-auto flex items-center gap-2">
+              {/* Live Sync Toggle */}
+              {mounted && (
+                <div className="flex items-center gap-2 mr-2">
+                  <span className={cn("text-[10px] font-semibold uppercase tracking-wider hidden lg:inline-block", isLiveSyncEnabled ? "text-green-500" : "text-muted-foreground")}>
+                    {isLiveSyncEnabled ? "Live" : "Paused"}
+                  </span>
+                  <Switch 
+                    checked={isLiveSyncEnabled} 
+                    onCheckedChange={toggleLiveSync}
+                    className="data-[state=checked]:bg-green-500 scale-75 lg:scale-100"
+                  />
+                </div>
+              )}
+
               {/* Refresh */}
               {onRefresh && (
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="size-8"
-                  disabled={refreshing}
+                  className="size-8 relative"
+                  disabled={refreshing || (mounted && isLiveSyncEnabled)}
                   onClick={onRefresh}
                 >
+                  {mounted && isLiveSyncEnabled && (
+                    <span className="absolute top-1.5 right-1.5 flex size-1.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full size-1.5 bg-green-500"></span>
+                    </span>
+                  )}
                   <motion.span
                     animate={{ rotate: refreshing ? 360 : 0 }}
                     transition={{

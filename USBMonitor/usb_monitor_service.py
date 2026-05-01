@@ -801,7 +801,7 @@ def normalize_serial_candidate(serial: Optional[str]) -> Optional[str]:
         return None
     if sanitized in SERIAL_SENTINELS:
         return None
-    if len(sanitized) < 4:
+    if len(sanitized) < 1:
         return None
     return sanitized[:128]
 
@@ -2250,6 +2250,8 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                     whitelisted = False
                     whitelist_entry = None
                     if serial_number:
+                        raw_s = drive.get("serialNumberRaw", "N/A")
+                        LOGGER.info("Boot Sweep: Raw Serial: [%s], Normalized Serial: [%s]", raw_s, serial_number)
                         whitelisted, whitelist_entry = check_whitelist(serial_number)
                         
                     if whitelisted:
@@ -2301,6 +2303,7 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                     LOGGER.info("  [1/5] Letra de unidad resuelta: %s", drive_letter or "NO ENCONTRADA")
                     
                     serial_number: Optional[str] = None
+                    raw_serial_found: Optional[str] = None
                     whitelist_entry: Optional[Dict[str, Any]] = None
                     whitelisted = False
 
@@ -2328,6 +2331,7 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                                     
                                     if normalized_candidate:
                                         serial_number = normalized_candidate
+                                        raw_serial_found = str(raw_value) if raw_value is not None else "N/A"
                                         LOGGER.info("    ✓ Serial obtenido en intento %d/5: %s", attempt + 1, serial_number)
                                         break
                             except Exception as info_exc:
@@ -2348,6 +2352,7 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
 
                     if serial_number:
                         LOGGER.info("  [3/5] Verificando whitelist para serial: %s", serial_number)
+                        LOGGER.debug("Raw Serial: [%s], Normalized Serial: [%s]", raw_serial_found, serial_number)
                         whitelisted, whitelist_entry = check_whitelist(serial_number)
                         if whitelisted:
                             LOGGER.info("  [3/5] ✓ AUTORIZADO EN WHITELIST")
