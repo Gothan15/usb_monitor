@@ -1,6 +1,6 @@
 {
   "editor.defaultFormatter": "esbenp.prettier-vscode",
-  "workbench.colorTheme": "Default Dark Modern",
+  "workbench.colorTheme": "Zinc Carbon Minimal",
   "editor.experimentalGpuAcceleration": "off",
   "editor.minimap.autohide": "mouseover"
 }

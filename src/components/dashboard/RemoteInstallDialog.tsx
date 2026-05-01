@@ -25,7 +25,14 @@ import {
   Lock,
   Monitor,
   RefreshCw,
+  Info,
 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 type Step = "credentials" | "copy" | "install";
 type PhaseStatus = "idle" | "running" | "success" | "error";
@@ -53,6 +60,7 @@ export function RemoteInstallDialog({
   onInstallComplete,
 }: Props) {
   const [step, setStep] = useState<Step>("credentials");
+  const [protocol, setProtocol] = useState<"ssh" | "winrm">("ssh");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [port, setPort] = useState(22);
@@ -86,7 +94,7 @@ export function RemoteInstallDialog({
       }
       onOpenChange(isOpen);
     },
-    [onOpenChange, copyStatus, installStatus, resetState]
+    [onOpenChange, copyStatus, installStatus, resetState],
   );
 
   const callApi = async (phase: "copy" | "install"): Promise<PhaseResult> => {
@@ -94,8 +102,7 @@ export function RemoteInstallDialog({
     if (!csrfToken) {
       return {
         success: false,
-        message:
-          "Sesión sin token de seguridad. Inicia sesión nuevamente.",
+        message: "Sesión sin token de seguridad. Inicia sesión nuevamente.",
       };
     }
 
@@ -112,6 +119,7 @@ export function RemoteInstallDialog({
         password,
         phase,
         port,
+        protocol,
       }),
     });
 
@@ -126,11 +134,13 @@ export function RemoteInstallDialog({
   const handleStartCopy = useCallback(async () => {
     setStep("copy");
     setCopyStatus("running");
-    setCopyMessage("Conectando vía SSH y copiando archivos...");
-    setErrorDetail("");
+    setCopyMessage("Entering the system...");
+    const timer = setTimeout(() => setCopyMessage("Copying binary..."), 1500);
 
     try {
       const result = await callApi("copy");
+      clearTimeout(timer);
+
       if (result.success) {
         setCopyStatus("success");
         setCopyMessage("Archivos copiados exitosamente ✓");
@@ -140,17 +150,17 @@ export function RemoteInstallDialog({
         setErrorDetail(result.details || "");
       }
     } catch (err: any) {
+      clearTimeout(timer);
       setCopyStatus("error");
       setCopyMessage(err?.message || "Error de conexión");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetIp, username, password, port]);
+  }, [targetIp, username, password, port, protocol]);
 
   const handleStartInstall = useCallback(async () => {
     setStep("install");
     setInstallStatus("running");
-    setInstallMessage("Instalando servicio USBMonitor...");
-    setErrorDetail("");
+    setInstallMessage("Installing service...");
 
     try {
       const result = await callApi("install");
@@ -168,7 +178,7 @@ export function RemoteInstallDialog({
       setInstallMessage(err?.message || "Error de conexión");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetIp, username, password, port, onInstallComplete]);
+  }, [targetIp, username, password, port, protocol, onInstallComplete]);
 
   const handleRetryCopy = useCallback(() => {
     setCopyStatus("idle");
@@ -219,9 +229,7 @@ export function RemoteInstallDialog({
                 {i > 0 && (
                   <div
                     className={`h-px w-6 transition-colors ${
-                      isPast
-                        ? "bg-emerald-500"
-                        : "bg-border/50"
+                      isPast ? "bg-emerald-500" : "bg-border/50"
                     }`}
                   />
                 )}
@@ -245,7 +253,10 @@ export function RemoteInstallDialog({
         {step === "credentials" && (
           <div className="flex flex-col gap-4">
             <div className="space-y-2">
-              <Label htmlFor="ssh-host" className="text-xs text-muted-foreground">
+              <Label
+                htmlFor="ssh-host"
+                className="text-xs text-muted-foreground"
+              >
                 Equipo destino
               </Label>
               <Input
@@ -255,10 +266,56 @@ export function RemoteInstallDialog({
                 className="bg-muted/30 text-muted-foreground"
               />
             </div>
+
+            {/* Selector de Protocolo */}
             <div className="space-y-2">
-              <Label htmlFor="ssh-user" className="text-xs text-muted-foreground">
+              <div className="flex items-center gap-2 mb-1">
+                <Label className="text-xs text-muted-foreground">
+                  Protocolo
+                </Label>
+              </div>
+              <div className="flex bg-muted/50 p-1 rounded-md border gap-1">
+                <button
+                  type="button"
+                  onClick={() => setProtocol("ssh")}
+                  className={`flex-1 text-xs py-1.5 rounded transition-colors ${protocol === "ssh" ? "bg-background text-foreground shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  SSH
+                </button>
+                <div className={`flex-1 flex items-center justify-center rounded transition-colors ${protocol === "winrm" ? "bg-background text-foreground shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}>
+                  <button
+                    type="button"
+                    onClick={() => setProtocol("winrm")}
+                    className="flex-1 text-xs py-1.5 h-full"
+                  >
+                    WinRM
+                  </button>
+                  <TooltipProvider delayDuration={200}>
+                    <Tooltip>
+                      <TooltipTrigger type="button" tabIndex={-1} className="pr-2">
+                        <Info className="size-3.5 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-[320px] text-xs space-y-2">
+                        <p>
+                          For non-domain environments: Run &apos;Enable-PSRemoting -Force&apos; on the target as Administrator.
+                        </p>
+                        <p>
+                          For corporate environments: Enable via GPO at Computer Configuration &gt; Policies &gt; Administrative Templates &gt; Windows Components &gt; Windows Remote Management (WinRM) &gt; WinRM Service &gt; Allow remote server management through WinRM.
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label
+                htmlFor="ssh-user"
+                className="text-xs text-muted-foreground"
+              >
                 <User className="mr-1 inline size-3" />
-                Usuario SSH
+                Usuario {protocol.toUpperCase()}
               </Label>
               <Input
                 id="ssh-user"
@@ -270,7 +327,10 @@ export function RemoteInstallDialog({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="ssh-pass" className="text-xs text-muted-foreground">
+              <Label
+                htmlFor="ssh-pass"
+                className="text-xs text-muted-foreground"
+              >
                 <Lock className="mr-1 inline size-3" />
                 Contraseña{" "}
                 <span className="font-normal opacity-60">(opcional)</span>
@@ -290,7 +350,10 @@ export function RemoteInstallDialog({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="ssh-port" className="text-xs text-muted-foreground">
+              <Label
+                htmlFor="ssh-port"
+                className="text-xs text-muted-foreground"
+              >
                 Puerto SSH
               </Label>
               <Input
@@ -301,7 +364,7 @@ export function RemoteInstallDialog({
                 value={port}
                 onChange={(e) =>
                   setPort(
-                    Math.max(1, Math.min(65535, Number(e.target.value) || 22))
+                    Math.max(1, Math.min(65535, Number(e.target.value) || 22)),
                   )
                 }
                 className="w-24"
@@ -361,7 +424,9 @@ export function RemoteInstallDialog({
             {/* Show copy success banner */}
             <Alert className="border-emerald-200/60 bg-emerald-50 text-emerald-700 dark:border-emerald-300/40 dark:bg-emerald-500/10 dark:text-emerald-100">
               <CheckCircle2 className="size-4" />
-              <AlertDescription>Archivos copiados exitosamente ✓</AlertDescription>
+              <AlertDescription>
+                Archivos copiados exitosamente ✓
+              </AlertDescription>
             </Alert>
 
             {installStatus === "idle" && (
@@ -439,10 +504,7 @@ export function RemoteInstallDialog({
           )}
 
           {step === "install" && installStatus === "idle" && (
-            <Button
-              onClick={handleStartInstall}
-              className="w-full sm:w-auto"
-            >
+            <Button onClick={handleStartInstall} className="w-full sm:w-auto">
               <Settings className="mr-2 size-4" />
               Instalar Servicio
             </Button>

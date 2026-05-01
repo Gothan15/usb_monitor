@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -22,8 +22,18 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { ShieldCheck, Wrench, Server, FileText, LayoutTemplate, RotateCcw } from "lucide-react";
-import { usePaginationSettings, PaginationStyle } from "@/hooks/usePaginationSettings";
+import {
+  ShieldCheck,
+  Wrench,
+  Server,
+  FileText,
+  LayoutTemplate,
+  RotateCcw,
+} from "lucide-react";
+import {
+  usePaginationSettings,
+  PaginationStyle,
+} from "@/hooks/usePaginationSettings";
 
 interface AuthenticationSettings {
   enforceMfa: boolean;
@@ -37,6 +47,7 @@ interface ApiSettings {
   rateLimit: string;
   websocketEnabled: boolean;
   allowRemoteInstall: boolean;
+  startupNetworkDelay: number;
 }
 
 interface LoggingSettings {
@@ -66,6 +77,7 @@ export function SettingsTab() {
     rateLimit: "60",
     websocketEnabled: true,
     allowRemoteInstall: false,
+    startupNetworkDelay: 15,
   });
   const [logging, setLogging] = useState<LoggingSettings>({
     retentionDays: 90,
@@ -81,6 +93,45 @@ export function SettingsTab() {
   });
 
   const { style, setStyle, setPosition } = usePaginationSettings();
+
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.startup_network_delay !== undefined) {
+          setApi((prev) => ({
+            ...prev,
+            startupNetworkDelay: data.startup_network_delay,
+          }));
+        }
+      })
+      .catch((err) => console.error("Failed to load settings", err));
+  }, []);
+
+  const saveSettings = async (sectionLabel: string, payload: any) => {
+    try {
+      const res = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        showSavedToast(sectionLabel);
+      } else {
+        toast({
+          title: "Error al guardar",
+          description: "Hubo un problema al aplicar los cambios.",
+          variant: "destructive",
+        });
+      }
+    } catch (err) {
+      toast({
+        title: "Error de red",
+        description: "No se pudo conectar con el servidor.",
+        variant: "destructive",
+      });
+    }
+  };
 
   const showSavedToast = (label: string) =>
     toast({
@@ -268,10 +319,27 @@ export function SettingsTab() {
                 }
               />
             </div>
+            <div className="rounded-xl border border-border/40 bg-card/80 px-4 py-3 shadow-sm md:col-span-2">
+              <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                Startup Network Delay (segundos)
+              </Label>
+              <Input
+                type="number"
+                min={0}
+                value={api.startupNetworkDelay}
+                onChange={(event) =>
+                  setApi((prev) => ({ ...prev, startupNetworkDelay: Number(event.target.value) || 0 }))
+                }
+                className="mt-2"
+              />
+              <p className="mt-2 text-xs text-muted-foreground">
+                Tiempo de espera en el arranque para parches de bypass de red.
+              </p>
+            </div>
           </div>
           <Button
             className="rounded-full"
-            onClick={() => showSavedToast("API y automatización")}
+            onClick={() => saveSettings("API y automatización", { startup_network_delay: api.startupNetworkDelay })}
           >
             Guardar cambios
           </Button>
@@ -517,34 +585,37 @@ export function SettingsTab() {
                 </SelectContent>
               </Select>
               <p className="mt-2 text-xs text-muted-foreground">
-                El modo flotante te permite mantener la paginación a la vista en cualquier momento. Puedes arrastrar la barra flotante manteniendo presionado el clic por 3 segundos.
+                El modo flotante te permite mantener la paginación a la vista en
+                cualquier momento. Puedes arrastrar la barra flotante
+                manteniendo presionado el clic por 3 segundos.
               </p>
             </div>
-            
+
             <div className="flex flex-col justify-center rounded-xl border border-border/40 bg-card/80 px-4 py-4 shadow-sm md:items-center">
               <div className="text-center">
-                  <Label className="block text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                     Posición del Paginado
-                  </Label>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                     Restaura la ubicación flotante por defecto al centro inferior.
-                   </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-4 rounded-full"
-                    onClick={() => {
-                      setPosition(null);
-                      toast({
-                        title: "Posición restaurada",
-                        description: "La paginación flotante volvió a su posición central por defecto.",
-                      });
-                    }}
-                    disabled={style === "static"}
-                  >
-                    <RotateCcw className="mr-2 h-3.5 w-3.5" />
-                    Restaurar posición
-                  </Button>
+                <Label className="block text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                  Posición del Paginado
+                </Label>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Restaura la ubicación flotante por defecto al centro inferior.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-4 rounded-full"
+                  onClick={() => {
+                    setPosition(null);
+                    toast({
+                      title: "Posición restaurada",
+                      description:
+                        "La paginación flotante volvió a su posición central por defecto.",
+                    });
+                  }}
+                  disabled={style === "static"}
+                >
+                  <RotateCcw className="mr-2 h-3.5 w-3.5" />
+                  Restaurar posición
+                </Button>
               </div>
             </div>
           </div>
