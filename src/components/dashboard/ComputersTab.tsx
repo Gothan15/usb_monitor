@@ -61,8 +61,7 @@ function StatusBadge({ active }: { active: boolean }) {
       variant={active ? "success" : "secondary"}
       className={cn(
         "shadow-sm",
-        !active &&
-          "border border-slate-200 bg-slate-100 text-slate-700 dark:border-white/10 dark:bg-white/10 dark:text-white"
+        !active && "border border-border/50 bg-muted/40 text-muted-foreground",
       )}
     >
       {active ? "Activo" : "Inactivo"}
@@ -76,7 +75,7 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Computer | null>(null);
   const [selectedComputer, setSelectedComputer] = useState<Computer | null>(
-    null
+    null,
   );
 
   const { sortedData, sortConfig, requestSort } =
@@ -85,17 +84,17 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
   const quickStats = useMemo(() => {
     if (loading) {
       return [
-        { label: "Activos", value: "--", accent: "from-emerald-400/30" },
-        { label: "Servicios", value: "--", accent: "from-cyan-400/30" },
-        { label: "Total", value: "--", accent: "from-slate-300/30" },
+        { label: "Activos", value: "--", accent: "from-[oklch(0.75_0.12_160/0.25)]" },
+        { label: "Servicios", value: "--", accent: "from-[oklch(0.72_0.05_250/0.25)]" },
+        { label: "Total", value: "--", accent: "from-muted/40" },
       ];
     }
 
     const activeCount = sortedData.filter(
-      (computer) => computer.isActive
+      (computer) => computer.isActive,
     ).length;
     const runningCount = sortedData.filter(
-      (computer) => computer.serviceRunning
+      (computer) => computer.serviceRunning,
     ).length;
     const total = sortedData.length;
 
@@ -103,17 +102,17 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
       {
         label: "Activos",
         value: activeCount.toString(),
-        accent: "from-emerald-400/25 via-emerald-300/10",
+        accent: "from-[oklch(0.75_0.12_160/0.25)] via-[oklch(0.80_0.08_160/0.10)]",
       },
       {
         label: "Servicio OK",
         value: runningCount.toString(),
-        accent: "from-sky-400/25 via-cyan-300/10",
+        accent: "from-[oklch(0.72_0.05_250/0.25)] via-[oklch(0.78_0.03_250/0.10)]",
       },
       {
         label: "Inventario",
         value: total.toString(),
-        accent: "from-slate-400/20 via-slate-300/10",
+        accent: "from-muted/30 via-muted/10",
       },
     ];
   }, [sortedData, loading]);
@@ -134,7 +133,7 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
       const clamped = Math.min(Math.max(nextPage, 1), pageCount);
       setPage(clamped);
     },
-    [pageCount]
+    [pageCount],
   );
 
   const handlePageSizeChange = useCallback((nextSize: number) => {
@@ -169,29 +168,29 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
       transition={{ duration: 0.35, ease: "easeOut" }}
       className="w-full"
     >
-      <Card className="relative w-full overflow-hidden rounded-3xl border border-slate-200/70 bg-white/85 text-slate-900 shadow-xl supports-[backdrop-filter]:backdrop-blur-2xl dark:border-white/10 dark:bg-slate-900/50 dark:text-white">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.12),transparent_55%),radial-gradient(circle_at_bottom_right,_rgba(14,165,233,0.12),transparent_55%)] dark:bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.16),transparent_45%),radial-gradient(circle_at_bottom_right,_rgba(14,165,233,0.18),transparent_50%)]" />
+      <Card className="relative w-full overflow-hidden rounded-xl border border-border/60 bg-card/80 shadow-xl backdrop-blur-xl">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,oklch(0.82_0.01_250/0.10),transparent_55%),radial-gradient(circle_at_bottom_right,oklch(0.78_0.015_250/0.10),transparent_55%)]" />
         <CardHeader className="relative z-10 space-y-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-3">
-              <span className="inline-flex size-12 items-center justify-center rounded-2xl border border-emerald-200/60 bg-white/80 text-emerald-600 shadow-sm dark:border-emerald-400/40 dark:bg-white/10 dark:text-emerald-200">
+              <span className="inline-flex size-12 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary shadow-sm dark:border-primary/30 dark:bg-primary/15 dark:text-primary">
                 <MonitorSmartphone className="size-5" />
               </span>
               <div>
-                <CardTitle className="text-2xl font-semibold text-slate-900 dark:text-slate-100">
+                <CardTitle className="text-2xl font-semibold text-foreground">
                   Computadoras monitoreadas
                 </CardTitle>
-                <CardDescription className="text-sm text-slate-600 dark:text-slate-300/80">
+                <CardDescription className="text-sm text-muted-foreground">
                   Visibilidad integral de hosts con el agente USB y su servicio.
                 </CardDescription>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300/80">
-              <span className="inline-flex items-center gap-1 rounded-full border border-white/70 bg-white/80 px-3 py-1 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-white/10">
+            <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-muted-foreground">
+              <span className="inline-flex items-center gap-1 rounded-full border border-border/40 bg-muted/30 px-3 py-1 shadow-sm backdrop-blur-sm">
                 <Wifi className="size-3" />
                 Estado de conectividad
               </span>
-              <span className="inline-flex items-center gap-1 rounded-full border border-white/70 bg-white/80 px-3 py-1 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-white/10">
+              <span className="inline-flex items-center gap-1 rounded-full border border-border/40 bg-muted/30 px-3 py-1 shadow-sm backdrop-blur-sm">
                 <Router className="size-3" />
                 Agente USB
               </span>
@@ -201,24 +200,24 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
             {quickStats.map((stat) => (
               <div
                 key={stat.label}
-                className="relative overflow-hidden rounded-2xl border border-white/70 bg-white/85 p-4 text-slate-700 shadow-md supports-[backdrop-filter]:backdrop-blur-xl dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
+                className="relative overflow-hidden rounded-xl border border-border/40 bg-card/80 p-4 backdrop-blur-sm"
               >
                 <div
                   className={cn(
-                    "pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br opacity-70",
-                    stat.accent
+                    "pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-br opacity-70",
+                    stat.accent,
                   )}
                 />
                 <div className="relative flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
                       {stat.label}
                     </p>
-                    <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
+                    <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
                       {stat.value}
                     </p>
                   </div>
-                  <span className="inline-flex size-9 items-center justify-center rounded-xl border border-white/60 bg-white/80 text-slate-500 shadow-sm dark:border-white/15 dark:bg-white/10 dark:text-slate-200">
+                  <span className="inline-flex size-8 items-center justify-center rounded-lg bg-muted/50 text-muted-foreground">
                     {stat.label === "Activos" ? (
                       <Cpu className="size-4" />
                     ) : stat.label === "Servicio OK" ? (
@@ -236,14 +235,11 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
           {loading ? (
             <div className="space-y-3">
               {[...Array(5)].map((_, i) => (
-                <Skeleton
-                  key={i}
-                  className="h-12 rounded-2xl bg-slate-100/80 dark:bg-white/10"
-                />
+                <Skeleton key={i} className="h-12 rounded-xl bg-muted/40" />
               ))}
             </div>
           ) : computers.length === 0 ? (
-            <Alert className="rounded-2xl border-amber-200/60 bg-amber-50/90 text-amber-700 shadow-sm dark:border-amber-300/40 dark:bg-amber-500/10 dark:text-amber-100">
+            <Alert className="rounded-xl border-[oklch(0.80_0.10_85/0.40)] bg-[oklch(0.95_0.03_85)] text-[oklch(0.45_0.10_85)] shadow-sm dark:border-[oklch(0.65_0.08_85/0.30)] dark:bg-[oklch(0.80_0.10_85/0.10)] dark:text-[oklch(0.90_0.04_85)]">
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription>
                 No hay computadoras monitoreadas aún.
@@ -260,14 +256,14 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                       key={computer.id}
                       whileHover={{ y: -4 }}
                       transition={{ duration: 0.2 }}
-                      className="rounded-3xl border border-white/70 bg-white/85 p-5 shadow-lg supports-[backdrop-filter]:backdrop-blur-xl dark:border-white/10 dark:bg-white/5"
+                      className="rounded-xl border border-border/40 bg-card/80 p-5 shadow-lg backdrop-blur-xl"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                          <p className="text-sm font-semibold text-foreground">
                             {computer.name}
                           </p>
-                          <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
                             {computer.ipAddress}
                           </p>
                         </div>
@@ -283,8 +279,8 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                             className={cn(
                               "group relative h-8 gap-1.5 rounded-full px-3 text-xs font-semibold transition-all duration-200",
                               canViewUsb
-                                ? "border border-emerald-200/60 bg-emerald-500/10 text-emerald-700 shadow-sm hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-500/20 hover:shadow-md dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-100"
-                                : "cursor-not-allowed border border-slate-200/60 bg-slate-100/50 text-slate-400 dark:border-white/5 dark:bg-white/5 dark:text-slate-500"
+                                ? "border border-primary/20 bg-primary/10 text-primary shadow-sm hover:-translate-y-0.5 hover:border-primary/40 hover:bg-primary/20 hover:shadow-md dark:border-primary/30 dark:bg-primary/15 dark:text-primary"
+                                : "cursor-not-allowed border border-border/30 bg-muted/20 text-muted-foreground/40",
                             )}
                           >
                             <Usb className="h-3.5 w-3.5 transition-transform group-hover:scale-110" />
@@ -302,7 +298,7 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                                 "group relative h-8 gap-1.5 rounded-full px-3 text-xs font-semibold transition-all duration-200",
                                 deletingId === computer.id
                                   ? "cursor-wait border border-rose-300/60 bg-rose-500/20 text-rose-50 dark:border-rose-400/40 dark:bg-rose-500/25 dark:text-rose-100"
-                                  : "border border-rose-200/60 bg-rose-500/10 text-rose-700 shadow-sm hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-500/20 hover:shadow-md dark:border-rose-400/40 dark:bg-rose-500/15 dark:text-rose-100"
+                                  : "border border-rose-200/60 bg-rose-500/10 text-rose-700 shadow-sm hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-500/20 hover:shadow-md dark:border-rose-400/40 dark:bg-rose-500/15 dark:text-rose-100",
                               )}
                             >
                               {deletingId === computer.id ? (
@@ -315,9 +311,9 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                           )}
                         </div>
                       </div>
-                      <div className="mt-4 grid gap-3 text-xs text-slate-600 dark:text-slate-300">
+                      <div className="mt-4 grid gap-3 text-xs text-muted-foreground">
                         <div className="flex items-center justify-between">
-                          <span className="font-semibold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+                          <span className="font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">
                             Servicio
                           </span>
                           <Badge
@@ -325,9 +321,9 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                               computer.serviceRunning ? "success" : "secondary"
                             }
                             className={cn(
-                              "rounded-full border border-white/60 bg-white/80 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-slate-600 shadow-sm dark:border-white/15 dark:bg-white/10 dark:text-slate-200",
+                              "rounded-full border border-border/50 bg-muted/30 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground",
                               !computer.serviceRunning &&
-                                "border border-slate-200 bg-slate-100 text-slate-700 dark:border-white/10 dark:bg-white/10 dark:text-white"
+                                "border border-border/50 bg-muted/40 text-muted-foreground",
                             )}
                           >
                             {computer.serviceRunning
@@ -337,14 +333,14 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                         </div>
                         {computer.lastServiceCheck && (
                           <div className="flex items-center justify-between">
-                            <span className="font-semibold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+                            <span className="font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">
                               Último ping
                             </span>
                             <span>{formatTime(computer.lastServiceCheck)}</span>
                           </div>
                         )}
                         <div className="flex items-center justify-between">
-                          <span className="font-semibold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+                          <span className="font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">
                             Última conexión
                           </span>
                           <span>
@@ -354,7 +350,7 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="font-semibold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+                          <span className="font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">
                             Alta
                           </span>
                           <span>{formatDateTime(computer.createdAt)}</span>
@@ -365,16 +361,18 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                 })}
               </div>
 
-              <ScrollArea className="hidden max-h-[min(65vh,500px)] pr-3 md:block">
+              <div className="flex flex-col overflow-hidden rounded-xl border border-border/40 bg-card/60 shadow-inner backdrop-blur-sm">
+                <div className="flex-1 overflow-hidden">
+                  <ScrollArea className="hidden max-h-[min(75vh,650px)] w-full pr-3 md:block">
                 <Table className="w-full min-w-[1100px]">
-                  <TableHeader className="sticky top-0 z-10 bg-white/95 backdrop-blur-xl dark:bg-slate-900/80">
-                    <TableRow className="border-white/60 dark:border-white/10">
+                  <TableHeader className="sticky top-0 z-10 bg-card/95 backdrop-blur-xl">
+                    <TableRow className="border-border/40">
                       <SortableTableHead
                         column="name"
                         currentSortKey={sortConfig.key}
                         currentSortDirection={sortConfig.direction}
                         onSort={requestSort}
-                        className="text-slate-600 dark:text-slate-200"
+                        className="text-muted-foreground"
                       >
                         Nombre
                       </SortableTableHead>
@@ -383,7 +381,7 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                         currentSortKey={sortConfig.key}
                         currentSortDirection={sortConfig.direction}
                         onSort={requestSort}
-                        className="text-slate-600 dark:text-slate-200"
+                        className="text-muted-foreground"
                       >
                         Dirección IP
                       </SortableTableHead>
@@ -392,7 +390,7 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                         currentSortKey={sortConfig.key}
                         currentSortDirection={sortConfig.direction}
                         onSort={requestSort}
-                        className="text-slate-600 dark:text-slate-200"
+                        className="text-muted-foreground"
                       >
                         Estado
                       </SortableTableHead>
@@ -401,7 +399,7 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                         currentSortKey={sortConfig.key}
                         currentSortDirection={sortConfig.direction}
                         onSort={requestSort}
-                        className="text-slate-600 dark:text-slate-200"
+                        className="text-muted-foreground"
                       >
                         Servicio
                       </SortableTableHead>
@@ -410,7 +408,7 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                         currentSortKey={sortConfig.key}
                         currentSortDirection={sortConfig.direction}
                         onSort={requestSort}
-                        className="text-slate-600 dark:text-slate-200"
+                        className="text-muted-foreground"
                       >
                         Última conexión
                       </SortableTableHead>
@@ -419,7 +417,7 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                         currentSortKey={sortConfig.key}
                         currentSortDirection={sortConfig.direction}
                         onSort={requestSort}
-                        className="text-slate-600 dark:text-slate-200"
+                        className="text-muted-foreground"
                       >
                         Fecha registro
                       </SortableTableHead>
@@ -428,7 +426,7 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                         currentSortKey={sortConfig.key}
                         currentSortDirection={sortConfig.direction}
                         onSort={requestSort}
-                        className="text-slate-600 dark:text-slate-200"
+                        className="text-muted-foreground"
                       >
                         USB
                       </SortableTableHead>
@@ -438,7 +436,7 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                           currentSortKey={sortConfig.key}
                           currentSortDirection={sortConfig.direction}
                           onSort={requestSort}
-                          className="text-slate-600 dark:text-slate-200"
+                          className="text-muted-foreground"
                           align="right"
                         >
                           Acciones
@@ -450,12 +448,12 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                     {paginatedComputers.map((computer) => (
                       <TableRow
                         key={computer.id}
-                        className="group border border-white/70 bg-white/75 transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-300/60 hover:bg-emerald-50/60 dark:border-white/5 dark:bg-white/5 dark:hover:border-emerald-400/30 dark:hover:bg-emerald-500/10"
+                        className="group group transition-colors duration-150"
                       >
-                        <TableCell className="font-semibold text-slate-700 dark:text-slate-100">
+                        <TableCell className="font-semibold text-foreground">
                           {computer.name}
                         </TableCell>
-                        <TableCell className="text-slate-600 dark:text-slate-300/80">
+                        <TableCell className="text-muted-foreground">
                           {computer.ipAddress}
                         </TableCell>
                         <TableCell>
@@ -472,7 +470,7 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                               className={cn(
                                 "shadow-sm",
                                 !computer.serviceRunning &&
-                                  "border border-slate-200 bg-slate-100 text-slate-700 dark:border-white/10 dark:bg-white/10 dark:text-white"
+                                  "border border-border/50 bg-muted/40 text-muted-foreground",
                               )}
                             >
                               {computer.serviceRunning
@@ -480,21 +478,21 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                                 : "Sin respuesta"}
                             </Badge>
                             {computer.lastServiceCheck && (
-                              <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                              <span className="text-[10px] text-muted-foreground">
                                 {formatTime(computer.lastServiceCheck)}
                               </span>
                             )}
                           </div>
                         </TableCell>
-                        <TableCell className="text-slate-600 dark:text-slate-200">
+                        <TableCell className="text-muted-foreground">
                           {computer.lastSeen
                             ? formatDateTime(computer.lastSeen)
                             : "Nunca"}
                         </TableCell>
-                        <TableCell className="text-slate-600 dark:text-slate-200">
+                        <TableCell className="text-muted-foreground">
                           {formatDateTime(computer.createdAt)}
                         </TableCell>
-                        <TableCell className="text-slate-600 dark:text-slate-200">
+                        <TableCell className="text-muted-foreground">
                           {(() => {
                             const canViewUsb =
                               computer.isActive && computer.serviceRunning;
@@ -509,8 +507,8 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                                 className={cn(
                                   "group relative h-8 gap-1.5 rounded-full px-3 text-xs font-semibold transition-all duration-200",
                                   canViewUsb
-                                    ? "border border-emerald-200/60 bg-emerald-500/10 text-emerald-700 shadow-sm hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-500/20 hover:shadow-md dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-100"
-                                    : "cursor-not-allowed border border-slate-200/60 bg-slate-100/50 text-slate-400 dark:border-white/5 dark:bg-white/5 dark:text-slate-500"
+                                    ? "border border-primary/20 bg-primary/10 text-primary shadow-sm hover:-translate-y-0.5 hover:border-primary/40 hover:bg-primary/20 hover:shadow-md dark:border-primary/30 dark:bg-primary/15 dark:text-primary"
+                                    : "cursor-not-allowed border border-border/30 bg-muted/20 text-muted-foreground/40",
                                 )}
                               >
                                 <Usb className="h-3.5 w-3.5 transition-transform group-hover:scale-110" />
@@ -535,7 +533,7 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                                   "group relative h-8 gap-1.5 rounded-full px-3 text-xs font-semibold transition-all duration-200",
                                   deletingId === computer.id
                                     ? "cursor-wait border border-rose-300/60 bg-rose-500/20 text-rose-50 dark:border-rose-400/40 dark:bg-rose-500/25 dark:text-rose-100"
-                                    : "border border-rose-200/60 bg-rose-500/10 text-rose-700 shadow-sm hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-500/20 hover:shadow-md dark:border-rose-400/40 dark:bg-rose-500/15 dark:text-rose-100"
+                                    : "border border-rose-200/60 bg-rose-500/10 text-rose-700 shadow-sm hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-500/20 hover:shadow-md dark:border-rose-400/40 dark:bg-rose-500/15 dark:text-rose-100",
                                 )}
                               >
                                 {deletingId === computer.id ? (
@@ -556,16 +554,19 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                 </Table>
                 <ScrollBar orientation="horizontal" />
               </ScrollArea>
+              </div>
 
-              <div className="mt-4 w-full">
-                <DashboardPagination
-                  page={page}
-                  pageSize={pageSize}
-                  totalItems={computers.length}
-                  onPageChange={handlePageChange}
-                  onPageSizeChange={handlePageSizeChange}
-                  label="computadoras"
-                />
+                <div className="shrink-0 border-t border-border/40 bg-card/50 p-4">
+                  {/* Static / Floating Pagination */}
+                  <DashboardPagination
+                    page={page}
+                    pageSize={pageSize}
+                    totalItems={computers.length}
+                    onPageChange={handlePageChange}
+                    onPageSizeChange={handlePageSizeChange}
+                    label="computadoras"
+                  />
+                </div>
               </div>
             </div>
           )}
@@ -606,7 +607,6 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
       </AlertDialog>
 
       {selectedComputer && (
-        // Sheet para ver dispositivos USB del equipo seleccionado
         <USBDevicesSheet
           computer={selectedComputer}
           open={Boolean(selectedComputer)}

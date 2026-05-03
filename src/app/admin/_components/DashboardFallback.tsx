@@ -1,13 +1,22 @@
 "use client";
 
+import {
+  DashboardSkeleton,
+  TablePageSkeleton,
+} from "@/components/shared/DashboardSkeleton";
+
 interface DashboardFallbackProps {
   label: string;
+  variant?: "dashboard" | "table";
 }
 
-export function DashboardFallback({ label }: DashboardFallbackProps) {
+export function DashboardFallback({
+  label,
+  variant = "dashboard",
+}: DashboardFallbackProps) {
   return (
-    <div className="flex min-h-[200px] items-center justify-center rounded-2xl border border-slate-200/60 bg-white/60 text-sm text-slate-500 shadow-sm dark:border-slate-800/60 dark:bg-slate-900/60 dark:text-slate-300">
-      {label}
+    <div aria-label={label}>
+      {variant === "table" ? <TablePageSkeleton /> : <DashboardSkeleton />}
     </div>
   );
 }

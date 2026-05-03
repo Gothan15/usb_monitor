@@ -11,17 +11,15 @@ interface UserWelcomeCardProps {
 export function UserWelcomeCard({ username }: UserWelcomeCardProps) {
   return (
     <section>
-      <Card className="border-slate-200/80 bg-gradient-to-br from-white via-white to-slate-50 shadow-sm dark:border-slate-800/80 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+      <Card className="border-border/60 bg-card/80 shadow-sm backdrop-blur-xl">
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle className="flex items-center gap-3 text-lg text-slate-800 dark:text-slate-100">
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-900 text-white shadow-md dark:bg-slate-700">
+          <CardTitle className="flex items-center gap-3 text-lg text-foreground">
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md">
               <UserIcon className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-sm text-slate-500 dark:text-slate-300">
-                Bienvenido
-              </p>
-              <p className="text-xl font-semibold text-slate-900 dark:text-slate-100">
+              <p className="text-sm text-muted-foreground">Bienvenido</p>
+              <p className="text-xl font-semibold text-foreground">
                 {username}
               </p>
             </div>
@@ -35,17 +33,17 @@ export function UserWelcomeCard({ username }: UserWelcomeCardProps) {
             </Badge>
           </div>
         </CardHeader>
-        <CardContent className="grid gap-4 text-sm text-slate-600 dark:text-slate-300 md:grid-cols-3">
-          <div className="flex items-center gap-2 rounded-lg border border-slate-100 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/60">
-            <ShieldCheck className="h-4 w-4 text-slate-500 dark:text-slate-300" />
+        <CardContent className="grid gap-4 text-sm text-muted-foreground md:grid-cols-3">
+          <div className="flex items-center gap-2 rounded-lg border border-border/40 bg-muted/30 p-3">
+            <ShieldCheck className="h-4 w-4 text-muted-foreground" />
             <span>Acceso restringido a su equipo asignado.</span>
           </div>
-          <div className="flex items-center gap-2 rounded-lg border border-slate-100 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/60">
-            <Activity className="h-4 w-4 text-slate-500 dark:text-slate-300" />
+          <div className="flex items-center gap-2 rounded-lg border border-border/40 bg-muted/30 p-3">
+            <Activity className="h-4 w-4 text-muted-foreground" />
             <span>Las conexiones USB se actualizan automáticamente.</span>
           </div>
-          <div className="flex items-center gap-2 rounded-lg border border-slate-100 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/60">
-            <Key className="h-4 w-4 text-slate-500 dark:text-slate-300" />
+          <div className="flex items-center gap-2 rounded-lg border border-border/40 bg-muted/30 p-3">
+            <Key className="h-4 w-4 text-muted-foreground" />
             <span>Proteja su API key y úsela solo en clientes oficiales.</span>
           </div>
         </CardContent>

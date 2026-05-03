@@ -14,7 +14,7 @@ import {
 function unauthorized() {
   return NextResponse.json(
     { ok: false, error: "No autorizado" },
-    { status: 401 }
+    { status: 401 },
   );
 }
 
@@ -74,7 +74,7 @@ export async function GET(req: NextRequest) {
     console.error("Error listing users:", error);
     return NextResponse.json(
       { ok: false, error: "Error interno del servidor" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -130,7 +130,7 @@ export async function POST(req: NextRequest) {
         username,
         passwordHash,
         apiKey,
-        role: "user",
+        role: "USER",
         computerId,
       },
       include: {
@@ -151,14 +151,14 @@ export async function POST(req: NextRequest) {
     ) {
       return NextResponse.json(
         { ok: false, error: "El usuario ya existe" },
-        { status: 409 }
+        { status: 409 },
       );
     }
 
     console.error("Error creating user:", error);
     return NextResponse.json(
       { ok: false, error: "Error interno del servidor" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

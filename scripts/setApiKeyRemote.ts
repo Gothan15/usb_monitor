@@ -1,5 +1,5 @@
 import { spawn } from "child_process";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, Role } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
@@ -25,7 +25,7 @@ async function setApiKeyRemotely(computerName: string, config?: RemoteConfig) {
     }
 
     const agentUser =
-      computer.users.find((user) => user.role === "user") || computer.users[0];
+      computer.users.find((user) => user.role === Role.USER) || computer.users[0];
 
     const apiKey = agentUser.apiKey;
     const targetHost = config?.hostname || computer.ipAddress;

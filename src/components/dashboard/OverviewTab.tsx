@@ -1,8 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatsCards } from "@/components/dashboard/StatsCards";
+import { GlassPanel } from "@/components/ui/glass-panel";
+import { Badge } from "@/components/ui/badge";
 import {
   type USBEvent,
   type Computer,
@@ -10,25 +12,25 @@ import {
   formatDateTime,
   formatHour,
 } from "@/components/dashboard/types";
-import {
-  Activity,
-  AlertTriangle,
-  Clock3,
-  HardDrive,
-  ShieldCheck,
-} from "lucide-react";
+import { Activity, AlertTriangle, HardDrive, ShieldCheck } from "lucide-react";
 import {
   ResponsiveContainer,
   AreaChart,
   Area,
+  BarChart,
+  Bar,
   Tooltip as ChartTooltip,
   XAxis,
   YAxis,
   CartesianGrid,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
 } from "recharts";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
 import { getCurrentDate, getCurrentTimestamp } from "@/lib/time";
+import { ActivityFeed } from "@/components/shared/ActivityFeed";
 
 interface OverviewTabProps {
   events: USBEvent[];
@@ -63,7 +65,7 @@ export function OverviewTab({
   loading,
 }: OverviewTabProps) {
   const activeComputers = computers.filter(
-    (computer) => computer.isActive
+    (computer) => computer.isActive,
   ).length;
   const totalEvents = events.length;
   const recentEvents = events.filter((event) => {
@@ -77,7 +79,7 @@ export function OverviewTab({
     const now = getCurrentDate();
     const buckets = new Array(hours).fill(0).map((_, index) => {
       const bucketDate = new Date(
-        now.getTime() - (hours - index - 1) * 60 * 60 * 1000
+        now.getTime() - (hours - index - 1) * 60 * 60 * 1000,
       );
       const label = formatHour(bucketDate);
       return { label, allowed: 0, blocked: 0, total: 0 };
@@ -87,7 +89,7 @@ export function OverviewTab({
     const whitelistSerials = new Set(
       whitelist
         .map((w) => w.serialNumber?.trim().toLowerCase())
-        .filter((s): s is string => Boolean(s))
+        .filter((s): s is string => Boolean(s)),
     );
 
     events.forEach((event) => {
@@ -118,15 +120,15 @@ export function OverviewTab({
       [...events]
         .filter((event) => classifyEventTone(event.event) !== "neutral")
         .slice(0, 6),
-    [events]
+    [events],
   );
 
   const serviceSummary = useMemo(() => {
     const running = computers.filter(
-      (computer) => computer.serviceRunning
+      (computer) => computer.serviceRunning,
     ).length;
     const responding = computers.filter(
-      (computer) => computer.lastServiceCheck
+      (computer) => computer.lastServiceCheck,
     ).length;
     const offline = computers.length - running;
     return {
@@ -139,16 +141,70 @@ export function OverviewTab({
 
   const whitelistStats = useMemo(() => {
     const withNotes = whitelist.filter((item) =>
-      Boolean(item.notes?.trim())
+      Boolean(item.notes?.trim()),
     ).length;
     const withLabel = whitelist.filter((item) =>
-      Boolean(item.label?.trim())
+      Boolean(item.label?.trim()),
     ).length;
     return { total: whitelist.length, withNotes, withLabel };
   }, [whitelist]);
 
+  /* ── Event Distribution (pie data) ── */
+  const eventDistribution = useMemo(() => {
+    let allowed = 0;
+    let blocked = 0;
+    let neutral = 0;
+
+    const whitelistSerials = new Set(
+      whitelist
+        .map((w) => w.serialNumber?.trim().toLowerCase())
+        .filter((s): s is string => Boolean(s)),
+    );
+
+    events.forEach((ev) => {
+      const tone = classifyEventTone(ev.event);
+      if (tone === "blocked") blocked++;
+      else if (tone === "allowed") allowed++;
+      else {
+        const isWl =
+          Boolean(ev.whitelisted) ||
+          (ev.serialNumber
+            ? whitelistSerials.has(ev.serialNumber.trim().toLowerCase())
+            : false);
+        if (isWl) allowed++;
+        else neutral++;
+      }
+    });
+
+    return [
+      { name: "Autorizados", value: allowed, color: "oklch(0.72 0.17 160)" },
+      { name: "Bloqueados", value: blocked, color: "oklch(0.7 0.18 30)" },
+      { name: "Otros", value: neutral, color: "oklch(0.55 0.02 250)" },
+    ].filter((d) => d.value > 0);
+  }, [events, whitelist]);
+
+  /* ── Top Devices (bar data) ── */
+  const topDevices = useMemo(() => {
+    const counts = new Map<string, number>();
+    events.forEach((ev) => {
+      const serial = ev.serialNumber?.trim();
+      if (!serial) return;
+      counts.set(serial, (counts.get(serial) ?? 0) + 1);
+    });
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([serial, count]) => ({
+        serial: serial.length > 12 ? serial.slice(0, 12) + "…" : serial,
+        count,
+      }));
+  }, [events]);
+
+  /* ── Chart type toggle ── */
+  const [chartType, setChartType] = useState<"area" | "bar">("area");
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <StatsCards
         activeComputers={activeComputers}
         totalComputers={computers.length}
@@ -158,260 +214,506 @@ export function OverviewTab({
       />
 
       <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
-        <Card className="overflow-hidden rounded-3xl border border-slate-200/70 bg-white/70 shadow-xl dark:border-slate-800 dark:bg-slate-900/60">
-          <CardHeader className="flex items-center justify-between gap-4 md:flex-row">
+        {/* ── Event Trend Chart ── */}
+        <GlassPanel
+          variant="elevated"
+          padding="none"
+          className="overflow-hidden"
+        >
+          <div className="flex items-center justify-between gap-4 border-b border-border/50 px-5 py-4">
             <div>
-              <CardTitle className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+              <h3 className="text-sm font-semibold text-foreground">
                 Tendencia de eventos (12h)
-              </CardTitle>
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                Observa el pulso de autorizaciones y bloqueos en tiempo real.
+              </h3>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Autorizaciones vs bloqueos en tiempo real
               </p>
             </div>
-            <Badge className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-200">
-              <Activity className="mr-2 h-3.5 w-3.5" />
-              {totalEvents} total
-            </Badge>
-          </CardHeader>
-          <CardContent className="h-[280px] w-full">
+            <div className="flex items-center gap-2">
+              {/* Chart type toggle */}
+              <div className="flex items-center rounded-lg border border-border/50 bg-muted/30 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setChartType("area")}
+                  className={cn(
+                    "rounded-md px-2 py-1 text-[10px] font-medium transition-all",
+                    chartType === "area"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  Área
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChartType("bar")}
+                  className={cn(
+                    "rounded-md px-2 py-1 text-[10px] font-medium transition-all",
+                    chartType === "bar"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  Barras
+                </button>
+              </div>
+              <Badge variant="outline" className="gap-1.5 text-xs">
+                <Activity className="size-3" />
+                {totalEvents} total
+              </Badge>
+            </div>
+          </div>
+          <div className="h-[280px] w-full px-2 pb-2">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart
-                data={trendData}
-                margin={{ left: 0, right: 0, top: 20, bottom: 10 }}
-              >
-                <defs>
-                  <linearGradient id="allowed" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.35} />
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="blocked" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="5%" stopColor="#f97316" stopOpacity={0.4} />
-                    <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke="rgba(15,23,42,0.08)"
-                />
-                <XAxis
-                  dataKey="label"
-                  stroke="rgba(15,23,42,0.35)"
-                  tickLine={false}
-                  axisLine={false}
-                  fontSize={12}
-                />
-                <YAxis
-                  stroke="rgba(15,23,42,0.35)"
-                  tickLine={false}
-                  axisLine={false}
-                  fontSize={12}
-                  allowDecimals={false}
-                />
-                <ChartTooltip
-                  cursor={{
-                    stroke: "rgba(148,163,184,0.3)",
-                    strokeDasharray: 4,
-                  }}
-                  contentStyle={{
-                    background: "rgba(15,23,42,0.9)",
-                    border: "1px solid rgba(148,163,184,0.3)",
-                    borderRadius: 16,
-                    color: "white",
-                  }}
-                  formatter={(value: number, name) => [
-                    value,
-                    name === "allowed"
-                      ? "Whitelisted"
-                      : name === "blocked"
-                      ? "Denegados/Apagado"
-                      : "Total",
-                  ]}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="allowed"
-                  stroke="#10b981"
-                  fill="url(#allowed)"
-                  strokeWidth={2}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="blocked"
-                  stroke="#f97316"
-                  fill="url(#blocked)"
-                  strokeWidth={2}
-                />
-              </AreaChart>
+              {chartType === "area" ? (
+                <AreaChart
+                  data={trendData}
+                  margin={{ left: 0, right: 0, top: 16, bottom: 4 }}
+                >
+                  <defs>
+                    <linearGradient id="allowed" x1="0" x2="0" y1="0" y2="1">
+                      <stop
+                        offset="5%"
+                        stopColor="oklch(0.72 0.17 160)"
+                        stopOpacity={0.3}
+                      />
+                      <stop
+                        offset="95%"
+                        stopColor="oklch(0.72 0.17 160)"
+                        stopOpacity={0}
+                      />
+                    </linearGradient>
+                    <linearGradient id="blocked" x1="0" x2="0" y1="0" y2="1">
+                      <stop
+                        offset="5%"
+                        stopColor="oklch(0.7 0.18 30)"
+                        stopOpacity={0.35}
+                      />
+                      <stop
+                        offset="95%"
+                        stopColor="oklch(0.7 0.18 30)"
+                        stopOpacity={0}
+                      />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="var(--color-border)"
+                    strokeOpacity={0.4}
+                  />
+                  <XAxis
+                    dataKey="label"
+                    stroke="var(--color-muted-foreground)"
+                    tickLine={false}
+                    axisLine={false}
+                    fontSize={11}
+                    className="font-mono"
+                  />
+                  <YAxis
+                    stroke="var(--color-muted-foreground)"
+                    tickLine={false}
+                    axisLine={false}
+                    fontSize={11}
+                    allowDecimals={false}
+                    className="font-mono"
+                  />
+                  <ChartTooltip
+                    cursor={{
+                      stroke: "var(--color-border)",
+                      strokeDasharray: 4,
+                    }}
+                    contentStyle={{
+                      background: "var(--color-popover)",
+                      border: "1px solid var(--color-border)",
+                      borderRadius: 12,
+                      color: "var(--color-popover-foreground)",
+                      fontSize: 12,
+                      backdropFilter: "blur(12px)",
+                    }}
+                    formatter={(value: number, name) => [
+                      value,
+                      name === "allowed"
+                        ? "Autorizados"
+                        : name === "blocked"
+                          ? "Denegados"
+                          : "Total",
+                    ]}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="allowed"
+                    stroke="oklch(0.72 0.17 160)"
+                    fill="url(#allowed)"
+                    strokeWidth={2}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="blocked"
+                    stroke="oklch(0.7 0.18 30)"
+                    fill="url(#blocked)"
+                    strokeWidth={2}
+                  />
+                </AreaChart>
+              ) : (
+                <BarChart
+                  data={trendData}
+                  margin={{ left: 0, right: 0, top: 16, bottom: 4 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="var(--color-border)"
+                    strokeOpacity={0.4}
+                  />
+                  <XAxis
+                    dataKey="label"
+                    stroke="var(--color-muted-foreground)"
+                    tickLine={false}
+                    axisLine={false}
+                    fontSize={11}
+                    className="font-mono"
+                  />
+                  <YAxis
+                    stroke="var(--color-muted-foreground)"
+                    tickLine={false}
+                    axisLine={false}
+                    fontSize={11}
+                    allowDecimals={false}
+                    className="font-mono"
+                  />
+                  <ChartTooltip
+                    contentStyle={{
+                      background: "var(--color-popover)",
+                      border: "1px solid var(--color-border)",
+                      borderRadius: 12,
+                      color: "var(--color-popover-foreground)",
+                      fontSize: 12,
+                      backdropFilter: "blur(12px)",
+                    }}
+                    formatter={(value: number, name) => [
+                      value,
+                      name === "allowed"
+                        ? "Autorizados"
+                        : name === "blocked"
+                          ? "Denegados"
+                          : "Total",
+                    ]}
+                  />
+                  <Bar
+                    dataKey="allowed"
+                    fill="oklch(0.72 0.17 160)"
+                    radius={[4, 4, 0, 0]}
+                  />
+                  <Bar
+                    dataKey="blocked"
+                    fill="oklch(0.7 0.18 30)"
+                    radius={[4, 4, 0, 0]}
+                  />
+                </BarChart>
+              )}
             </ResponsiveContainer>
-          </CardContent>
-        </Card>
+          </div>
+        </GlassPanel>
 
-        <Card className="rounded-3xl border border-slate-200/70 bg-white/70 shadow-xl dark:border-slate-800 dark:bg-slate-900/60">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg font-semibold text-slate-800 dark:text-slate-100">
-              <AlertTriangle className="h-4 w-4 text-amber-500" />
+        {/* ── Recent Alerts ── */}
+        <GlassPanel variant="elevated" padding="none">
+          <div className="flex items-center gap-2 border-b border-border/50 px-5 py-4">
+            <AlertTriangle className="size-4 text-[oklch(0.60_0.12_85)]" />
+            <h3 className="text-sm font-semibold text-foreground">
               Alertas recientes
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+            </h3>
+          </div>
+          <div className="max-h-[320px] overflow-y-auto scrollbar-thin">
             {loading ? (
-              <div className="h-[180px] animate-pulse rounded-2xl bg-slate-200/40 dark:bg-slate-800/40" />
+              <div className="space-y-3 p-4">
+                {[1, 2, 3].map((i) => (
+                  <div
+                    key={i}
+                    className="h-16 animate-pulse rounded-lg bg-muted/40"
+                  />
+                ))}
+              </div>
             ) : latestAlerts.length === 0 ? (
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                No se detectaron alertas críticas en las últimas horas.
-              </p>
+              <div className="flex flex-col items-center gap-2 py-12 text-muted-foreground">
+                <ShieldCheck className="size-8 opacity-30" />
+                <p className="text-xs">Sin alertas recientes</p>
+              </div>
             ) : (
-              latestAlerts.map((event) => {
-                const tone = classifyEventTone(event.event);
-                const toneClasses = cn(
-                  "rounded-2xl border px-4 py-3 shadow-sm transition",
-                  tone === "blocked" &&
-                    "border-rose-300/40 bg-rose-500/10 text-rose-200",
-                  tone === "allowed" &&
-                    "border-emerald-300/40 bg-emerald-500/10 text-emerald-200",
-                  tone === "neutral" &&
-                    "border-slate-300/40 bg-slate-100/70 text-slate-600"
-                );
-
-                return (
-                  <div key={event.id} className={toneClasses}>
-                    <p className="text-sm font-medium leading-tight">
-                      {event.pcName} · {event.pcUser}
-                    </p>
-                    <p className="mt-1 text-xs opacity-80">{event.event}</p>
-                    <p className="mt-2 text-xs opacity-60">
-                      {formatDateTime(event.createdAt)}
-                    </p>
-                  </div>
-                );
-              })
+              <div className="divide-y divide-border/30">
+                {latestAlerts.map((event) => {
+                  const tone = classifyEventTone(event.event);
+                  return (
+                    <div
+                      key={event.id}
+                      className={cn(
+                        "px-4 py-3 transition-colors hover:bg-muted/30",
+                        tone === "blocked" && "border-l-2 border-l-rose-500/60",
+                        tone === "allowed" &&
+                          "border-l-2 border-l-[oklch(0.55_0.12_160/0.60)]",
+                      )}
+                    >
+                      <p className="text-xs font-medium text-foreground">
+                        {event.pcName} · {event.pcUser}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground truncate">
+                        {event.event}
+                      </p>
+                      <p className="mt-1 text-[10px] font-mono text-muted-foreground/60">
+                        {formatDateTime(event.createdAt)}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </GlassPanel>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
-        <Card className="rounded-3xl border border-slate-200/70 bg-white/70 shadow-xl dark:border-slate-800 dark:bg-slate-900/60">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg font-semibold text-slate-800 dark:text-slate-100">
-              <ShieldCheck className="h-4 w-4 text-emerald-500" />
+        {/* ── Agent Health ── */}
+        <GlassPanel variant="elevated" padding="none">
+          <div className="border-b border-border/50 px-5 py-4">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+              <ShieldCheck className="size-4 text-[oklch(0.55_0.12_160)]" />
               Salud de agentes y servicios
-            </CardTitle>
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              Conoce la disponibilidad de los agentes USBMonitor en la red
-              corporativa.
+            </h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Disponibilidad de los agentes USBMonitor en la red
             </p>
-          </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-2">
+          </div>
+          <div className="grid gap-3 p-4 md:grid-cols-2">
             {[
               {
-                label: "Servicios en ejecución",
+                label: "En ejecución",
                 value: serviceSummary.running,
                 total: serviceSummary.total,
-                tone: "emerald" as const,
+                color: "bg-[oklch(0.55_0.12_160)]",
               },
               {
                 label: "Con pulso reciente",
                 value: serviceSummary.responding,
                 total: serviceSummary.total,
-                tone: "sky" as const,
+                color: "bg-[oklch(0.65_0.08_250)]",
               },
               {
-                label: "Hosts en observación",
+                label: "En observación",
                 value: serviceSummary.offline,
                 total: serviceSummary.total,
-                tone: "amber" as const,
+                color: "bg-[oklch(0.60_0.12_85)]",
               },
               {
                 label: "Inventario total",
                 value: serviceSummary.total,
                 total: serviceSummary.total,
-                tone: "slate" as const,
+                color: "bg-muted-foreground",
               },
             ].map((item) => {
-              const percentage = item.total
+              const pct = item.total
                 ? Math.round((item.value / item.total) * 100)
                 : 0;
-              const colorMap: Record<string, string> = {
-                emerald: "bg-emerald-500",
-                sky: "bg-sky-500",
-                amber: "bg-amber-500",
-                slate: "bg-slate-500",
-              };
-
               return (
                 <div
                   key={item.label}
-                  className="rounded-2xl border border-slate-200/70 bg-white/70 p-4 shadow-sm dark:border-slate-700/80 dark:bg-slate-900/70"
+                  className="rounded-lg border border-border/40 bg-card/50 p-3.5"
                 >
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                     {item.label}
                   </p>
-                  <div className="mt-3 flex items-end justify-between">
-                    <span className="text-3xl font-semibold text-slate-800 dark:text-white">
+                  <div className="mt-2 flex items-end justify-between">
+                    <span className="text-2xl font-bold tabular-nums text-foreground">
                       {item.value}
                     </span>
-                    <span className="text-xs text-slate-500 dark:text-slate-400">
-                      {percentage}%
+                    <span className="text-[10px] font-mono text-muted-foreground">
+                      {pct}%
                     </span>
                   </div>
-                  <div className="mt-3 h-2 w-full rounded-full bg-slate-200/70 dark:bg-slate-800/80">
+                  <div className="mt-2 h-1.5 w-full rounded-full bg-muted/60">
                     <div
-                      className={cn("h-full rounded-full", colorMap[item.tone])}
-                      style={{ width: `${Math.min(percentage, 100)}%` }}
+                      className={cn(
+                        "h-full rounded-full transition-all duration-500",
+                        item.color,
+                      )}
+                      style={{ width: `${Math.min(pct, 100)}%` }}
                     />
                   </div>
                 </div>
               );
             })}
-          </CardContent>
-        </Card>
+          </div>
+        </GlassPanel>
 
-        <Card className="rounded-3xl border border-slate-200/70 bg-white/70 shadow-xl dark:border-slate-800 dark:bg-slate-900/60">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg font-semibold text-slate-800 dark:text-slate-100">
-              <HardDrive className="h-4 w-4 text-slate-500" />
-              Resumen de whitelist
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4 text-sm text-slate-600 dark:text-slate-300">
-            <div className="flex items-center justify-between rounded-2xl border border-slate-200/70 bg-white/70 px-4 py-3 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/70">
+        {/* ── Whitelist Summary ── */}
+        <GlassPanel variant="elevated" padding="none">
+          <div className="flex items-center gap-2 border-b border-border/50 px-5 py-4">
+            <HardDrive className="size-4 text-muted-foreground" />
+            <h3 className="text-sm font-semibold text-foreground">
+              Resumen de lista blanca
+            </h3>
+          </div>
+          <div className="space-y-3 p-4 text-sm">
+            <div className="flex items-center justify-between rounded-lg border border-border/40 bg-card/50 px-4 py-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                   Seriales autorizados
                 </p>
-                <p className="text-2xl font-semibold text-slate-800 dark:text-white">
+                <p className="mt-1 text-xl font-bold tabular-nums text-foreground">
                   {whitelistStats.total}
                 </p>
               </div>
-              <Badge
-                variant="secondary"
-                className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-              >
+              <Badge variant="outline" className="text-[10px]">
                 Activo
               </Badge>
             </div>
-            <div className="rounded-2xl border border-slate-200/70 bg-white/70 px-4 py-3 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/70">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
+            <div className="rounded-lg border border-border/40 bg-card/50 px-4 py-3">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                 Documentados
               </p>
-              <p className="mt-1">
-                {whitelistStats.withNotes} dispositivos cuentan con notas
-                operativas y {whitelistStats.withLabel} tienen un alias
-                asignado.
+              <p className="mt-1 text-xs text-muted-foreground">
+                {whitelistStats.withNotes} con notas ·{" "}
+                {whitelistStats.withLabel} con alias
               </p>
             </div>
-            <div className="rounded-2xl border border-slate-200/70 bg-white/70 px-4 py-3 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/70">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
+            <div className="rounded-lg border border-border/40 bg-card/50 px-4 py-3">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                 Recomendación
               </p>
-              <p className="mt-1">
-                Mantén la whitelist sincronizada en menos de 15 minutos tras
-                cambios críticos para asegurar el cumplimiento normativo.
+              <p className="mt-1 text-xs text-muted-foreground">
+                Sincroniza la lista blanca en menos de 15 min tras cambios
+                críticos.
               </p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </GlassPanel>
+      </div>
+
+      {/* ── Row 3: Distribution · Top Devices · Live Feed ── */}
+      <div className="grid gap-6 xl:grid-cols-3">
+        {/* ── Event Distribution Pie ── */}
+        <GlassPanel variant="elevated" padding="none">
+          <div className="border-b border-border/50 px-5 py-4">
+            <h3 className="text-sm font-semibold text-foreground">
+              Distribución de eventos
+            </h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Clasificación general
+            </p>
+          </div>
+          <div className="flex h-[240px] items-center justify-center px-2">
+            {eventDistribution.length === 0 ? (
+              <p className="text-xs text-muted-foreground">Sin datos</p>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={eventDistribution}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={80}
+                    paddingAngle={3}
+                    strokeWidth={0}
+                  >
+                    {eventDistribution.map((entry) => (
+                      <Cell key={entry.name} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <ChartTooltip
+                    contentStyle={{
+                      background: "var(--color-popover)",
+                      border: "1px solid var(--color-border)",
+                      borderRadius: 12,
+                      color: "var(--color-popover-foreground)",
+                      fontSize: 12,
+                      backdropFilter: "blur(12px)",
+                    }}
+                  />
+                  <Legend
+                    verticalAlign="bottom"
+                    height={36}
+                    formatter={(value: string) => (
+                      <span className="text-xs text-muted-foreground">
+                        {value}
+                      </span>
+                    )}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </GlassPanel>
+
+        {/* ── Top Devices Bar ── */}
+        <GlassPanel variant="elevated" padding="none">
+          <div className="border-b border-border/50 px-5 py-4">
+            <h3 className="text-sm font-semibold text-foreground">
+              Dispositivos más activos
+            </h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Por cantidad de eventos
+            </p>
+          </div>
+          <div className="flex h-[240px] items-center justify-center px-2 pb-2">
+            {topDevices.length === 0 ? (
+              <p className="text-xs text-muted-foreground">Sin datos</p>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={topDevices}
+                  layout="vertical"
+                  margin={{ left: 4, right: 16, top: 8, bottom: 4 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="var(--color-border)"
+                    strokeOpacity={0.3}
+                    horizontal={false}
+                  />
+                  <XAxis
+                    type="number"
+                    stroke="var(--color-muted-foreground)"
+                    tickLine={false}
+                    axisLine={false}
+                    fontSize={10}
+                    allowDecimals={false}
+                    className="font-mono"
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="serial"
+                    stroke="var(--color-muted-foreground)"
+                    tickLine={false}
+                    axisLine={false}
+                    fontSize={10}
+                    width={90}
+                    className="font-mono"
+                  />
+                  <ChartTooltip
+                    contentStyle={{
+                      background: "var(--color-popover)",
+                      border: "1px solid var(--color-border)",
+                      borderRadius: 12,
+                      color: "var(--color-popover-foreground)",
+                      fontSize: 12,
+                      backdropFilter: "blur(12px)",
+                    }}
+                    formatter={(value: number) => [value, "Eventos"]}
+                  />
+                  <Bar
+                    dataKey="count"
+                    fill="var(--color-primary)"
+                    radius={[0, 4, 4, 0]}
+                    barSize={14}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </GlassPanel>
+
+        {/* ── Live Activity Feed ── */}
+        <ActivityFeed maxItems={15} mode="compact" className="max-h-[340px]" />
       </div>
     </div>
   );

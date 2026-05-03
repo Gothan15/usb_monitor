@@ -20,6 +20,7 @@ import {
   type WhitelistEntry,
   formatTime,
 } from "@/components/dashboard/types";
+import { useLiveSyncStore } from "@/store/useLiveSyncStore";
 
 export type ViewKey =
   | "overview"
@@ -94,6 +95,7 @@ export function AdminDashboardProvider({
   const router = useRouter();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { isLiveSyncEnabled } = useLiveSyncStore();
 
   const [usersCount, setUsersCount] = useState<number | null>(null);
   const [checkingRole, setCheckingRole] = useState(true);
@@ -148,7 +150,7 @@ export function AdminDashboardProvider({
     queryFn: () => fetchJson<USBEvent[]>("/api/usb-event"),
     enabled: !checkingRole && needs.events,
     staleTime: 30_000,
-    refetchInterval: needs.events ? 60_000 : false,
+    refetchInterval: needs.events && isLiveSyncEnabled ? 60_000 : false,
   });
 
   const computersQuery = useQuery<Computer[]>({
@@ -156,7 +158,7 @@ export function AdminDashboardProvider({
     queryFn: () => fetchJson<Computer[]>("/api/computers"),
     enabled: !checkingRole && needs.computers,
     staleTime: 30_000,
-    refetchInterval: needs.computers ? 60_000 : false,
+    refetchInterval: needs.computers && isLiveSyncEnabled ? 60_000 : false,
   });
 
   const whitelistQuery = useQuery<WhitelistEntry[]>({
@@ -175,7 +177,7 @@ export function AdminDashboardProvider({
     },
     enabled: !checkingRole && needs.whitelist,
     staleTime: 30_000,
-    refetchInterval: needs.whitelist ? 120_000 : false,
+    refetchInterval: needs.whitelist && isLiveSyncEnabled ? 120_000 : false,
   });
 
   const usersSummaryQuery = useQuery<number>({
@@ -195,7 +197,7 @@ export function AdminDashboardProvider({
     },
     enabled: !checkingRole && needs.users,
     staleTime: 60_000,
-    refetchInterval: needs.users ? 120_000 : false,
+    refetchInterval: needs.users && isLiveSyncEnabled ? 120_000 : false,
   });
 
   useEffect(() => {

@@ -13,11 +13,13 @@ type ButtonProps = ComponentProps<typeof Button>;
 interface LogoutButtonProps extends Omit<ButtonProps, "onClick" | "children"> {
   label?: string;
   pendingLabel?: string;
+  iconOnly?: boolean;
 }
 
 export const LogoutButton = ({
   label = "Cerrar sesión",
   pendingLabel = "Saliendo...",
+  iconOnly = false,
   variant = "outline",
   size = "sm",
   className,
@@ -33,7 +35,7 @@ export const LogoutButton = ({
       const csrfToken = getCsrfTokenFromDocument();
       if (!csrfToken) {
         throw new Error(
-          "No se detectó el token CSRF. Vuelve a iniciar sesión antes de cerrar la sesión."
+          "No se detectó el token CSRF. Vuelve a iniciar sesión antes de cerrar la sesión.",
         );
       }
       const res = await fetch("/api/auth/logout", {
@@ -46,7 +48,7 @@ export const LogoutButton = ({
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         throw new Error(
-          data?.error || `Error HTTP ${res.status} al cerrar sesión.`
+          data?.error || `Error HTTP ${res.status} al cerrar sesión.`,
         );
       }
       try {
@@ -75,18 +77,20 @@ export const LogoutButton = ({
       size={size}
       onClick={handleLogout}
       disabled={loading}
+      aria-label={loading ? pendingLabel : label}
       className={cn(
-        "inline-flex items-center gap-2 border-slate-200 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800",
-        className
+        "inline-flex items-center border-border/60 text-sm font-semibold text-muted-foreground transition-colors hover:bg-muted/50",
+        iconOnly ? "gap-0" : "gap-2",
+        className,
       )}
       {...buttonProps}
     >
       {loading ? (
         <Spinner size={16} />
       ) : (
-        <LogOut className="h-4 w-4 text-slate-500 dark:text-slate-300" />
+        <LogOut className="h-4 w-4 text-muted-foreground" />
       )}
-      {loading ? pendingLabel : label}
+      {!iconOnly && (loading ? pendingLabel : label)}
     </Button>
   );
 };

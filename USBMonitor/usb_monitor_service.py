@@ -260,47 +260,47 @@ def get_encryption_key() -> bytes:
     return key
 
 
-def encrypt_api_key(api_key: str) -> str:
-    """Encripta una API key para almacenamiento seguro."""
+def encrypt_value(value: str) -> str:
+    """Encripta un valor para almacenamiento seguro."""
     if not CRYPTOGRAPHY_AVAILABLE:
-        LOGGER.warning("Cryptography no disponible, la API key no será encriptada")
-        return api_key
+        LOGGER.warning("Cryptography no disponible, el valor no será encriptado")
+        return value
     
     try:
         key = get_encryption_key()
         fernet = Fernet(key)
-        encrypted = fernet.encrypt(api_key.encode('utf-8'))
+        encrypted = fernet.encrypt(value.encode('utf-8'))
         # Agregar un prefijo para identificar que está encriptada
         return f"ENC:{encrypted.decode('utf-8')}"
     except Exception as exc:
-        LOGGER.error("Error al encriptar API key: %s", exc)
-        return api_key
+        LOGGER.error("Error al encriptar valor: %s", exc)
+        return value
 
 
-def decrypt_api_key(encrypted_api_key: str) -> str:
-    """Desencripta una API key almacenada."""
-    if not encrypted_api_key:
+def decrypt_value(encrypted_value: str) -> str:
+    """Desencripta un valor almacenado."""
+    if not encrypted_value:
         return ""
     
     # Si no tiene el prefijo ENC:, asumimos que no está encriptada
-    if not encrypted_api_key.startswith("ENC:"):
-        return encrypted_api_key
+    if not encrypted_value.startswith("ENC:"):
+        return encrypted_value
     
     if not CRYPTOGRAPHY_AVAILABLE:
-        LOGGER.warning("Cryptography no disponible, no se puede desencriptar la API key")
-        return encrypted_api_key
+        LOGGER.warning("Cryptography no disponible, no se puede desencriptar el valor")
+        return encrypted_value
     
     try:
         # Remover el prefijo ENC:
-        encrypted_data = encrypted_api_key[4:]
+        encrypted_data = encrypted_value[4:]
         key = get_encryption_key()
         fernet = Fernet(key)
         decrypted = fernet.decrypt(encrypted_data.encode('utf-8'))
         return decrypted.decode('utf-8')
     except Exception as exc:
-        LOGGER.error("Error al desencriptar API key: %s", exc)
+        LOGGER.error("Error al desencriptar valor: %s", exc)
         # Si falla la desencriptación, retornar el valor original
-        return encrypted_api_key
+        return encrypted_value
 
 
 class DatabaseConfig:
@@ -411,7 +411,7 @@ class DatabaseClient:
 def run_setx(api_key: str) -> None:
     env_name = "USB_MONITOR_API_KEY"
     # Encriptar la API key antes de guardarla
-    encrypted_key = encrypt_api_key(api_key)
+    encrypted_key = encrypt_value(api_key)
     completed = subprocess.run(
         ["setx", env_name, encrypted_key, "/M"],
         capture_output=True,
@@ -801,7 +801,7 @@ def normalize_serial_candidate(serial: Optional[str]) -> Optional[str]:
         return None
     if sanitized in SERIAL_SENTINELS:
         return None
-    if len(sanitized) < 4:
+    if len(sanitized) < 1:
         return None
     return sanitized[:128]
 
@@ -914,7 +914,7 @@ def get_auth_headers() -> Dict[str, str]:
         return headers
 
     # Desencriptar la API key
-    api_key = decrypt_api_key(api_key_encrypted)
+    api_key = decrypt_value(api_key_encrypted)
 
     # Permite que el valor ya incluya el prefijo "ApiKey" y evita duplicarlo
     if api_key.lower().startswith("apikey "):
@@ -1969,8 +1969,49 @@ class UnlockHTTPHandler(BaseHTTPRequestHandler):
 
         self._send_json_response(404, {"status": "not_found"})
 
+    def _handle_config_post(self) -> None:
+        try:
+            content_length = int(self.headers.get("Content-Length", "0") or "0")
+        except ValueError:
+            content_length = 0
+
+        body = self.rfile.read(content_length)
+
+        try:
+            data = json.loads(body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            LOGGER.error("Body de petición no es JSON válido")
+            self._send_json_response(400, {"ok": False, "error": "JSON inválido"})
+            return
+
+        delay = data.get("startup_network_delay")
+        if delay is not None:
+            try:
+                delay_int = int(delay)
+                encrypted_delay = encrypt_value(str(delay_int))
+                completed = subprocess.run(
+                    ["setx", "USB_MONITOR_STARTUP_DELAY", encrypted_delay, "/M"],
+                    capture_output=True,
+                    text=True,
+                    encoding='cp850',
+                    check=True,
+                )
+                LOGGER.info("Configuración actualizada: startup_network_delay = %d", delay_int)
+                self._send_json_response(200, {"ok": True, "message": "Configuración actualizada"})
+            except ValueError:
+                self._send_json_response(400, {"ok": False, "error": "startup_network_delay debe ser entero"})
+            except subprocess.CalledProcessError as exc:
+                LOGGER.error("Error al guardar configuración: %s", exc)
+                self._send_json_response(500, {"ok": False, "error": "Error al guardar configuración en el sistema"})
+        else:
+            self._send_json_response(400, {"ok": False, "error": "Falta startup_network_delay"})
+
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
+
+        if parsed.path == "/config":
+            self._handle_config_post()
+            return
 
         if parsed.path != "/unlock":
             self._send_json_response(404, {"ok": False, "error": "Ruta no encontrada"})
@@ -2173,6 +2214,82 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
             connected_monitor_thread.ident,
         )
 
+        # Boot Sweep Routine
+        LOGGER.info("Iniciando rutina de comprobación de arranque (Boot Sweep)")
+        try:
+            delay_env = os.environ.get("USB_MONITOR_STARTUP_DELAY")
+            if delay_env:
+                delay_str = decrypt_value(delay_env.strip())
+                try:
+                    startup_delay = int(delay_str)
+                except ValueError:
+                    startup_delay = 15
+            else:
+                startup_delay = 15
+                
+            if startup_delay > 0:
+                LOGGER.info("Esperando %d segundos para inicialización de red", startup_delay)
+                time.sleep(startup_delay)
+                
+            connected_drives = get_connected_usb_drives(c)
+            LOGGER.info("Boot Sweep: Detectadas %d unidades USB conectadas", len(connected_drives))
+            
+            class MockEvent:
+                pass
+                
+            for drive in connected_drives:
+                try:
+                    drive_letter = drive.get("driveLetter")
+                    serial_number = drive.get("serialNumberNormalized") or drive.get("serialNumberRaw") or drive.get("serialNumber")
+                    
+                    if not drive_letter:
+                        continue
+                        
+                    LOGGER.info("Boot Sweep: Verificando unidad %s (Serial: %s)", drive_letter, serial_number)
+                    
+                    whitelisted = False
+                    whitelist_entry = None
+                    if serial_number:
+                        raw_s = drive.get("serialNumberRaw", "N/A")
+                        LOGGER.info("Boot Sweep: Raw Serial: [%s], Normalized Serial: [%s]", raw_s, serial_number)
+                        whitelisted, whitelist_entry = check_whitelist(serial_number)
+                        
+                    if whitelisted:
+                        LOGGER.info("Boot Sweep: Unidad %s AUTORIZADA en whitelist", drive_letter)
+                    else:
+                        LOGGER.warning("Boot Sweep: PROTOCOLO DE SEGURIDAD - Unidad %s NO AUTORIZADA", drive_letter)
+                        
+                        # 1. Protect USB
+                        letter_used, readonly_ok, readonly_msg = protect_usb_media(drive_letter, c)
+                        
+                        # 2. Send Event
+                        event = MockEvent()
+                        setattr(event, "DriveName", drive_letter)
+                        
+                        payload = build_payload(
+                            event,
+                            letter_used,
+                            readonly_msg,
+                            serial_number,
+                            False,
+                        )
+                        send_event(payload)
+                        
+                        # 3. Schedule Shutdown
+                        schedule_shutdown()
+                        
+                        # 4. Pending unlock
+                        if letter_used:
+                            create_browser_signal(hostname, letter_used)
+                            create_pending_unlock(hostname, letter_used)
+                            self.pending_usbs[letter_used] = hostname
+                            
+                except Exception as drive_exc:
+                    LOGGER.error("Boot Sweep: Error al verificar unidad %s: %s", drive.get("driveLetter", "desconocida"), drive_exc)
+                    
+        except Exception as boot_exc:
+            LOGGER.error("Error general en Boot Sweep Routine: %s", boot_exc)
+
         while not self.stopped:
             rc = win32event.WaitForSingleObject(self.stop_event, 500)
             if rc == win32event.WAIT_OBJECT_0:
@@ -2186,6 +2303,7 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                     LOGGER.info("  [1/5] Letra de unidad resuelta: %s", drive_letter or "NO ENCONTRADA")
                     
                     serial_number: Optional[str] = None
+                    raw_serial_found: Optional[str] = None
                     whitelist_entry: Optional[Dict[str, Any]] = None
                     whitelisted = False
 
@@ -2213,6 +2331,7 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                                     
                                     if normalized_candidate:
                                         serial_number = normalized_candidate
+                                        raw_serial_found = str(raw_value) if raw_value is not None else "N/A"
                                         LOGGER.info("    ✓ Serial obtenido en intento %d/5: %s", attempt + 1, serial_number)
                                         break
                             except Exception as info_exc:
@@ -2233,6 +2352,7 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
 
                     if serial_number:
                         LOGGER.info("  [3/5] Verificando whitelist para serial: %s", serial_number)
+                        LOGGER.debug("Raw Serial: [%s], Normalized Serial: [%s]", raw_serial_found, serial_number)
                         whitelisted, whitelist_entry = check_whitelist(serial_number)
                         if whitelisted:
                             LOGGER.info("  [3/5] ✓ AUTORIZADO EN WHITELIST")
@@ -3326,7 +3446,17 @@ if __name__ == "__main__":
 
     args = [arg.lower() for arg in sys.argv[1:]]
 
-    if args and args[0] in {"gui", "--gui"}:
+    if args and args[0] == "-remote" and len(sys.argv) > 2:
+        remote_ip = sys.argv[2]
+        print(f"Configurando IP de reporte a: {remote_ip}")
+        LOGGER.info("Autoinstalación con argumento -remote: %s", remote_ip)
+        _set_server_host(remote_ip)
+        success_inst, msg_inst = _execute_service_command("install")
+        print(msg_inst)
+        success_start, msg_start = _execute_service_command("start")
+        print(msg_start)
+        sys.exit(0 if success_inst and success_start else 1)
+    elif args and args[0] in {"gui", "--gui"}:
         _launch_gui()
     elif args:
         _run_command_line(args[0])

@@ -3,16 +3,16 @@
 import { memo, useMemo } from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Activity, AlertTriangle, ShieldCheck } from "lucide-react";
+import { Activity, AlertTriangle, ShieldCheck, Wifi } from "lucide-react";
+import { StatCard } from "@/components/ui/stat-card";
+import { GlassPanel } from "@/components/ui/glass-panel";
+import { LiveIndicator } from "@/components/ui/live-indicator";
 
 interface Props {
   activeComputers: number;
   totalComputers: number;
   totalEvents: number;
   recentEvents: number;
-  // lastUpdate: Date;
   whitelistCount: number;
 }
 
@@ -23,7 +23,6 @@ function StatsCardsComponent({
   totalComputers,
   totalEvents,
   recentEvents,
-  // lastUpdate,
   whitelistCount,
 }: Props) {
   const liveStatus = useMemo(() => {
@@ -36,151 +35,127 @@ function StatsCardsComponent({
         label: "Sin agentes",
         description: "No hay equipos reportando",
         chip: "Offline",
-        tone: "rose" as const,
+        tone: "danger" as const,
+        status: "disconnected" as const,
       };
     }
 
     if (utilization < 60) {
       return {
         label: "Cobertura parcial",
-        description: `${numberFormatter.format(
-          activeComputers
-        )} de ${numberFormatter.format(totalComputers)} activos`,
-        chip: `${utilization}% online`,
-        tone: "amber" as const,
+        description: `${numberFormatter.format(activeComputers)} de ${numberFormatter.format(totalComputers)} activos`,
+        chip: `${utilization}%`,
+        tone: "warning" as const,
+        status: "reconnecting" as const,
       };
     }
 
     return {
       label: "Monitoreo estable",
-      description: `${numberFormatter.format(
-        activeComputers
-      )} equipos bajo control`,
+      description: `${numberFormatter.format(activeComputers)} equipos bajo control`,
       chip: "En vivo",
-      tone: "emerald" as const,
+      tone: "success" as const,
+      status: "connected" as const,
     };
   }, [activeComputers, totalComputers]);
 
-  const statCards = useMemo(
-    () => [
-      {
-        title: "Whitelist activos",
-        description: "Seriales autorizados",
-        value: numberFormatter.format(whitelistCount),
-        icon: <ShieldCheck className="h-4 w-4" />,
-        tone: "emerald" as const,
-      },
-      {
-        title: "Eventos totales",
-        description: "Registros acumulados",
-        value: numberFormatter.format(totalEvents),
-        icon: <Activity className="h-4 w-4" />,
-        tone: "slate" as const,
-      },
-      {
-        title: "Eventos recientes",
-        description: "Últimos 60 minutos",
-        value: numberFormatter.format(recentEvents),
-        icon: <AlertTriangle className="h-4 w-4" />,
-        tone: "amber" as const,
-      },
-    ],
-    [recentEvents, totalEvents, whitelistCount]
-  );
-
   return (
-    <div className="grid gap-4 lg:grid-cols-5">
+    <div className="grid gap-4 lg:grid-cols-4" data-tour="stats-cards">
+      {/* Hero status card */}
       <motion.div
-        className="lg:col-span-2"
-        initial={{ opacity: 0, y: 16 }}
+        initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
+        transition={{ duration: 0.35 }}
       >
-        <Card className="relative h-full overflow-hidden rounded-3xl border border-slate-200/70 bg-white/70 text-slate-800 shadow-xl dark:border-slate-700/80 dark:bg-slate-900/70 dark:text-slate-100">
-          <CardContent className="flex h-full flex-col justify-between gap-6 p-6">
-            <div className="flex items-center justify-between gap-6">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">
-                  Estado en vivo
-                </p>
-                <h2 className="mt-2 text-3xl font-semibold tracking-tight">
-                  {liveStatus.label}
-                </h2>
-                <p className="mt-2 text-sm text-slate-500 dark:text-slate-300">
-                  {liveStatus.description}
-                </p>
-              </div>
-              <span className="inline-flex h-16 w-16 items-center justify-center rounded-2xl border border-slate-200/70 bg-white text-slate-700 shadow-sm dark:border-slate-700/80 dark:bg-slate-900 dark:text-slate-200">
-                <ShieldCheck className="h-8 w-8" />
-              </span>
-            </div>
-            <div className="flex items-center justify-between rounded-2xl border border-slate-200/70 bg-white/70 px-4 py-3 text-sm font-semibold shadow-sm dark:border-slate-700/80 dark:bg-slate-900/60">
-              <span className="text-xs uppercase tracking-[0.28em] text-slate-400 dark:text-slate-500">
-                Cobertura
-              </span>
-              <Badge
-                variant="secondary"
-                className={cn(
-                  "rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.24em] shadow-sm",
-                  liveStatus.tone === "emerald" &&
-                    "border-emerald-400/60 bg-emerald-500/10 text-emerald-600 dark:text-emerald-200",
-                  liveStatus.tone === "amber" &&
-                    "border-amber-400/60 bg-amber-500/10 text-amber-500 dark:text-amber-200",
-                  liveStatus.tone === "rose" &&
-                    "border-rose-400/60 bg-rose-500/10 text-rose-500 dark:text-rose-200"
-                )}
-              >
-                {liveStatus.chip}
-              </Badge>
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
-
-      {statCards.map((card, index) => (
-        <motion.div
-          key={card.title}
-          className="group"
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.05 * (index + 1) }}
+        <GlassPanel
+          variant="elevated"
+          className="flex h-full flex-col justify-between gap-4 p-5"
         >
-          <Card className="relative overflow-hidden rounded-3xl border border-slate-200/70 bg-white/70 px-5 py-6 text-slate-800 shadow-xl transition-all duration-300 hover:-translate-y-1 dark:border-slate-700/80 dark:bg-slate-900/70 dark:text-slate-100">
-            <div className="relative flex flex-col gap-4">
-              <div className="flex items-center justify-between">
-                <p className="text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">
-                  {card.title}
-                </p>
-                <span
-                  className={cn(
-                    "inline-flex h-9 w-9 items-center justify-center rounded-xl border text-slate-600 shadow-sm dark:text-slate-200",
-                    card.tone === "emerald" &&
-                      "border-emerald-400/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-200",
-                    card.tone === "amber" &&
-                      "border-amber-400/50 bg-amber-500/10 text-amber-500 dark:text-amber-200",
-                    card.tone === "slate" &&
-                      "border-slate-300/60 bg-slate-200/40 text-slate-600 dark:border-slate-700/60 dark:bg-slate-800/60 dark:text-slate-200"
-                  )}
-                >
-                  {card.icon}
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <LiveIndicator status={liveStatus.status} size="sm" />
+                <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                  Estado en vivo
                 </span>
               </div>
-              <motion.span
-                key={card.value}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.35 }}
-                className="text-3xl font-semibold tracking-tight"
-              >
-                {card.value}
-              </motion.span>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {card.description}
+              <h2 className="mt-2 text-2xl font-bold tracking-tight text-foreground">
+                {liveStatus.label}
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {liveStatus.description}
               </p>
             </div>
-          </Card>
-        </motion.div>
-      ))}
+            <div
+              className={cn(
+                "flex size-10 items-center justify-center rounded-xl",
+                liveStatus.tone === "success" &&
+                  "bg-[oklch(0.75_0.12_160/0.12)] text-[oklch(0.55_0.12_160)]",
+                liveStatus.tone === "warning" &&
+                  "bg-[oklch(0.80_0.10_85/0.12)] text-[oklch(0.60_0.12_85)]",
+                liveStatus.tone === "danger" && "bg-rose-500/10 text-rose-500",
+              )}
+            >
+              <Wifi className="size-5" />
+            </div>
+          </div>
+          <div
+            className={cn(
+              "flex items-center justify-between rounded-lg border px-3 py-2 text-xs font-medium",
+              liveStatus.tone === "success" &&
+                "border-[oklch(0.75_0.12_160/0.20)] bg-[oklch(0.75_0.12_160/0.06)] text-[oklch(0.45_0.12_160)] dark:text-[oklch(0.80_0.10_160)]",
+              liveStatus.tone === "warning" &&
+                "border-[oklch(0.80_0.10_85/0.20)] bg-[oklch(0.80_0.10_85/0.06)] text-[oklch(0.50_0.12_85)] dark:text-[oklch(0.82_0.08_85)]",
+              liveStatus.tone === "danger" &&
+                "border-rose-500/20 bg-rose-500/5 text-rose-600 dark:text-rose-400",
+            )}
+          >
+            <span className="text-[10px] uppercase tracking-wider opacity-70">
+              Cobertura
+            </span>
+            <span className="font-bold">{liveStatus.chip}</span>
+          </div>
+        </GlassPanel>
+      </motion.div>
+
+      {/* KPI cards */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, delay: 0.05 }}
+      >
+        <StatCard
+          title="Whitelist"
+          value={numberFormatter.format(whitelistCount)}
+          tone="success"
+          icon={<ShieldCheck className="size-4" />}
+        />
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, delay: 0.1 }}
+      >
+        <StatCard
+          title="Eventos totales"
+          value={numberFormatter.format(totalEvents)}
+          icon={<Activity className="size-4" />}
+        />
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, delay: 0.15 }}
+      >
+        <StatCard
+          title="Última hora"
+          value={numberFormatter.format(recentEvents)}
+          tone="warning"
+          icon={<AlertTriangle className="size-4" />}
+        />
+      </motion.div>
     </div>
   );
 }

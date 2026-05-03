@@ -7,8 +7,10 @@ import { useAdminDashboard } from "../_providers/AdminDashboardProvider";
 const UsersTab = dynamic(
   () => import("@/components/dashboard/UsersTab").then((mod) => mod.UsersTab),
   {
-    loading: () => <DashboardFallback label="Cargando gestión de usuarios" />,
-  }
+    loading: () => (
+      <DashboardFallback label="Cargando gestión de usuarios" variant="table" />
+    ),
+  },
 );
 
 export default function AdminUsersPage() {

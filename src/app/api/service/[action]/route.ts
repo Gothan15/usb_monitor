@@ -5,10 +5,11 @@ type ServiceAction = "install" | "uninstall" | "start" | "stop" | "status";
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { action: ServiceAction } }
+  { params }: { params: Promise<{ action: string }> }
 ) {
   try {
     await requireAuth(req, { role: "admin" });
+    const { action } = await params;
     const { ip } = await req.json();
     if (typeof ip !== "string" || !ip.trim()) {
       return NextResponse.json({ error: "Falta ip" }, { status: 400 });
@@ -17,7 +18,7 @@ export async function POST(
     return NextResponse.json(
       {
         error: "El control remoto del agente está deshabilitado temporalmente",
-        action: params.action,
+        action,
         ip: ip.trim(),
       },
       { status: 503 }

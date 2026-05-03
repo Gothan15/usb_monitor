@@ -49,6 +49,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { getCsrfTokenFromDocument } from "@/lib/utils";
 import { DashboardPagination } from "./DashboardPagination";
+import { usePagination } from "@/hooks/usePagination";
 import { formatDateTime, type Computer } from "./types";
 import {
   AlertCircle,
@@ -115,8 +116,6 @@ function generateRandomPassword(length = 16) {
 function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
   const { toast } = useToast();
   const [users, setUsers] = useState<AdminUser[]>([]);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -125,18 +124,23 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
   const [reloadFlag, setReloadFlag] = useState(0);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
+  const { page, pageSize, pageCount, setPage, setPageSize } = usePagination({
+    totalItems: total,
+    pageSizeOptions: PAGE_SIZE_OPTIONS,
+  });
+
   const { sortedData, sortConfig, requestSort } =
     useTableSort<AdminUser>(users);
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState<UserFormState>(() =>
-    createEmptyForm()
+    createEmptyForm(),
   );
   const [creating, setCreating] = useState(false);
 
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
   const [editForm, setEditForm] = useState<UserFormState>(() =>
-    createEmptyForm()
+    createEmptyForm(),
   );
   const [updating, setUpdating] = useState(false);
 
@@ -145,7 +149,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
 
   const sortedComputers = useMemo(() => {
     return [...computers].sort((a, b) =>
-      a.name.localeCompare(b.name, "es", { sensitivity: "base" })
+      a.name.localeCompare(b.name, "es", { sensitivity: "base" }),
     );
   }, [computers]);
 
@@ -195,22 +199,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
 
   useEffect(() => {
     setPage(1);
-  }, [deferredSearch]);
-
-  useEffect(() => {
-    const maxPage = Math.max(
-      1,
-      Math.ceil(Math.max(total, 0) / Math.max(pageSize, 1))
-    );
-    if (page > maxPage) {
-      setPage(maxPage);
-    }
-  }, [page, pageSize, total]);
-
-  const pageCount = useMemo(() => {
-    if (total === 0) return 1;
-    return Math.max(1, Math.ceil(total / Math.max(pageSize, 1)));
-  }, [total, pageSize]);
+  }, [deferredSearch, setPage]);
 
   const triggerReload = () => setReloadFlag((value) => value + 1);
 
@@ -267,7 +256,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
 
     if (createForm.computerId) {
       const selectedComputer = sortedComputers.find(
-        (computer) => computer.id === createForm.computerId
+        (computer) => computer.id === createForm.computerId,
       );
 
       if (!selectedComputer) {
@@ -286,7 +275,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
       const csrfToken = getCsrfTokenFromDocument();
       if (!csrfToken) {
         throw new Error(
-          "Sesión sin token de seguridad. Inicia sesión nuevamente."
+          "Sesión sin token de seguridad. Inicia sesión nuevamente.",
         );
       }
       const headers: Record<string, string> = {
@@ -294,7 +283,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
         "x-csrf-token": csrfToken,
       };
       const selectedComputer = sortedComputers.find(
-        (computer) => computer.id === createForm.computerId
+        (computer) => computer.id === createForm.computerId,
       );
 
       const payload: Record<string, unknown> = {
@@ -366,7 +355,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
         payload.ipAddress = "";
       } else {
         const selectedComputer = sortedComputers.find(
-          (computer) => computer.id === editForm.computerId
+          (computer) => computer.id === editForm.computerId,
         );
 
         if (!selectedComputer) {
@@ -396,7 +385,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
       const csrfToken = getCsrfTokenFromDocument();
       if (!csrfToken) {
         throw new Error(
-          "Sesión sin token de seguridad. Inicia sesión nuevamente."
+          "Sesión sin token de seguridad. Inicia sesión nuevamente.",
         );
       }
       const headers: Record<string, string> = {
@@ -440,7 +429,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
       const csrfToken = getCsrfTokenFromDocument();
       if (!csrfToken) {
         throw new Error(
-          "Sesión sin token de seguridad. Inicia sesión nuevamente."
+          "Sesión sin token de seguridad. Inicia sesión nuevamente.",
         );
       }
       const headers: Record<string, string> = {
@@ -473,12 +462,10 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
   };
 
   const renderEmptyState = () => (
-    <div className="flex flex-col items-center justify-center gap-3 rounded-3xl border border-dashed border-slate-300/70 bg-white/60 px-6 py-10 text-center text-sm text-slate-500 dark:border-slate-700/80 dark:bg-slate-900/40 dark:text-slate-300">
-      <UserRound className="h-10 w-10 text-slate-400" />
+    <div className="flex flex-col items-center justify-center gap-3 rounded-3xl border border-dashed border-border/50 bg-muted/20 px-6 py-10 text-center text-sm text-muted-foreground">
+      <UserRound className="h-10 w-10 text-muted-foreground/60" />
       <div>
-        <p className="font-semibold text-slate-700 dark:text-slate-200">
-          Todavía no hay usuarios
-        </p>
+        <p className="font-semibold text-foreground">Todavía no hay usuarios</p>
         <p className="mt-1 text-xs">
           Crea el primer usuario para comenzar a administrar accesos.
         </p>
@@ -497,7 +484,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
       {Array.from({ length: 6 }).map((_, index) => (
         <div
           key={index}
-          className="h-12 animate-pulse rounded-2xl bg-slate-200/50 dark:bg-slate-800/40"
+          className="h-12 animate-pulse rounded-2xl bg-muted/40"
         />
       ))}
     </div>
@@ -510,30 +497,30 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
       transition={{ duration: 0.35, ease: "easeOut" }}
       className="w-full"
     >
-      <Card className="w-full overflow-hidden rounded-3xl border border-slate-200/70 bg-white/85 text-slate-900 shadow-xl supports-[backdrop-filter]:backdrop-blur-2xl dark:border-slate-800/80 dark:bg-slate-900/60 dark:text-white">
+      <Card className="w-full overflow-hidden rounded-xl border border-border/60 bg-card/80 shadow-xl backdrop-blur-xl">
         <CardHeader className="space-y-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="flex gap-3">
-              <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200/60 bg-white text-slate-600 shadow-sm dark:border-slate-700/80 dark:bg-slate-900 dark:text-slate-200">
+              <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-border/40 bg-muted/30 text-muted-foreground shadow-sm">
                 <UserRound className="h-5 w-5" />
               </span>
               <div>
                 <CardTitle className="text-2xl font-semibold tracking-tight">
                   Gestión de usuarios
                 </CardTitle>
-                <CardDescription className="text-sm text-slate-600 dark:text-slate-400">
+                <CardDescription className="text-sm text-muted-foreground">
                   Administra cuentas, contraseñas y equipos asignados.
                 </CardDescription>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   value={searchInput}
                   onChange={(event) => setSearchInput(event.target.value)}
                   placeholder="Buscar por usuario, equipo o IP"
-                  className="w-[220px] rounded-full border-slate-200/70 pl-9 text-sm dark:border-slate-700"
+                  className="w-[220px] rounded-full border-border/60 pl-9 text-sm"
                 />
               </div>
               {/* Botón de recarga unificado en AppShell (eliminado aquí) */}
@@ -547,16 +534,16 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
             </div>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded-2xl border border-slate-200/70 bg-white/80 p-4 text-slate-700 shadow-sm dark:border-slate-700/80 dark:bg-slate-900/70 dark:text-slate-200">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
+            <div className="rounded-xl border border-border/40 bg-card/80 p-4 text-foreground shadow-sm backdrop-blur-sm">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
                 Usuarios totales
               </p>
               <p className="mt-2 text-2xl font-semibold tracking-tight">
                 {total.toLocaleString("es-ES")}
               </p>
             </div>
-            <div className="rounded-2xl border border-slate-200/70 bg-white/80 p-4 text-slate-700 shadow-sm dark:border-slate-700/80 dark:bg-slate-900/70 dark:text-slate-200">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
+            <div className="rounded-xl border border-border/40 bg-card/80 p-4 text-foreground shadow-sm backdrop-blur-sm">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
                 Página actual
               </p>
               <p className="mt-2 text-2xl font-semibold tracking-tight">
@@ -564,16 +551,16 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
                 {pageCount.toLocaleString("es-ES")}
               </p>
             </div>
-            <div className="rounded-2xl border border-slate-200/70 bg-white/80 p-4 text-slate-700 shadow-sm dark:border-slate-700/80 dark:bg-slate-900/70 dark:text-slate-200">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
+            <div className="rounded-xl border border-border/40 bg-card/80 p-4 text-foreground shadow-sm backdrop-blur-sm">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
                 Usuarios visibles
               </p>
               <p className="mt-2 text-2xl font-semibold tracking-tight">
                 {users.length.toLocaleString("es-ES")}
               </p>
             </div>
-            <div className="rounded-2xl border border-slate-200/70 bg-white/80 p-4 text-slate-700 shadow-sm dark:border-slate-700/80 dark:bg-slate-900/70 dark:text-slate-200">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
+            <div className="rounded-xl border border-border/40 bg-card/80 p-4 text-foreground shadow-sm backdrop-blur-sm">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
                 Con equipo asignado
               </p>
               <p className="mt-2 text-2xl font-semibold tracking-tight">
@@ -599,18 +586,20 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
             renderEmptyState()
           ) : (
             <div className="relative flex flex-col gap-6">
-              <motion.div
-                animate={{
-                  opacity: isSearching ? 0.45 : 1,
-                  scale: isSearching ? 0.995 : 1,
-                }}
-                transition={{ duration: 0.25, ease: "easeInOut" }}
-                className="flex flex-col gap-6"
-              >
-                <ScrollArea className="max-h-[min(65vh,520px)] pr-3">
-                  <Table className="min-w-[800px]">
-                    <TableHeader className="sticky top-0 z-10 bg-white/95 backdrop-blur-xl dark:bg-slate-900/80">
-                      <TableRow className="border-white/60 dark:border-white/10">
+              <div className="relative flex flex-col overflow-hidden rounded-xl border border-border/40 bg-card/60 shadow-inner backdrop-blur-sm">
+                <motion.div
+                  animate={{
+                    opacity: isSearching ? 0.45 : 1,
+                    scale: isSearching ? 0.995 : 1,
+                  }}
+                  transition={{ duration: 0.25, ease: "easeInOut" }}
+                  className="flex flex-col"
+                >
+                  <div className="flex-1 overflow-hidden">
+                    <ScrollArea className="max-h-[min(75vh,650px)] w-full pr-3">
+                    <Table className="min-w-[800px]">
+                    <TableHeader className="sticky top-0 z-10 bg-card/95 backdrop-blur-xl">
+                      <TableRow className="border-border/40">
                         <SortableTableHead
                           column="username"
                           currentSortKey={sortConfig.key}
@@ -667,26 +656,26 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
                       {sortedData.map((user) => (
                         <TableRow
                           key={user.id}
-                          className="group border border-white/70 bg-white/75 transition-all duration-150 hover:-translate-y-0.5 hover:border-slate-300/60 hover:bg-slate-50/70 dark:border-white/10 dark:bg-white/5 dark:hover:border-slate-500/40 dark:hover:bg-slate-900/40"
+                          className="group transition-colors duration-150"
                         >
-                          <TableCell className="font-semibold text-slate-700 dark:text-slate-100">
+                          <TableCell className="font-semibold text-foreground">
                             {user.username}
                           </TableCell>
-                          <TableCell className="text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
+                          <TableCell className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
                             {user.role}
                           </TableCell>
-                          <TableCell className="text-sm text-slate-600 dark:text-slate-300">
+                          <TableCell className="text-sm text-muted-foreground">
                             {user.computer ? (
                               <div className="flex flex-col">
-                                <span className="font-medium text-slate-700 dark:text-slate-100">
+                                <span className="font-medium text-foreground">
                                   {user.computer.name}
                                 </span>
-                                <span className="text-xs text-slate-500 dark:text-slate-400">
+                                <span className="text-xs text-muted-foreground">
                                   {user.computer.ipAddress ?? "Sin IP"}
                                 </span>
                               </div>
                             ) : (
-                              <span className="text-xs text-slate-400 dark:text-slate-500">
+                              <span className="text-xs text-muted-foreground/60">
                                 No asignado
                               </span>
                             )}
@@ -695,7 +684,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
                             <div className="flex items-center gap-2">
                               <Badge
                                 variant="secondary"
-                                className="max-w-[140px] truncate rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                                className="max-w-[140px] truncate rounded-full bg-muted/50 px-3 py-1 text-xs text-muted-foreground"
                               >
                                 {user.apiKey
                                   ? `${user.apiKey.slice(0, 8)}…`
@@ -712,7 +701,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
                               </Button>
                             </div>
                           </TableCell>
-                          <TableCell className="text-sm text-slate-500 dark:text-slate-400">
+                          <TableCell className="text-sm text-muted-foreground">
                             {formatDateTime(user.createdAt)}
                           </TableCell>
                           <TableCell className="text-right">
@@ -743,34 +732,35 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
                   </Table>
                   <ScrollBar orientation="horizontal" />
                 </ScrollArea>
+                  </div>
+                </motion.div>
 
-                <div className="mt-4 w-full">
+                <div className="shrink-0 border-t border-border/40 bg-card/50 p-4">
+                  {/* Floating Pagination */}
                   <DashboardPagination
                     page={page}
                     pageSize={pageSize}
                     totalItems={total}
-                    onPageChange={(nextPage) => setPage(nextPage)}
-                    onPageSizeChange={(nextSize) => {
-                      setPageSize(nextSize);
-                      setPage(1);
-                    }}
+                    onPageChange={setPage}
+                    onPageSizeChange={setPageSize}
                     pageSizeOptions={PAGE_SIZE_OPTIONS}
                     label="usuarios"
                   />
                 </div>
-              </motion.div>
-              {isSearching ? (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="pointer-events-none absolute inset-0 flex items-center justify-center"
-                >
-                  <div className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/90 px-3 py-1 text-xs font-medium text-slate-600 shadow-sm dark:border-white/10 dark:bg-slate-900/80 dark:text-slate-200">
-                    <Spinner size={12} />
-                    Buscando usuarios...
-                  </div>
-                </motion.div>
-              ) : null}
+                
+                {isSearching ? (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="pointer-events-none absolute inset-0 flex items-center justify-center"
+                  >
+                    <div className="inline-flex items-center gap-2 rounded-full border border-border/40 bg-card/90 px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur-sm">
+                      <Spinner size={12} />
+                      Buscando usuarios...
+                    </div>
+                  </motion.div>
+                ) : null}
+              </div>
             </div>
           )}
         </CardContent>
@@ -811,7 +801,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
                   className="rounded-full text-xs"
                   onClick={() =>
                     handleGeneratePassword((value) =>
-                      setCreateForm((prev) => ({ ...prev, password: value }))
+                      setCreateForm((prev) => ({ ...prev, password: value })),
                     )
                   }
                 >
@@ -829,7 +819,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
                 }
                 placeholder="********"
               />
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-muted-foreground">
                 La contraseña es obligatoria y se puede rotar más adelante.
               </p>
             </div>
@@ -864,7 +854,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-muted-foreground">
                 Selecciona una computadora del inventario para vincularla al
                 usuario.
               </p>
@@ -933,7 +923,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
                   className="rounded-full text-xs"
                   onClick={() =>
                     handleGeneratePassword((value) =>
-                      setEditForm((prev) => ({ ...prev, password: value }))
+                      setEditForm((prev) => ({ ...prev, password: value })),
                     )
                   }
                 >
@@ -983,7 +973,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
                   ))}
                   {editingUser?.computer &&
                   !sortedComputers.some(
-                    (computer) => computer.id === editingUser.computer?.id
+                    (computer) => computer.id === editingUser.computer?.id,
                   ) ? (
                     <SelectItem value={editingUser.computer.id}>
                       {editingUser.computer.name}
@@ -994,7 +984,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
                   ) : null}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-muted-foreground">
                 Deja "Sin equipo asignado" para desvincular el usuario.
               </p>
             </div>

@@ -24,7 +24,7 @@ from usb_monitor_service import (
     LOGGER,
 )
 
-TEST_SERIAL = "4C530001210813100303"
+TEST_SERIAL = "1171"
 
 def verify_whitelist(serial: str) -> Tuple[bool, Optional[Dict[str, Any]], str]:
     """Verifica si el serial está en la whitelist usando el mismo método del servicio."""

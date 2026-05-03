@@ -156,17 +156,17 @@ export const EventHistory = ({ userId }: EventHistoryProps) => {
   }, [events, history]);
 
   return (
-    <Card className="border-slate-200/80 bg-gradient-to-br from-white via-white to-slate-50 shadow-sm dark:border-slate-800/80 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+    <Card className="border-border/60 bg-card/80 shadow-sm backdrop-blur-xl">
       <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="flex items-center gap-2 text-lg text-slate-800 dark:text-slate-100">
-          <Clock className="h-5 w-5 text-slate-500 dark:text-slate-300" />
+        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
+          <Clock className="h-5 w-5 text-muted-foreground" />
           Historial de eventos
         </CardTitle>
         <Button
           type="button"
           size="sm"
           variant="outline"
-          className="inline-flex items-center gap-2 border-slate-200 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+          className="inline-flex items-center gap-2 border-border/60 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted/50"
           disabled={refreshing}
           onClick={() => loadHistory(undefined, true)}
         >
@@ -175,7 +175,7 @@ export const EventHistory = ({ userId }: EventHistoryProps) => {
               <Spinner size={16} />
             </div>
           ) : (
-            <RefreshCw className="mr-2 h-4 w-4 text-slate-500 dark:text-slate-300" />
+            <RefreshCw className="mr-2 h-4 w-4 text-muted-foreground" />
           )}
           {refreshing ? "Actualizando..." : "Actualizar"}
         </Button>
@@ -194,17 +194,17 @@ export const EventHistory = ({ userId }: EventHistoryProps) => {
         )}
 
         {!loading && !error && !timeline.length && (
-          <div className="flex h-48 flex-col items-center justify-center gap-2 text-center text-sm text-slate-500 dark:text-slate-300">
-            <Clock className="h-10 w-10 text-slate-300 dark:text-slate-600" />
+          <div className="flex h-48 flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground">
+            <Clock className="h-10 w-10 text-muted-foreground/40" />
             <span>No hay eventos registrados todavía.</span>
-            <span className="text-xs text-slate-400 dark:text-slate-500">
+            <span className="text-xs text-muted-foreground/60">
               Los eventos aparecerán aquí cuando se registre actividad USB.
             </span>
           </div>
         )}
 
         {!loading && !error && warnings.length > 0 && (
-          <Alert className="border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
+          <Alert className="border-[oklch(0.80_0.10_85/0.40)] bg-[oklch(0.95_0.03_85)] text-[oklch(0.45_0.10_85)] dark:border-[oklch(0.65_0.08_85/0.30)] dark:bg-[oklch(0.80_0.10_85/0.10)] dark:text-[oklch(0.90_0.04_85)]">
             <AlertDescription className="space-y-2">
               {warnings.map((warning, index) => (
                 <p key={index}>{warning}</p>
@@ -224,12 +224,12 @@ export const EventHistory = ({ userId }: EventHistoryProps) => {
             {timeline.map((item, index) => (
               <div
                 key={item.id}
-                className="group animate-in fade-in-50 slide-in-from-bottom-2 duration-300 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-slate-700 dark:bg-slate-900"
+                className="group animate-in fade-in-50 slide-in-from-bottom-2 duration-300 rounded-xl border border-border/40 bg-card/80 p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md backdrop-blur-sm"
                 style={{ animationDelay: `${index * 70}ms` }}
               >
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div className="flex items-start gap-3">
-                    <div className="rounded-lg bg-slate-100 p-3 text-slate-500 transition-colors group-hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300">
+                    <div className="rounded-lg bg-muted/40 p-3 text-muted-foreground transition-colors group-hover:bg-muted/60">
                       {item.kind === "event" ? (
                         <Shield className="h-5 w-5" />
                       ) : item.kind === "connected" ? (
@@ -240,13 +240,13 @@ export const EventHistory = ({ userId }: EventHistoryProps) => {
                     </div>
                     <div className="space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                        <h3 className="text-base font-semibold text-foreground">
                           {item.title}
                         </h3>
                         {item.kind === "event" && item.status && (
                           <Badge
                             variant="outline"
-                            className="border-slate-200 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-300"
+                            className="border-border/40 text-xs text-muted-foreground"
                           >
                             {item.status}
                           </Badge>
@@ -254,7 +254,7 @@ export const EventHistory = ({ userId }: EventHistoryProps) => {
                         {item.serialNumber && (
                           <Badge
                             variant="outline"
-                            className="border-slate-200 text-xs font-mono uppercase text-slate-500 dark:border-slate-700 dark:text-slate-300"
+                            className="border-border/40 text-xs font-mono uppercase text-muted-foreground"
                           >
                             {item.serialNumber}
                           </Badge>
@@ -269,13 +269,13 @@ export const EventHistory = ({ userId }: EventHistoryProps) => {
                         )}
                       </div>
                       {item.description && (
-                        <p className="text-sm text-slate-600 dark:text-slate-300">
+                        <p className="text-sm text-muted-foreground">
                           {item.description}
                         </p>
                       )}
                     </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300">
+                  <div className="flex shrink-0 items-center gap-2 rounded-lg border border-border/40 bg-muted/30 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors">
                     <Calendar className="h-4 w-4" />
                     {formatDateTime(item.timestamp)}
                   </div>

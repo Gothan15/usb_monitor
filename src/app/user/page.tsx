@@ -9,7 +9,7 @@ const DeviceList = dynamic(
     import("./components/DeviceList/DeviceList").then((mod) => mod.DeviceList),
   {
     loading: () => (
-      <div className="rounded-2xl border border-slate-200/60 bg-white/60 p-8 text-center text-sm text-slate-500 shadow-sm dark:border-slate-800/60 dark:bg-slate-900/60 dark:text-slate-300">
+      <div className="rounded-xl border border-border/40 bg-card/80 p-8 text-center text-sm text-muted-foreground shadow-sm">
         Preparando lista de dispositivos autorizados…
       </div>
     ),

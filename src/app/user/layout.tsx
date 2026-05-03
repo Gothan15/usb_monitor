@@ -2,9 +2,14 @@
 
 import { useMemo, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
-import { AnimatePresence, motion } from "framer-motion";
 import { Clock, Key, Usb } from "lucide-react";
-import { AppShell, type AppShellNavItem } from "@/components/system/AppShell";
+import { AppShell, type AppShellNavItem } from "@/components/shell/AppShell";
+import { CommandPalette } from "@/components/shell/CommandPalette";
+import { PageTransition } from "@/components/shell/PageTransition";
+import { LiveDataProvider } from "@/components/providers/LiveDataProvider";
+import { TourEngine } from "@/components/onboarding/TourEngine";
+import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
+import { userTour } from "@/lib/tours";
 import { FullscreenSpinner } from "@/components/ui/spinner";
 import {
   UserDashboardProvider,
@@ -56,18 +61,18 @@ function UserLayoutContent({
       },
       {
         key: "apikey",
-        label: "API Key",
+        label: "Clave API",
         description: "Credenciales seguras",
         icon: Key,
         href: userViewToHref.apikey,
       },
     ],
-    []
+    [],
   );
 
   const activeItem = useMemo(
     () => navItems.find((item) => item.key === activeView) ?? navItems[0],
-    [activeView, navItems]
+    [activeView, navItems],
   );
 
   if (loading && !user) {
@@ -76,7 +81,7 @@ function UserLayoutContent({
 
   if (!user) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-100 dark:bg-slate-950">
+      <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="rounded-2xl border border-red-200/70 bg-red-50 px-6 py-4 text-sm text-red-700 shadow-sm dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-100">
           {error || "No se pudo cargar la información del usuario."}
         </div>
@@ -95,18 +100,14 @@ function UserLayoutContent({
         role: "Usuario básico",
       }}
     >
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={pathname ?? "user-root"}
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -16 }}
-          transition={{ duration: 0.22, ease: "easeOut" }}
-          className="space-y-6"
-        >
-          {children}
-        </motion.div>
-      </AnimatePresence>
+      <CommandPalette role="USER" />
+      <TourEngine tour={userTour} />
+      <PageTransition
+        transitionKey={pathname ?? "user-root"}
+        className="space-y-6"
+      >
+        <ErrorBoundary>{children}</ErrorBoundary>
+      </PageTransition>
     </AppShell>
   );
 }
@@ -117,8 +118,9 @@ export default function UserLayout({ children }: { children: ReactNode }) {
 
   return (
     <UserDashboardProvider activeView={activeView}>
-      {/* Provider comparte sesión con todas las subrutas del dashboard */}
-      <UserLayoutContent pathname={pathname}>{children}</UserLayoutContent>
+      <LiveDataProvider>
+        <UserLayoutContent pathname={pathname}>{children}</UserLayoutContent>
+      </LiveDataProvider>
     </UserDashboardProvider>
   );
 }

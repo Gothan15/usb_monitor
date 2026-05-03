@@ -70,9 +70,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (normalizedSerial.length < 4) {
+  if (normalizedSerial.length < 1) {
     return NextResponse.json(
-      { ok: false, error: "El serial debe tener al menos 4 caracteres" },
+      { ok: false, error: "El serial es requerido y no puede estar vacío" },
       { status: 400 }
     );
   }

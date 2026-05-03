@@ -7,13 +7,16 @@ import { useAdminDashboard } from "../_providers/AdminDashboardProvider";
 const ComputersTab = dynamic(
   () =>
     import("@/components/dashboard/ComputersTab").then(
-      (mod) => mod.ComputersTab
+      (mod) => mod.ComputersTab,
     ),
   {
     loading: () => (
-      <DashboardFallback label="Sincronizando inventario de equipos" />
+      <DashboardFallback
+        label="Sincronizando inventario de equipos"
+        variant="table"
+      />
     ),
-  }
+  },
 );
 
 export default function AdminComputersPage() {
