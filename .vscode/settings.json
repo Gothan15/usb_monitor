@@ -4,7 +4,7 @@
   "editor.experimentalGpuAcceleration": "off",
   "editor.minimap.autohide": "mouseover",
   "sonarlint.connectedMode.project": {
-    "connectionId": "http-localhost-9000",
-    "projectKey": "${env:SONAR_PROJECT_KEY}"
+    "connectionId": "http-localhost-9000-",
+    "projectKey": "USB_Monitor"
   }
 }

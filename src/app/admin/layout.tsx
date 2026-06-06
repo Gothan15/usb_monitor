@@ -28,7 +28,7 @@ import {
 import { formatTime } from "@/components/dashboard/types";
 
 function resolveViewKey(pathname: string | null): ViewKey {
-  const sanitized = pathname?.replace(/^\/+|\/+$/g, "") ?? "";
+  const sanitized = pathname?.replace(/^\/+/, "").replace(/\/+$/, "") ?? "";
   const segments = sanitized.split("/");
   const section = segments[1];
   switch (section) {
@@ -54,10 +54,10 @@ function resolveViewKey(pathname: string | null): ViewKey {
 function AdminLayoutContent({
   children,
   pathname,
-}: {
+}: Readonly<{
   children: ReactNode;
   pathname: string | null;
-}) {
+}>) {
   const {
     activeKey,
     events,
@@ -179,7 +179,9 @@ function AdminLayoutContent({
   );
 }
 
-export default function AdminLayout({ children }: { children: ReactNode }) {
+export default function AdminLayout({
+  children,
+}: Readonly<{ children: ReactNode }>) {
   const pathname = usePathname();
   const activeKey = resolveViewKey(pathname);
 
