@@ -52,7 +52,12 @@ interface Props {
   onDelete: (id: string) => Promise<void>;
 }
 
-export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
+export function WhitelistTab({
+  entries,
+  loading,
+  onCreate,
+  onDelete,
+}: Readonly<Props>) {
   const [serialNumber, setSerialNumber] = useState("");
   const [label, setLabel] = useState("");
   const [notes, setNotes] = useState("");
@@ -109,8 +114,8 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
         description: creating
           ? "Guardando..."
           : deletingId
-          ? "Eliminando..."
-          : "Sin acciones pendientes",
+            ? "Eliminando..."
+            : "Sin acciones pendientes",
         icon: <Sparkles className="size-4" />,
         value: creating || deletingId ? "En curso" : "Listo",
         accent:
@@ -124,7 +129,7 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
       latestCreatedBy,
       numberFormatter,
       totalEntries,
-    ]
+    ],
   );
 
   const paginatedEntries = useMemo(() => {
@@ -186,7 +191,7 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
             </span>
             <div>
               <CardTitle className="text-2xl font-semibold text-foreground">
-                Whitelist de dispositivos USB
+                Lista blanca de dispositivos USB
               </CardTitle>
               <CardDescription className="text-sm text-muted-foreground">
                 Autoriza memorias seguras, mantén control y elimina desbloqueos
@@ -221,7 +226,7 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
                 <div
                   className={cn(
                     "pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br opacity-70",
-                    stat.accent
+                    stat.accent,
                   )}
                 />
                 <div className="relative flex items-start justify-between gap-3">
@@ -356,7 +361,7 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
                           disabled={isDeleting}
                           className={cn(
                             "rounded-full border border-rose-200/60 bg-rose-500/10 px-3 py-1 text-rose-600 shadow-sm transition-colors hover:border-rose-300 hover:bg-rose-500/20 disabled:opacity-70 dark:border-rose-400/30 dark:bg-rose-500/15 dark:text-rose-100",
-                            isDeleting && "opacity-70"
+                            isDeleting && "opacity-70",
                           )}
                         >
                           {isDeleting ? (
@@ -377,150 +382,150 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
 
             <div className="flex-1 overflow-hidden">
               <ScrollArea className="hidden max-h-[min(75vh,650px)] w-full pr-3 md:block">
-              <Table className="w-full min-w-[800px]">
-                <TableHeader className="sticky top-0 z-10 bg-card/95 backdrop-blur-xl">
-                  <TableRow className="border-border/40">
-                    <SortableTableHead
-                      column="serialNumber"
-                      currentSortKey={sortConfig.key}
-                      currentSortDirection={sortConfig.direction}
-                      onSort={requestSort}
-                      className="text-muted-foreground"
-                    >
-                      Serial
-                    </SortableTableHead>
-                    <SortableTableHead
-                      column="label"
-                      currentSortKey={sortConfig.key}
-                      currentSortDirection={sortConfig.direction}
-                      onSort={requestSort}
-                      className="text-muted-foreground"
-                    >
-                      Alias
-                    </SortableTableHead>
-                    <SortableTableHead
-                      column="notes"
-                      currentSortKey={sortConfig.key}
-                      currentSortDirection={sortConfig.direction}
-                      onSort={requestSort}
-                      className="text-muted-foreground"
-                    >
-                      Notas
-                    </SortableTableHead>
-                    <SortableTableHead
-                      column="createdAt"
-                      currentSortKey={sortConfig.key}
-                      currentSortDirection={sortConfig.direction}
-                      onSort={requestSort}
-                      className="text-muted-foreground"
-                    >
-                      Creado
-                    </SortableTableHead>
-                    <SortableTableHead
-                      column="createdBy"
-                      currentSortKey={sortConfig.key}
-                      currentSortDirection={sortConfig.direction}
-                      onSort={requestSort}
-                      className="text-muted-foreground"
-                    >
-                      Autor
-                    </SortableTableHead>
-                    <SortableTableHead
-                      column="id"
-                      currentSortKey={sortConfig.key}
-                      currentSortDirection={sortConfig.direction}
-                      onSort={requestSort}
-                      className="text-muted-foreground"
-                      align="right"
-                    >
-                      Acciones
-                    </SortableTableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loading ? (
-                    <TableRow>
-                      <TableCell
-                        colSpan={6}
-                        className="py-6 text-center text-muted-foreground"
+                <Table className="w-full min-w-[800px]">
+                  <TableHeader className="sticky top-0 z-10 bg-card/95 backdrop-blur-xl">
+                    <TableRow className="border-border/40">
+                      <SortableTableHead
+                        column="serialNumber"
+                        currentSortKey={sortConfig.key}
+                        currentSortDirection={sortConfig.direction}
+                        onSort={requestSort}
+                        className="text-muted-foreground"
                       >
-                        Cargando whitelist...
-                      </TableCell>
+                        Serial
+                      </SortableTableHead>
+                      <SortableTableHead
+                        column="label"
+                        currentSortKey={sortConfig.key}
+                        currentSortDirection={sortConfig.direction}
+                        onSort={requestSort}
+                        className="text-muted-foreground"
+                      >
+                        Alias
+                      </SortableTableHead>
+                      <SortableTableHead
+                        column="notes"
+                        currentSortKey={sortConfig.key}
+                        currentSortDirection={sortConfig.direction}
+                        onSort={requestSort}
+                        className="text-muted-foreground"
+                      >
+                        Notas
+                      </SortableTableHead>
+                      <SortableTableHead
+                        column="createdAt"
+                        currentSortKey={sortConfig.key}
+                        currentSortDirection={sortConfig.direction}
+                        onSort={requestSort}
+                        className="text-muted-foreground"
+                      >
+                        Creado
+                      </SortableTableHead>
+                      <SortableTableHead
+                        column="createdBy"
+                        currentSortKey={sortConfig.key}
+                        currentSortDirection={sortConfig.direction}
+                        onSort={requestSort}
+                        className="text-muted-foreground"
+                      >
+                        Autor
+                      </SortableTableHead>
+                      <SortableTableHead
+                        column="id"
+                        currentSortKey={sortConfig.key}
+                        currentSortDirection={sortConfig.direction}
+                        onSort={requestSort}
+                        className="text-muted-foreground"
+                        align="right"
+                      >
+                        Acciones
+                      </SortableTableHead>
                     </TableRow>
-                  ) : entries.length === 0 ? (
-                    <TableRow>
-                      <TableCell
-                        colSpan={6}
-                        className="py-6 text-center text-muted-foreground"
-                      >
-                        No hay dispositivos registrados. Agrega uno usando el
-                        formulario.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    paginatedEntries.map((entry) => (
-                      <TableRow
-                        key={entry.id}
-                        className="group transition-colors duration-150"
-                      >
-                        <TableCell className="font-mono text-sm text-primary">
-                          {entry.serialNumber}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {entry.label ? (
-                            <Badge
-                              variant="secondary"
-                              className="rounded-full border border-border/40 bg-muted/30 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground shadow-sm"
-                            >
-                              {entry.label}
-                            </Badge>
-                          ) : (
-                            <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground/50">
-                              —
-                            </span>
-                          )}
-                        </TableCell>
-                        <TableCell className="max-w-[280px] text-sm text-muted-foreground">
-                          {entry.notes || (
-                            <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground/50">
-                              Sin notas
-                            </span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
-                          {formatDateTime(entry.createdAt)}
-                        </TableCell>
-                        <TableCell className="text-xs font-medium text-muted-foreground">
-                          {entry.createdBy?.username || "Sistema"}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleDelete(entry.id)}
-                            disabled={deletingId === entry.id}
-                            className={cn(
-                              "rounded-full border border-rose-200/60 bg-rose-500/10 px-4 py-2 text-rose-600 shadow-sm transition-all hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-500/20 disabled:opacity-70 dark:border-rose-400/30 dark:bg-rose-500/15 dark:text-rose-100",
-                              deletingId === entry.id && "opacity-70"
-                            )}
-                          >
-                            {deletingId === entry.id ? (
-                              <div className="mr-2">
-                                <Spinner size={16} />
-                              </div>
-                            ) : (
-                              <Trash2 className="mr-2 size-4" />
-                            )}
-                            Eliminar
-                          </Button>
+                  </TableHeader>
+                  <TableBody>
+                    {loading ? (
+                      <TableRow>
+                        <TableCell
+                          colSpan={6}
+                          className="py-6 text-center text-muted-foreground"
+                        >
+                          Cargando whitelist...
                         </TableCell>
                       </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-              <ScrollBar orientation="horizontal" />
-            </ScrollArea>
+                    ) : entries.length === 0 ? (
+                      <TableRow>
+                        <TableCell
+                          colSpan={6}
+                          className="py-6 text-center text-muted-foreground"
+                        >
+                          No hay dispositivos registrados. Agrega uno usando el
+                          formulario.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      paginatedEntries.map((entry) => (
+                        <TableRow
+                          key={entry.id}
+                          className="group transition-colors duration-150"
+                        >
+                          <TableCell className="font-mono text-sm text-primary">
+                            {entry.serialNumber}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {entry.label ? (
+                              <Badge
+                                variant="secondary"
+                                className="rounded-full border border-border/40 bg-muted/30 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground shadow-sm"
+                              >
+                                {entry.label}
+                              </Badge>
+                            ) : (
+                              <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground/50">
+                                —
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className="max-w-[280px] text-sm text-muted-foreground">
+                            {entry.notes || (
+                              <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground/50">
+                                Sin notas
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {formatDateTime(entry.createdAt)}
+                          </TableCell>
+                          <TableCell className="text-xs font-medium text-muted-foreground">
+                            {entry.createdBy?.username || "Sistema"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleDelete(entry.id)}
+                              disabled={deletingId === entry.id}
+                              className={cn(
+                                "rounded-full border border-rose-200/60 bg-rose-500/10 px-4 py-2 text-rose-600 shadow-sm transition-all hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-500/20 disabled:opacity-70 dark:border-rose-400/30 dark:bg-rose-500/15 dark:text-rose-100",
+                                deletingId === entry.id && "opacity-70",
+                              )}
+                            >
+                              {deletingId === entry.id ? (
+                                <div className="mr-2">
+                                  <Spinner size={16} />
+                                </div>
+                              ) : (
+                                <Trash2 className="mr-2 size-4" />
+                              )}
+                              Eliminar
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+                <ScrollBar orientation="horizontal" />
+              </ScrollArea>
             </div>
 
             <div className="shrink-0 border-t border-border/40 bg-card/50 p-4">

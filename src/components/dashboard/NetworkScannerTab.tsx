@@ -28,7 +28,13 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Network, Radar, Download, Wifi, MonitorSmartphone } from "lucide-react";
+import {
+  Network,
+  Radar,
+  Download,
+  Wifi,
+  MonitorSmartphone,
+} from "lucide-react";
 import { getCurrentIsoString } from "@/lib/time";
 import { formatDateTime } from "@/components/dashboard/types";
 import { getCsrfTokenFromDocument } from "@/lib/utils";
@@ -151,7 +157,9 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
         if (!cancelled) setLoadingInterfaces(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const triggerScan = useCallback(async () => {
@@ -161,7 +169,7 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
       const csrfToken = getCsrfTokenFromDocument();
       if (!csrfToken) {
         throw new Error(
-          "Sesión sin token de seguridad. Inicia sesión nuevamente antes de escanear."
+          "Sesión sin token de seguridad. Inicia sesión nuevamente antes de escanear.",
         );
       }
       const payload: Record<string, unknown> = { force: true };
@@ -188,7 +196,7 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
         ? dedupeByIdentifier(
             (data.results as unknown[])
               .map(normalizeResult)
-              .filter((item) => item.alive)
+              .filter((item) => item.alive),
           ).sort((a, b) => ipToNumber(a.ip) - ipToNumber(b.ip))
         : [];
 
@@ -228,7 +236,7 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
                 Escaneo de red LAN
               </CardTitle>
               <CardDescription className="text-sm text-muted-foreground">
-                Detecta equipos activos en la red local y valida el puerto 3000
+                Detecta equipos activos en la red local y valida el puerto 5001
                 del servicio USBMonitor.
               </CardDescription>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -319,9 +327,7 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
             <Table className="w-full">
               <TableHeader className="sticky top-0 z-10 bg-card/95 backdrop-blur-xl">
                 <TableRow className="border-border/40">
-                  <TableHead className="text-muted-foreground">
-                    IP
-                  </TableHead>
+                  <TableHead className="text-muted-foreground">IP</TableHead>
                   <TableHead className="text-muted-foreground">
                     Nombre
                   </TableHead>

@@ -138,13 +138,15 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
       {
         label: "Eventos",
         value: total.toString(),
-        accent: "from-[oklch(0.70_0.05_280/0.20)] via-[oklch(0.65_0.04_280/0.08)]",
+        accent:
+          "from-[oklch(0.70_0.05_280/0.20)] via-[oklch(0.65_0.04_280/0.08)]",
         icon: <Usb className="size-4" />,
       },
       {
         label: "Desbloqueos",
         value: unlocks.toString(),
-        accent: "from-[oklch(0.75_0.12_160/0.25)] via-[oklch(0.80_0.08_160/0.10)]",
+        accent:
+          "from-[oklch(0.75_0.12_160/0.25)] via-[oklch(0.80_0.08_160/0.10)]",
         icon: <ShieldCheck className="size-4" />,
       },
       {
@@ -155,8 +157,6 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
       },
     ];
   }, [events, loading]);
-
-
 
   const { sortedData, sortConfig, requestSort } =
     useTableSort<USBEvent>(events);
@@ -205,10 +205,10 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                   <span className="size-1.5 rounded-full bg-[oklch(0.55_0.12_160)] animate-pulse" />
                   Sincronizado
                 </span>
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-muted/30 px-3 py-1 text-[11px]">
+                {/* <span className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-muted/30 px-3 py-1 text-[11px]">
                   <Clock3 className="size-3" />
                   Últimas 24h
-                </span>
+                </span> */}
               </div>
               {onClear && (
                 <Button
@@ -353,246 +353,249 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
               <div className="flex flex-col overflow-hidden rounded-xl border border-border/40 bg-card/60 shadow-inner backdrop-blur-sm">
                 <div className="flex-1 overflow-hidden">
                   <ScrollArea className="hidden max-h-[min(75vh,650px)] w-full pr-3 md:block">
-                <TooltipProvider delayDuration={120}>
-                  <div className="w-full">
-                    <Table className="w-full min-w-[850px]">
-                      <TableHeader className="sticky top-0 z-10 bg-card/95 backdrop-blur-xl">
-                        <TableRow>
-                          <SortableTableHead
-                            column="pcName"
-                            currentSortKey={sortConfig.key}
-                            currentSortDirection={sortConfig.direction}
-                            onSort={requestSort}
-                            className="text-muted-foreground"
-                          >
-                            Computadora
-                          </SortableTableHead>
-                          <SortableTableHead
-                            column="pcUser"
-                            currentSortKey={sortConfig.key}
-                            currentSortDirection={sortConfig.direction}
-                            onSort={requestSort}
-                            className="text-muted-foreground"
-                          >
-                            Usuario / IP
-                          </SortableTableHead>
-                          <SortableTableHead
-                            column="event"
-                            currentSortKey={sortConfig.key}
-                            currentSortDirection={sortConfig.direction}
-                            onSort={requestSort}
-                            className="text-muted-foreground"
-                          >
-                            Evento
-                          </SortableTableHead>
-                          <SortableTableHead
-                            column="serialNumber"
-                            currentSortKey={sortConfig.key}
-                            currentSortDirection={sortConfig.direction}
-                            onSort={requestSort}
-                            className="text-muted-foreground"
-                          >
-                            Detalle dispositivo
-                          </SortableTableHead>
-                          <SortableTableHead
-                            column="whitelisted"
-                            currentSortKey={sortConfig.key}
-                            currentSortDirection={sortConfig.direction}
-                            onSort={requestSort}
-                            className="text-muted-foreground"
-                          >
-                            Estado
-                          </SortableTableHead>
-                          <SortableTableHead
-                            column="createdAt"
-                            currentSortKey={sortConfig.key}
-                            currentSortDirection={sortConfig.direction}
-                            onSort={requestSort}
-                            className="text-muted-foreground"
-                          >
-                            Fecha / Hora
-                          </SortableTableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {paginatedEvents.map((event) => {
-                          const occurredAt = event.timestamp ?? event.createdAt;
-                          const { badgeVariant, rowClassName, tone } =
-                            classifyEvent(event);
-                          const toneLabel =
-                            tone === "success"
-                              ? "Autorizado"
-                              : tone === "error"
-                                ? "Alerta"
-                                : "Info";
-                          const toneIcon =
-                            tone === "success" ? (
-                              <ShieldCheck className="h-3.5 w-3.5" />
-                            ) : tone === "error" ? (
-                              <AlertTriangle className="h-3.5 w-3.5" />
-                            ) : (
-                              <Info className="h-3.5 w-3.5" />
-                            );
-                          const toneBadgeClass = cn(
-                            "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.2em]",
-                            badgeVariant === "default" &&
-                              "border border-border/50 bg-muted/40 text-muted-foreground",
-                          );
-                          return (
-                            <TableRow
-                              key={event.id}
-                              className={cn(
-                                "group transition-colors duration-150",
-                                rowClassName,
-                              )}
-                            >
-                              <TableCell className="max-w-[120px] font-medium text-foreground">
-                                <span
-                                  className="block truncate"
-                                  title={event.pcName}
-                                >
-                                  {event.pcName}
-                                </span>
-                              </TableCell>
-                              <TableCell className="max-w-[140px] text-muted-foreground">
-                                <div className="flex flex-col gap-0.5">
-                                  <span
-                                    className="truncate"
-                                    title={event.pcUser}
-                                  >
-                                    {event.pcUser}
-                                  </span>
-                                  <span
-                                    className="truncate text-xs font-mono text-muted-foreground/70"
-                                    title={event.pcIp}
-                                  >
-                                    {event.pcIp}
-                                  </span>
-                                </div>
-                              </TableCell>
-                              <TableCell className="max-w-[200px] text-muted-foreground">
-                                <div className="flex flex-col gap-1">
-                                  <Badge
-                                    variant={badgeVariant}
-                                    className={toneBadgeClass}
-                                  >
-                                    {toneIcon}
-                                    <span className="hidden xl:inline">
-                                      {toneLabel}
-                                    </span>
-                                  </Badge>
-                                  <span
-                                    className="truncate text-xs text-muted-foreground/70"
-                                    title={event.event}
-                                  >
-                                    {event.event}
-                                  </span>
-                                </div>
-                              </TableCell>
-                              <TableCell className="max-w-[160px] text-muted-foreground">
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <div className="cursor-help space-y-1 text-xs leading-tight">
-                                      <div
-                                        className="truncate font-mono"
-                                        title={
-                                          event.serialNumber || "Sin serial"
-                                        }
-                                      >
-                                        {event.serialNumber || "Sin serial"}
-                                      </div>
-                                      <div className="flex flex-wrap items-center gap-1">
-                                        {event.driveLetter && (
-                                          <Badge
-                                            variant="outline"
-                                            className="rounded-full px-2 py-0 text-[10px] uppercase tracking-wider"
-                                          >
-                                            {event.driveLetter}
-                                          </Badge>
-                                        )}
-                                        {event.readonlyStatus && (
-                                          <Badge
-                                            variant="outline"
-                                            className="max-w-[96px] truncate rounded-full px-2 py-0 text-[10px] uppercase tracking-wider"
-                                          >
-                                            {event.readonlyStatus}
-                                          </Badge>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </TooltipTrigger>
-                                  <TooltipContent
-                                    side="left"
-                                    align="start"
-                                    className="max-w-xs text-xs"
-                                  >
-                                    <div className="space-y-1.5">
-                                      <p>
-                                        <span className="font-semibold">
-                                          Serial:
-                                        </span>{" "}
-                                        {event.serialNumber || "Sin serial"}
-                                      </p>
-                                      <p>
-                                        <span className="font-semibold">
-                                          Unidad:
-                                        </span>{" "}
-                                        {event.driveLetter || "Sin unidad"}
-                                      </p>
-                                      <p>
-                                        <span className="font-semibold">
-                                          Modo:
-                                        </span>{" "}
-                                        {event.readonlyStatus || "Sin modo"}
-                                      </p>
-                                    </div>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TableCell>
-                              <TableCell className="text-muted-foreground">
-                                <Badge
-                                  variant={
-                                    event.whitelisted ? "success" : "secondary"
-                                  }
-                                  className={cn(
-                                    "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold",
-                                    event.whitelisted
-                                      ? "border-[oklch(0.75_0.12_160/0.30)] bg-[oklch(0.75_0.12_160/0.10)] text-[oklch(0.40_0.12_160)] dark:border-[oklch(0.65_0.10_160/0.30)] dark:bg-[oklch(0.55_0.12_160/0.15)] dark:text-[oklch(0.90_0.04_160)]"
-                                      : "border-[oklch(0.80_0.10_85/0.40)] bg-[oklch(0.95_0.03_85)] text-[oklch(0.45_0.10_85)] dark:border-[oklch(0.65_0.08_85/0.30)] dark:bg-[oklch(0.80_0.10_85/0.15)] dark:text-[oklch(0.90_0.04_85)]",
-                                  )}
-                                >
-                                  {event.whitelisted ? (
-                                    <ShieldCheck className="h-3.5 w-3.5" />
-                                  ) : (
-                                    <AlertTriangle className="h-3.5 w-3.5" />
-                                  )}
-                                  <span className="hidden xl:inline">
-                                    {event.whitelisted
-                                      ? "Autorizado"
-                                      : "Sin autorizar"}
-                                  </span>
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="text-muted-foreground">
-                                <div className="flex flex-col">
-                                  <span className="font-medium text-foreground text-sm">
-                                    {formatDate(occurredAt)}
-                                  </span>
-                                  <span className="text-xs font-mono text-muted-foreground/70">
-                                    {formatTime(occurredAt)}
-                                  </span>
-                                </div>
-                              </TableCell>
+                    <TooltipProvider delayDuration={120}>
+                      <div className="w-full">
+                        <Table className="w-full min-w-[850px]">
+                          <TableHeader className="sticky top-0 z-10 bg-card/95 backdrop-blur-xl">
+                            <TableRow>
+                              <SortableTableHead
+                                column="pcName"
+                                currentSortKey={sortConfig.key}
+                                currentSortDirection={sortConfig.direction}
+                                onSort={requestSort}
+                                className="text-muted-foreground"
+                              >
+                                Computadora
+                              </SortableTableHead>
+                              <SortableTableHead
+                                column="pcUser"
+                                currentSortKey={sortConfig.key}
+                                currentSortDirection={sortConfig.direction}
+                                onSort={requestSort}
+                                className="text-muted-foreground"
+                              >
+                                Usuario / IP
+                              </SortableTableHead>
+                              <SortableTableHead
+                                column="event"
+                                currentSortKey={sortConfig.key}
+                                currentSortDirection={sortConfig.direction}
+                                onSort={requestSort}
+                                className="text-muted-foreground"
+                              >
+                                Evento
+                              </SortableTableHead>
+                              <SortableTableHead
+                                column="serialNumber"
+                                currentSortKey={sortConfig.key}
+                                currentSortDirection={sortConfig.direction}
+                                onSort={requestSort}
+                                className="text-muted-foreground"
+                              >
+                                Detalle dispositivo
+                              </SortableTableHead>
+                              <SortableTableHead
+                                column="whitelisted"
+                                currentSortKey={sortConfig.key}
+                                currentSortDirection={sortConfig.direction}
+                                onSort={requestSort}
+                                className="text-muted-foreground"
+                              >
+                                Estado
+                              </SortableTableHead>
+                              <SortableTableHead
+                                column="createdAt"
+                                currentSortKey={sortConfig.key}
+                                currentSortDirection={sortConfig.direction}
+                                onSort={requestSort}
+                                className="text-muted-foreground"
+                              >
+                                Fecha / Hora
+                              </SortableTableHead>
                             </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </TooltipProvider>
-                <ScrollBar orientation="horizontal" />
-              </ScrollArea>
-              </div>
+                          </TableHeader>
+                          <TableBody>
+                            {paginatedEvents.map((event) => {
+                              const occurredAt =
+                                event.timestamp ?? event.createdAt;
+                              const { badgeVariant, rowClassName, tone } =
+                                classifyEvent(event);
+                              const toneLabel =
+                                tone === "success"
+                                  ? "Autorizado"
+                                  : tone === "error"
+                                    ? "Alerta"
+                                    : "Info";
+                              const toneIcon =
+                                tone === "success" ? (
+                                  <ShieldCheck className="h-3.5 w-3.5" />
+                                ) : tone === "error" ? (
+                                  <AlertTriangle className="h-3.5 w-3.5" />
+                                ) : (
+                                  <Info className="h-3.5 w-3.5" />
+                                );
+                              const toneBadgeClass = cn(
+                                "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.2em]",
+                                badgeVariant === "default" &&
+                                  "border border-border/50 bg-muted/40 text-muted-foreground",
+                              );
+                              return (
+                                <TableRow
+                                  key={event.id}
+                                  className={cn(
+                                    "group transition-colors duration-150",
+                                    rowClassName,
+                                  )}
+                                >
+                                  <TableCell className="max-w-[120px] font-medium text-foreground">
+                                    <span
+                                      className="block truncate"
+                                      title={event.pcName}
+                                    >
+                                      {event.pcName}
+                                    </span>
+                                  </TableCell>
+                                  <TableCell className="max-w-[140px] text-muted-foreground">
+                                    <div className="flex flex-col gap-0.5">
+                                      <span
+                                        className="truncate"
+                                        title={event.pcUser}
+                                      >
+                                        {event.pcUser}
+                                      </span>
+                                      <span
+                                        className="truncate text-xs font-mono text-muted-foreground/70"
+                                        title={event.pcIp}
+                                      >
+                                        {event.pcIp}
+                                      </span>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="max-w-[200px] text-muted-foreground">
+                                    <div className="flex flex-col gap-1">
+                                      <Badge
+                                        variant={badgeVariant}
+                                        className={toneBadgeClass}
+                                      >
+                                        {toneIcon}
+                                        <span className="hidden xl:inline">
+                                          {toneLabel}
+                                        </span>
+                                      </Badge>
+                                      <span
+                                        className="truncate text-xs text-muted-foreground/70"
+                                        title={event.event}
+                                      >
+                                        {event.event}
+                                      </span>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="max-w-[160px] text-muted-foreground">
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <div className="cursor-help space-y-1 text-xs leading-tight">
+                                          <div
+                                            className="truncate font-mono"
+                                            title={
+                                              event.serialNumber || "Sin serial"
+                                            }
+                                          >
+                                            {event.serialNumber || "Sin serial"}
+                                          </div>
+                                          <div className="flex flex-wrap items-center gap-1">
+                                            {event.driveLetter && (
+                                              <Badge
+                                                variant="outline"
+                                                className="rounded-full px-2 py-0 text-[10px] uppercase tracking-wider"
+                                              >
+                                                {event.driveLetter}
+                                              </Badge>
+                                            )}
+                                            {event.readonlyStatus && (
+                                              <Badge
+                                                variant="outline"
+                                                className="max-w-[96px] truncate rounded-full px-2 py-0 text-[10px] uppercase tracking-wider"
+                                              >
+                                                {event.readonlyStatus}
+                                              </Badge>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </TooltipTrigger>
+                                      <TooltipContent
+                                        side="left"
+                                        align="start"
+                                        className="max-w-xs text-xs"
+                                      >
+                                        <div className="space-y-1.5">
+                                          <p>
+                                            <span className="font-semibold">
+                                              Serial:
+                                            </span>{" "}
+                                            {event.serialNumber || "Sin serial"}
+                                          </p>
+                                          <p>
+                                            <span className="font-semibold">
+                                              Unidad:
+                                            </span>{" "}
+                                            {event.driveLetter || "Sin unidad"}
+                                          </p>
+                                          <p>
+                                            <span className="font-semibold">
+                                              Modo:
+                                            </span>{" "}
+                                            {event.readonlyStatus || "Sin modo"}
+                                          </p>
+                                        </div>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TableCell>
+                                  <TableCell className="text-muted-foreground">
+                                    <Badge
+                                      variant={
+                                        event.whitelisted
+                                          ? "success"
+                                          : "secondary"
+                                      }
+                                      className={cn(
+                                        "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold",
+                                        event.whitelisted
+                                          ? "border-[oklch(0.75_0.12_160/0.30)] bg-[oklch(0.75_0.12_160/0.10)] text-[oklch(0.40_0.12_160)] dark:border-[oklch(0.65_0.10_160/0.30)] dark:bg-[oklch(0.55_0.12_160/0.15)] dark:text-[oklch(0.90_0.04_160)]"
+                                          : "border-[oklch(0.80_0.10_85/0.40)] bg-[oklch(0.95_0.03_85)] text-[oklch(0.45_0.10_85)] dark:border-[oklch(0.65_0.08_85/0.30)] dark:bg-[oklch(0.80_0.10_85/0.15)] dark:text-[oklch(0.90_0.04_85)]",
+                                      )}
+                                    >
+                                      {event.whitelisted ? (
+                                        <ShieldCheck className="h-3.5 w-3.5" />
+                                      ) : (
+                                        <AlertTriangle className="h-3.5 w-3.5" />
+                                      )}
+                                      <span className="hidden xl:inline">
+                                        {event.whitelisted
+                                          ? "Autorizado"
+                                          : "Sin autorizar"}
+                                      </span>
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell className="text-muted-foreground">
+                                    <div className="flex flex-col">
+                                      <span className="font-medium text-foreground text-sm">
+                                        {formatDate(occurredAt)}
+                                      </span>
+                                      <span className="text-xs font-mono text-muted-foreground/70">
+                                        {formatTime(occurredAt)}
+                                      </span>
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </TooltipProvider>
+                    <ScrollBar orientation="horizontal" />
+                  </ScrollArea>
+                </div>
 
                 <div className="shrink-0 border-t border-border/40 bg-card/50 p-4">
                   {/* Floating Pagination */}
