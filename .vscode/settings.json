@@ -2,5 +2,9 @@
   "editor.defaultFormatter": "esbenp.prettier-vscode",
   "workbench.colorTheme": "Zinc Carbon Minimal",
   "editor.experimentalGpuAcceleration": "off",
-  "editor.minimap.autohide": "mouseover"
+  "editor.minimap.autohide": "mouseover",
+  "sonarlint.connectedMode.project": {
+    "connectionId": "http-localhost-9000",
+    "projectKey": "${env:SONAR_PROJECT_KEY}"
+  }
 }

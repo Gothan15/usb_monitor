@@ -29,8 +29,9 @@ import json
 import logging
 import os
 import re
+import shutil
 import socket
-import subprocess
+import subprocess  #nosec B404
 import sys
 import tempfile
 import threading
@@ -103,6 +104,7 @@ LEGACY_LOG_FILE_NAME = "usb_monitor.log"
 SERVICE_API_VERSION = "1.0.0"
 DATABASE_URL_ENV_VAR = "USB_MONITOR_DATABASE_URL"
 DEFAULT_DATABASE_URL = "postgresql://usb_app:usbapp123@localhost:5432/monitor_usb?schema=public"
+SYSTEM32_DIR = Path(os.environ.get("SystemRoot", "C:/Windows")) / "System32"
 
 # Cache para evitar registrar advertencias duplicadas al descartar discos no USB
 DISCARDED_DISK_CACHE: Set[str] = set()
@@ -233,8 +235,8 @@ def get_machine_identifier() -> bytes:
                     return uuid.encode('utf-8')
         finally:
             pythoncom.CoUninitialize()
-    except Exception:
-        pass
+    except Exception as exc:
+        LOGGER.debug("No se pudo obtener UUID via WMI: %s", exc)
     
     # Fallback: usar el nombre del host y el nombre del usuario
     fallback = f"{socket.gethostname()}-{os.environ.get('COMPUTERNAME', 'UNKNOWN')}"
@@ -412,8 +414,9 @@ def run_setx(api_key: str) -> None:
     env_name = "USB_MONITOR_API_KEY"
     # Encriptar la API key antes de guardarla
     encrypted_key = encrypt_value(api_key)
+    setx_path = resolve_executable("setx.exe")
     completed = subprocess.run(
-        ["setx", env_name, encrypted_key, "/M"],
+        [setx_path, env_name, encrypted_key, "/M"],  #nosec B603
         capture_output=True,
         text=True,
         encoding='cp850',  # Codificación de consola de Windows en español
@@ -766,6 +769,13 @@ def _sanitize_string(value: Optional[str], max_length: int) -> Optional[str]:
     return sanitized[:max_length]
 
 
+def escape_wmi_query_value(value: str, max_length: int = 256) -> Optional[str]:
+    sanitized = _sanitize_string(value, max_length)
+    if not sanitized:
+        return None
+    return sanitized.replace("'", "''")
+
+
 def sanitize_required_string(
     value: Optional[str], *, max_length: int, fallback: str
 ) -> str:
@@ -787,6 +797,16 @@ def sanitize_drive_letter(value: Optional[str]) -> Optional[str]:
     if len(candidate) == 2 and candidate[1] == ":" and candidate[0].isalpha():
         return candidate
     return None
+
+
+def resolve_executable(executable: str) -> str:
+    resolved = shutil.which(executable)
+    if resolved:
+        return resolved
+    candidate = SYSTEM32_DIR / executable
+    if candidate.exists():
+        return str(candidate)
+    raise FileNotFoundError(f"No se encontró el ejecutable: {executable}")
 
 
 def normalize_serial_candidate(serial: Optional[str]) -> Optional[str]:
@@ -1030,8 +1050,8 @@ def ensure_admin_or_exit() -> None:
         root = tk.Tk()
         root.withdraw()
         messagebox.showerror("USB Monitor Service", message, parent=root)
-    except Exception:
-        pass
+    except Exception as exc:
+        LOGGER.debug("No se pudo mostrar el mensaje de permisos: %s", exc)
     finally:
         if root is not None:
             root.destroy()
@@ -1190,9 +1210,13 @@ def resolve_drive_letter(event: Any, conn: wmi.WMI) -> Optional[str]:
         return None
 
     try:
-        normalized = candidate.replace("\\", "\\\\")
+        escaped_candidate = escape_wmi_query_value(candidate, 260)
+        if not escaped_candidate:
+            LOGGER.debug("Candidate vacío tras sanitizar: %s", candidate)
+            return None
+        normalized = escaped_candidate.replace("\\", "\\\\")
         volumes = conn.query(
-            f"SELECT DriveLetter FROM Win32_Volume WHERE DeviceID='{normalized}'"
+            "SELECT DriveLetter FROM Win32_Volume WHERE DeviceID='{}'".format(normalized)  #nosec B608
         )
         for volume in volumes:
             drive_letter = getattr(volume, "DriveLetter", None)
@@ -1209,8 +1233,12 @@ def resolve_drive_letter(event: Any, conn: wmi.WMI) -> Optional[str]:
 
 def resolve_disk_number(drive_letter: str, conn: wmi.WMI) -> Optional[str]:
     LOGGER.debug("Resolviendo número de disco para la unidad %s", drive_letter)
+    safe_letter = sanitize_drive_letter(drive_letter)
+    if not safe_letter:
+        LOGGER.debug("Letra de unidad inválida para resolver disco: %s", drive_letter)
+        return None
     try:
-        logical = conn.Win32_LogicalDisk(DeviceID=f"{drive_letter}:")
+        logical = conn.Win32_LogicalDisk(DeviceID=f"{safe_letter}")
         if not logical:
             LOGGER.debug("No se encontró Win32_LogicalDisk para %s", drive_letter)
             return None
@@ -1228,18 +1256,22 @@ def resolve_disk_number(drive_letter: str, conn: wmi.WMI) -> Optional[str]:
                     )
                     return resolved
         # Fallback manual join via Win32_LogicalDiskToPartition
+        escaped_letter = escape_wmi_query_value(safe_letter, 3)
+        if not escaped_letter:
+            LOGGER.debug("Letra de unidad vacía tras sanitizar: %s", drive_letter)
+            return None
         rels = conn.query(
-            "SELECT * FROM Win32_LogicalDiskToPartition WHERE Antecedent LIKE '%{}%'".format(
-                drive_letter
-            )
+            "SELECT * FROM Win32_LogicalDiskToPartition WHERE Antecedent LIKE '%{}%'".format(escaped_letter)  #nosec B608
         )
         for rel in rels:
             antecedent = getattr(rel, "Antecedent", "")
             disk_part = antecedent.split("\\")[-1]
+            escaped_disk_part = escape_wmi_query_value(disk_part, 256)
+            if not escaped_disk_part:
+                LOGGER.debug("Disk part vacío tras sanitizar: %s", disk_part)
+                continue
             disk_info = conn.query(
-                "SELECT * FROM Win32_DiskDrive WHERE DeviceID LIKE '%{}%'".format(
-                    disk_part
-                )
+                "SELECT * FROM Win32_DiskDrive WHERE DeviceID LIKE '%{}%'".format(escaped_disk_part)  #nosec B608
             )
             for disk in disk_info:
                 index = getattr(disk, "Index", None)
@@ -1270,8 +1302,9 @@ def run_diskpart(commands: str) -> subprocess.CompletedProcess[str]:
     try:
         LOGGER.info("Ejecutando diskpart con script temporal %s", script_path)
         LOGGER.debug("Contenido de script diskpart:\n%s", script_content.strip())
+        diskpart_path = resolve_executable("diskpart.exe")
         result = subprocess.run(
-            ["diskpart", "/s", script_path],
+            [diskpart_path, "/s", script_path],  #nosec B603
             text=True,
             capture_output=True,
             check=False,
@@ -1475,8 +1508,9 @@ def schedule_shutdown(delay_seconds: int = 3) -> None:
             "  ⚠  Dispositivo no autorizado. Apagado programado en %s segundos.",
             delay_seconds,
         )
+        shutdown_path = resolve_executable("shutdown.exe")
         subprocess.Popen(
-            ["shutdown", "/s", "/t", str(max(delay_seconds, 0))],
+            [shutdown_path, "/s", "/t", str(max(delay_seconds, 0))],  #nosec B603
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -1989,8 +2023,9 @@ class UnlockHTTPHandler(BaseHTTPRequestHandler):
             try:
                 delay_int = int(delay)
                 encrypted_delay = encrypt_value(str(delay_int))
+                setx_path = resolve_executable("setx.exe")
                 completed = subprocess.run(
-                    ["setx", "USB_MONITOR_STARTUP_DELAY", encrypted_delay, "/M"],
+                    [setx_path, "USB_MONITOR_STARTUP_DELAY", encrypted_delay, "/M"],  #nosec B603
                     capture_output=True,
                     text=True,
                     encoding='cp850',
@@ -2457,7 +2492,8 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
             UnlockHTTPHandler.service_instance = self
             
             # Crear el servidor HTTP
-            self.http_server = HTTPServer(("0.0.0.0", listen_port), UnlockHTTPHandler)
+            listen_host = os.environ.get("USB_MONITOR_LISTEN_HOST", "127.0.0.1")
+            self.http_server = HTTPServer((listen_host, listen_port), UnlockHTTPHandler)
             
             # Iniciar en un thread separado
             self.http_thread = threading.Thread(
@@ -2785,7 +2821,7 @@ def _execute_service_command(command: str, timeout: int = 45) -> Tuple[bool, str
             encoding='cp850',  # Codificación de consola de Windows
             env=env,
             timeout=timeout,
-        )
+        )  #nosec B603
     except subprocess.CalledProcessError as exc:
         LOGGER.error(
             "Comando '%s' devolvió código %s. Stdout: %s | Stderr: %s",
@@ -2802,8 +2838,8 @@ def _execute_service_command(command: str, timeout: int = 45) -> Tuple[bool, str
         LOGGER.error("Timeout ejecutando comando '%s' tras %ss", command, timeout)
         try:
             exc.process.kill()
-        except Exception:
-            pass
+        except Exception as kill_exc:
+            LOGGER.debug("No se pudo terminar el proceso tras timeout: %s", kill_exc)
         stdout, stderr = exc.process.communicate()
         message = _merge_process_output(stdout, stderr)
 
@@ -3034,8 +3070,9 @@ def _set_server_host(new_host: str) -> Tuple[bool, str]:
         return False, "El valor ingresado es demasiado largo."
 
     try:
+        setx_path = resolve_executable("setx.exe")
         completed = subprocess.run(
-            ["setx", "USB_MONITOR_SERVER_HOST", value, "/M"],
+            [setx_path, "USB_MONITOR_SERVER_HOST", value, "/M"],  #nosec B603
             capture_output=True,
             text=True,
             encoding='cp850',  # Codificación de consola de Windows en español
@@ -3070,8 +3107,9 @@ def _toggle_server_scheme() -> Tuple[bool, str]:
     current = (os.environ.get("USB_MONITOR_SERVER_SCHEME", "https") or "").lower().strip()
     new_value = "http" if current == "https" else "https"
     try:
+        setx_path = resolve_executable("setx.exe")
         completed = subprocess.run(
-            ["setx", "USB_MONITOR_SERVER_SCHEME", new_value, "/M"],
+            [setx_path, "USB_MONITOR_SERVER_SCHEME", new_value, "/M"],  #nosec B603
             capture_output=True,
             text=True,
             encoding='cp850',
@@ -3106,8 +3144,9 @@ def _toggle_ssl_verify() -> Tuple[bool, str]:
     current = (os.environ.get("USB_MONITOR_SSL_VERIFY", "true") or "").lower().strip()
     new_value = "false" if current == "true" else "true"
     try:
+        setx_path = resolve_executable("setx.exe")
         completed = subprocess.run(
-            ["setx", "USB_MONITOR_SSL_VERIFY", new_value, "/M"],
+            [setx_path, "USB_MONITOR_SSL_VERIFY", new_value, "/M"],  #nosec B603
             capture_output=True,
             text=True,
             encoding='cp850',
@@ -3148,8 +3187,8 @@ def run_gui() -> None:
     if icon_path.exists():
         try:
             root.iconbitmap(default=str(icon_path))
-        except Exception:
-            pass
+        except Exception as exc:
+            LOGGER.debug("No se pudo establecer el icono de la app: %s", exc)
 
     root.columnconfigure(0, weight=1)
     root.rowconfigure(0, weight=1)

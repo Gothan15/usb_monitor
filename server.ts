@@ -1,11 +1,11 @@
 // server.ts - Next.js Standalone + Socket.IO
-import { createServer as createHttpServer } from "http";
-import { createServer as createHttpsServer } from "https";
+import { createServer as createHttpServer } from "node:http";
+import { createServer as createHttpsServer } from "node:https";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import next from "next";
-import nextPackage from "next/package.json" assert { type: "json" };
+import nextPackage from "next/package.json" with { type: "json" };
 import { Server } from "socket.io";
 import { withContainer } from "@/lib/di/container";
 import { logError, logInfo, logWarn } from "@/lib/logger";
@@ -22,6 +22,8 @@ const DEFAULT_SOCKET_ORIGINS = [
   "https://localhost:3000",
   "http://172.20.10.12:3000",
   "https://172.20.10.12:3000",
+  "http://172.20.10.2:3000",
+  "https://172.20.10.2:3000",
 ];
 
 function parseSocketOrigins() {
@@ -101,7 +103,7 @@ async function createCustomServer() {
 
     const requestHandler = (
       req: Parameters<typeof handle>[0],
-      res: Parameters<typeof handle>[1]
+      res: Parameters<typeof handle>[1],
     ) => {
       if (req.url?.startsWith("/api/socketio")) {
         return;
@@ -124,7 +126,7 @@ async function createCustomServer() {
 
     const corsOrigin = (
       origin: string | undefined,
-      callback: (err: Error | null, allow?: boolean) => void
+      callback: (err: Error | null, allow?: boolean) => void,
     ) => {
       if (!origin) {
         return callback(null, true);

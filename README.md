@@ -93,6 +93,7 @@ Para entornos productivos se añadieron controles obligatorios:
 - Si la aplicación se sirve detrás de un proxy que ya termina TLS, deja `TLS_*` vacías y asegúrate de que el proxy envíe la cabecera `X-Forwarded-Proto`.
 - Usa `ENFORCE_HTTPS_REDIRECT=false` únicamente en entornos controlados donde mantengas tráfico HTTP por motivos de depuración.
 - Ajusta `ALLOWED_ORIGINS` para que coincida con la configuración del proxy/reverse proxy; estos valores se reutilizan en la política CSP y en la negociación de Socket.IO.
+- Verifica que el servidor web, servidor de aplicación y balanceadores no eliminen ni sobreescriban la cabecera `Content-Security-Policy`. La cabecera se genera por petición en el middleware con `nonce`, por lo que si el proxy la redefine debe respetar el valor que entrega la app.
 
 ### 2. Cliente Windows
 
