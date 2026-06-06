@@ -24,12 +24,13 @@ export async function GET(req: Request) {
     const cookieHeader = req.headers.get("cookie") || "";
     const cookies = Object.fromEntries(
       cookieHeader
-        .split(/; */)
+        .split(";")
+        .map((c) => c.trim())
         .filter(Boolean)
         .map((c) => {
           const [k, ...r] = c.split("=");
           return [decodeURIComponent(k), decodeURIComponent(r.join("="))];
-        })
+        }),
     );
 
     let rotated = false;
@@ -70,7 +71,7 @@ export async function GET(req: Request) {
   } catch (error: any) {
     return NextResponse.json(
       { ok: false, error: { code: "UNAUTHORIZED", message: "No autenticado" } },
-      { status: error?.message === "FORBIDDEN" ? 403 : 401 }
+      { status: error?.message === "FORBIDDEN" ? 403 : 401 },
     );
   }
 }

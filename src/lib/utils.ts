@@ -10,7 +10,8 @@ export function cn(...inputs: ClassValue[]) {
 export function getCsrfTokenFromDocument(): string {
   if (typeof document === "undefined") return "";
   const cookie = document.cookie
-    .split(/;\s*/)
+    .split(";")
+    .map((c) => c.trim())
     .find((entry) => entry.startsWith("csrf-token="));
   if (!cookie) return "";
   const [, value = ""] = cookie.split("=");

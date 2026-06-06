@@ -11,7 +11,7 @@ export function parseAllowedOrigins(raw: string | undefined): string[] {
   }
 
   const entries = raw
-    .split(/[\s,]+/)
+    .split(",")
     .map((value) => value.trim())
     .filter(Boolean);
 
