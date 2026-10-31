@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
@@ -394,9 +394,9 @@ export function AppShell({
                     </span>
                   </div>
                 </div>
-                {/* Navegación en fila fina (móvil y tableta) */}
+                                {/* Navegación en fila fina (móvil y tableta, modo lateral) */}
                 <nav
-                  className="scrollbar-thin flex items-stretch gap-0.5 overflow-x-auto border-t border-border/60 px-2 min-[1600px]:hidden"
+                  className="scrollbar-thin flex items-stretch gap-0.5 overflow-x-auto border-t border-border/60 px-2 lg:hidden"
                   aria-label="Secciones"
                 >
                   {navItems.map((item) => {
@@ -588,47 +588,57 @@ export function AppShell({
                   </div>
                 </div>
 
-                {/* Navegación en fila fina (móvil y tableta) */}
+                                {/* Navegación en fila: en pantallas anchas las secciones
+                    ocupan todo el ancho, con «|» como divisor */}
                 <nav
-                  className="scrollbar-thin flex items-stretch gap-0.5 overflow-x-auto border-t border-border/60 px-2 min-[1600px]:hidden"
+                  className="scrollbar-thin flex items-stretch gap-0.5 overflow-x-auto border-t border-border/60 px-2 min-[1600px]:hidden xl:gap-0 xl:overflow-visible"
                   aria-label="Secciones"
                 >
-                  {navItems.map((item) => {
+                  {navItems.map((item, indice) => {
                     const isActive = item.key === activeKey;
                     return (
-                      <Link
-                        key={item.key}
-                        href={item.href}
-                        prefetch
-                        className={cn(
-                          "relative flex items-center gap-1.5 whitespace-nowrap px-2.5 py-2.5 text-[11.5px] font-semibold uppercase tracking-[0.09em] transition-colors",
-                          isActive
-                            ? "text-foreground"
-                            : "text-muted-foreground hover:text-foreground",
-                        )}
-                      >
-                        <item.icon
-                          className={cn(
-                            "size-4 shrink-0",
-                            isActive
-                              ? "text-[var(--acero)]"
-                              : "text-muted-foreground/70",
-                          )}
-                        />
-                        {item.label}
-                        {item.badge !== undefined && (
-                          <span className="font-mono text-[10.5px] font-semibold tabular-nums text-[var(--acero)]">
-                            {item.badge}
+                      <Fragment key={item.key}>
+                        {indice > 0 && (
+                          <span
+                            aria-hidden
+                            className="hidden select-none items-center text-[13px] font-light text-muted-foreground/40 xl:flex"
+                          >
+                            |
                           </span>
                         )}
-                        {isActive && (
-                          <motion.span
-                            layoutId="nav-underline-movil"
-                            className="absolute inset-x-2.5 bottom-0 h-[2px] bg-[var(--acero)]"
-                            transition={{ type: "spring", bounce: 0.18, duration: 0.55 }}
+                        <Link
+                          href={item.href}
+                          prefetch
+                          className={cn(
+                            "relative flex items-center gap-1.5 whitespace-nowrap px-2.5 py-2.5 text-[11.5px] font-semibold uppercase tracking-[0.09em] transition-colors xl:flex-1 xl:justify-center",
+                            isActive
+                              ? "text-foreground"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          <item.icon
+                            className={cn(
+                              "size-4 shrink-0",
+                              isActive
+                                ? "text-[var(--acero)]"
+                                : "text-muted-foreground/70",
+                            )}
                           />
-                        )}
-                      </Link>
+                          {item.label}
+                          {item.badge !== undefined && (
+                            <span className="font-mono text-[10.5px] font-semibold tabular-nums text-[var(--acero)]">
+                              {item.badge}
+                            </span>
+                          )}
+                          {isActive && (
+                            <motion.span
+                              layoutId="nav-underline-movil"
+                              className="absolute inset-x-2.5 bottom-0 h-[2px] bg-[var(--acero)] xl:inset-x-5"
+                              transition={{ type: "spring", bounce: 0.18, duration: 0.55 }}
+                            />
+                          )}
+                        </Link>
+                      </Fragment>
                     );
                   })}
                 </nav>
