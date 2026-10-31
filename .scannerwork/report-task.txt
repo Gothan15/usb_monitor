@@ -1,6 +1,0 @@
-projectKey=USB_Monitor
-serverUrl=http://localhost:9000
-serverVersion=26.6.0.123539
-dashboardUrl=http://localhost:9000/dashboard?id=USB_Monitor
-ceTaskId=62c874e8-a154-4f5e-a389-7c5400e46bfd
-ceTaskUrl=http://localhost:9000/api/ce/task?id=62c874e8-a154-4f5e-a389-7c5400e46bfd
