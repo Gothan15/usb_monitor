@@ -5,32 +5,84 @@ import { logError } from "@/lib/logger";
 import {
   copyFilesViaSSH,
   installServiceViaSSH,
+  type ProgressCallback,
   type SSHCredentials,
+  type SSHOperationResult,
 } from "@/lib/sshService";
+import {
+  copyFilesViaWinRM,
+  installServiceViaWinRM,
+  DEFAULT_WINRM_PORT,
+  type WinRMCredentials,
+} from "@/lib/winrmService";
 import { db } from "@/lib/db";
-import { exec } from "child_process";
-import { promisify } from "util";
-import os from "os";
 
-const execAsync = promisify(exec);
+// Instalación remota en dos fases (copy + install) con progreso en vivo:
+// - Sin `stream`, cada llamada responde un JSON al terminar la fase.
+// - Con `stream: true`, la respuesta es SSE (text/event-stream): eventos
+//   `progress` ({ phase, stage, detail }) durante la fase y un evento
+//   `result` final con el mismo cuerpo que devolvería el JSON.
 
-// Helper to get local server IP
-function getLocalIpAddress() {
-  const interfaces = os.networkInterfaces();
-  for (const name of Object.keys(interfaces)) {
-    const iface = interfaces[name];
-    if (!iface) continue;
-    for (const info of iface) {
-      if (!info.internal && info.family === "IPv4") {
-        return info.address;
-      }
-    }
-  }
-  return "127.0.0.1";
+interface InstallRequest {
+  ip: string;
+  username: string;
+  password: string;
+  phase: "copy" | "install";
+  protocol: "ssh" | "winrm";
+  port: number;
+  stream: boolean;
 }
 
-// TODO: [FUTURO] Implementar SSE para streaming de progreso granular.
-// Actualmente se usa un approach de dos llamadas HTTP (fase copy + fase install).
+async function markInstalledInDb(ip: string): Promise<void> {
+  try {
+    await (db as any).computer.updateMany({
+      where: { ipAddress: ip },
+      data: {
+        serviceInstalled: true,
+        serviceRunning: true,
+        lastServiceCheck: new Date(),
+      },
+    });
+  } catch (dbErr) {
+    logError("Error al actualizar Computer en DB tras instalación", dbErr);
+  }
+}
+
+async function runPhase(
+  input: InstallRequest,
+  onProgress?: ProgressCallback,
+): Promise<SSHOperationResult> {
+  let result: SSHOperationResult;
+
+  if (input.protocol === "winrm") {
+    const creds: WinRMCredentials = {
+      host: input.ip,
+      username: input.username,
+      password: input.password,
+      port: input.port,
+    };
+    result =
+      input.phase === "copy"
+        ? await copyFilesViaWinRM(creds, onProgress)
+        : await installServiceViaWinRM(creds, onProgress);
+  } else {
+    const creds: SSHCredentials = {
+      host: input.ip,
+      username: input.username,
+      password: input.password,
+      port: input.port,
+    };
+    result =
+      input.phase === "copy"
+        ? await copyFilesViaSSH(creds, onProgress)
+        : await installServiceViaSSH(creds, onProgress);
+  }
+
+  if (input.phase === "install" && result.success) {
+    await markInstalledInDb(input.ip);
+  }
+  return result;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -55,24 +107,8 @@ export async function POST(req: NextRequest) {
     const username = body.username as string;
     const password = body.password as string;
     const phase = body.phase as string;
-    const protocol = (body.protocol as string) || "ssh";
-    const port = typeof body.port === "number" ? body.port : 22;
-
-    // Server IP for WinRM -remote argument
-    let serverIp = "127.0.0.1";
-    try {
-      const url = new URL(req.url);
-      serverIp =
-        process.env.API_SERVER_HOST ||
-        req.headers.get("x-forwarded-host") ||
-        req.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
-        req.headers.get("host")?.split(":")[0] ||
-        url.hostname;
-      
-      if (serverIp === "localhost" || serverIp === "127.0.0.1") {
-        serverIp = getLocalIpAddress();
-      }
-    } catch (e) {}
+    const protocol = ((body.protocol as string) || "ssh").toLowerCase();
+    const stream = body.stream === true;
 
     // Validación
     if (typeof ip !== "string" || !ip.trim()) {
@@ -90,122 +126,77 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
-
-    const creds: SSHCredentials = {
-      host: ip.trim(),
-      username: username.trim(),
-      password,
-      port,
-    };
-
-    let result;
-
-    if (protocol === "winrm") {
-      if (phase === "copy") {
-        // Implement Copy over WinRM logic
-        // This generally involves creating a remote directory and copying the executable.
-        // For simplicity we will assume the executable is already there or we just copy via powershell.
-        const psScript = `
-          $ip = "${creds.host}"
-          $user = "${creds.username}"
-          $pass = ConvertTo-SecureString '${creds.password}' -AsPlainText -Force
-          $cred = New-Object System.Management.Automation.PSCredential ($user, $pass)
-          
-          # In a real scenario we would copy the file here, for now we assume it exists or use standard copy
-          # We can use Copy-Item with ToSession
-          $session = New-PSSession -ComputerName $ip -Credential $cred
-          Copy-Item -Path "C:\\path\\monitor_usb.exe" -Destination "C:\\path\\monitor_usb.exe" -ToSession $session -Force
-          Remove-PSSession -Session $session
-        `;
-        // We actually just need to implement the base logic or copy logic
-        // However, looking at the instruction, it focuses on the install logic with -remote $server.
-        // I will implement a robust execute of powershell here.
-        try {
-          const { stdout, stderr } = await execAsync(`powershell -Command "${psScript.replace(/\n/g, ';').replace(/"/g, '\\"')}"`);
-          result = { success: true, error: null };
-        } catch (err: any) {
-          result = { success: false, error: err.message };
-        }
-      } else {
-        const psScript = `
-          $ip = "${creds.host}"
-          $user = "${creds.username}"
-          $pass = ConvertTo-SecureString '${creds.password}' -AsPlainText -Force
-          $cred = New-Object System.Management.Automation.PSCredential ($user, $pass)
-          
-          Invoke-Command -ComputerName $ip -Credential $cred -ScriptBlock {
-            # Stop and remove existing service if any
-            if (Get-Service "MonitorUSB" -ErrorAction SilentlyContinue) {
-              Stop-Service "MonitorUSB" -Force
-              sc.exe delete "MonitorUSB"
-            }
-            New-Service -Name "MonitorUSB" -BinaryPathName "C:\\path\\monitor_usb.exe -remote ${serverIp}" -StartupType Automatic
-            Start-Service -Name "MonitorUSB"
-          }
-        `;
-        try {
-          // It's better to run powershell by passing the script block to standard input or saving it to a temporary file,
-          // but passing base64 encoded command is safer.
-          const buffer = Buffer.from(psScript, 'utf16le');
-          const base64Command = buffer.toString('base64');
-          
-          const { stdout, stderr } = await execAsync(`powershell -EncodedCommand ${base64Command}`);
-          result = { success: true, error: null };
-        } catch (err: any) {
-          result = { success: false, error: err.message };
-        }
-
-        if (result.success) {
-          try {
-            await (db as any).computer.updateMany({
-              where: { ipAddress: ip.trim() },
-              data: {
-                serviceInstalled: true,
-                serviceRunning: true,
-                lastServiceCheck: new Date(),
-              },
-            });
-          } catch (dbErr) {
-            logError(
-              "Error al actualizar Computer en DB tras instalación WinRM",
-              dbErr,
-            );
-          }
-        }
-      }
-    } else {
-      if (phase === "copy") {
-        result = await copyFilesViaSSH(creds);
-      } else {
-        result = await installServiceViaSSH(creds);
-
-        // Si la instalación fue exitosa, actualizar la DB
-        if (result.success) {
-          try {
-            await (db as any).computer.updateMany({
-              where: { ipAddress: ip.trim() },
-              data: {
-                serviceInstalled: true,
-                serviceRunning: true,
-                lastServiceCheck: new Date(),
-              },
-            });
-          } catch (dbErr) {
-            logError(
-              "Error al actualizar Computer en DB tras instalación",
-              dbErr,
-            );
-          }
-        }
-      }
+    if (protocol !== "ssh" && protocol !== "winrm") {
+      return NextResponse.json(
+        { error: "protocol debe ser 'ssh' o 'winrm'" },
+        { status: 400 },
+      );
     }
 
-    // Limpiar credenciales de memoria explícitamente
-    creds.password = "";
-    creds.username = "";
+    const port =
+      typeof body.port === "number"
+        ? body.port
+        : protocol === "winrm"
+          ? DEFAULT_WINRM_PORT
+          : 22;
 
+    const input: InstallRequest = {
+      ip: ip.trim(),
+      username: username.trim(),
+      password,
+      phase,
+      protocol,
+      port,
+      stream,
+    };
+
+    if (stream) {
+      const encoder = new TextEncoder();
+      const sseStream = new ReadableStream({
+        async start(controller) {
+          const send = (event: string, data: unknown) => {
+            try {
+              controller.enqueue(
+                encoder.encode(
+                  `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`,
+                ),
+              );
+            } catch {
+              // El cliente cerró la conexión; la fase sigue y se descarta.
+            }
+          };
+
+          try {
+            const result = await runPhase(input, (stage, detail) =>
+              send("progress", { phase: input.phase, stage, detail }),
+            );
+            send("result", { ...result, phase: input.phase });
+          } catch (error: any) {
+            send("result", {
+              success: false,
+              message: error?.message || "Error durante la operación",
+              phase: input.phase,
+            });
+          } finally {
+            try {
+              controller.close();
+            } catch {}
+          }
+        },
+      });
+
+      return new Response(sseStream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache, no-store",
+          Connection: "keep-alive",
+        },
+      });
+    }
+
+    const result = await runPhase(input);
     const res = NextResponse.json(
-      { ...result, phase },
+      { ...result, phase: input.phase },
       { status: result.success ? 200 : 502 },
     );
     res.headers.set("Cache-Control", "no-store");

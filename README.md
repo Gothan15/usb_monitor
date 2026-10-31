@@ -38,10 +38,14 @@ Un sistema completo para monitorear eventos de inserción de dispositivos USB en
 - Las memorias aprobadas se habilitan de inmediato sin intervención manual.
 - Eventos y estadísticas incluyen dispositivos whitelisted para auditoría rápida.
 
-### �🛠️ Instalación Remota (Futuro)
+### 🛠️ Instalación Remota
 
-- Endpoint POST `/api/remote-install` (placeholder) preparado para futura integración via WinRM/SSH o agente bootstrap.
-- Devuelve 501 hasta que se implemente un canal seguro de despliegue.
+- Endpoint POST `/api/remote-install` (solo administradores) en dos fases — `copy` e `install` — con dos transportes:
+  - **SSH** (`src/lib/sshService.ts`): copia por SFTP y ejecuta `Install-Service.ps1` en el destino.
+  - **WinRM** (`src/lib/winrmService.ts`): WS-Man sobre HTTP 5985 / HTTPS 5986, con autenticación Basic (usuarios locales) o NTLM (cuentas de dominio). La copia sube los archivos en trozos base64 y verifica el tamaño final; la instalación sigue los mismos pasos que por SSH.
+- **Progreso en vivo (SSE):** si la llamada trae `stream: true`, la respuesta es `text/event-stream` con eventos `progress` por etapa y un evento `result` final. El diálogo de instalación del dashboard usa este modo.
+- Requisitos WinRM en el equipo destino (una vez, como administrador): `winrm quickconfig`, habilitar la autenticación (`winrm set winrm/config/service/Auth '@{Basic="true";Negotiate="true"}'`) y, si se usa HTTP, `winrm set winrm/config/service '@{AllowUnencrypted="true"}'`.
+- `POST /api/service/refresh-host` incluye el estado WinRM del equipo mediante la sonda WS-Man *Identify* (no requiere credenciales): si el listener responde, el campo `winrm.available` va en `true` con la versión de protocolo.
 
 ## 🏗️ Arquitectura del Sistema
 

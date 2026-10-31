@@ -386,7 +386,6 @@ function describeSSHError(error: any): string {
   return `Error SSH: ${msg}`;
 }
 
-// TODO: [FUTURO] Implementar SSE (Server-Sent Events) para streaming de progreso
-// granular en tiempo real. Actualmente se usa un approach de dos llamadas HTTP
-// (fase copy + fase install) con estados intermedios en el frontend.
-// Ver: https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events
+// Progreso en tiempo real: los callbacks onProgress de este módulo se
+// reenvían al cliente como eventos SSE desde /api/remote-install cuando
+// la llamada trae `stream: true` (ver route.ts de remote-install).

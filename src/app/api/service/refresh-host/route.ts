@@ -4,6 +4,7 @@ import { requireAuth } from "@/lib/auth";
 import { getCurrentDate } from "@/lib/time";
 import { hit } from "@/lib/rateLimit";
 import { logError } from "@/lib/logger";
+import { probeWinRM } from "@/lib/winrmService";
 
 async function tryHealth(ip: string) {
   try {
@@ -39,10 +40,19 @@ export async function POST(req: NextRequest) {
     const health = await tryHealth(normalizedIp);
     const serviceInstalled = !!health;
     const serviceRunning = !!health;
+    // Estado WinRM real sin credenciales: sonda WS-Man Identify
+    // (no requiere autenticación). Dice si el listener está activo y
+    // qué protocolo habla; el estado del servicio vía WinRM requiere
+    // credenciales, que esta ruta no recibe, así que va en null.
+    const probe = await probeWinRM(normalizedIp);
     const winrm = {
-      success: false,
+      success: probe.available,
       action: "status",
-      error: "WinRM deshabilitado",
+      available: probe.available,
+      protocolVersion: probe.protocolVersion,
+      productVersion: probe.productVersion,
+      auth: probe.auth,
+      error: probe.available ? null : (probe.error ?? null),
       serviceInstalled: null,
       serviceRunning: null,
     };

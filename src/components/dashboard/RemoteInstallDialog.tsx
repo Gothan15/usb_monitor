@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -65,6 +65,11 @@ export function RemoteInstallDialog({
   const [password, setPassword] = useState("");
   const [port, setPort] = useState(22);
 
+  // Puerto por defecto según el protocolo elegido
+  useEffect(() => {
+    setPort(protocol === "winrm" ? 5985 : 22);
+  }, [protocol]);
+
   // Phase states
   const [copyStatus, setCopyStatus] = useState<PhaseStatus>("idle");
   const [installStatus, setInstallStatus] = useState<PhaseStatus>("idle");
@@ -120,26 +125,78 @@ export function RemoteInstallDialog({
         phase,
         port,
         protocol,
+        stream: true,
       }),
     });
 
-    const data = await res.json().catch(() => ({
-      success: false,
-      message: `Error HTTP ${res.status}`,
-    }));
+    // Si el servidor no respondió con SSE (error previo al stream:
+    // auth, validación, rate limit…), el cuerpo es un JSON normal.
+    const contentType = res.headers.get("content-type") || "";
+    if (!contentType.includes("text/event-stream") || !res.body) {
+      const data = await res.json().catch(() => ({
+        success: false,
+        message: `Error HTTP ${res.status}`,
+      }));
+      return data as PhaseResult;
+    }
 
-    return data as PhaseResult;
+    // Leer el stream SSE: eventos `progress` en vivo y un `result` final.
+    const setMessage = phase === "copy" ? setCopyMessage : setInstallMessage;
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffered = "";
+    let finalResult: PhaseResult | null = null;
+
+    const handleEventBlock = (block: string) => {
+      let event = "message";
+      const dataLines: string[] = [];
+      for (const line of block.split("\n")) {
+        if (line.startsWith("event:")) event = line.slice(6).trim();
+        else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+      }
+      if (dataLines.length === 0) return;
+      let data: any;
+      try {
+        data = JSON.parse(dataLines.join("\n"));
+      } catch {
+        return;
+      }
+      if (event === "progress") {
+        if (data.detail) setMessage(data.detail);
+        else if (data.stage) setMessage(data.stage);
+      } else if (event === "result") {
+        finalResult = data as PhaseResult;
+      }
+    };
+
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffered += decoder.decode(value, { stream: true });
+      let separatorIndex = buffered.indexOf("\n\n");
+      while (separatorIndex >= 0) {
+        handleEventBlock(buffered.slice(0, separatorIndex));
+        buffered = buffered.slice(separatorIndex + 2);
+        separatorIndex = buffered.indexOf("\n\n");
+      }
+    }
+    if (buffered.trim()) handleEventBlock(buffered);
+
+    return (
+      finalResult ?? {
+        success: false,
+        message: "La conexión de progreso se cerró sin resultado",
+      }
+    );
   };
 
   const handleStartCopy = useCallback(async () => {
     setStep("copy");
     setCopyStatus("running");
-    setCopyMessage("Entering the system...");
-    const timer = setTimeout(() => setCopyMessage("Copying binary..."), 1500);
+    setCopyMessage("Conectando...");
 
     try {
       const result = await callApi("copy");
-      clearTimeout(timer);
 
       if (result.success) {
         setCopyStatus("success");
@@ -150,7 +207,6 @@ export function RemoteInstallDialog({
         setErrorDetail(result.details || "");
       }
     } catch (err: any) {
-      clearTimeout(timer);
       setCopyStatus("error");
       setCopyMessage(err?.message || "Error de conexión");
     }
