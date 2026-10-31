@@ -1,4 +1,10 @@
-import { randomBytes, scryptSync, timingSafeEqual, createHmac } from "crypto";
+import {
+  randomBytes,
+  scryptSync,
+  timingSafeEqual,
+  createHmac,
+  createHash,
+} from "crypto";
 import QuickLRU from "quick-lru";
 import argon2 from "argon2";
 import { db } from "./db";
@@ -214,6 +220,52 @@ const SERVICE_API_KEYS = (() => {
   }
   return map;
 })();
+
+/**
+ * Credencial por equipo (fase 3 del plan de desbloqueo): cada PC tiene
+ * un token propio; el servidor guarda solo su hash SHA-256 en
+ * Computer.agentTokenHash y el agente lo presenta como
+ * `Authorization: AgentToken <token>`.
+ */
+export function hashAgentToken(token: string): string {
+  return createHash("sha256").update(token, "utf8").digest("hex");
+}
+
+export function generateAgentToken(): string {
+  return randomBytes(32).toString("hex");
+}
+
+const computerTokenCache = new Map<
+  string,
+  { identity: ServiceAuthIdentity; expiresAt: number }
+>();
+
+async function authenticateAgentToken(
+  token: string,
+): Promise<ServiceAuthIdentity | null> {
+  const cached = computerTokenCache.get(token);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.identity;
+  }
+  const computer = await (db as any).computer.findFirst({
+    where: { agentTokenHash: hashAgentToken(token) },
+    select: { id: true, name: true },
+  });
+  if (!computer) {
+    return null;
+  }
+  const identity: ServiceAuthIdentity = {
+    type: "service",
+    serviceId: computer.name,
+    token,
+    computerId: computer.id,
+  };
+  computerTokenCache.set(token, {
+    identity,
+    expiresAt: Date.now() + AGENT_CACHE_TTL_MS,
+  });
+  return identity;
+}
 
 function parseCookies(headerValue: string | null): Record<string, string> {
   if (!headerValue) return {};
@@ -453,8 +505,14 @@ export async function authenticateRequest(
       }
     }
   }
-  // 2) API Key fallback
+  // 1b) Token por equipo (agente): Authorization: AgentToken <token>
   const authHeader = req.headers.get("authorization") || "";
+  const agentTokenMatch = authHeader.match(/^AgentToken\s+(\S+)$/i);
+  if (agentTokenMatch) {
+    return authenticateAgentToken(agentTokenMatch[1]);
+  }
+
+  // 2) API Key fallback
   const apiKeyMatch = authHeader.match(AUTHORIZATION_HEADER_PATTERN);
   if (apiKeyMatch) {
     const apiKey = apiKeyMatch[1];

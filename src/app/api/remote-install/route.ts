@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hit } from "@/lib/rateLimit";
-import { requireAuth } from "@/lib/auth";
+import { requireAuth, generateAgentToken, hashAgentToken } from "@/lib/auth";
 import { logError } from "@/lib/logger";
 import {
   copyFilesViaSSH,
@@ -48,11 +48,39 @@ async function markInstalledInDb(ip: string): Promise<void> {
   }
 }
 
+/**
+ * Fase 3 del plan de desbloqueo: al instalar, se genera un token por
+ * equipo. El servidor guarda solo su hash (Computer.agentTokenHash) y
+ * el token en claro viaja al agente en el comando de instalación, que
+ * lo deja en la variable de máquina USB_MONITOR_AGENT_TOKEN.
+ */
+async function prepareAgentToken(ip: string): Promise<string | undefined> {
+  try {
+    const computer = await (db as any).computer.findFirst({
+      where: { ipAddress: ip },
+      select: { id: true },
+    });
+    if (!computer) return undefined;
+    const token = generateAgentToken();
+    await (db as any).computer.update({
+      where: { id: computer.id },
+      data: { agentTokenHash: hashAgentToken(token), agentTokenAt: new Date() },
+    });
+    return token;
+  } catch (err) {
+    logError("Error generando token de agente", err);
+    return undefined;
+  }
+}
+
 async function runPhase(
   input: InstallRequest,
   onProgress?: ProgressCallback,
 ): Promise<SSHOperationResult> {
   let result: SSHOperationResult;
+
+  const agentToken =
+    input.phase === "install" ? await prepareAgentToken(input.ip) : undefined;
 
   if (input.protocol === "winrm") {
     const creds: WinRMCredentials = {
@@ -60,6 +88,7 @@ async function runPhase(
       username: input.username,
       password: input.password,
       port: input.port,
+      agentToken,
     };
     result =
       input.phase === "copy"
@@ -71,6 +100,7 @@ async function runPhase(
       username: input.username,
       password: input.password,
       port: input.port,
+      agentToken,
     };
     result =
       input.phase === "copy"

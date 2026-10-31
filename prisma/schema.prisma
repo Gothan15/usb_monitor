@@ -69,6 +69,7 @@ model User {
   lockedUntil      DateTime?
   whitelistEntries USBWhitelist[]
   unlockedPendings PendingUnlock[] @relation("UnlockedBy")
+  unlockAttempts   UnlockAttempt[]
 
   @@index([computerId])
 }
@@ -157,8 +158,9 @@ model UnlockAttempt {
   pcName        String
   usernameTried String
   userId        String?
+  user          User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
   serialNumber  String?
-  result        String // SUCCESS | BAD_PASSWORD | NOT_OWNER | NOT_WHITELISTED | NO_PENDING | LOCKED | OFFLINE_OK | OFFLINE_FAIL
+  result        String // SUCCESS | BAD_PASSWORD | NOT_OWNER | NOT_WHITELISTED | NO_PENDING | LOCKED | DISABLED | OFFLINE_OK | OFFLINE_FAIL
   origin        String // ONLINE | OFFLINE_LOCAL
 
   @@index([pcName, createdAt])

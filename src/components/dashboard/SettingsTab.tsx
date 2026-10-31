@@ -25,6 +25,7 @@ import {
   LayoutTemplate,
   RotateCcw,
   Activity,
+  KeyRound,
 } from "lucide-react";
 import {
   usePaginationSettings,
@@ -37,10 +38,25 @@ interface ApiSettings {
   startupNetworkDelay: number;
 }
 
+interface UnlockSettings {
+  passwordUnlockEnabled: boolean;
+  offlineEmergencyEnabled: boolean;
+  requireAgentToken: boolean;
+  lockSessionOnInsert: boolean;
+  silenceThresholdMinutes: number;
+}
+
 export function SettingsTab() {
   const { toast } = useToast();
   const [api, setApi] = useState<ApiSettings>({
     startupNetworkDelay: 15,
+  });
+  const [unlock, setUnlock] = useState<UnlockSettings>({
+    passwordUnlockEnabled: true,
+    offlineEmergencyEnabled: true,
+    requireAgentToken: false,
+    lockSessionOnInsert: false,
+    silenceThresholdMinutes: 5,
   });
 
   const { style, setStyle, setPosition } = usePaginationSettings();
@@ -57,6 +73,13 @@ export function SettingsTab() {
             startupNetworkDelay: data.startup_network_delay,
           });
         }
+        setUnlock({
+          passwordUnlockEnabled: data.passwordUnlockEnabled ?? true,
+          offlineEmergencyEnabled: data.offlineEmergencyEnabled ?? true,
+          requireAgentToken: data.requireAgentToken ?? false,
+          lockSessionOnInsert: data.lockSessionOnInsert ?? false,
+          silenceThresholdMinutes: data.silenceThresholdMinutes ?? 5,
+        });
       })
       .catch((err) => console.error("Failed to load settings", err));
   }, []);
@@ -176,6 +199,101 @@ export function SettingsTab() {
           <Button
             className="rounded-full"
             onClick={() => saveSettings("API y automatización", { startup_network_delay: api.startupNetworkDelay })}
+          >
+            Guardar cambios
+          </Button>
+        </CardContent>
+      </Card>
+
+
+      <Card className="rounded-xl border border-border/60 bg-card/80 shadow-xl backdrop-blur-xl">
+        <CardHeader>
+          <div>
+            <CardTitle className="flex items-center gap-2 text-lg font-semibold text-foreground">
+              <KeyRound className="h-4 w-4 text-green-500" />
+              Desbloqueo por contraseña
+            </CardTitle>
+            <CardDescription>
+              Interruptores del flujo 2FA de los USB y de la detección de
+              agentes por silencio.
+            </CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <Label>Desbloqueo por contraseña activo</Label>
+              <p className="text-xs text-muted-foreground">
+                Si se apaga, ningún USB se libera con contraseña: queda
+                bloqueado como si no estuviera en la lista blanca.
+              </p>
+            </div>
+            <Switch
+              checked={unlock.passwordUnlockEnabled}
+              onCheckedChange={(v) => setUnlock({ ...unlock, passwordUnlockEnabled: v })}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <Label>Emergencia sin red</Label>
+              <p className="text-xs text-muted-foreground">
+                Permite desbloquear con la contraseña verificada contra el
+                hash guardado en la propia PC cuando no hay conexión.
+              </p>
+            </div>
+            <Switch
+              checked={unlock.offlineEmergencyEnabled}
+              onCheckedChange={(v) => setUnlock({ ...unlock, offlineEmergencyEnabled: v })}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <Label>Exigir token por equipo</Label>
+              <p className="text-xs text-muted-foreground">
+                La ingesta de eventos deja de ser abierta: cada agente se
+                autentica con su token. Actívalo cuando todos los agentes
+                estén actualizados.
+              </p>
+            </div>
+            <Switch
+              checked={unlock.requireAgentToken}
+              onCheckedChange={(v) => setUnlock({ ...unlock, requireAgentToken: v })}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <Label>Bloquear la sesión al conectar un USB</Label>
+              <p className="text-xs text-muted-foreground">
+                Además de bloquear el dispositivo, cierra la sesión de
+                Windows hasta que se desbloquee. Desactivado por defecto.
+              </p>
+            </div>
+            <Switch
+              checked={unlock.lockSessionOnInsert}
+              onCheckedChange={(v) => setUnlock({ ...unlock, lockSessionOnInsert: v })}
+            />
+          </div>
+          <div>
+            <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+              Umbral de silencio del agente (minutos)
+            </Label>
+            <Input
+              type="number"
+              min={1}
+              value={unlock.silenceThresholdMinutes}
+              onChange={(event) =>
+                setUnlock({ ...unlock, silenceThresholdMinutes: Number(event.target.value) || 5 })
+              }
+              className="mt-2"
+            />
+            <p className="mt-2 text-xs text-muted-foreground">
+              Tiempo sin señales para marcar un equipo «sin agente» en la
+              vista de Desbloqueos.
+            </p>
+          </div>
+          <Button
+            className="rounded-full"
+            onClick={() => saveSettings("Desbloqueo por contraseña", { ...unlock })}
           >
             Guardar cambios
           </Button>

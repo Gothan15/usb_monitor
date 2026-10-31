@@ -27,6 +27,8 @@ export interface SSHCredentials {
   username: string;
   password?: string;
   port?: number;
+  /** Token por equipo (fase 3): se entrega al agente en la instalación. */
+  agentToken?: string;
 }
 
 export interface SSHOperationResult {
@@ -294,7 +296,7 @@ export async function installServiceViaSSH(
 
     // 2. Ejecutar Install-Service.ps1
     onProgress?.("installing", "Ejecutando instalación del servicio...");
-    const installCmd = `powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${REMOTE_PATH}\\Install-Service.ps1" -Action install -ServerHost ${serverHost} -ServerPort ${serverPort}`;
+    const installCmd = `powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${REMOTE_PATH}\\Install-Service.ps1" -Action install -ServerHost ${serverHost} -ServerPort ${serverPort}${creds.agentToken ? ` -AgentToken ${creds.agentToken}` : ""}`;
     const installResult = await execRemote(client, installCmd, OPERATION_TIMEOUT_MS);
 
     if (installResult.code !== 0) {

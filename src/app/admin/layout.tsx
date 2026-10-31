@@ -3,6 +3,7 @@
 import { useMemo, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import {
+  KeyRound,
   LayoutDashboard,
   MonitorSmartphone,
   Radar,
@@ -42,6 +43,8 @@ function resolveViewKey(pathname: string | null): ViewKey {
       return "users";
     case "whitelist":
       return "whitelist";
+    case "unlocks":
+      return "unlocks";
     case "network":
       return "network";
     case "settings":
@@ -117,6 +120,13 @@ function AdminLayoutContent({
         icon: ShieldCheck,
         badge: whitelist.length || undefined,
         href: viewKeyToHref.whitelist,
+      },
+      {
+        key: "unlocks",
+        label: "Desbloqueos",
+        description: "Bloqueos en curso, intentos y equipos sin agente",
+        icon: KeyRound,
+        href: viewKeyToHref.unlocks,
       },
       {
         key: "network",

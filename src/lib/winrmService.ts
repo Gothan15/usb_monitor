@@ -49,6 +49,8 @@ export interface WinRMCredentials {
   port?: number;
   /** true para HTTPS (5986). Por defecto false. */
   useHttps?: boolean;
+  /** Token por equipo (fase 3): se entrega al agente en la instalación. */
+  agentToken?: string;
 }
 
 export interface WinRMServiceStatus {
@@ -336,7 +338,7 @@ export async function installServiceViaWinRM(
     onProgress?.("installing", "Ejecutando instalación del servicio...");
     const installOut = await runRemoteScript(
       creds,
-      `powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${REMOTE_PATH}\\Install-Service.ps1" -Action install -ServerHost ${serverHost} -ServerPort ${serverPort}; Write-Output "__USB_EXIT__$LASTEXITCODE"`,
+      `powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${REMOTE_PATH}\\Install-Service.ps1" -Action install -ServerHost ${serverHost} -ServerPort ${serverPort}${creds.agentToken ? ` -AgentToken ${creds.agentToken}` : ""}; Write-Output "__USB_EXIT__$LASTEXITCODE"`,
       OPERATION_TIMEOUT_MS,
     );
     const exitLine = installOut

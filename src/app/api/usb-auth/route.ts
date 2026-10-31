@@ -6,6 +6,7 @@ import {
   verifyPassword,
 } from "@/lib/auth";
 import { getCurrentDate } from "@/lib/time";
+import { readAppSettings } from "@/lib/appSettings";
 
 const MAX_FAILED_ATTEMPTS = Number(
   process.env.USB_MONITOR_MAX_FAILED_ATTEMPTS || 5
@@ -112,6 +113,27 @@ async function handleDeviceUnlock(body: any, pcName: string) {
       ? body.serialNumber.trim()
       : null;
   const usernameTried = String(username ?? "").trim();
+
+  // Fase 5: interruptor general del panel. Si el desbloqueo por
+  // contraseña está desactivado, ningún dispositivo se libera con
+  // contraseña (queda bloqueado, como uno fuera de la whitelist).
+  const settings = await readAppSettings();
+  if (!settings.passwordUnlockEnabled) {
+    await recordAttempt({
+      pendingId: null,
+      pcName,
+      usernameTried,
+      serialNumber,
+      result: "DISABLED",
+    });
+    return NextResponse.json(
+      {
+        authorized: false,
+        message: "El desbloqueo por contraseña está desactivado.",
+      },
+      { status: 403 }
+    );
+  }
 
   const now = getCurrentDate();
   const baseWhere = {
