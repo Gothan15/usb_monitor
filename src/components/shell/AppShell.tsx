@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import type { LucideIcon } from "lucide-react";
 import { Keyboard, RefreshCw, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -81,6 +81,19 @@ export function AppShell({
 
   const esLateral = mounted && disposicionGuardada === "lateral";
 
+  /* Barra lateral desplegable: riel de iconos que se abre al pasar
+     el ratón (180 ms al entrar, 300 ms al salir), como la original. */
+  const [lateralAbierta, setLateralAbierta] = useState(false);
+  const hoverRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const abrirLateral = () => {
+    clearTimeout(hoverRef.current);
+    hoverRef.current = setTimeout(() => setLateralAbierta(true), 180);
+  };
+  const cerrarLateral = () => {
+    clearTimeout(hoverRef.current);
+    hoverRef.current = setTimeout(() => setLateralAbierta(false), 300);
+  };
+
   const activeItem = useMemo(
     () => navItems.find((item) => item.key === activeKey) ?? navItems[0],
     [activeKey, navItems],
@@ -93,86 +106,175 @@ export function AppShell({
         {/* ═══ ARMazón: cabecera reorganizada o barra lateral ═══ */}
         <div className="flex min-h-0 flex-1">
           {esLateral && (
-            <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-background lg:flex">
+            <aside
+              data-tour="sidebar"
+              onMouseEnter={abrirLateral}
+              onMouseLeave={cerrarLateral}
+              style={{ width: lateralAbierta ? 248 : 76 }}
+              className="hidden shrink-0 flex-col overflow-hidden border-r border-border bg-background transition-[width] duration-300 ease-out lg:flex"
+            >
               {/* Marca */}
-              <div className="flex h-14 items-center gap-2.5 border-b border-border px-5">
+              <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-border px-[22px]">
                 <Image
                   src="/favicon.svg"
                   alt="USB Monitor"
                   width={24}
                   height={24}
-                  className="size-6 rounded-[4px]"
+                  className="size-6 shrink-0 rounded-[4px]"
                 />
-                <div className="leading-tight">
-                  <p className="font-display text-[15px] font-bold tracking-tight">
-                    USB Monitor
-                  </p>
-                  <p className="text-[10.5px] uppercase tracking-[0.14em] text-muted-foreground">
-                    Centro de control
-                  </p>
-                </div>
+                <AnimatePresence>
+                  {lateralAbierta && (
+                    <motion.span
+                      initial={{ opacity: 0, width: 0 }}
+                      animate={{ opacity: 1, width: "auto" }}
+                      exit={{ opacity: 0, width: 0 }}
+                      transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                      className="overflow-hidden whitespace-nowrap leading-tight"
+                    >
+                      <span className="block font-display text-[15px] font-bold tracking-tight">
+                        USB Monitor
+                      </span>
+                      <span className="block text-[10.5px] uppercase tracking-[0.14em] text-muted-foreground">
+                        Centro de control
+                      </span>
+                    </motion.span>
+                  )}
+                </AnimatePresence>
               </div>
 
-              {/* Navegación vertical */}
+              {/* Navegación vertical, con aire y filete entre secciones */}
               <nav
-                data-tour="sidebar"
-                className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-4"
+                className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-4"
                 aria-label="Secciones"
               >
-                {navItems.map((item) => {
+                {navItems.map((item, indice) => {
                   const isActive = item.key === activeKey;
                   return (
-                    <Link
-                      key={item.key}
-                      href={item.href}
-                      prefetch
-                      className={cn(
-                        "group relative flex items-center gap-2.5 rounded-md px-3 py-2 text-[11.5px] font-semibold uppercase tracking-[0.09em] transition-colors",
-                        isActive
-                          ? "bg-primary/[0.06] text-foreground"
-                          : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                    <div key={item.key}>
+                      {indice > 0 && (
+                        <div className="mx-2 my-2 h-px bg-border/80" aria-hidden />
                       )}
-                    >
-                      {isActive && (
-                        <motion.span
-                          layoutId="lateral-activo"
-                          className="absolute left-0 top-1/2 h-5 w-[2.5px] -translate-y-1/2 rounded-full bg-[var(--acero)]"
-                          transition={{ type: "spring", bounce: 0.18, duration: 0.55 }}
-                        />
-                      )}
-                      <item.icon
+                      <Link
+                        href={item.href}
+                        prefetch
+                        title={lateralAbierta ? undefined : item.label}
                         className={cn(
-                          "size-4 shrink-0 transition-colors",
+                          "group relative flex items-center gap-3 rounded-md px-3 py-3 text-[11.5px] font-semibold uppercase tracking-[0.09em] transition-colors",
                           isActive
-                            ? "text-[var(--acero)]"
-                            : "text-muted-foreground/70 group-hover:text-foreground/80",
+                            ? "bg-primary/[0.06] text-foreground"
+                            : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
                         )}
-                      />
-                      <span className="flex-1 truncate">{item.label}</span>
-                      {item.badge !== undefined && (
-                        <span className="font-mono text-[11px] font-semibold tabular-nums text-[var(--acero)]">
-                          {item.badge}
+                      >
+                        {isActive && (
+                          <span className="absolute left-0 top-1/2 h-6 w-[2.5px] -translate-y-1/2 rounded-full bg-[var(--acero)]" />
+                        )}
+                        <span className="relative shrink-0">
+                          <item.icon
+                            className={cn(
+                              "size-5 transition-colors",
+                              isActive
+                                ? "text-[var(--acero)]"
+                                : "text-muted-foreground/70 group-hover:text-foreground/80",
+                            )}
+                          />
+                          {!lateralAbierta && item.badge !== undefined && (
+                            <span className="absolute -right-1.5 -top-1.5 size-2 rounded-full bg-[var(--acero)]" />
+                          )}
                         </span>
-                      )}
-                    </Link>
+                        <AnimatePresence>
+                          {lateralAbierta && (
+                            <motion.span
+                              initial={{ opacity: 0, width: 0 }}
+                              animate={{ opacity: 1, width: "auto" }}
+                              exit={{ opacity: 0, width: 0 }}
+                              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                              className="flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap"
+                            >
+                              <span className="flex-1 truncate">{item.label}</span>
+                              {item.badge !== undefined && (
+                                <span className="ml-2 font-mono text-[11px] font-semibold tabular-nums text-[var(--acero)]">
+                                  {item.badge}
+                                </span>
+                              )}
+                            </motion.span>
+                          )}
+                        </AnimatePresence>
+                      </Link>
+                    </div>
                   );
                 })}
               </nav>
 
+              {/* Acciones rápidas de la barra */}
+              <div
+                className={cn(
+                  "flex shrink-0 items-center gap-0.5 border-t border-border px-3 py-2.5",
+                  lateralAbierta ? "flex-row" : "flex-col",
+                )}
+              >
+                <button
+                  type="button"
+                  className="flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  onClick={() => {
+                    document.dispatchEvent(
+                      new KeyboardEvent("keydown", { key: "k", metaKey: true }),
+                    );
+                  }}
+                  aria-label="Buscar (Ctrl/⌘ + K)"
+                  data-tour="command-trigger"
+                >
+                  <Search className="size-4" />
+                </button>
+                {onRefresh && mounted && !isLiveSyncEnabled && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-9"
+                    disabled={refreshing}
+                    onClick={onRefresh}
+                    aria-label="Actualizar"
+                    title="Actualizar (la sincronización en vivo está en pausa)"
+                  >
+                    <RefreshCw className="size-4" />
+                  </Button>
+                )}
+                <div data-tour="notifications">
+                  <NotificationCenter />
+                </div>
+                <ThemeToggle />
+              </div>
+
               {/* Usuario y estado, al pie de la barra */}
-              <div className="border-t border-border px-5 py-4">
-                <div className="flex items-center gap-2.5">
+              <div className="shrink-0 border-t border-border px-[18px] py-4">
+                <div
+                  className={cn(
+                    "flex items-center gap-2.5",
+                    !lateralAbierta && "flex-col gap-2",
+                  )}
+                >
                   <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-[var(--acero)]/70 font-display text-[11px] font-bold text-[var(--acero)]">
                     {initials}
                   </span>
-                  <div className="min-w-0 flex-1 leading-tight">
-                    <p className="truncate text-[13px] font-medium text-foreground">
-                      {user?.name ?? "Usuario"}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground">
-                      {user?.role?.toUpperCase() === "ADMIN" ? "Administrador" : "Usuario"}
-                    </p>
-                  </div>
+                  <AnimatePresence>
+                    {lateralAbierta && (
+                      <motion.span
+                        initial={{ opacity: 0, width: 0 }}
+                        animate={{ opacity: 1, width: "auto" }}
+                        exit={{ opacity: 0, width: 0 }}
+                        transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                        className="min-w-0 flex-1 overflow-hidden whitespace-nowrap leading-tight"
+                      >
+                        <span className="block max-w-[130px] truncate text-[13px] font-medium text-foreground">
+                          {user?.name ?? "Usuario"}
+                        </span>
+                        <span className="block text-[11px] text-muted-foreground">
+                          {user?.role?.toUpperCase() === "ADMIN"
+                            ? "Administrador"
+                            : "Usuario"}
+                        </span>
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
                   <LogoutButton
                     iconOnly
                     variant="ghost"
@@ -183,22 +285,29 @@ export function AppShell({
                 <p
                   className={cn(
                     "mt-3 flex items-center gap-1.5 text-[11px]",
+                    !lateralAbierta && "justify-center",
                     mounted && isLiveSyncEnabled
                       ? "text-success"
                       : "text-muted-foreground",
                   )}
+                  title={
+                    mounted && isLiveSyncEnabled
+                      ? "Sincronización en vivo"
+                      : "Sincronización en pausa"
+                  }
                 >
                   <span
                     className={cn(
-                      "size-1.5 rounded-full",
+                      "size-1.5 shrink-0 rounded-full",
                       mounted && isLiveSyncEnabled
                         ? "dot-pulse bg-success"
                         : "bg-muted-foreground/50",
                     )}
                   />
-                  {mounted && isLiveSyncEnabled
-                    ? "Sincronización en vivo"
-                    : "Sincronización en pausa"}
+                  {lateralAbierta &&
+                    (mounted && isLiveSyncEnabled
+                      ? "Sincronización en vivo"
+                      : "Sincronización en pausa")}
                 </p>
               </div>
             </aside>
@@ -206,8 +315,9 @@ export function AppShell({
 
           <div className="flex min-w-0 flex-1 flex-col">
             {esLateral ? (
-              /* ── Barra superior fina del modo lateral ── */
-              <header className="z-30 flex-shrink-0 border-b border-border bg-background/95">
+              /* ── Barra superior del modo lateral: solo móvil y tableta;
+                   en escritorio manda la barra lateral, sin doble forma ── */
+              <header className="z-30 flex-shrink-0 border-b border-border bg-background/95 lg:hidden">
                 <div className="flex h-12 items-center gap-1 px-4 lg:px-6">
                   <span className="flex items-center gap-2 lg:hidden">
                     <Image
