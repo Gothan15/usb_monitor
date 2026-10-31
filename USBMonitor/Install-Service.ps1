@@ -5,7 +5,8 @@ param(
     [string]$Action = "install",
     [string]$ServerHost = "172.20.10.12",
     [int]$ServerPort = 3000,
-    [string]$LogPath = "C:\ProgramData\USBMonitor"
+    [string]$LogPath = "C:\ProgramData\USBMonitor",
+    [string]$AgentToken = ""
 )
 
 # Colores para la consola
@@ -54,6 +55,26 @@ function Set-ServiceRecovery {
         }
     } catch {
         Write-Status "No se pudo configurar la recuperación automática: $_" "INFO"
+    }
+}
+
+function Set-AgentToken {
+    # Token por equipo (Fase 3): si la instalación remota pasa
+    # -AgentToken, queda en la variable de MÁQUINA
+    # USB_MONITOR_AGENT_TOKEN y el agente se autentica ante el servidor
+    # con "Authorization: AgentToken <token>" (el servidor solo guarda
+    # su hash). Sin parámetro no se toca nada: las instalaciones
+    # anteriores siguen autenticándose con su API key.
+    # Tolerante a fallos: un error aquí NO debe abortar la instalación.
+    if (-not $AgentToken) {
+        Write-Status "Sin -AgentToken: el agente seguirá autenticándose con su API key" "INFO"
+        return
+    }
+    try {
+        [Environment]::SetEnvironmentVariable("USB_MONITOR_AGENT_TOKEN", $AgentToken, "Machine")
+        Write-Status "Variable de entorno: USB_MONITOR_AGENT_TOKEN = (configurado)" "OK"
+    } catch {
+        Write-Status "No se pudo guardar USB_MONITOR_AGENT_TOKEN: $_" "INFO"
     }
 }
 
@@ -160,9 +181,11 @@ function Install-Service {
         exit 1
     }
 
-    # Recuperación automática del servicio (Fase 0) y registro del
-    # proceso compañero que pide la contraseña (Fase 1)
+    # Recuperación automática del servicio (Fase 0), token por equipo
+    # (Fase 3, solo si viene -AgentToken) y registro del proceso
+    # compañero que pide la contraseña (Fase 1)
     Set-ServiceRecovery
+    Set-AgentToken
     Install-Companion
 
     # Iniciar servicio
@@ -342,6 +365,8 @@ Opciones:
   -ServerHost   - Host del servidor backend (defecto: 172.20.10.12)
   -ServerPort   - Puerto del servidor backend (defecto: 3000)
   -LogPath      - Ruta para los logs (defecto: C:\ProgramData\USBMonitor)
+  -AgentToken   - Token por equipo para autenticar al agente ante el
+                  servidor (opcional; sin él se usa la API key de siempre)
 
 Ejemplos:
   .\Install-Service.ps1 -Action install

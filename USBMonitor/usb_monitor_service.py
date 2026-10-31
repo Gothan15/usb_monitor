@@ -18,6 +18,10 @@ Variables de entorno opcionales:
     USB_MONITOR_SERVER_HOST  -> host del backend (por defecto 172.20.10.12)
     USB_MONITOR_SERVER_PORT  -> puerto del backend (por defecto 3000)
     USB_MONITOR_ENDPOINT     -> ruta del endpoint (por defecto /api/usb-event)
+    USB_MONITOR_AGENT_TOKEN  -> token por equipo (Fase 3); si está definido,
+                                el agente se autentica ante el servidor con
+                                "Authorization: AgentToken <token>" en vez de
+                                la API key de USB_MONITOR_API_KEY
     USB_MONITOR_LOG_PATH     -> ruta del archivo de log
 
 """
@@ -25,6 +29,7 @@ from __future__ import annotations
 
 import ctypes
 import getpass
+import hmac
 import json
 import logging
 import os
@@ -198,6 +203,16 @@ PENDING_LOCAL_FILE = (PROGRAM_DATA_DIR / "pending_local.json").resolve()
 COMPANION_IMAGE_NAME = "USBMonitorPrompt.exe"
 COMPANION_TASK_NAME = "USBMonitorPrompt"
 COMPANION_WATCHDOG_INTERVAL = 15.0  # segundos entre comprobaciones del compañero
+# Fase 2: métodos de bloqueo por unidad. Primero se intenta deshabilitar
+# el dispositivo PnP (bloqueo fuerte); si no se puede, se cae al solo
+# lectura de diskpart de siempre. El método aplicado se registra por
+# unidad para revertir exactamente lo que se hizo.
+BLOCK_METHOD_PNP = "PNP"
+BLOCK_METHOD_READONLY = "READONLY"
+# El permiso de una unidad desbloqueada con contraseña vive hasta que se
+# extrae (lo limpia el evento de retirada, EventType=3). Este TTL es solo
+# un respaldo de limpieza por si un evento de retirada se perdiera.
+UNLOCK_PERMISSION_TTL = 3600.0
 HOSTNAME_RAW = (socket.gethostname() or "").strip() or "UNKNOWN_HOST"
 
 # Plan de telemetría (próxima iteración):
@@ -932,15 +947,35 @@ def get_requests_verify() -> any:
     return verify_env != "false"
 
 
-def get_auth_headers() -> Dict[str, str]:
-    headers: Dict[str, str] = {}
+def get_agent_token() -> Optional[str]:
+    """Token por equipo (Fase 3), de USB_MONITOR_AGENT_TOKEN.
+
+    Lo deja el instalador (Install-Service.ps1 -AgentToken) como variable
+    de máquina; el servidor solo guarda su hash SHA-256. Se acepta el
+    valor en claro o cifrado con el mismo esquema ENC: del resto de la
+    configuración. None si el equipo aún no tiene token (instalaciones
+    anteriores a la Fase 3, que siguen con la API key).
+    """
+    raw = os.environ.get("USB_MONITOR_AGENT_TOKEN")
+    if not raw:
+        return None
+    token = decrypt_value(raw.strip()).strip()
+    return token or None
+
+
+def get_configured_api_key() -> Optional[str]:
+    """API key configurada del agente (USB_MONITOR_API_KEY), ya descifrada.
+
+    Es la credencial que el agente usa hoy para hablar con el servidor.
+    Se tolera que el valor almacenado ya incluya el prefijo "ApiKey".
+    """
     api_key_raw = os.environ.get("USB_MONITOR_API_KEY")
     if not api_key_raw:
-        return headers
+        return None
 
     api_key_encrypted = api_key_raw.strip()
     if not api_key_encrypted:
-        return headers
+        return None
 
     # Desencriptar la API key
     api_key = decrypt_value(api_key_encrypted)
@@ -949,6 +984,22 @@ def get_auth_headers() -> Dict[str, str]:
     if api_key.lower().startswith("apikey "):
         api_key = api_key.split(" ", 1)[1].strip()
 
+    return api_key or None
+
+
+def get_auth_headers() -> Dict[str, str]:
+    headers: Dict[str, str] = {}
+
+    # Fase 3: con token por equipo, esa es la credencial (el servidor
+    # puede llegar a exigirla para la ingesta de eventos). Sin token se
+    # mantiene la API key de siempre, por compatibilidad con agentes e
+    # instalaciones anteriores.
+    token = get_agent_token()
+    if token:
+        headers["Authorization"] = f"AgentToken {token}"
+        return headers
+
+    api_key = get_configured_api_key()
     if api_key:
         headers["Authorization"] = f"ApiKey {api_key}"
     return headers
@@ -1491,6 +1542,71 @@ def clear_disk_readonly(drive_letter: str, conn: wmi.WMI) -> Tuple[bool, str]:
         return False, msg
 
 
+def _drive_key(drive_letter: Optional[str]) -> str:
+    """Normaliza una letra de unidad a su clave corta ('E' para 'E:')."""
+    if not drive_letter:
+        return ""
+    return str(drive_letter).rstrip(":").strip().upper()
+
+
+def _run_pnputil(action: str, instance_id: str) -> Tuple[bool, str]:
+    """Ejecuta pnputil /<action>-device sobre una instancia PnP.
+
+    Se usa pnputil (y no el cmdlet Disable-PnpDevice de PowerShell)
+    porque encaja con el patrón del resto del archivo para herramientas
+    del sistema: ejecutable resuelto con resolve_executable() y
+    argumentos en lista, sin cadenas de comando que citar.
+    """
+    instance_id = (instance_id or "").strip()
+    if not instance_id:
+        return False, "InstanceId PnP vacío"
+    try:
+        pnputil_path = resolve_executable("pnputil.exe")
+    except FileNotFoundError:
+        msg = "pnputil no está disponible en el sistema"
+        LOGGER.error("%s", msg)
+        return False, msg
+    try:
+        result = subprocess.run(
+            [pnputil_path, f"/{action}-device", instance_id],  # nosec B603
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+            encoding="cp850",  # Codificación de consola de Windows
+        )
+    except subprocess.TimeoutExpired:
+        msg = f"pnputil tardó demasiado al {action} el dispositivo {instance_id}"
+        LOGGER.error("%s. Operación cancelada.", msg)
+        return False, msg
+    except Exception as exc:
+        msg = f"Error inesperado ejecutando pnputil ({action}): {exc}"
+        LOGGER.error("%s", msg)
+        return False, msg
+
+    output = _merge_process_output(result.stdout, result.stderr)
+    if result.returncode == 0:
+        msg = f"pnputil /{action}-device OK para {instance_id}"
+        LOGGER.info("%s. Salida: %s", msg, output)
+        return True, msg
+    msg = (
+        f"pnputil /{action}-device falló (código {result.returncode}) "
+        f"para {instance_id}: {output}"
+    )
+    LOGGER.error("%s", msg)
+    return False, msg
+
+
+def disable_pnp_device(instance_id: str) -> Tuple[bool, str]:
+    """Deshabilita un dispositivo PnP (bloqueo fuerte de la Fase 2)."""
+    return _run_pnputil("disable", instance_id)
+
+
+def enable_pnp_device(instance_id: str) -> Tuple[bool, str]:
+    """Rehabilita un dispositivo PnP previamente deshabilitado."""
+    return _run_pnputil("enable", instance_id)
+
+
 def protect_usb_media(
     drive_letter: Optional[str],
     conn: wmi.WMI,
@@ -1508,6 +1624,71 @@ def protect_usb_media(
         LOGGER.error("    ✗ Fallo al proteger disco | %s", detail)
     
     return drive_letter, success, detail
+
+
+def is_lock_session_on_insert_enabled() -> bool:
+    """Ajuste local `lock_session_on_insert` (Fase 5): bloquear la sesión.
+
+    Lo empuja el panel vía POST /config y se persiste en la variable de
+    máquina USB_MONITOR_LOCK_SESSION_ON_INSERT, con el mismo patrón
+    cifrado que USB_MONITOR_STARTUP_DELAY. Por defecto, desactivado.
+    """
+    raw = os.environ.get("USB_MONITOR_LOCK_SESSION_ON_INSERT")
+    if not raw:
+        return False
+    value = decrypt_value(raw.strip()).strip().lower()
+    return value in ("true", "1", "yes", "si")
+
+
+def lock_session_on_insert_if_enabled() -> None:
+    """Bloquea la sesión de Windows si el ajuste opcional está activo.
+
+    Se invoca una sola vez por bloqueo nuevo aplicado (desde
+    apply_block). Es un endurecimiento opcional: por defecto no se
+    bloquea la sesión, solo el dispositivo.
+    """
+    if not is_lock_session_on_insert_enabled():
+        return
+    try:
+        ctypes.windll.user32.LockWorkStation()
+        LOGGER.info(
+            "    🔒 Sesión de Windows bloqueada (ajuste lock_session_on_insert activo)"
+        )
+    except Exception as exc:
+        LOGGER.warning("    ⚠ No se pudo bloquear la sesión de Windows: %s", exc)
+
+
+def apply_block(
+    drive_letter: Optional[str],
+    conn: wmi.WMI,
+    pnp_device_id: Optional[str] = None,
+) -> Tuple[Optional[str], bool, str, str]:
+    """Bloquea una unidad (Fase 2): primero PnP, diskpart de respaldo.
+
+    Devuelve (letra, ok, detalle, método), donde método es
+    BLOCK_METHOD_PNP o BLOCK_METHOD_READONLY según lo que realmente
+    se aplicó, para poder revertir lo correcto al desbloquear.
+    """
+    if pnp_device_id:
+        pnp_ok, pnp_msg = disable_pnp_device(pnp_device_id)
+        if pnp_ok:
+            LOGGER.info("    ✓ Dispositivo deshabilitado por PnP | %s", pnp_msg)
+            lock_session_on_insert_if_enabled()
+            return drive_letter, True, pnp_msg, BLOCK_METHOD_PNP
+        LOGGER.warning(
+            "    ⚠ No se pudo deshabilitar por PnP (%s); "
+            "se aplica el respaldo de solo lectura con diskpart",
+            pnp_msg,
+        )
+    else:
+        LOGGER.debug(
+            "    Sin PNPDeviceID para %s; se aplica solo lectura directamente",
+            drive_letter,
+        )
+    letter_used, success, detail = protect_usb_media(drive_letter, conn)
+    if success:
+        lock_session_on_insert_if_enabled()
+    return letter_used, success, detail, BLOCK_METHOD_READONLY
 
 
 def create_browser_signal(pc_name: str, drive_letter: str) -> None:
@@ -1587,6 +1768,46 @@ def _mark_local_pending_unlocked(drive_letter: str) -> None:
         _save_local_pendings(pendings)
 
 
+def _mark_local_pending_closed(drive_letter: str) -> None:
+    """Marca como CLOSED los pendientes locales de una unidad (Fase 2).
+
+    Se llama al detectar la extracción física: tanto si seguía BLOCKED
+    como si estaba UNLOCKED, el registro de esta inserción se cierra
+    (el permiso muere al extraer). El compañero solo reacciona a
+    BLOCKED/UNLOCKED, así que CLOSED simplemente lo ignora.
+    """
+    pendings = _load_local_pendings()
+    drive = drive_letter.upper()
+    changed = False
+    for pending in pendings:
+        if str(pending.get("driveLetter") or "").upper() == drive and pending.get("status") in (
+            "BLOCKED",
+            "UNLOCKED",
+        ):
+            pending["status"] = "CLOSED"
+            pending["closedAt"] = time.time()
+            changed = True
+    if changed:
+        _save_local_pendings(pendings)
+
+
+def _get_local_block_info(drive_letter: str) -> Dict[str, Any]:
+    """Devuelve el pendiente local vigente (BLOCKED/UNLOCKED) de una unidad.
+
+    Sirve para recuperar el método de bloqueo (blockMethod) y la
+    instancia PnP (pnpDeviceId) registrados al bloquear, por si el
+    estado en memoria del servicio ya no los tuviera.
+    """
+    drive = (drive_letter or "").upper()
+    info: Dict[str, Any] = {}
+    for pending in _load_local_pendings():
+        if str(pending.get("driveLetter") or "").upper() == drive and pending.get(
+            "status"
+        ) in ("BLOCKED", "UNLOCKED"):
+            info = pending  # el último es el más reciente
+    return info
+
+
 def _create_pending_unlock_request(
     pc_name: str,
     drive_letter: str,
@@ -1624,8 +1845,13 @@ def create_pending_unlock(
     serial_number: Optional[str] = None,
     device_label: Optional[str] = None,
     whitelisted: bool = False,
+    block_method: Optional[str] = None,
+    pnp_device_id: Optional[str] = None,
 ) -> bool:
     """Registra un dispositivo bloqueado pendiente de contraseña (Fase 1).
+
+    block_method y pnp_device_id (Fase 2) solo se guardan en el registro
+    local: el contrato con el servidor no cambia.
 
     Lo crea en el servidor y lo guarda también en el registro local
     (pending_local.json), del que el proceso compañero lee para mostrar
@@ -1674,6 +1900,10 @@ def create_pending_unlock(
             "whitelisted": bool(whitelisted),
             "status": "BLOCKED",
             "createdAt": time.time(),
+            # Fase 2: cómo se bloqueó esta unidad y su instancia PnP,
+            # para revertir lo correcto al desbloquear o al extraerla.
+            "blockMethod": block_method,
+            "pnpDeviceId": pnp_device_id,
         }
     )
 
@@ -1692,6 +1922,55 @@ def create_pending_unlock(
             drive_letter,
         )
     return registered
+
+
+def _send_pending_close_request(
+    pc_name: str,
+    drive_letter: str,
+    serial_number: Optional[str] = None,
+) -> None:
+    """POST /api/usb-event/pending-close: la unidad se extrajo (Fase 2).
+
+    Avisa al servidor para que cierre el registro del bloqueo: el
+    permiso de una unidad desbloqueada muere al extraerla, y un bloqueo
+    sin extraer no debe quedar abierto para siempre.
+    """
+    url = build_url("/api/usb-event/pending-close")
+    headers = {"Content-Type": "application/json"}
+    headers.update(get_auth_headers())
+    payload = {
+        "pcName": pc_name,
+        "driveLetter": drive_letter,
+        "serialNumber": serial_number,
+    }
+    try:
+        verify = get_requests_verify()
+        response = requests.post(
+            url, json=payload, headers=headers, timeout=8, verify=verify
+        )
+        response.raise_for_status()
+        LOGGER.info(
+            "    [Retirada] ✓ Cierre de pendiente notificado al servidor para %s en %s",
+            pc_name,
+            drive_letter,
+        )
+    except Exception as exc:
+        LOGGER.error(
+            "    [Retirada] ✗ Error al notificar el cierre del pendiente de %s: %s",
+            drive_letter,
+            exc,
+        )
+
+
+def notify_pending_close(
+    pc_name: str,
+    drive_letter: str,
+    serial_number: Optional[str] = None,
+) -> None:
+    """Encola el aviso de cierre por retirada para no bloquear el bucle."""
+    submit_network_task(
+        _send_pending_close_request, pc_name, drive_letter, serial_number
+    )
 
 
 def _check_whitelist_remote(normalized_serial: str) -> Tuple[bool, Optional[Dict[str, Any]]]:
@@ -2068,6 +2347,10 @@ def get_connected_usb_drives(conn: wmi.WMI) -> list:
                         "interfaceType": metadata.get("interfaceType"),
                         "busType": metadata.get("busType"),
                         "mediaType": metadata.get("mediaType"),
+                        # Fase 2: la instancia PnP viaja con la unidad para
+                        # poder deshabilitarla/rehabilitarla al bloquear
+                        # y desbloquear (bucle WMI y Boot Sweep).
+                        "pnpDeviceId": metadata.get("pnpDeviceId"),
                         "detectionReasons": reasons,
                     }
                 )
@@ -2125,7 +2408,13 @@ def send_connected_drives_status(pc_name: str, conn: wmi.WMI, drives: Optional[l
 
 
 class UnlockHTTPHandler(BaseHTTPRequestHandler):
-    """Handler HTTP para health-checks y notificaciones de desbloqueo."""
+    """Handler HTTP local (:5001): health-check y configuración.
+
+    Fase 3: ya NO existe ningún endpoint de desbloqueo aquí — el
+    desbloqueo solo ocurre por el polling autenticado al servidor
+    central. Lo único que modifica estado es POST /config, y exige la
+    credencial del equipo (AgentToken o la API key configurada).
+    """
 
     service_instance = None  # Referencia al servicio para acceder a pending_usbs y wmi
 
@@ -2136,7 +2425,7 @@ class UnlockHTTPHandler(BaseHTTPRequestHandler):
     def _apply_cors_headers(self) -> None:
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
     def _send_json_response(self, status_code: int, payload: Dict[str, Any]) -> None:
         body = json.dumps(payload).encode("utf-8")
@@ -2211,7 +2500,56 @@ class UnlockHTTPHandler(BaseHTTPRequestHandler):
 
         self._send_json_response(404, {"status": "not_found"})
 
+    def _is_authorized_local_request(self) -> bool:
+        """Autenticación de los endpoints locales que modifican estado (Fase 3).
+
+        Se acepta cualquiera de las dos credenciales del propio equipo:
+          (a) Authorization: AgentToken <token por equipo>, o
+          (b) Authorization: ApiKey <API key configurada del agente>,
+              que es la que el panel usa para empujar los ajustes.
+        """
+        header = (self.headers.get("Authorization") or "").strip()
+        if not header:
+            return False
+
+        token = get_agent_token()
+        if token and hmac.compare_digest(header, f"AgentToken {token}"):
+            return True
+
+        api_key = get_configured_api_key()
+        if api_key and hmac.compare_digest(header, f"ApiKey {api_key}"):
+            return True
+
+        return False
+
+    def _persist_machine_env(self, name: str, encrypted_value: str) -> bool:
+        """Guarda una variable de máquina con setx /M (patrón del agente)."""
+        try:
+            setx_path = resolve_executable("setx.exe")
+            subprocess.run(
+                [setx_path, name, encrypted_value, "/M"],  #nosec B603
+                capture_output=True,
+                text=True,
+                encoding='cp850',
+                check=True,
+            )
+            return True
+        except subprocess.CalledProcessError as exc:
+            LOGGER.error("Error al guardar configuración (%s): %s", name, exc)
+            return False
+
     def _handle_config_post(self) -> None:
+        # Fase 3: /config modifica el estado del equipo; sin una
+        # credencial válida del propio equipo no se toca nada.
+        if not self._is_authorized_local_request():
+            LOGGER.warning(
+                "POST /config rechazado (401): credencial local inválida "
+                "o ausente, origen %s",
+                self.address_string(),
+            )
+            self._send_json_response(401, {"ok": False, "error": "No autorizado"})
+            return
+
         try:
             content_length = int(self.headers.get("Content-Length", "0") or "0")
         except ValueError:
@@ -2226,28 +2564,61 @@ class UnlockHTTPHandler(BaseHTTPRequestHandler):
             self._send_json_response(400, {"ok": False, "error": "JSON inválido"})
             return
 
+        if not isinstance(data, dict):
+            self._send_json_response(400, {"ok": False, "error": "JSON inválido"})
+            return
+
+        applied: List[str] = []
+
         delay = data.get("startup_network_delay")
         if delay is not None:
             try:
                 delay_int = int(delay)
-                encrypted_delay = encrypt_value(str(delay_int))
-                setx_path = resolve_executable("setx.exe")
-                completed = subprocess.run(
-                    [setx_path, "USB_MONITOR_STARTUP_DELAY", encrypted_delay, "/M"],  #nosec B603
-                    capture_output=True,
-                    text=True,
-                    encoding='cp850',
-                    check=True,
-                )
-                LOGGER.info("Configuración actualizada: startup_network_delay = %d", delay_int)
-                self._send_json_response(200, {"ok": True, "message": "Configuración actualizada"})
-            except ValueError:
+            except (TypeError, ValueError):
                 self._send_json_response(400, {"ok": False, "error": "startup_network_delay debe ser entero"})
-            except subprocess.CalledProcessError as exc:
-                LOGGER.error("Error al guardar configuración: %s", exc)
+                return
+            if not self._persist_machine_env(
+                "USB_MONITOR_STARTUP_DELAY", encrypt_value(str(delay_int))
+            ):
                 self._send_json_response(500, {"ok": False, "error": "Error al guardar configuración en el sistema"})
-        else:
-            self._send_json_response(400, {"ok": False, "error": "Falta startup_network_delay"})
+                return
+            LOGGER.info("Configuración actualizada: startup_network_delay = %d", delay_int)
+            applied.append("startup_network_delay")
+
+        lock_session = data.get("lock_session_on_insert")
+        if lock_session is not None:
+            if not isinstance(lock_session, bool):
+                self._send_json_response(400, {"ok": False, "error": "lock_session_on_insert debe ser booleano"})
+                return
+            value = "true" if lock_session else "false"
+            encrypted_value = encrypt_value(value)
+            if not self._persist_machine_env(
+                "USB_MONITOR_LOCK_SESSION_ON_INSERT", encrypted_value
+            ):
+                self._send_json_response(500, {"ok": False, "error": "Error al guardar configuración en el sistema"})
+                return
+            # setx /M solo afecta a procesos nuevos: se actualiza también
+            # el entorno del proceso para que el ajuste rija sin reiniciar
+            # el servicio. La variable de máquina cubre los próximos
+            # arranques.
+            os.environ["USB_MONITOR_LOCK_SESSION_ON_INSERT"] = encrypted_value
+            LOGGER.info("Configuración actualizada: lock_session_on_insert = %s", value)
+            applied.append("lock_session_on_insert")
+
+        if not applied:
+            self._send_json_response(
+                400,
+                {
+                    "ok": False,
+                    "error": "Nada que actualizar: se esperaba startup_network_delay y/o lock_session_on_insert",
+                },
+            )
+            return
+
+        self._send_json_response(
+            200,
+            {"ok": True, "message": "Configuración actualizada", "applied": applied},
+        )
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
@@ -2256,114 +2627,11 @@ class UnlockHTTPHandler(BaseHTTPRequestHandler):
             self._handle_config_post()
             return
 
-        if parsed.path != "/unlock":
-            self._send_json_response(404, {"ok": False, "error": "Ruta no encontrada"})
-            return
-
-        try:
-            content_length = int(self.headers.get("Content-Length", "0") or "0")
-        except ValueError:
-            content_length = 0
-
-        body = self.rfile.read(content_length)
-
-        try:
-            data = json.loads(body.decode("utf-8") or "{}")
-        except json.JSONDecodeError:
-            LOGGER.error("Body de petición no es JSON válido")
-            self._send_json_response(400, {"ok": False, "error": "JSON inválido"})
-            return
-
-        raw_pc = data.get("pcName")
-        pc_name = sanitize_optional_string(raw_pc, 120)
-        if pc_name is None:
-            pc_name = ""
-        pc_name = pc_name.upper()
-
-        raw_drive = data.get("driveLetter")
-        drive_letter = sanitize_drive_letter(raw_drive) if isinstance(raw_drive, str) else None
-        if drive_letter is None and isinstance(raw_drive, str):
-            candidate = raw_drive.strip().upper()
-            if len(candidate) == 1 and candidate.isalpha():
-                drive_letter = f"{candidate}:"
-
-        if not pc_name or not drive_letter:
-            self._send_json_response(
-                400,
-                {
-                    "ok": False,
-                    "error": "pcName y driveLetter son obligatorios",
-                },
-            )
-            return
-
-        if pc_name != HOSTNAME:
-            LOGGER.warning(
-                "Recibida petición de desbloqueo para PC '%s' pero este es '%s'",
-                pc_name,
-                HOSTNAME,
-            )
-            self._send_json_response(
-                400,
-                {
-                    "ok": False,
-                    "error": f"Esta petición es para {pc_name}, pero esta PC es {HOSTNAME}",
-                },
-            )
-            return
-
-        service = self.service_instance
-        if service is None or drive_letter not in service.pending_usbs:
-            LOGGER.warning(
-                "Recibida petición de desbloqueo para %s pero no está en pendientes",
-                drive_letter,
-            )
-            self._send_json_response(
-                404,
-                {
-                    "ok": False,
-                    "error": f"USB {drive_letter} no encontrado en pendientes",
-                },
-            )
-            return
-
-        LOGGER.info(
-            "Recibida notificación HTTP para desbloquear %s en %s",
-            drive_letter,
-            pc_name,
-        )
-
-        pythoncom.CoInitialize()
-        try:
-            success = unlock_usb(drive_letter, service.wmi_connection)
-        finally:
-            pythoncom.CoUninitialize()
-
-        if success:
-            service.pending_usbs.pop(drive_letter, None)
-
-            try:
-                if SIGNAL_FILE.exists():
-                    SIGNAL_FILE.unlink()
-                    LOGGER.info("Archivo de señal limpiado")
-            except Exception as exc:
-                LOGGER.warning("Error al limpiar archivo de señal: %s", exc)
-
-            self._send_json_response(
-                200,
-                {
-                    "ok": True,
-                    "message": f"USB {drive_letter} desbloqueado exitosamente",
-                },
-            )
-            LOGGER.info("USB %s desbloqueado via HTTP exitosamente", drive_letter)
-            return
-
-        LOGGER.error("Fallo al desbloquear USB %s via HTTP", drive_letter)
-        self._send_json_response(
-            500,
-            {"ok": False, "error": f"Fallo al desbloquear USB {drive_letter}"},
-        )
+        # Fase 3: el endpoint /unlock local quedó ELIMINADO. Ningún
+        # desbloqueo puede dispararse desde el HTTP local: el desbloqueo
+        # solo ocurre por el polling autenticado al servidor central
+        # (monitor_unlock_authorization -> release_blocked_drive).
+        self._send_json_response(404, {"ok": False, "error": "Ruta no encontrada"})
 
 
 class USBMonitorService(win32serviceutil.ServiceFramework):
@@ -2378,6 +2646,15 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
         self.stop_event = win32event.CreateEvent(None, 0, 0, None)
         self.stopped = False
         self.pending_usbs: Dict[str, str] = {}  # {drive_letter: pc_name}
+        # Fase 2: cómo se bloqueó cada unidad (método aplicado e
+        # instancia PnP), indexado por letra corta ("E").
+        self.block_state: Dict[str, Dict[str, Any]] = {}
+        # Fase 2: unidades ya desbloqueadas con contraseña en esta
+        # inserción. El permiso vive hasta que se extraigan (lo limpia
+        # el evento de retirada, EventType=3); este registro evita que
+        # el rebote de inserción al reactivar un dispositivo PnP lo
+        # vuelva a bloquear.
+        self.unlocked_active: Dict[str, Dict[str, Any]] = {}
         self.wmi_connection = None  # Referencia a la conexión WMI
         self.http_server = None  # Servidor HTTP
         self.http_thread = None  # Thread del servidor HTTP
@@ -2425,6 +2702,21 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                 EventType=2,  # 2 => Device arrival
             )
             LOGGER.info("Watcher WMI inicializado para Win32_VolumeChangeEvent")
+            # Fase 2: watcher de retiradas (EventType=3). Si falla, el
+            # servicio sigue sin cierre por extracción (degradado, no caído).
+            removal_watcher = None
+            try:
+                removal_watcher = c.watch_for(
+                    notification_type="Creation",
+                    wmi_class="Win32_VolumeChangeEvent",
+                    EventType=3,  # 3 => Device removal
+                )
+                LOGGER.info("Watcher WMI de retiradas inicializado (EventType=3)")
+            except Exception as removal_exc:
+                LOGGER.warning(
+                    "No se pudo inicializar el watcher de retiradas: %s",
+                    removal_exc,
+                )
         except Exception as exc:
             LOGGER.error("No se pudo inicializar WMI: %s", exc)
             pythoncom.CoUninitialize()
@@ -2508,8 +2800,12 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
 
                     # La contraseña es 2FA siempre: se bloquea y se crea el
                     # pendiente esté o no el dispositivo en la whitelist.
-                    # 1. Protect USB
-                    letter_used, readonly_ok, readonly_msg = protect_usb_media(drive_letter, c)
+                    # 1. Protect USB (Fase 2: PnP primero, diskpart de
+                    # respaldo; el PNPDeviceID llega en el propio dict de
+                    # get_connected_usb_drives, desde _classify_disk_as_usb)
+                    letter_used, readonly_ok, readonly_msg, block_method = apply_block(
+                        drive_letter, c, drive.get("pnpDeviceId")
+                    )
 
                     # 2. Send Event
                     event = MockEvent()
@@ -2541,8 +2837,15 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                             serial_number=serial_number,
                             device_label=drive.get("model"),
                             whitelisted=whitelisted,
+                            block_method=block_method,
+                            pnp_device_id=drive.get("pnpDeviceId"),
                         )
                         self.pending_usbs[letter_used] = hostname
+                        self.block_state[_drive_key(letter_used)] = {
+                            "method": block_method,
+                            "pnpDeviceId": drive.get("pnpDeviceId"),
+                            "serialNumber": serial_number,
+                        }
 
                 except Exception as drive_exc:
                     LOGGER.error("Boot Sweep: Error al verificar unidad %s: %s", drive.get("driveLetter", "desconocida"), drive_exc)
@@ -2554,6 +2857,12 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
             rc = win32event.WaitForSingleObject(self.stop_event, 500)
             if rc == win32event.WAIT_OBJECT_0:
                 break
+
+            # Fase 2: drenar primero las retiradas (EventType=3) ya
+            # encoladas: al extraer una unidad se cierra su registro y
+            # muere cualquier permiso vigente sobre ella.
+            if removal_watcher is not None:
+                self._drain_removal_events(removal_watcher, hostname)
 
             try:
                 event = watcher(timeout_ms=2000)
@@ -2611,6 +2920,22 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                     elif serial_number:
                         LOGGER.info("  [2/5] ✓ Serial obtenido: %s", serial_number)
 
+                    # Fase 2: si esta misma inserción ya se desbloqueó con
+                    # contraseña, este evento es el rebote de reactivar el
+                    # dispositivo PnP al desbloquear. El permiso sigue
+                    # vigente hasta que se extraiga la unidad (lo cierra
+                    # el EventType=3), así que NO se vuelve a bloquear.
+                    if drive_letter and self._permission_still_active(
+                        drive_letter, serial_number
+                    ):
+                        LOGGER.info(
+                            "  [3/5] La unidad %s ya está desbloqueada en esta inserción "
+                            "(permiso vigente hasta extraerla); no se vuelve a bloquear",
+                            drive_letter,
+                        )
+                        LOGGER.info("═══ EVENTO COMPLETADO: UNIDAD YA DESBLOQUEADA ═══\n")
+                        continue
+
                     if serial_number:
                         LOGGER.info("  [3/5] Verificando whitelist para serial: %s", serial_number)
                         LOGGER.debug("Raw Serial: [%s], Normalized Serial: [%s]", raw_serial_found, serial_number)
@@ -2626,13 +2951,15 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                         LOGGER.info(
                             "  [4/5] Dispositivo AUTORIZADO en whitelist; la contraseña (2FA) sigue siendo necesaria"
                         )
-                        letter_used, readonly_ok, readonly_msg = protect_usb_media(
-                            drive_letter, c
+                        letter_used, readonly_ok, readonly_msg, block_method = apply_block(
+                            drive_letter,
+                            c,
+                            drive_info.get("pnpDeviceId") if drive_info else None,
                         )
                         if readonly_ok:
-                            LOGGER.info("  [4/5] ✓ Modo solo lectura aplicado a %s", letter_used)
+                            LOGGER.info("  [4/5] ✓ Bloqueo aplicado a %s (método %s)", letter_used, block_method)
                         else:
-                            LOGGER.error("  [4/5] ✗ Fallo al aplicar modo solo lectura: %s", readonly_msg)
+                            LOGGER.error("  [4/5] ✗ Fallo al bloquear la unidad: %s", readonly_msg)
                         payload = build_payload(
                             event,
                             letter_used,
@@ -2652,8 +2979,19 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                                     drive_info.get("model") if drive_info else None
                                 ),
                                 whitelisted=True,
+                                block_method=block_method,
+                                pnp_device_id=(
+                                    drive_info.get("pnpDeviceId") if drive_info else None
+                                ),
                             )
                             self.pending_usbs[letter_used] = hostname
+                            self.block_state[_drive_key(letter_used)] = {
+                                "method": block_method,
+                                "pnpDeviceId": (
+                                    drive_info.get("pnpDeviceId") if drive_info else None
+                                ),
+                                "serialNumber": serial_number,
+                            }
                             LOGGER.info(
                                 "  [5/5] ✓ Unidad %s bloqueada, pendiente de contraseña (whitelist)",
                                 letter_used,
@@ -2665,15 +3003,17 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                     LOGGER.warning("═══ PROTOCOLO DE SEGURIDAD: DISPOSITIVO NO AUTORIZADO ═══")
                     LOGGER.warning("  Dispositivo: %s | Serial: %s", drive_letter or "desconocido", serial_number or "sin serial")
                     
-                    # 1. Proteger USB con readonly
-                    LOGGER.info("  [Paso 1/3] Aplicando modo SOLO LECTURA...")
-                    letter_used, readonly_ok, readonly_msg = protect_usb_media(
-                        drive_letter, c
+                    # 1. Bloquear USB (Fase 2: PnP primero, diskpart de respaldo)
+                    LOGGER.info("  [Paso 1/3] Aplicando bloqueo (PnP o solo lectura)...")
+                    letter_used, readonly_ok, readonly_msg, block_method = apply_block(
+                        drive_letter,
+                        c,
+                        drive_info.get("pnpDeviceId") if drive_info else None,
                     )
                     if readonly_ok:
-                        LOGGER.info("  [Paso 1/3] ✓ Modo solo lectura aplicado exitosamente a %s", letter_used)
+                        LOGGER.info("  [Paso 1/3] ✓ Bloqueo aplicado exitosamente a %s (método %s)", letter_used, block_method)
                     else:
-                        LOGGER.error("  [Paso 1/3] ✗ Fallo al aplicar modo solo lectura: %s", readonly_msg)
+                        LOGGER.error("  [Paso 1/3] ✗ Fallo al bloquear la unidad: %s", readonly_msg)
 
                     # 2. Enviar evento al backend
                     LOGGER.info("  [Paso 2/3] Notificando al backend del evento...")
@@ -2706,8 +3046,19 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                                 drive_info.get("model") if drive_info else None
                             ),
                             whitelisted=False,
+                            block_method=block_method,
+                            pnp_device_id=(
+                                drive_info.get("pnpDeviceId") if drive_info else None
+                            ),
                         )
                         self.pending_usbs[letter_used] = hostname
+                        self.block_state[_drive_key(letter_used)] = {
+                            "method": block_method,
+                            "pnpDeviceId": (
+                                drive_info.get("pnpDeviceId") if drive_info else None
+                            ),
+                            "serialNumber": serial_number,
+                        }
                         LOGGER.info("  [Paso 3/3] ✓ Unidad %s añadida a pendientes de desbloqueo", letter_used)
                     else:
                         LOGGER.error("  [Paso 3/3] ✗ No se pudo determinar letra de unidad para pending unlock")
@@ -2753,6 +3104,196 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
             LOGGER.error("Error al iniciar servidor HTTP: %s", exc)
             LOGGER.warning("El servicio continuará usando solo polling")
 
+    def _permission_still_active(
+        self,
+        drive_letter: Optional[str],
+        serial_number: Optional[str],
+    ) -> bool:
+        """¿Esta unidad ya se desbloqueó con contraseña en esta inserción?
+
+        El permiso dura hasta que la unidad se extrae (lo limpia el
+        evento de retirada). Si el serial no coincide, es otro
+        dispositivo que reutilizó la letra y no hereda el permiso.
+        """
+        key = _drive_key(drive_letter)
+        if not key:
+            return False
+        entry = self.unlocked_active.get(key)
+        if not entry:
+            return False
+        if time.time() - float(entry.get("unlockedAt") or 0) > UNLOCK_PERMISSION_TTL:
+            self.unlocked_active.pop(key, None)
+            return False
+        entry_serial = entry.get("serialNumber")
+        if (
+            entry_serial
+            and serial_number
+            and str(entry_serial).upper() != str(serial_number).upper()
+        ):
+            return False
+        return True
+
+    def release_blocked_drive(
+        self,
+        drive_letter: str,
+        conn: wmi.WMI,
+        server_pending: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Revierte el bloqueo de una unidad según el método aplicado (Fase 2).
+
+        PNP -> Enable-PnpDevice vía pnputil; READONLY -> unlock_usb de
+        siempre. Si el método se desconoce (p. ej. el servicio se
+        reinició y solo queda el registro local, o ni eso), se intenta
+        rehabilitar por PnP si hay instancia guardada y después el
+        desbloqueo por solo lectura.
+        """
+        key = _drive_key(drive_letter)
+        state = self.block_state.get(key) or {}
+        local = _get_local_block_info(drive_letter)
+        method = state.get("method") or local.get("blockMethod")
+        pnp_id = state.get("pnpDeviceId") or local.get("pnpDeviceId")
+        serial = (
+            (server_pending or {}).get("serialNumber")
+            or state.get("serialNumber")
+            or local.get("serialNumber")
+        )
+        LOGGER.info(
+            "  → Liberando unidad %s (método registrado: %s)",
+            drive_letter,
+            method or "desconocido",
+        )
+
+        success: bool
+        if method == BLOCK_METHOD_PNP:
+            success = False
+            if pnp_id:
+                success, _pnp_msg = enable_pnp_device(pnp_id)
+            else:
+                LOGGER.error(
+                    "  ✗ La unidad %s se bloqueó por PnP pero no hay InstanceId guardado",
+                    drive_letter,
+                )
+            if not success:
+                LOGGER.warning(
+                    "  ⚠ No se pudo reactivar %s por PnP; último recurso: quitar solo lectura",
+                    drive_letter,
+                )
+                success = unlock_usb(drive_letter, conn)
+        elif method == BLOCK_METHOD_READONLY:
+            success = unlock_usb(drive_letter, conn)
+        else:
+            pnp_ok = False
+            if pnp_id:
+                pnp_ok, _pnp_msg = enable_pnp_device(pnp_id)
+            readonly_ok = unlock_usb(drive_letter, conn)
+            success = pnp_ok or readonly_ok
+
+        if success:
+            # El bloqueo ya no existe; el permiso queda vigente hasta
+            # que la unidad se extraiga (evento EventType=3).
+            self.block_state.pop(key, None)
+            if key:
+                self.unlocked_active[key] = {
+                    "serialNumber": serial,
+                    "unlockedAt": time.time(),
+                }
+        return success
+
+    def _drain_removal_events(self, removal_watcher: Any, pc_name: str) -> None:
+        """Procesa los eventos de retirada (EventType=3) ya encolados."""
+        while True:
+            try:
+                removal_event = removal_watcher(timeout_ms=250)
+            except wmi.x_wmi_timed_out:
+                return
+            except Exception as exc:
+                LOGGER.debug("  [Retirada] Error consultando retiradas: %s", exc)
+                return
+            if removal_event is None:
+                return
+            try:
+                self.handle_volume_removal(removal_event, pc_name)
+            except Exception as exc:
+                LOGGER.error("  [Retirada] Error procesando una retirada: %s", exc)
+
+    def handle_volume_removal(self, event: Any, pc_name: str) -> None:
+        """Procesa la extracción física de una unidad (EventType=3, Fase 2).
+
+        Si la unidad estaba bajo control (bloqueada o ya desbloqueada),
+        se limpia su estado local, sus entradas en pending_local.json
+        pasan a CLOSED y se avisa al servidor (pending-close): el
+        permiso muere al extraer, y reinsertar generará un bloqueo
+        nuevo por el flujo normal de inserción.
+        """
+        drive_letter = resolve_drive_letter(event, self.wmi_connection)
+        if not drive_letter:
+            LOGGER.debug(
+                "  [Retirada] Evento de retirada sin letra resoluble; se ignora"
+            )
+            return
+        key = _drive_key(drive_letter)
+        state = self.block_state.get(key) or {}
+        local = _get_local_block_info(drive_letter)
+        was_pending = any(
+            variant in self.pending_usbs
+            for variant in (drive_letter, key, f"{key}:" if key else "")
+        )
+        was_unlocked = key in self.unlocked_active
+        if not was_pending and not state and not local and not was_unlocked:
+            LOGGER.debug(
+                "  [Retirada] La unidad %s no estaba bajo control; se ignora",
+                drive_letter,
+            )
+            return
+
+        serial = (
+            state.get("serialNumber")
+            or local.get("serialNumber")
+            or (self.unlocked_active.get(key) or {}).get("serialNumber")
+        )
+        method = state.get("method") or local.get("blockMethod")
+        pnp_id = state.get("pnpDeviceId") or local.get("pnpDeviceId")
+
+        LOGGER.info(
+            "═══ RETIRADA DETECTADA: unidad %s (serial %s) ═══",
+            drive_letter,
+            serial or "desconocido",
+        )
+        if was_unlocked:
+            LOGGER.info(
+                "  [Retirada] Estaba desbloqueada: el permiso muere al extraerla; "
+                "si se vuelve a conectar, se bloqueará y pedirá la contraseña de nuevo"
+            )
+
+        # Si seguía bloqueada por PnP, se intenta reactivar el
+        # dispositivo aunque ya no esté presente: así una futura
+        # inserción se enumera con normalidad y pasa por el flujo
+        # estándar en vez de aparecer directamente deshabilitada.
+        if method == BLOCK_METHOD_PNP and pnp_id and not was_unlocked:
+            ok, _msg = enable_pnp_device(pnp_id)
+            if ok:
+                LOGGER.info(
+                    "  [Retirada] Dispositivo PnP reactivado tras la retirada de %s",
+                    drive_letter,
+                )
+            else:
+                LOGGER.warning(
+                    "  [Retirada] No se pudo reactivar el dispositivo PnP de %s tras su retirada",
+                    drive_letter,
+                )
+
+        for variant in (drive_letter, key, f"{key}:" if key else ""):
+            if variant:
+                self.pending_usbs.pop(variant, None)
+        self.block_state.pop(key, None)
+        self.unlocked_active.pop(key, None)
+        _mark_local_pending_closed(drive_letter)
+        notify_pending_close(pc_name, drive_letter, serial)
+        LOGGER.info(
+            "  [Retirada] ✓ Estado local limpiado y cierre notificado para %s",
+            drive_letter,
+        )
+
     def monitor_unlock_authorization(self, conn: wmi.WMI) -> None:
         """Monitorea periódicamente si hay USBs autorizados para desbloquear."""
         LOGGER.info("╔════════════════════════════════════════════════════════════╗")
@@ -2790,7 +3331,12 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                             drive_letter,
                             pending.get("id"),
                         )
-                        success = unlock_usb(drive_letter, conn)
+                        # Fase 2: revertir según el método con el que
+                        # se bloqueó (PnP o solo lectura), no siempre
+                        # por diskpart.
+                        success = self.release_blocked_drive(
+                            drive_letter, conn, pending
+                        )
 
                         if success:
                             # Remover de la lista de pendientes (todas las
