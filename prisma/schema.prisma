@@ -41,9 +41,14 @@ model Computer {
   serviceRunning   Boolean   @default(false)
   lastServiceCheck DateTime?
   agentVersion     String? // versión del ejecutable/agent si se puede detectar en el futuro
+  // Desbloqueo por contraseña (2FA): credencial propia del agente y modo por equipo
+  agentTokenHash   String?
+  agentTokenAt     DateTime?
+  unlockMode       String    @default("OWNER_OR_ADMIN") // OWNER_OR_ADMIN | ADMIN_ONLY (PCs compartidas)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   users            User[] // Relación con usuarios
+  pendingUnlocks   PendingUnlock[]
 
   @@index([lastSeen])
   @@index([ipAddress])
@@ -63,6 +68,7 @@ model User {
   failedAttempts   Int            @default(0)
   lockedUntil      DateTime?
   whitelistEntries USBWhitelist[]
+  unlockedPendings PendingUnlock[] @relation("UnlockedBy")
 
   @@index([computerId])
 }
@@ -106,4 +112,55 @@ model USBWhitelist {
   createdBy    User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
 
   @@map("usb_whitelist")
+}
+
+// ─── Desbloqueo por contraseña (2FA) ─────────────────────────────
+// Registro interno de cada inserción bloqueada que espera la contraseña
+// del dueño de la PC (o del admin). NO es una aprobación: la verificación
+// es automática en /api/usb-auth. Ver plan-desbloqueo-por-contrasena.
+enum PendingStatus {
+  BLOCKED
+  UNLOCKED
+  CLOSED
+}
+
+model PendingUnlock {
+  id           String        @id @default(cuid())
+  computerId   String?
+  computer     Computer?     @relation(fields: [computerId], references: [id], onDelete: SetNull)
+  pcName       String
+  driveLetter  String
+  serialNumber String?
+  deviceLabel  String?
+  whitelisted  Boolean       @default(false) // conocido o no: solo informativo
+  status       PendingStatus @default(BLOCKED)
+  createdAt    DateTime      @default(now())
+  expiresAt    DateTime // validez del bloqueo pendiente de contraseña
+  unlockedById String?
+  unlockedBy   User?         @relation("UnlockedBy", fields: [unlockedById], references: [id], onDelete: SetNull)
+  unlockedAt   DateTime?
+  executedAt   DateTime? // cuándo el agente aplicó el desbloqueo en la PC
+  closedAt     DateTime?
+  closeReason  String? // REMOVED | REPLACED
+  attempts     UnlockAttempt[]
+
+  @@index([pcName, status])
+  @@index([createdAt])
+  @@map("pending_unlocks")
+}
+
+model UnlockAttempt {
+  id            String         @id @default(cuid())
+  createdAt     DateTime       @default(now())
+  pendingId     String?
+  pending       PendingUnlock? @relation(fields: [pendingId], references: [id], onDelete: SetNull)
+  pcName        String
+  usernameTried String
+  userId        String?
+  serialNumber  String?
+  result        String // SUCCESS | BAD_PASSWORD | NOT_OWNER | NOT_WHITELISTED | NO_PENDING | LOCKED | OFFLINE_OK | OFFLINE_FAIL
+  origin        String // ONLINE | OFFLINE_LOCAL
+
+  @@index([pcName, createdAt])
+  @@map("unlock_attempts")
 }

@@ -119,7 +119,7 @@ DEFAULT_IPV4_FALLBACK = "127.0.0.1"
 
 _resolved_ip_cache: Dict[str, Any] = {"value": DEFAULT_IPV4_FALLBACK, "expires_at": 0.0}
 _whitelist_cache: Dict[str, Tuple[float, bool, Optional[Dict[str, Any]]]] = {}
-_unlock_backoff: Dict[str, Tuple[float, bool, Optional[str]]] = {}
+_unlock_backoff: Dict[str, float] = {}  # pc_name -> instante hasta el que no se repite la consulta (último resultado vacío)
 
 NetworkTask = Tuple[Callable[..., Any], Tuple[Any, ...], Dict[str, Any], Optional[Future]]
 NETWORK_QUEUE: "Queue[NetworkTask]" = Queue(maxsize=512)
@@ -189,6 +189,15 @@ def get_default_log_path() -> Path:
 
 DEFAULT_LISTEN_PORT = 5001  # Puerto donde el servicio escuchará peticiones
 SIGNAL_FILE = (PROGRAM_DATA_DIR / "browser_signal.json").resolve()
+# Registro local de dispositivos bloqueados pendientes de contraseña (Fase 1).
+# Lo escribe este servicio y lo lee el proceso compañero (usb_prompt.py) para
+# saber cuándo mostrar la ventana de contraseña.
+PENDING_LOCAL_FILE = (PROGRAM_DATA_DIR / "pending_local.json").resolve()
+# Proceso compañero que pide la contraseña en la sesión del usuario
+# (el servicio corre en sesión 0 y no puede mostrar ventanas).
+COMPANION_IMAGE_NAME = "USBMonitorPrompt.exe"
+COMPANION_TASK_NAME = "USBMonitorPrompt"
+COMPANION_WATCHDOG_INTERVAL = 15.0  # segundos entre comprobaciones del compañero
 HOSTNAME_RAW = (socket.gethostname() or "").strip() or "UNKNOWN_HOST"
 
 # Plan de telemetría (próxima iteración):
@@ -1501,23 +1510,6 @@ def protect_usb_media(
     return drive_letter, success, detail
 
 
-def schedule_shutdown(delay_seconds: int = 3) -> None:
-    """Programa el apagado del equipo."""
-    try:
-        LOGGER.warning(
-            "  ⚠  Dispositivo no autorizado. Apagado programado en %s segundos.",
-            delay_seconds,
-        )
-        shutdown_path = resolve_executable("shutdown.exe")
-        subprocess.Popen(
-            [shutdown_path, "/s", "/t", str(max(delay_seconds, 0))],  #nosec B603
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-    except Exception as exc:
-        LOGGER.error("  ✗ No se pudo programar el apagado automático: %s", exc)
-
-
 def create_browser_signal(pc_name: str, drive_letter: str) -> None:
     """Crea el archivo de señal para que el agente muestre el login."""
     try:
@@ -1541,20 +1533,165 @@ def create_browser_signal(pc_name: str, drive_letter: str) -> None:
         LOGGER.error("    ✗ Error al crear archivo de señal: %s", exc)
 
 
-def _create_pending_unlock_request(pc_name: str, drive_letter: str) -> bool:
-    # Legacy deshabilitado: se usa solo whitelist. No-op.
-    LOGGER.debug(
-        "    [Legacy OFF] pending-unlock omitido para PC=%s | Unidad=%s",
+def _load_local_pendings() -> List[Dict[str, Any]]:
+    """Lee el registro local de pendientes (pending_local.json). Tolerante a fallos."""
+    try:
+        if not PENDING_LOCAL_FILE.exists():
+            return []
+        data = json.loads(PENDING_LOCAL_FILE.read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except Exception as exc:
+        LOGGER.warning("    [Pendiente] No se pudo leer %s: %s", PENDING_LOCAL_FILE, exc)
+        return []
+
+
+def _save_local_pendings(pendings: List[Dict[str, Any]]) -> bool:
+    """Guarda el registro local de pendientes en pending_local.json."""
+    try:
+        PENDING_LOCAL_FILE.parent.mkdir(parents=True, exist_ok=True)
+        PENDING_LOCAL_FILE.write_text(
+            json.dumps(pendings, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        return True
+    except Exception as exc:
+        LOGGER.error("    [Pendiente] No se pudo escribir %s: %s", PENDING_LOCAL_FILE, exc)
+        return False
+
+
+def _register_local_pending(entry: Dict[str, Any]) -> None:
+    """Añade (o sustituye si sigue BLOCKED) un pendiente en el registro local."""
+    pendings = _load_local_pendings()
+    drive = str(entry.get("driveLetter") or "").upper()
+    pendings = [
+        p
+        for p in pendings
+        if not (
+            str(p.get("driveLetter") or "").upper() == drive
+            and p.get("status") == "BLOCKED"
+        )
+    ]
+    pendings.append(entry)
+    _save_local_pendings(pendings)
+
+
+def _mark_local_pending_unlocked(drive_letter: str) -> None:
+    """Marca como UNLOCKED el pendiente local de una unidad (si existe)."""
+    pendings = _load_local_pendings()
+    drive = drive_letter.upper()
+    changed = False
+    for pending in pendings:
+        if str(pending.get("driveLetter") or "").upper() == drive and pending.get("status") == "BLOCKED":
+            pending["status"] = "UNLOCKED"
+            changed = True
+    if changed:
+        _save_local_pendings(pendings)
+
+
+def _create_pending_unlock_request(
+    pc_name: str,
+    drive_letter: str,
+    serial_number: Optional[str] = None,
+    device_label: Optional[str] = None,
+    whitelisted: bool = False,
+) -> Tuple[bool, Optional[str]]:
+    """POST /api/usb-event/pending-unlock: registra el bloqueo en el servidor.
+
+    Devuelve (ok, id_del_pendiente_en_el_servidor).
+    """
+    url = build_url("/api/usb-event/pending-unlock")
+    headers = {"Content-Type": "application/json"}
+    headers.update(get_auth_headers())
+    payload = {
+        "pcName": pc_name,
+        "driveLetter": drive_letter,
+        "serialNumber": serial_number,
+        "deviceLabel": device_label,
+        "whitelisted": bool(whitelisted),
+    }
+    verify = get_requests_verify()
+    response = requests.post(url, json=payload, headers=headers, timeout=8, verify=verify)
+    response.raise_for_status()
+    data = response.json()
+    if not data.get("ok"):
+        LOGGER.warning("    [Pendiente] El servidor no confirmó el registro: %s", data)
+        return False, None
+    return True, data.get("id")
+
+
+def create_pending_unlock(
+    pc_name: str,
+    drive_letter: str,
+    serial_number: Optional[str] = None,
+    device_label: Optional[str] = None,
+    whitelisted: bool = False,
+) -> bool:
+    """Registra un dispositivo bloqueado pendiente de contraseña (Fase 1).
+
+    Lo crea en el servidor y lo guarda también en el registro local
+    (pending_local.json), del que el proceso compañero lee para mostrar
+    la ventana de contraseña. Si el servidor no responde, el pendiente
+    local queda con id null: el bloqueo se mantiene, pero la contraseña
+    online no podrá verificar hasta que el pendiente exista en el
+    servidor (sin sincronización extra en esta fase).
+    """
+    server_id: Optional[str] = None
+    registered = False
+
+    future = submit_network_task(
+        _create_pending_unlock_request,
         pc_name,
         drive_letter,
+        serial_number,
+        device_label,
+        whitelisted,
+        expect_result=True,
     )
-    return False
+    if future is not None:
+        try:
+            registered, server_id = future.result(timeout=10)
+        except Exception as exc:
+            LOGGER.error(
+                "    [Pendiente] Error al registrar el bloqueo en el servidor (cola): %s",
+                exc,
+            )
+    else:
+        try:
+            registered, server_id = _create_pending_unlock_request(
+                pc_name, drive_letter, serial_number, device_label, whitelisted
+            )
+        except Exception as exc:
+            LOGGER.error(
+                "    [Pendiente] Error al registrar el bloqueo en el servidor: %s", exc
+            )
 
+    _register_local_pending(
+        {
+            "id": server_id,
+            "pcName": pc_name,
+            "driveLetter": drive_letter,
+            "serialNumber": serial_number,
+            "deviceLabel": device_label,
+            "whitelisted": bool(whitelisted),
+            "status": "BLOCKED",
+            "createdAt": time.time(),
+        }
+    )
 
-def create_pending_unlock(pc_name: str, drive_letter: str) -> bool:
-    # Legacy deshabilitado: no se crean pending unlocks.
-    LOGGER.debug("    [Legacy OFF] create_pending_unlock omitido")
-    return False
+    if registered:
+        LOGGER.info(
+            "    [Pendiente] ✓ Bloqueo registrado en el servidor (id=%s) para %s en %s",
+            server_id,
+            pc_name,
+            drive_letter,
+        )
+    else:
+        LOGGER.warning(
+            "    [Pendiente] ⚠ Bloqueo guardado solo en local para %s en %s: "
+            "sin pendiente en el servidor, la contraseña online no podrá verificar por ahora",
+            pc_name,
+            drive_letter,
+        )
+    return registered
 
 
 def _check_whitelist_remote(normalized_serial: str) -> Tuple[bool, Optional[Dict[str, Any]]]:
@@ -1628,18 +1765,39 @@ def check_whitelist(serial_number: Optional[str]) -> Tuple[bool, Optional[Dict[s
     return allowed, entry
 
 
-def _check_unlock_status_remote(pc_name: str) -> Tuple[bool, Optional[str]]:
-    # Legacy deshabilitado: no se consulta estado de desbloqueo.
-    LOGGER.debug("    [Legacy OFF] check_unlock_status omitido para PC=%s", pc_name)
-    return False, None
+def _check_unlock_status_remote(pc_name: str) -> List[Dict[str, Any]]:
+    """GET /api/usb-unlock/status?check=true: pendientes recién desbloqueados.
+
+    Con check=true el servidor marca cada pendiente UNLOCKED como ya
+    entregado (executedAt), así que cada uno se devuelve una sola vez.
+    """
+    url = build_url("/api/usb-unlock/status")
+    headers = get_auth_headers()
+    verify = get_requests_verify()
+    response = requests.get(
+        url,
+        params={"pcName": pc_name, "check": "true"},
+        headers=headers,
+        timeout=8,
+        verify=verify,
+    )
+    response.raise_for_status()
+    data = response.json()
+    pendings = data.get("pendings") or []
+    return [p for p in pendings if isinstance(p, dict)]
 
 
-def check_unlock_status(pc_name: str) -> Tuple[bool, Optional[str]]:
-    """Verifica si el backend ha autorizado el desbloqueo aplicando backoff en respuestas negativas."""
+def check_unlock_status(pc_name: str) -> List[Dict[str, Any]]:
+    """Consulta al servidor los dispositivos ya desbloqueados con contraseña.
+
+    Devuelve la lista de pendientes (cada uno con al menos driveLetter y
+    serialNumber) que hay que liberar. Aplica un pequeño backoff cuando
+    la respuesta viene vacía o hay un error, para no saturar.
+    """
     now = time.time()
-    cached = _unlock_backoff.get(pc_name)
-    if cached and cached[0] > now:
-        return cached[1], cached[2]
+    next_allowed = _unlock_backoff.get(pc_name)
+    if next_allowed and next_allowed > now:
+        return []
 
     future = submit_network_task(
         _check_unlock_status_remote,
@@ -1647,28 +1805,78 @@ def check_unlock_status(pc_name: str) -> Tuple[bool, Optional[str]]:
         expect_result=True,
     )
 
-    unlocked: bool
-    drive_letter: Optional[str]
+    pendings: List[Dict[str, Any]]
     if future is not None:
         try:
-            unlocked, drive_letter = future.result(timeout=10)
+            pendings = future.result(timeout=10)
         except Exception as exc:
             LOGGER.debug("    [Desbloqueo] Error al obtener estado (cola): %s", exc)
-            _unlock_backoff[pc_name] = (now + UNLOCK_NEGATIVE_BACKOFF, False, None)
-            return False, None
+            _unlock_backoff[pc_name] = now + UNLOCK_NEGATIVE_BACKOFF
+            return []
     else:
         try:
-            unlocked, drive_letter = _check_unlock_status_remote(pc_name)
+            pendings = _check_unlock_status_remote(pc_name)
         except Exception as exc:
             LOGGER.debug("    [Desbloqueo] Error al verificar desbloqueo directamente: %s", exc)
-            _unlock_backoff[pc_name] = (now + UNLOCK_NEGATIVE_BACKOFF, False, None)
-            return False, None
+            _unlock_backoff[pc_name] = now + UNLOCK_NEGATIVE_BACKOFF
+            return []
 
-    if unlocked:
+    if pendings:
         _unlock_backoff.pop(pc_name, None)
     else:
-        _unlock_backoff[pc_name] = (now + UNLOCK_NEGATIVE_BACKOFF, False, None)
-    return unlocked, drive_letter
+        _unlock_backoff[pc_name] = now + UNLOCK_NEGATIVE_BACKOFF
+    return pendings
+
+
+def _is_companion_running() -> bool:
+    """Comprueba por nombre de imagen si el proceso compañero está en ejecución."""
+    tasklist_path = resolve_executable("tasklist.exe")
+    result = subprocess.run(  # nosec B603 - ejecutable del sistema y argumentos fijos
+        [tasklist_path, "/FI", f"IMAGENAME eq {COMPANION_IMAGE_NAME}", "/NH"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    return COMPANION_IMAGE_NAME.lower() in (result.stdout or "").lower()
+
+
+def _ensure_companion_running() -> None:
+    """Watchdog del proceso compañero (Fase 1).
+
+    Si USBMonitorPrompt.exe no está en ejecución y existe su tarea
+    programada, la lanza con schtasks /run. Cualquier fallo se registra
+    y se ignora: este watchdog nunca debe tumbar el servicio. (La
+    detección es por el nombre del .exe compilado; ejecutando el
+    compañero como script pythonw no es detectable así.)
+    """
+    try:
+        if _is_companion_running():
+            return
+        schtasks_path = resolve_executable("schtasks.exe")
+        query = subprocess.run(  # nosec B603
+            [schtasks_path, "/query", "/tn", COMPANION_TASK_NAME],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if query.returncode != 0:
+            LOGGER.debug(
+                "  [Compañero] La tarea programada %s no existe; no se relanza",
+                COMPANION_TASK_NAME,
+            )
+            return
+        subprocess.run(  # nosec B603
+            [schtasks_path, "/run", "/tn", COMPANION_TASK_NAME],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        LOGGER.info(
+            "  [Compañero] No estaba en ejecución: lanzada la tarea %s",
+            COMPANION_TASK_NAME,
+        )
+    except Exception as exc:
+        LOGGER.warning("  [Compañero] Error en el watchdog del compañero: %s", exc)
 
 
 def unlock_usb(drive_letter: str, conn: wmi.WMI) -> bool:
@@ -2290,35 +2498,52 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                         whitelisted, whitelist_entry = check_whitelist(serial_number)
                         
                     if whitelisted:
-                        LOGGER.info("Boot Sweep: Unidad %s AUTORIZADA en whitelist", drive_letter)
+                        LOGGER.info(
+                            "Boot Sweep: Unidad %s AUTORIZADA en whitelist; "
+                            "la contraseña (2FA) sigue siendo necesaria para usarla",
+                            drive_letter,
+                        )
                     else:
                         LOGGER.warning("Boot Sweep: PROTOCOLO DE SEGURIDAD - Unidad %s NO AUTORIZADA", drive_letter)
-                        
-                        # 1. Protect USB
-                        letter_used, readonly_ok, readonly_msg = protect_usb_media(drive_letter, c)
-                        
-                        # 2. Send Event
-                        event = MockEvent()
-                        setattr(event, "DriveName", drive_letter)
-                        
-                        payload = build_payload(
-                            event,
+
+                    # La contraseña es 2FA siempre: se bloquea y se crea el
+                    # pendiente esté o no el dispositivo en la whitelist.
+                    # 1. Protect USB
+                    letter_used, readonly_ok, readonly_msg = protect_usb_media(drive_letter, c)
+
+                    # 2. Send Event
+                    event = MockEvent()
+                    setattr(event, "DriveName", drive_letter)
+
+                    payload = build_payload(
+                        event,
+                        letter_used,
+                        readonly_msg,
+                        serial_number,
+                        whitelisted,
+                    )
+                    send_event(payload)
+
+                    # 3. Sin apagado (Fase 0): la PC NO se apaga; el
+                    # dispositivo queda bloqueado hasta desbloquearlo
+                    # con la contraseña del dueño o del admin.
+                    LOGGER.info(
+                        "Boot Sweep: la PC NO se apaga; la unidad %s queda bloqueada pendiente de contraseña",
+                        drive_letter,
+                    )
+
+                    # 4. Pending unlock
+                    if letter_used:
+                        create_browser_signal(hostname, letter_used)
+                        create_pending_unlock(
+                            hostname,
                             letter_used,
-                            readonly_msg,
-                            serial_number,
-                            False,
+                            serial_number=serial_number,
+                            device_label=drive.get("model"),
+                            whitelisted=whitelisted,
                         )
-                        send_event(payload)
-                        
-                        # 3. Schedule Shutdown
-                        schedule_shutdown()
-                        
-                        # 4. Pending unlock
-                        if letter_used:
-                            create_browser_signal(hostname, letter_used)
-                            create_pending_unlock(hostname, letter_used)
-                            self.pending_usbs[letter_used] = hostname
-                            
+                        self.pending_usbs[letter_used] = hostname
+
                 except Exception as drive_exc:
                     LOGGER.error("Boot Sweep: Error al verificar unidad %s: %s", drive.get("driveLetter", "desconocida"), drive_exc)
                     
@@ -2342,6 +2567,7 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                     whitelist_entry: Optional[Dict[str, Any]] = None
                     whitelisted = False
 
+                    drive_info: Optional[Dict[str, Any]] = None
                     if drive_letter:
                         LOGGER.info("  [2/5] Iniciando obtención de número de serie...")
                         for attempt in range(5):
@@ -2395,37 +2621,44 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                             LOGGER.warning("  [3/5] ✗ NO AUTORIZADO - Serial no en whitelist")
 
                     if whitelisted:
-                        LOGGER.info("  [4/5] Dispositivo está en whitelist, OMITIENDO BLOQUEO")
-                        label = (
-                            whitelist_entry.get("label")
-                            if isinstance(whitelist_entry, dict)
-                            else None
+                        # Dispositivo conocido, pero la contraseña es 2FA
+                        # siempre: también se bloquea y se crea el pendiente.
+                        LOGGER.info(
+                            "  [4/5] Dispositivo AUTORIZADO en whitelist; la contraseña (2FA) sigue siendo necesaria"
                         )
-                        notes = (
-                            whitelist_entry.get("notes")
-                            if isinstance(whitelist_entry, dict)
-                            else None
+                        letter_used, readonly_ok, readonly_msg = protect_usb_media(
+                            drive_letter, c
                         )
-                        readonly_msg = "Whitelisted: acceso directo"
-                        if label:
-                            readonly_msg = f"{readonly_msg} ({label})"
-                        if notes:
-                            readonly_msg = f"{readonly_msg} - {notes}"
+                        if readonly_ok:
+                            LOGGER.info("  [4/5] ✓ Modo solo lectura aplicado a %s", letter_used)
+                        else:
+                            LOGGER.error("  [4/5] ✗ Fallo al aplicar modo solo lectura: %s", readonly_msg)
                         payload = build_payload(
                             event,
-                            drive_letter,
+                            letter_used,
                             readonly_msg,
                             serial_number,
                             True,
                         )
                         LOGGER.info("  [5/5] Enviando evento autorizado al backend")
                         send_event(payload)
-                        if drive_letter:
-                            normalized_letter = drive_letter.rstrip(":").upper()
-                            self.pending_usbs.pop(drive_letter, None)
-                            self.pending_usbs.pop(normalized_letter, None)
-                            self.pending_usbs.pop(f"{normalized_letter}:", None)
-                        LOGGER.info("═══ EVENTO COMPLETADO: USB AUTORIZADO ═══\n")
+                        if letter_used:
+                            create_browser_signal(hostname, letter_used)
+                            create_pending_unlock(
+                                hostname,
+                                letter_used,
+                                serial_number=serial_number,
+                                device_label=(
+                                    drive_info.get("model") if drive_info else None
+                                ),
+                                whitelisted=True,
+                            )
+                            self.pending_usbs[letter_used] = hostname
+                            LOGGER.info(
+                                "  [5/5] ✓ Unidad %s bloqueada, pendiente de contraseña (whitelist)",
+                                letter_used,
+                            )
+                        LOGGER.info("═══ EVENTO COMPLETADO: USB AUTORIZADO EN WHITELIST, PENDIENTE DE CONTRASEÑA ═══\n")
                         continue
 
                     # --- Proceso para dispositivos no autorizados ---
@@ -2433,17 +2666,17 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                     LOGGER.warning("  Dispositivo: %s | Serial: %s", drive_letter or "desconocido", serial_number or "sin serial")
                     
                     # 1. Proteger USB con readonly
-                    LOGGER.info("  [Paso 1/4] Aplicando modo SOLO LECTURA...")
+                    LOGGER.info("  [Paso 1/3] Aplicando modo SOLO LECTURA...")
                     letter_used, readonly_ok, readonly_msg = protect_usb_media(
                         drive_letter, c
                     )
                     if readonly_ok:
-                        LOGGER.info("  [Paso 1/4] ✓ Modo solo lectura aplicado exitosamente a %s", letter_used)
+                        LOGGER.info("  [Paso 1/3] ✓ Modo solo lectura aplicado exitosamente a %s", letter_used)
                     else:
-                        LOGGER.error("  [Paso 1/4] ✗ Fallo al aplicar modo solo lectura: %s", readonly_msg)
+                        LOGGER.error("  [Paso 1/3] ✗ Fallo al aplicar modo solo lectura: %s", readonly_msg)
 
                     # 2. Enviar evento al backend
-                    LOGGER.info("  [Paso 2/4] Notificando al backend del evento...")
+                    LOGGER.info("  [Paso 2/3] Notificando al backend del evento...")
                     payload = build_payload(
                         event,
                         letter_used,
@@ -2452,22 +2685,32 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                         False,
                     )
                     send_event(payload)
-                    LOGGER.info("  [Paso 2/4] ✓ Evento enviado al backend")
+                    LOGGER.info("  [Paso 2/3] ✓ Evento enviado al backend")
 
-                    # 3. Programar apagado del equipo
-                    LOGGER.warning("  [Paso 3/4] Programando APAGADO del sistema...")
-                    schedule_shutdown()
-                    LOGGER.warning("  [Paso 3/4] ✓ Apagado programado en 3 segundos")
+                    # Sin apagado (Fase 0): la PC NO se apaga. El dispositivo
+                    # queda bloqueado hasta que el dueño (o el admin) lo
+                    # desbloquee con su contraseña.
+                    LOGGER.info(
+                        "  [Paso 3/3] La PC NO se apaga; el dispositivo queda bloqueado pendiente de contraseña"
+                    )
 
-                    # 4. Crear señal para el agente local (si aplica)
+                    # 3. Crear señal para el agente local (si aplica)
                     if letter_used:
-                        LOGGER.info("  [Paso 4/4] Creando registro de desbloqueo pendiente...")
+                        LOGGER.info("  [Paso 3/3] Creando registro de desbloqueo pendiente...")
                         create_browser_signal(hostname, letter_used)
-                        create_pending_unlock(hostname, letter_used)
+                        create_pending_unlock(
+                            hostname,
+                            letter_used,
+                            serial_number=serial_number,
+                            device_label=(
+                                drive_info.get("model") if drive_info else None
+                            ),
+                            whitelisted=False,
+                        )
                         self.pending_usbs[letter_used] = hostname
-                        LOGGER.info("  [Paso 4/4] ✓ Unidad %s añadida a pendientes de desbloqueo", letter_used)
+                        LOGGER.info("  [Paso 3/3] ✓ Unidad %s añadida a pendientes de desbloqueo", letter_used)
                     else:
-                        LOGGER.error("  [Paso 4/4] ✗ No se pudo determinar letra de unidad para pending unlock")
+                        LOGGER.error("  [Paso 3/3] ✗ No se pudo determinar letra de unidad para pending unlock")
                     
                     LOGGER.warning("═══ PROTOCOLO DE SEGURIDAD COMPLETADO ═══\n")
                     
@@ -2520,41 +2763,46 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
         pythoncom.CoInitialize()
         
         try:
-            pending_logged_empty = False
+            last_watchdog_check = 0.0
             while not self.stopped:
                 try:
                     time.sleep(3)  # Verificar cada 3 segundos
-                    
-                    if not self.pending_usbs:
-                        if not pending_logged_empty:
-                            LOGGER.debug("  ℹ  Sin USBs pendientes en este momento")
-                            pending_logged_empty = True
-                        continue
-                    else:
-                        if pending_logged_empty:
-                            LOGGER.info("  ℹ  Nuevos USBs pendientes detectados")
-                        pending_logged_empty = False
-                        LOGGER.debug(
-                            "  ℹ  Pendientes actuales: %s",
-                            list(self.pending_usbs.keys()),
-                        )
-                    
-                    # Verificar estado de desbloqueo en el backend
+
+                    # Watchdog del proceso compañero (~cada 15 s): si no
+                    # está en ejecución, se relanza su tarea programada.
+                    now = time.time()
+                    if now - last_watchdog_check >= COMPANION_WATCHDOG_INTERVAL:
+                        last_watchdog_check = now
+                        _ensure_companion_running()
+
+                    # Polling real (Fase 1): el servidor devuelve los
+                    # pendientes que acaban de desbloquearse con
+                    # contraseña; con check=true cada uno llega una vez.
                     pc_name = HOSTNAME
-                    LOGGER.debug("  [Consulta] Verificando autorización en backend para: %s", pc_name)
-                    unlocked, drive_letter = check_unlock_status(pc_name)
-                    
-                    if unlocked and drive_letter and drive_letter in self.pending_usbs:
-                        # Desbloquear la unidad
-                        LOGGER.info("  ✓ AUTORIZACIÓN RECIBIDA para %s", drive_letter)
-                        LOGGER.info("    → Procediendo a desbloquear unidad...")
-                        
+                    pendings = check_unlock_status(pc_name)
+
+                    for pending in pendings:
+                        drive_letter = pending.get("driveLetter")
+                        if not drive_letter:
+                            continue
+                        LOGGER.info(
+                            "  ✓ CONTRASEÑA ACEPTADA para %s (pendiente %s): desbloqueando...",
+                            drive_letter,
+                            pending.get("id"),
+                        )
                         success = unlock_usb(drive_letter, conn)
-                        
+
                         if success:
-                            # Remover de la lista de pendientes
+                            # Remover de la lista de pendientes (todas las
+                            # variantes de la letra que se hayan usado)
+                            normalized_letter = drive_letter.rstrip(":").upper()
                             self.pending_usbs.pop(drive_letter, None)
-                            
+                            self.pending_usbs.pop(normalized_letter, None)
+                            self.pending_usbs.pop(f"{normalized_letter}:", None)
+
+                            # Actualizar el registro local que lee el compañero
+                            _mark_local_pending_unlocked(drive_letter)
+
                             # Limpiar archivo de señal
                             try:
                                 if SIGNAL_FILE.exists():
@@ -2562,17 +2810,18 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                                     LOGGER.info("    → Archivo de señal limpiado")
                             except Exception as e:
                                 LOGGER.warning("    ⚠  Error al limpiar archivo de señal: %s", e)
-                            
+
                             LOGGER.info(
-                                "  ✓ USB %s desbloqueado exitosamente tras autorización",
-                                drive_letter
+                                "  ✓ USB %s desbloqueado tras verificar la contraseña",
+                                drive_letter,
                             )
                         else:
                             LOGGER.error(
-                                "  ✗ Fallo al desbloquear USB %s tras autorización",
-                                drive_letter
+                                "  ✗ Fallo al desbloquear USB %s tras verificar la contraseña "
+                                "(el servidor ya lo marcó como entregado; no se reintentará solo)",
+                                drive_letter,
                             )
-                    
+
                 except Exception as exc:
                     LOGGER.error("  ✗ Error en monitoreo de autorizaciones: %s", exc)
                     time.sleep(5)
