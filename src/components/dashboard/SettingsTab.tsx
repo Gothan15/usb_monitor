@@ -1,13 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -18,7 +11,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import {
   Server,
@@ -46,6 +38,13 @@ interface UnlockSettings {
   silenceThresholdMinutes: number;
 }
 
+const SECCIONES = [
+  { id: "sincronizacion-en-tiempo-real", nombre: "Sincronización en Tiempo Real" },
+  { id: "api-y-automatizacion", nombre: "API y automatización" },
+  { id: "desbloqueo-por-contrasena", nombre: "Desbloqueo por contraseña" },
+  { id: "interfaz-y-navegacion", nombre: "Interfaz y Navegación" },
+] as const;
+
 export function SettingsTab() {
   const { toast } = useToast();
   const [api, setApi] = useState<ApiSettings>({
@@ -72,19 +71,29 @@ export function SettingsTab() {
           setApi({
             startupNetworkDelay: data.startup_network_delay,
           });
+          setApiInicial(data.startup_network_delay);
         }
-        setUnlock({
+        const unlockCargado = {
           passwordUnlockEnabled: data.passwordUnlockEnabled ?? true,
           offlineEmergencyEnabled: data.offlineEmergencyEnabled ?? true,
           requireAgentToken: data.requireAgentToken ?? false,
           lockSessionOnInsert: data.lockSessionOnInsert ?? false,
           silenceThresholdMinutes: data.silenceThresholdMinutes ?? 5,
-        });
+        };
+        setUnlock(unlockCargado);
+        setUnlockInicial(unlockCargado);
       })
       .catch((err) => console.error("Failed to load settings", err));
   }, []);
 
-  const saveSettings = async (sectionLabel: string, payload: any) => {
+  const [apiInicial, setApiInicial] = useState<number | null>(null);
+  const [unlockInicial, setUnlockInicial] = useState<UnlockSettings | null>(null);
+
+  const saveSettings = async (
+    sectionLabel: string,
+    payload: any,
+    alGuardar?: () => void,
+  ) => {
     try {
       const res = await fetch("/api/settings", {
         method: "POST",
@@ -93,6 +102,7 @@ export function SettingsTab() {
       });
       if (res.ok) {
         showSavedToast(sectionLabel);
+        alGuardar?.();
       } else {
         toast({
           title: "Error al guardar",
@@ -116,211 +126,217 @@ export function SettingsTab() {
     });
 
   return (
-    <div className="animate-view-in grid gap-6 2xl:grid-cols-2">
-      <Card className="rounded-xl border border-border/60 bg-card/80 shadow-xl backdrop-blur-xl">
-        <CardHeader className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <CardTitle className="flex items-center gap-2 text-lg font-semibold text-foreground">
-              <Activity className="h-4 w-4 text-green-500" />
-              Sincronización en Tiempo Real
-            </CardTitle>
-            <CardDescription>
-              Controla la recepción automática de datos a través de WebSockets.
-            </CardDescription>
-          </div>
-          <Badge
-            variant="outline"
-            className="rounded-full border-border/40 bg-muted/30 text-xs text-muted-foreground"
-          >
-            Live Sync
-          </Badge>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="flex flex-row items-center justify-between rounded-xl border border-border/40 bg-card/80 px-4 py-4 shadow-sm md:col-span-2">
-              <div className="space-y-0.5 max-w-[80%]">
-                <Label className="text-base font-medium">
-                  Live Data Sync
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  Habilita o deshabilita la actualización automática de eventos, equipos y usuarios en la interfaz. Cuando está desactivado, podrás refrescar manualmente.
-                </p>
-              </div>
-              {mounted && (
-                <Switch
-                  checked={isLiveSyncEnabled}
-                  onCheckedChange={toggleLiveSync}
-                  className="data-[state=checked]:bg-green-500"
-                />
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+    <div className="animate-view-in lg:grid lg:grid-cols-[230px_minmax(0,1fr)] lg:gap-14">
+      {/* ── Índice de ajustes ── */}
+      <aside className="mb-10 lg:mb-0">
+        <div className="lg:sticky lg:top-8">
+          <p className="smallcaps text-muted-foreground">Índice de ajustes</p>
+          <nav className="mt-4 flex gap-x-6 gap-y-1 overflow-x-auto lg:flex-col lg:overflow-visible">
+            {SECCIONES.map((seccion) => (
+              <a
+                key={seccion.id}
+                href={`#${seccion.id}`}
+                className="smallcaps whitespace-nowrap py-1.5 text-muted-foreground transition-colors hover:text-foreground lg:border-l lg:border-border lg:pl-4 lg:hover:border-[var(--acero)]"
+              >
+                {seccion.nombre}
+              </a>
+            ))}
+          </nav>
+        </div>
+      </aside>
 
-      <Card className="rounded-xl border border-border/60 bg-card/80 shadow-xl backdrop-blur-xl">
-        <CardHeader className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <CardTitle className="flex items-center gap-2 text-lg font-semibold text-foreground">
-              <Server className="h-4 w-4 text-sky-500" />
-              API y automatización
-            </CardTitle>
-            <CardDescription>
-              Gestiona acceso al API REST y los comandos remotos del agente.
-            </CardDescription>
-          </div>
-          <Badge
-            variant="outline"
-            className="rounded-full border-border/40 bg-muted/30 text-xs text-muted-foreground"
-          >
-            Integraciones
-          </Badge>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-xl border border-border/40 bg-card/80 px-4 py-3 shadow-sm md:col-span-2">
-              <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                Startup Network Delay (segundos)
-              </Label>
-              <Input
-                type="number"
-                min={0}
-                value={api.startupNetworkDelay}
-                onChange={(event) =>
-                  setApi({ startupNetworkDelay: Number(event.target.value) || 0 })
-                }
-                className="mt-2"
+      {/* ── Secciones ── */}
+      <div className="min-w-0">
+        <section id="sincronizacion-en-tiempo-real" className="scroll-mt-24 pb-12">
+          <h2 className="font-display flex items-center gap-2.5 text-[1.4rem] font-bold leading-tight text-foreground">
+            <Activity className="size-5 shrink-0 text-[var(--acero)]" />
+            Sincronización en Tiempo Real
+          </h2>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+            Controla la recepción automática de datos a través de WebSockets.
+          </p>
+
+          <div className="mt-8 flex flex-row items-center justify-between gap-6">
+            <div className="max-w-[80%] space-y-0.5">
+              <Label className="text-base font-medium">Sincronización de datos en vivo</Label>
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                Habilita o deshabilita la actualización automática de eventos, equipos y usuarios en la interfaz. Cuando está desactivado, podrás refrescar manualmente.
+              </p>
+            </div>
+            {mounted && (
+              <Switch
+                checked={isLiveSyncEnabled}
+                onCheckedChange={toggleLiveSync}
+                
               />
-              <p className="mt-2 text-xs text-muted-foreground">
-                Tiempo de espera en el arranque para parches de bypass de red.
-              </p>
-            </div>
+            )}
           </div>
-          <Button
-            className="rounded-full"
-            onClick={() => saveSettings("API y automatización", { startup_network_delay: api.startupNetworkDelay })}
-          >
-            Guardar cambios
-          </Button>
-        </CardContent>
-      </Card>
+        </section>
 
+        <section
+          id="api-y-automatizacion"
+          className="scroll-mt-24 border-t border-border py-12"
+        >
+          <h2 className="font-display flex items-center gap-2.5 text-[1.4rem] font-bold leading-tight text-foreground">
+            <Server className="size-5 shrink-0 text-[var(--acero)]" />
+            API y automatización
+          </h2>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+            Gestiona acceso al API REST y los comandos remotos del agente.
+          </p>
 
-      <Card className="rounded-xl border border-border/60 bg-card/80 shadow-xl backdrop-blur-xl">
-        <CardHeader>
-          <div>
-            <CardTitle className="flex items-center gap-2 text-lg font-semibold text-foreground">
-              <KeyRound className="h-4 w-4 text-green-500" />
-              Desbloqueo por contraseña
-            </CardTitle>
-            <CardDescription>
-              Interruptores del flujo 2FA de los USB y de la detección de
-              agentes por silencio.
-            </CardDescription>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <Label>Desbloqueo por contraseña activo</Label>
-              <p className="text-xs text-muted-foreground">
-                Si se apaga, ningún USB se libera con contraseña: queda
-                bloqueado como si no estuviera en la lista blanca.
-              </p>
-            </div>
-            <Switch
-              checked={unlock.passwordUnlockEnabled}
-              onCheckedChange={(v) => setUnlock({ ...unlock, passwordUnlockEnabled: v })}
-            />
-          </div>
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <Label>Emergencia sin red</Label>
-              <p className="text-xs text-muted-foreground">
-                Permite desbloquear con la contraseña verificada contra el
-                hash guardado en la propia PC cuando no hay conexión.
-              </p>
-            </div>
-            <Switch
-              checked={unlock.offlineEmergencyEnabled}
-              onCheckedChange={(v) => setUnlock({ ...unlock, offlineEmergencyEnabled: v })}
-            />
-          </div>
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <Label>Exigir token por equipo</Label>
-              <p className="text-xs text-muted-foreground">
-                La ingesta de eventos deja de ser abierta: cada agente se
-                autentica con su token. Actívalo cuando todos los agentes
-                estén actualizados.
-              </p>
-            </div>
-            <Switch
-              checked={unlock.requireAgentToken}
-              onCheckedChange={(v) => setUnlock({ ...unlock, requireAgentToken: v })}
-            />
-          </div>
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <Label>Bloquear la sesión al conectar un USB</Label>
-              <p className="text-xs text-muted-foreground">
-                Además de bloquear el dispositivo, cierra la sesión de
-                Windows hasta que se desbloquee. Desactivado por defecto.
-              </p>
-            </div>
-            <Switch
-              checked={unlock.lockSessionOnInsert}
-              onCheckedChange={(v) => setUnlock({ ...unlock, lockSessionOnInsert: v })}
-            />
-          </div>
-          <div>
+          <div className="mt-8 max-w-xl">
             <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-              Umbral de silencio del agente (minutos)
+              Espera de red al arranque (segundos)
             </Label>
             <Input
               type="number"
-              min={1}
-              value={unlock.silenceThresholdMinutes}
+              min={0}
+              value={api.startupNetworkDelay}
               onChange={(event) =>
-                setUnlock({ ...unlock, silenceThresholdMinutes: Number(event.target.value) || 5 })
+                setApi({ startupNetworkDelay: Number(event.target.value) || 0 })
               }
               className="mt-2"
             />
             <p className="mt-2 text-xs text-muted-foreground">
-              Tiempo sin señales para marcar un equipo «sin agente» en la
-              vista de Desbloqueos.
+              Tiempo de espera en el arranque para parches de red.
             </p>
           </div>
           <Button
-            className="rounded-full"
-            onClick={() => saveSettings("Desbloqueo por contraseña", { ...unlock })}
+            className="mt-8"
+            onClick={() =>
+              saveSettings(
+                "API y automatización",
+                { startup_network_delay: api.startupNetworkDelay },
+                () => setApiInicial(api.startupNetworkDelay),
+              )
+            }
+            disabled={
+              apiInicial === null ||
+              api.startupNetworkDelay === apiInicial
+            }
           >
             Guardar cambios
           </Button>
-        </CardContent>
-      </Card>
+        </section>
 
-      <Card className="md:col-span-1 2xl:col-span-2 rounded-xl border border-border/60 bg-card/80 shadow-xl backdrop-blur-xl">
-        <CardHeader className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <CardTitle className="flex items-center gap-2 text-lg font-semibold text-foreground">
-              <LayoutTemplate className="h-4 w-4 text-emerald-500" />
-              Interfaz y Navegación
-            </CardTitle>
-            <CardDescription>
-              Personaliza la experiencia visual y los componentes del dashboard.
-            </CardDescription>
+        <section
+          id="desbloqueo-por-contrasena"
+          className="scroll-mt-24 border-t border-border py-12"
+        >
+          <h2 className="font-display flex items-center gap-2.5 text-[1.4rem] font-bold leading-tight text-foreground">
+            <KeyRound className="size-5 shrink-0 text-[var(--acero)]" />
+            Desbloqueo por contraseña
+          </h2>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+            Interruptores del flujo 2FA de los USB y de la detección de
+            agentes por silencio.
+          </p>
+
+          <div className="mt-4 divide-y divide-border">
+            <div className="flex items-center justify-between gap-4 py-5">
+              <div>
+                <Label>Desbloqueo por contraseña activo</Label>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  Si se apaga, ningún USB se libera con contraseña: queda
+                  bloqueado como si no estuviera en la lista blanca.
+                </p>
+              </div>
+              <Switch
+                checked={unlock.passwordUnlockEnabled}
+                onCheckedChange={(v) => setUnlock({ ...unlock, passwordUnlockEnabled: v })}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-4 py-5">
+              <div>
+                <Label>Emergencia sin red</Label>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  Permite desbloquear con la contraseña verificada contra el
+                  hash guardado en la propia PC cuando no hay conexión.
+                </p>
+              </div>
+              <Switch
+                checked={unlock.offlineEmergencyEnabled}
+                onCheckedChange={(v) => setUnlock({ ...unlock, offlineEmergencyEnabled: v })}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-4 py-5">
+              <div>
+                <Label>Exigir token por equipo</Label>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  La ingesta de eventos deja de ser abierta: cada agente se
+                  autentica con su token. Actívalo cuando todos los agentes
+                  estén actualizados.
+                </p>
+              </div>
+              <Switch
+                checked={unlock.requireAgentToken}
+                onCheckedChange={(v) => setUnlock({ ...unlock, requireAgentToken: v })}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-4 py-5">
+              <div>
+                <Label>Bloquear la sesión al conectar un USB</Label>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  Además de bloquear el dispositivo, cierra la sesión de
+                  Windows hasta que se desbloquee. Desactivado por defecto.
+                </p>
+              </div>
+              <Switch
+                checked={unlock.lockSessionOnInsert}
+                onCheckedChange={(v) => setUnlock({ ...unlock, lockSessionOnInsert: v })}
+              />
+            </div>
+            <div className="py-5">
+              <div className="max-w-xl">
+                <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                  Umbral de silencio del agente (minutos)
+                </Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={unlock.silenceThresholdMinutes}
+                  onChange={(event) =>
+                    setUnlock({ ...unlock, silenceThresholdMinutes: Number(event.target.value) || 5 })
+                  }
+                  className="mt-2"
+                />
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Tiempo sin señales para marcar un equipo «sin agente» en la
+                  vista de Desbloqueos.
+                </p>
+              </div>
+            </div>
           </div>
-          <Badge
-            variant="outline"
-            className="rounded-full border-border/40 bg-muted/30 text-xs text-muted-foreground"
+          <Button
+            onClick={() =>
+              saveSettings("Desbloqueo por contraseña", { ...unlock }, () =>
+                setUnlockInicial({ ...unlock }),
+              )
+            }
+            disabled={
+              unlockInicial === null ||
+              JSON.stringify(unlock) === JSON.stringify(unlockInicial)
+            }
           >
-            Visual UI
-          </Badge>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-xl border border-border/40 bg-card/80 px-4 py-3 shadow-sm">
+            Guardar cambios
+          </Button>
+        </section>
+
+        <section
+          id="interfaz-y-navegacion"
+          className="scroll-mt-24 border-t border-border py-12"
+        >
+          <h2 className="font-display flex items-center gap-2.5 text-[1.4rem] font-bold leading-tight text-foreground">
+            <LayoutTemplate className="size-5 shrink-0 text-[var(--acero)]" />
+            Interfaz y Navegación
+          </h2>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+            Personaliza la experiencia visual y los componentes del dashboard.
+          </p>
+
+          <div className="mt-8 grid gap-10 md:grid-cols-2">
+            <div>
               <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                 Estilo de Paginación
               </Label>
@@ -336,43 +352,41 @@ export function SettingsTab() {
                   <SelectItem value="static">Estática (En línea)</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="mt-2 text-xs text-muted-foreground">
+              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
                 El modo flotante te permite mantener la paginación a la vista en
                 cualquier momento. Puedes arrastrar la barra flotante
                 manteniendo presionado el clic por 3 segundos.
               </p>
             </div>
 
-            <div className="flex flex-col justify-center rounded-xl border border-border/40 bg-card/80 px-4 py-4 shadow-sm md:items-center">
-              <div className="text-center">
-                <Label className="block text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                  Posición del Paginado
-                </Label>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Restaura la ubicación flotante por defecto al centro inferior.
-                </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-4 rounded-full"
-                  onClick={() => {
-                    setPosition(null);
-                    toast({
-                      title: "Posición restaurada",
-                      description:
-                        "La paginación flotante volvió a su posición central por defecto.",
-                    });
-                  }}
-                  disabled={style === "static"}
-                >
-                  <RotateCcw className="mr-2 h-3.5 w-3.5" />
-                  Restaurar posición
-                </Button>
-              </div>
+            <div>
+              <Label className="block text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                Posición del Paginado
+              </Label>
+              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                Restaura la ubicación flotante por defecto al centro inferior.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-4"
+                onClick={() => {
+                  setPosition(null);
+                  toast({
+                    title: "Posición restaurada",
+                    description:
+                      "La paginación flotante volvió a su posición central por defecto.",
+                  });
+                }}
+                disabled={style === "static"}
+              >
+                <RotateCcw className="mr-2 h-3.5 w-3.5" />
+                Restaurar posición
+              </Button>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </section>
+      </div>
     </div>
   );
 }

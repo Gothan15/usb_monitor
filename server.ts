@@ -21,12 +21,18 @@ const nextVersion = (nextPackage as { version?: string }).version ?? "dev";
 // definen con ALLOWED_ORIGINS o con APP_PUBLIC_HOST (p. ej.
 // la IP del hotspot); nada de IPs de una red concreta en el código.
 const APP_PUBLIC_HOST = (process.env.APP_PUBLIC_HOST || "").trim();
+const PUERTO_SOCKET = Number(process.env.PORT) || 3000;
 const DEFAULT_SOCKET_ORIGINS = [
   "https://usbmonitor.local",
-  "http://localhost:3000",
-  "https://localhost:3000",
+  `http://localhost:${PUERTO_SOCKET}`,
+  `https://localhost:${PUERTO_SOCKET}`,
+  `http://127.0.0.1:${PUERTO_SOCKET}`,
+  `https://127.0.0.1:${PUERTO_SOCKET}`,
   ...(APP_PUBLIC_HOST
-    ? [`http://${APP_PUBLIC_HOST}:3000`, `https://${APP_PUBLIC_HOST}:3000`]
+    ? [
+        `http://${APP_PUBLIC_HOST}:${PUERTO_SOCKET}`,
+        `https://${APP_PUBLIC_HOST}:${PUERTO_SOCKET}`,
+      ]
     : []),
 ];
 

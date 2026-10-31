@@ -70,17 +70,17 @@ LOGGER = logging.getLogger("usb_prompt")
 # ---------------------------------------------------------------------------
 
 HERENCIA = {
-    "fondo": "#F5F0E4",
-    "panel": "#FCF9F1",
-    "superficie": "#EFE8D8",
-    "borde": "#D8CDB4",
-    "laton": "#A5814F",
-    "texto": "#221D15",
-    "suave": "#6E6250",
+    "fondo": "#EDF0F4",
+    "panel": "#F7F9FB",
+    "superficie": "#E4EAF1",
+    "borde": "#C2CEDC",
+    "laton": "#5F7CA6",
+    "texto": "#1B2330",
+    "suave": "#5B6B7F",
     "verde": "#24365E",
     "verde_activo": "#324B7D",
     "exito": "#3E6B4F",
-    "aviso": "#A66A1F",
+    "aviso": "#4E6E9E",
     "peligro": "#8C3B2E",
 }
 

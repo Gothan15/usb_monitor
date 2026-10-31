@@ -12,15 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -31,14 +23,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   Select,
   SelectContent,
@@ -48,21 +32,22 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { getCsrfTokenFromDocument } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { DashboardPagination } from "./DashboardPagination";
 import { usePagination } from "@/hooks/usePagination";
 import { formatDateTime, type Computer } from "./types";
 import {
   AlertCircle,
+  ArrowDown,
+  ArrowUp,
   KeyRound,
   Pencil,
   Plus,
-  RefreshCw,
   Search,
   Trash2,
   UserRound,
 } from "lucide-react";
 import { useTableSort } from "@/hooks/useTableSort";
-import { SortableTableHead } from "./SortableTableHead";
 import { Spinner } from "@/components/ui/spinner";
 
 interface AdminUser {
@@ -94,6 +79,14 @@ interface UserFormState {
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 const NO_COMPUTER_VALUE = "none";
 
+const COLUMNAS_ORDEN: { key: keyof AdminUser; label: string }[] = [
+  { key: "username", label: "Usuario" },
+  { key: "role", label: "Rol" },
+  { key: "computer", label: "Equipo" },
+  { key: "apiKey", label: "clave API" },
+  { key: "createdAt", label: "Creado" },
+];
+
 function createEmptyForm(): UserFormState {
   return {
     username: "",
@@ -111,6 +104,22 @@ function generateRandomPassword(length = 16) {
     result += charset[randomValues[i] % charset.length];
   }
   return result;
+}
+
+/** Dato de asiento: etiqueta en versalitas y valor debajo. */
+function Dato({
+  etiqueta,
+  children,
+}: {
+  etiqueta: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <p className="smallcaps text-muted-foreground">{etiqueta}</p>
+      <div className="mt-1.5">{children}</div>
+    </div>
+  );
 }
 
 function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
@@ -209,8 +218,8 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
   const handleCopyKey = async (apiKey: string | null) => {
     if (!apiKey) {
       toast({
-        title: "Sin API key",
-        description: "Genera o asigna una API key antes de copiarla.",
+        title: "Sin clave API",
+        description: "Genera o asigna una clave API antes de copiarla.",
         variant: "destructive",
       });
       return;
@@ -218,7 +227,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
     try {
       await navigator.clipboard.writeText(apiKey);
       toast({
-        title: "API key copiada",
+        title: "clave API copiada",
         description: "Se copió al portapapeles.",
       });
     } catch (err) {
@@ -461,31 +470,48 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
     }
   };
 
+  const cifras = [
+    { label: "Usuarios totales", value: total.toLocaleString("es-ES") },
+    {
+      label: "Página actual",
+      value: `${page.toLocaleString("es-ES")} / ${pageCount.toLocaleString("es-ES")}`,
+    },
+    {
+      label: "Usuarios visibles",
+      value: users.length.toLocaleString("es-ES"),
+    },
+    {
+      label: "Con equipo asignado",
+      value: users
+        .filter((user) => user.computer)
+        .length.toLocaleString("es-ES"),
+    },
+  ];
+
   const renderEmptyState = () => (
-    <div className="flex flex-col items-center justify-center gap-3 rounded-3xl border border-dashed border-border/50 bg-muted/20 px-6 py-10 text-center text-sm text-muted-foreground">
-      <UserRound className="h-10 w-10 text-muted-foreground/60" />
+    <div className="flex flex-col items-center justify-center gap-3 border-t border-border px-6 py-12 text-center">
+      <UserRound className="size-8 text-muted-foreground/50" />
       <div>
-        <p className="font-semibold text-foreground">Todavía no hay usuarios</p>
-        <p className="mt-1 text-xs">
+        <p className="font-display text-lg font-bold text-foreground">
+          Todavía no hay usuarios
+        </p>
+        <p className="mt-1 text-sm text-muted-foreground">
           Crea el primer usuario para comenzar a administrar accesos.
         </p>
       </div>
-      <Button
-        onClick={() => setIsCreateOpen(true)}
-        className="mt-2 rounded-full"
-      >
+      <Button onClick={() => setIsCreateOpen(true)} className="mt-2">
         <Plus className="mr-2 h-4 w-4" /> Nuevo usuario
       </Button>
     </div>
   );
 
   const renderLoadingState = () => (
-    <div className="grid gap-2">
+    <div>
       {Array.from({ length: 6 }).map((_, index) => (
-        <div
-          key={index}
-          className="h-12 animate-pulse rounded-2xl bg-muted/40"
-        />
+        <div key={index} className="border-t border-border py-5">
+          <div className="h-5 w-44 animate-pulse bg-muted/40" />
+          <div className="mt-2 h-3 w-24 animate-pulse bg-muted/40" />
+        </div>
       ))}
     </div>
   );
@@ -497,274 +523,229 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
       transition={{ duration: 0.35, ease: "easeOut" }}
       className="w-full"
     >
-      <Card className="w-full overflow-hidden rounded-xl border border-border/60 bg-card/80 shadow-xl backdrop-blur-xl">
-        <CardHeader className="space-y-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="flex gap-3">
-              <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-border/40 bg-muted/30 text-muted-foreground shadow-sm">
-                <UserRound className="h-5 w-5" />
+      {/* ── Cabecera plana: título, buscador con subrayado y alta ── */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-1 flex-col">
+          <h2 className="font-display text-[1.7rem] font-bold leading-tight text-foreground">
+            Cuentas del panel
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Administra cuentas, contraseñas y equipos asignados.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-0 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
+              placeholder="Buscar por usuario, equipo o IP"
+              className="w-[240px] rounded-none border-0 border-b border-border bg-transparent pl-6 shadow-none focus-visible:border-[var(--acero)] focus-visible:ring-0"
+            />
+            {deferredSearch.trim() && (
+              <span className="absolute left-0 top-full mt-1.5 whitespace-nowrap text-xs text-muted-foreground">
+                {total} resultado{total === 1 ? "" : "s"} para «
+                {deferredSearch.trim()}»
               </span>
-              <div>
-                <CardTitle className="text-2xl font-semibold tracking-tight">
-                  Gestión de usuarios
-                </CardTitle>
-                <CardDescription className="text-sm text-muted-foreground">
-                  Administra cuentas, contraseñas y equipos asignados.
-                </CardDescription>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={searchInput}
-                  onChange={(event) => setSearchInput(event.target.value)}
-                  placeholder="Buscar por usuario, equipo o IP"
-                  className="w-[220px] rounded-full border-border/60 pl-9 text-sm"
-                />
-              </div>
-              {/* Botón de recarga unificado en AppShell (eliminado aquí) */}
-              <Button
-                type="button"
-                className="rounded-full"
-                onClick={() => setIsCreateOpen(true)}
-              >
-                <Plus className="mr-2 h-4 w-4" /> Nuevo usuario
-              </Button>
-            </div>
+            )}
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded-xl border border-border/40 bg-card/80 p-4 text-foreground shadow-sm backdrop-blur-sm">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                Usuarios totales
-              </p>
-              <p className="mt-2 text-2xl font-semibold tracking-tight">
-                {total.toLocaleString("es-ES")}
-              </p>
-            </div>
-            <div className="rounded-xl border border-border/40 bg-card/80 p-4 text-foreground shadow-sm backdrop-blur-sm">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                Página actual
-              </p>
-              <p className="mt-2 text-2xl font-semibold tracking-tight">
-                {page.toLocaleString("es-ES")} /{" "}
-                {pageCount.toLocaleString("es-ES")}
-              </p>
-            </div>
-            <div className="rounded-xl border border-border/40 bg-card/80 p-4 text-foreground shadow-sm backdrop-blur-sm">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                Usuarios visibles
-              </p>
-              <p className="mt-2 text-2xl font-semibold tracking-tight">
-                {users.length.toLocaleString("es-ES")}
-              </p>
-            </div>
-            <div className="rounded-xl border border-border/40 bg-card/80 p-4 text-foreground shadow-sm backdrop-blur-sm">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                Con equipo asignado
-              </p>
-              <p className="mt-2 text-2xl font-semibold tracking-tight">
-                {users
-                  .filter((user) => user.computer)
-                  .length.toLocaleString("es-ES")}
-              </p>
-            </div>
+          {/* Botón de recarga unificado en AppShell (eliminado aquí) */}
+          <Button type="button" onClick={() => setIsCreateOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" /> Nuevo usuario
+          </Button>
+        </div>
+      </div>
+
+      {/* ── Tira de cifras ── */}
+      <div className="mt-8 flex flex-wrap gap-x-14 gap-y-4 border-t border-border pt-5">
+        {cifras.map((cifra) => (
+          <div key={cifra.label} className="flex items-baseline gap-3">
+            <span className="font-display text-[1.7rem] font-bold leading-none tabular-nums text-foreground">
+              {cifra.value}
+            </span>
+            <span className="smallcaps text-muted-foreground">
+              {cifra.label}
+            </span>
           </div>
-        </CardHeader>
+        ))}
+      </div>
 
-        <CardContent className="space-y-6">
-          {error ? (
-            <div className="flex items-start gap-3 rounded-2xl border border-rose-200/70 bg-rose-50 px-4 py-3 text-sm text-rose-700 shadow-sm dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
-              <AlertCircle className="mt-0.5 h-4 w-4" />
-              <span>{error}</span>
-            </div>
-          ) : null}
+      {/* ── Libro de cuentas ── */}
+      <div className="mt-8">
+        {error ? (
+          <div className="flex items-start gap-3 border-l-2 border-destructive bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        ) : null}
 
-          {isInitialLoading ? (
-            renderLoadingState()
-          ) : users.length === 0 ? (
-            renderEmptyState()
-          ) : (
-            <div className="relative flex flex-col gap-6">
-              <div className="relative flex flex-col overflow-hidden rounded-xl border border-border/40 bg-card/60 shadow-inner backdrop-blur-sm">
-                <motion.div
-                  animate={{
-                    opacity: isSearching ? 0.45 : 1,
-                    scale: isSearching ? 0.995 : 1,
-                  }}
-                  transition={{ duration: 0.25, ease: "easeInOut" }}
-                  className="flex flex-col"
-                >
-                  <div className="flex-1 overflow-hidden">
-                    <ScrollArea className="max-h-[min(75vh,650px)] w-full pr-3">
-                    <Table className="min-w-[800px]">
-                    <TableHeader className="sticky top-0 z-10 bg-card/95 backdrop-blur-xl">
-                      <TableRow className="border-border/40">
-                        <SortableTableHead
-                          column="username"
-                          currentSortKey={sortConfig.key}
-                          currentSortDirection={sortConfig.direction}
-                          onSort={requestSort}
-                        >
-                          Usuario
-                        </SortableTableHead>
-                        <SortableTableHead
-                          column="role"
-                          currentSortKey={sortConfig.key}
-                          currentSortDirection={sortConfig.direction}
-                          onSort={requestSort}
-                        >
-                          Rol
-                        </SortableTableHead>
-                        <SortableTableHead
-                          column="computer"
-                          currentSortKey={sortConfig.key}
-                          currentSortDirection={sortConfig.direction}
-                          onSort={requestSort}
-                        >
-                          Equipo
-                        </SortableTableHead>
-                        <SortableTableHead
-                          column="apiKey"
-                          currentSortKey={sortConfig.key}
-                          currentSortDirection={sortConfig.direction}
-                          onSort={requestSort}
-                        >
-                          API key
-                        </SortableTableHead>
-                        <SortableTableHead
-                          column="createdAt"
-                          currentSortKey={sortConfig.key}
-                          currentSortDirection={sortConfig.direction}
-                          onSort={requestSort}
-                        >
-                          Creado
-                        </SortableTableHead>
-                        <SortableTableHead
-                          column="id"
-                          currentSortKey={sortConfig.key}
-                          currentSortDirection={sortConfig.direction}
-                          onSort={requestSort}
-                          className="w-[120px]"
-                          align="right"
-                        >
-                          Acciones
-                        </SortableTableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {sortedData.map((user) => (
-                        <TableRow
-                          key={user.id}
-                          className="group transition-colors duration-150"
-                        >
-                          <TableCell className="font-semibold text-foreground">
-                            {user.username}
-                          </TableCell>
-                          <TableCell className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
-                            {user.role}
-                          </TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {user.computer ? (
-                              <div className="flex flex-col">
-                                <span className="font-medium text-foreground">
-                                  {user.computer.name}
-                                </span>
-                                <span className="text-xs text-muted-foreground">
-                                  {user.computer.ipAddress ?? "Sin IP"}
-                                </span>
-                              </div>
-                            ) : (
-                              <span className="text-xs text-muted-foreground/60">
-                                No asignado
-                              </span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <Badge
-                                variant="secondary"
-                                className="max-w-[140px] truncate rounded-full bg-muted/50 px-3 py-1 text-xs text-muted-foreground"
-                              >
-                                {user.apiKey
-                                  ? `${user.apiKey.slice(0, 8)}…`
-                                  : "No generada"}
-                              </Badge>
-                              <Button
-                                type="button"
-                                size="icon"
-                                variant="ghost"
-                                className="h-8 w-8 rounded-full"
-                                onClick={() => handleCopyKey(user.apiKey)}
-                              >
-                                <KeyRound className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {formatDateTime(user.createdAt)}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-1">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 rounded-full"
-                                onClick={() => openEdit(user)}
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 rounded-full text-rose-600 hover:text-rose-700"
-                                onClick={() => setDeletingUser(user)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                  <ScrollBar orientation="horizontal" />
-                </ScrollArea>
-                  </div>
-                </motion.div>
-
-                <div className="shrink-0 border-t border-border/40 bg-card/50 p-4">
-                  {/* Floating Pagination */}
-                  <DashboardPagination
-                    page={page}
-                    pageSize={pageSize}
-                    totalItems={total}
-                    onPageChange={setPage}
-                    onPageSizeChange={setPageSize}
-                    pageSizeOptions={PAGE_SIZE_OPTIONS}
-                    label="usuarios"
-                  />
-                </div>
-                
-                {isSearching ? (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="pointer-events-none absolute inset-0 flex items-center justify-center"
+        {isInitialLoading ? (
+          renderLoadingState()
+        ) : users.length === 0 ? (
+          renderEmptyState()
+        ) : (
+          <div className="relative">
+            {/* Ordenación */}
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+              <span className="smallcaps text-muted-foreground/70">
+                Ordenar por
+              </span>
+              {COLUMNAS_ORDEN.map((columna) => {
+                const activo = sortConfig.key === columna.key;
+                return (
+                  <button
+                    key={columna.key}
+                    type="button"
+                    onClick={() => requestSort(columna.key)}
+                    className={cn(
+                      "smallcaps inline-flex items-center gap-1 transition-colors",
+                      activo
+                        ? "text-foreground underline decoration-[var(--acero)] decoration-2 underline-offset-4"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
                   >
-                    <div className="inline-flex items-center gap-2 rounded-full border border-border/40 bg-card/90 px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur-sm">
-                      <Spinner size={12} />
-                      Buscando usuarios...
-                    </div>
-                  </motion.div>
-                ) : null}
-              </div>
+                    {columna.label}
+                    {activo &&
+                      (sortConfig.direction === "desc" ? (
+                        <ArrowDown className="size-3" />
+                      ) : (
+                        <ArrowUp className="size-3" />
+                      ))}
+                  </button>
+                );
+              })}
             </div>
-          )}
-        </CardContent>
-      </Card>
+
+            <motion.ul
+              animate={{
+                opacity: isSearching ? 0.45 : 1,
+                scale: isSearching ? 0.995 : 1,
+              }}
+              transition={{ duration: 0.25, ease: "easeInOut" }}
+              className="mt-4 divide-y divide-border border-t border-border"
+            >
+              {sortedData.map((user) => (
+                <li
+                  key={user.id}
+                  className="flex flex-col gap-5 py-5 lg:flex-row lg:items-center lg:gap-8"
+                >
+                  {/* Nombre y rol */}
+                  <div className="min-w-0 lg:w-56 lg:shrink-0">
+                    <p className="font-display truncate text-lg font-bold leading-snug text-foreground">
+                      {user.username}
+                    </p>
+                    <p className="smallcaps mt-1 text-muted-foreground">
+                      {user.role}
+                    </p>
+                  </div>
+
+                  {/* Equipo asignado */}
+                  <div className="lg:w-60 lg:shrink-0">
+                    <Dato etiqueta="Equipo">
+                      {user.computer ? (
+                        <>
+                          <span className="block text-sm font-medium text-foreground">
+                            {user.computer.name}
+                          </span>
+                          <span className="mt-0.5 block font-mono text-[11px] text-muted-foreground">
+                            {user.computer.ipAddress ?? "Sin IP"}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-sm text-muted-foreground/70">
+                          No asignado
+                        </span>
+                      )}
+                    </Dato>
+                  </div>
+
+                  {/* clave API enmascarada */}
+                  <div className="lg:flex-1">
+                    <Dato etiqueta="clave API">
+                      <span className="inline-flex items-center gap-1">
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {user.apiKey
+                            ? `${user.apiKey.slice(0, 8)}…`
+                            : "No generada"}
+                        </span>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7"
+                          onClick={() => handleCopyKey(user.apiKey)}
+                          aria-label={`Copiar clave API de ${user.username}`}
+                          title="Copiar clave API"
+                        >
+                          <KeyRound className="h-3.5 w-3.5" />
+                        </Button>
+                      </span>
+                    </Dato>
+                  </div>
+
+                  {/* Fecha de creación */}
+                  <Dato etiqueta="Creado">
+                    <span className="text-sm tabular-nums text-foreground">
+                      {formatDateTime(user.createdAt)}
+                    </span>
+                  </Dato>
+
+                  {/* Acciones discretas */}
+                  <div className="flex items-center gap-1 lg:ml-auto lg:shrink-0">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => openEdit(user)}
+                      aria-label={`Editar ${user.username}`}
+                      title="Editar usuario"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-destructive hover:text-destructive"
+                      onClick={() => setDeletingUser(user)}
+                      aria-label={`Eliminar ${user.username}`}
+                      title="Eliminar usuario"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </motion.ul>
+
+            {/* Paginación */}
+              <DashboardPagination
+                page={page}
+                pageSize={pageSize}
+                totalItems={total}
+                onPageChange={setPage}
+                onPageSizeChange={setPageSize}
+                pageSizeOptions={PAGE_SIZE_OPTIONS}
+                label="usuarios"
+              />
+
+
+            {isSearching ? (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="pointer-events-none absolute inset-0 flex items-start justify-center pt-16"
+              >
+                <span className="inline-flex items-center gap-2 border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground">
+                  <Spinner size={12} />
+                  Buscando usuarios...
+                </span>
+              </motion.div>
+            ) : null}
+          </div>
+        )}
+      </div>
 
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <DialogContent className="sm:max-w-lg">
@@ -798,7 +779,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="rounded-full text-xs"
+                  className="text-xs"
                   onClick={() =>
                     handleGeneratePassword((value) =>
                       setCreateForm((prev) => ({ ...prev, password: value })),
@@ -834,7 +815,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
                   }))
                 }
               >
-                <SelectTrigger className="rounded-full">
+                <SelectTrigger>
                   <SelectValue
                     placeholder={
                       sortedComputers.length
@@ -864,7 +845,6 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
             <Button
               type="button"
               variant="secondary"
-              className="rounded-full"
               onClick={() => setIsCreateOpen(false)}
               disabled={creating}
             >
@@ -872,7 +852,6 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
             </Button>
             <Button
               type="button"
-              className="rounded-full"
               onClick={handleCreateUser}
               disabled={creating}
             >
@@ -920,7 +899,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="rounded-full text-xs"
+                  className="text-xs"
                   onClick={() =>
                     handleGeneratePassword((value) =>
                       setEditForm((prev) => ({ ...prev, password: value })),
@@ -953,7 +932,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
                   }))
                 }
               >
-                <SelectTrigger className="rounded-full">
+                <SelectTrigger>
                   <SelectValue
                     placeholder={
                       sortedComputers.length
@@ -993,7 +972,6 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
             <Button
               type="button"
               variant="secondary"
-              className="rounded-full"
               onClick={() => {
                 setEditingUser(null);
                 setEditForm(createEmptyForm());
@@ -1004,7 +982,6 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
             </Button>
             <Button
               type="button"
-              className="rounded-full"
               onClick={handleUpdateUser}
               disabled={updating}
             >

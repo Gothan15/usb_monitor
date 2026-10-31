@@ -174,7 +174,7 @@ function AdminLayoutContent({
       {/* Animación suave entre subrutas usando la key del pathname actual */}
       <PageTransition
         transitionKey={pathname ?? "admin-root"}
-        className="space-y-6"
+        className="flex flex-1 flex-col gap-6"
       >
         <ErrorBoundary>
           {errorMsg && (

@@ -83,134 +83,122 @@ export function AppShell({
   );
 
   const initials = user?.name ? user.name.slice(0, 2).toUpperCase() : "US";
-  const fechaEditorial = useMemo(
-    () =>
-      new Intl.DateTimeFormat("es-ES", {
-        weekday: "long",
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-      }).format(new Date()),
-    [],
-  );
-
   return (
     <NotificationProvider>
       <div className="relative flex h-screen flex-col overflow-hidden bg-background text-foreground">
-        {/* ═══ MEMBRETE — cabecera de periódico ═══ */}
-        <header className="z-30 flex-shrink-0 border-b border-border bg-card/60">
-          {/* Franja superior: fecha y estado */}
-          <div className="border-b border-border/70">
-            <div className="mx-auto flex h-8 w-full max-w-[1360px] items-center justify-between px-4 lg:px-8">
-              <span className="smallcaps hidden text-muted-foreground sm:block">
-                {fechaEditorial}
-              </span>
-              <span className="smallcaps text-muted-foreground sm:hidden">
+        {/* ═══ BARRA ÚNICA — header minimalista ═══ */}
+        <header className="z-30 flex-shrink-0 border-b border-border bg-background/95">
+          <div className="mx-auto flex h-12 w-full max-w-[1360px] items-center gap-2 px-4 lg:px-8">
+            <Link
+              href={navItems[0]?.href ?? "/"}
+              className="flex shrink-0 items-center gap-2.5"
+            >
+              <Image
+                src="/favicon.svg"
+                alt="USB Monitor"
+                width={22}
+                height={22}
+                className="size-[22px] rounded-[4px]"
+              />
+              <span className="font-display text-[15px] font-bold tracking-tight">
                 USB Monitor
               </span>
-              <span className="flex items-center gap-4">
-                {lastUpdateLabel && (
-                  <span className="smallcaps hidden text-muted-foreground/80 md:block">
-                    Sincronizado: {lastUpdateLabel}
-                  </span>
+            </Link>
+
+            {/* Navegación en la misma barra (pantallas grandes) */}
+            <nav
+              data-tour="sidebar"
+              className="ml-6 hidden items-stretch gap-0.5 self-stretch lg:flex"
+              aria-label="Secciones"
+            >
+              {navItems.map((item) => {
+                const isActive = item.key === activeKey;
+                return (
+                  <Link
+                    key={item.key}
+                    href={item.href}
+                    prefetch
+                    className={cn(
+                      "group relative flex items-center gap-1.5 whitespace-nowrap px-2.5 text-[11.5px] font-semibold uppercase tracking-[0.09em] transition-colors",
+                      isActive
+                        ? "text-foreground"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    <item.icon
+                      className={cn(
+                        "size-4 shrink-0 transition-colors",
+                        isActive
+                          ? "text-[var(--acero)]"
+                          : "text-muted-foreground/70 group-hover:text-foreground/80",
+                      )}
+                    />
+                    {item.label}
+                    {item.badge !== undefined && (
+                      <span className="font-mono text-[10.5px] font-semibold tabular-nums text-[var(--acero)]">
+                        {item.badge}
+                      </span>
+                    )}
+                    {isActive && (
+                      <motion.span
+                        layoutId="nav-underline"
+                        className="absolute inset-x-2.5 bottom-0 h-[2px] bg-[var(--acero)]"
+                        transition={{ type: "spring", bounce: 0.18, duration: 0.55 }}
+                      />
+                    )}
+                  </Link>
+                );
+              })}
+            </nav>
+
+            {/* Acciones mínimas */}
+            <div className="ml-auto flex shrink-0 items-center gap-0.5">
+              <span
+                className={cn(
+                  "mr-1.5 hidden items-center gap-1.5 text-[11px] sm:flex",
+                  mounted && isLiveSyncEnabled
+                    ? "text-success"
+                    : "text-muted-foreground",
                 )}
+                title={mounted && isLiveSyncEnabled ? "En vivo" : "En pausa"}
+              >
                 <span
                   className={cn(
-                    "smallcaps flex items-center gap-1.5",
+                    "size-1.5 rounded-full",
                     mounted && isLiveSyncEnabled
-                      ? "text-success"
-                      : "text-muted-foreground",
+                      ? "dot-pulse bg-success"
+                      : "bg-muted-foreground/50",
                   )}
-                >
-                  <span
-                    className={cn(
-                      "size-1.5 rounded-full",
-                      mounted && isLiveSyncEnabled
-                        ? "dot-pulse bg-success"
-                        : "bg-muted-foreground/50",
-                    )}
-                  />
+                />
+                <span className="hidden xl:inline">
                   {mounted && isLiveSyncEnabled ? "En vivo" : "En pausa"}
                 </span>
               </span>
-            </div>
-          </div>
 
-          {/* Fila principal: buscar · marca centrada · acciones */}
-          <div className="relative mx-auto flex h-[4.5rem] w-full max-w-[1360px] items-center gap-3 px-4 lg:px-8">
-            <div
-              className="hidden w-56 flex-1 md:block"
-              data-tour="command-trigger"
-            >
               <button
                 type="button"
-                className="flex h-9 w-full max-w-[13rem] items-center gap-2 border-b border-border pb-1 text-[13px] text-muted-foreground transition-colors hover:border-[var(--brass)] hover:text-foreground"
+                className="flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 onClick={() => {
                   document.dispatchEvent(
                     new KeyboardEvent("keydown", { key: "k", metaKey: true }),
                   );
                 }}
+                aria-label="Buscar (Ctrl/⌘ + K)"
+                data-tour="command-trigger"
               >
-                <Search className="size-3.5" />
-                <span className="flex-1 text-left">Buscar…</span>
-                <kbd className="pointer-events-none hidden h-5 select-none items-center gap-1 rounded-sm border border-border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground/80 lg:flex">
-                  ⌘K
-                </kbd>
+                <Search className="size-4" />
               </button>
-            </div>
 
-            {/* Marca centrada */}
-            <Link
-              href={navItems[0]?.href ?? "/"}
-              className="flex items-center gap-3 md:absolute md:left-1/2 md:-translate-x-1/2"
-            >
-              <span className="flex size-10 items-center justify-center overflow-hidden rounded-sm shadow-sm ring-1 ring-border">
-                <Image
-                  src="/favicon.svg"
-                  alt="USB Monitor"
-                  width={40}
-                  height={40}
-                  className="size-10"
-                />
-              </span>
-              <span className="flex flex-col items-start leading-none">
-                <span className="font-display text-[1.45rem] font-bold tracking-tight">
-                  USB Monitor
-                </span>
-                <span className="smallcaps mt-1 text-muted-foreground">
-                  Centro de control
-                </span>
-              </span>
-            </Link>
-
-            {/* Acciones */}
-            <div className="ml-auto flex flex-1 items-center justify-end gap-1.5">
-              {mounted && (
-                <div className="mr-1 hidden items-center gap-2 xl:flex">
-                  <Switch
-                    checked={isLiveSyncEnabled}
-                    onCheckedChange={toggleLiveSync}
-                    className="data-[state=checked]:bg-success scale-90"
-                    aria-label="Sincronización en vivo"
-                  />
-                </div>
-              )}
-
-              {onRefresh && (
+              {onRefresh && mounted && !isLiveSyncEnabled && (
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="relative size-9"
-                  disabled={refreshing || (mounted && isLiveSyncEnabled)}
+                  className="size-8"
+                  disabled={refreshing}
                   onClick={onRefresh}
                   aria-label="Actualizar"
+                  title="Actualizar (la sincronización en vivo está en pausa)"
                 >
-                  {mounted && isLiveSyncEnabled && (
-                    <span className="absolute right-1.5 top-1.5 flex size-1.5">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-75"></span>
-                      <span className="relative inline-flex size-1.5 rounded-full bg-success"></span>
-                    </span>
-                  )}
                   <motion.span
                     animate={{ rotate: refreshing ? 360 : 0 }}
                     transition={{
@@ -229,146 +217,78 @@ export function AppShell({
                 <NotificationCenter />
               </div>
 
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="hidden size-9 sm:inline-flex"
-                    onClick={() => setShortcutsOpen(true)}
-                    aria-label="Atajos de teclado"
-                  >
-                    <Keyboard className="size-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">Atajos (Ctrl/⌘ + /)</TooltipContent>
-              </Tooltip>
-
               <ThemeToggle />
 
-              <span className="mx-1 hidden h-8 w-px bg-border lg:block" />
+              <span className="mx-1 hidden h-5 w-px bg-border sm:block" />
 
-              {/* Usuario */}
-              <div className="hidden items-center gap-2.5 lg:flex">
-                <span className="flex size-9 items-center justify-center rounded-full border border-[var(--brass)] font-display text-[13px] font-bold text-[var(--brass)]">
-                  {initials}
-                </span>
-                <span className="flex flex-col leading-tight">
-                  <span className="text-[13px] font-semibold">
-                    {user?.name ?? "Usuario"}
-                  </span>
-                  <span className="smallcaps text-muted-foreground">
-                    {user?.role ?? "Admin"}
-                  </span>
-                </span>
-              </div>
+              <span
+                className="hidden size-7 items-center justify-center rounded-full border border-[var(--acero)]/70 font-display text-[11px] font-bold text-[var(--acero)] sm:flex"
+                title={user?.name ?? "Usuario"}
+              >
+                {initials}
+              </span>
 
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div>
-                    <LogoutButton
-                      iconOnly
-                      variant="ghost"
-                      size="icon"
-                      className="size-9"
-                    />
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">Cerrar sesión</TooltipContent>
-              </Tooltip>
+              <LogoutButton
+                iconOnly
+                variant="ghost"
+                size="icon"
+                className="size-8"
+              />
             </div>
           </div>
 
-          {/* ── Navegación horizontal ── */}
+          {/* Navegación en fila fina (móvil y tableta) */}
           <nav
-            data-tour="sidebar"
-            className="border-t border-border/70"
+            className="scrollbar-thin flex items-stretch gap-0.5 overflow-x-auto border-t border-border/60 px-2 lg:hidden"
             aria-label="Secciones"
           >
-            <div className="scrollbar-thin mx-auto flex w-full max-w-[1360px] items-stretch gap-1 overflow-x-auto px-2 lg:px-6">
-              {navItems.map((item) => {
-                const isActive = item.key === activeKey;
-                return (
-                  <Link
-                    key={item.key}
-                    href={item.href}
-                    prefetch
+            {navItems.map((item) => {
+              const isActive = item.key === activeKey;
+              return (
+                <Link
+                  key={item.key}
+                  href={item.href}
+                  prefetch
+                  className={cn(
+                    "relative flex items-center gap-1.5 whitespace-nowrap px-2.5 py-2.5 text-[11.5px] font-semibold uppercase tracking-[0.09em] transition-colors",
+                    isActive
+                      ? "text-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <item.icon
                     className={cn(
-                      "group relative flex items-center gap-2 whitespace-nowrap px-3.5 py-3 text-[12px] font-semibold uppercase tracking-[0.11em] transition-colors",
-                      isActive
-                        ? "text-foreground"
-                        : "text-muted-foreground hover:text-foreground",
+                      "size-4 shrink-0",
+                      isActive ? "text-[var(--acero)]" : "text-muted-foreground/70",
                     )}
-                  >
-                    <item.icon
-                      className={cn(
-                        "size-4 transition-colors",
-                        isActive
-                          ? "text-[var(--brass)]"
-                          : "text-muted-foreground/70 group-hover:text-foreground/80",
-                      )}
+                  />
+                  {item.label}
+                  {item.badge !== undefined && (
+                    <span className="font-mono text-[10.5px] font-semibold tabular-nums text-[var(--acero)]">
+                      {item.badge}
+                    </span>
+                  )}
+                  {isActive && (
+                    <motion.span
+                      layoutId="nav-underline-movil"
+                      className="absolute inset-x-2.5 bottom-0 h-[2px] bg-[var(--acero)]"
+                      transition={{ type: "spring", bounce: 0.18, duration: 0.55 }}
                     />
-                    {item.label}
-                    {item.badge !== undefined && (
-                      <span className="inline-flex min-w-[22px] items-center justify-center rounded-full border border-[var(--brass)]/60 px-1.5 py-px font-mono text-[11px] font-semibold tabular-nums normal-case tracking-normal text-[var(--brass)]">
-                        {item.badge}
-                      </span>
-                    )}
-                    {isActive && (
-                      <motion.span
-                        layoutId="nav-underline"
-                        className="absolute inset-x-3 bottom-0 h-[2px] bg-[var(--brass)]"
-                        transition={{ type: "spring", bounce: 0.18, duration: 0.55 }}
-                      />
-                    )}
-                  </Link>
-                );
-              })}
-              <span className="ml-auto hidden shrink-0 items-center pl-6 2xl:flex">
-                <span className="max-w-[240px] truncate font-display text-[13px] italic text-muted-foreground">
-                  {activeItem?.description}
-                </span>
-              </span>
-            </div>
+                  )}
+                </Link>
+              );
+            })}
           </nav>
         </header>
 
         {/* ═══ CONTENIDO ═══ */}
         <main className="scrollbar-thin relative flex-1 overflow-y-auto">
-          <div className="relative mx-auto w-full max-w-[1360px] px-4 pb-10 pt-8 lg:px-8 lg:pt-10">
-            {/* Cabecera editorial de la página */}
-            <div className="animate-view-in mb-8">
-              <p className="smallcaps text-[var(--brass)]">
-                {user?.role === "ADMIN" ? "Administración" : "Panel"} — Registro
-                de dispositivos
-              </p>
-              <h1 className="font-display mt-2 text-[2.1rem] font-bold leading-tight tracking-tight lg:text-[2.5rem]">
-                {title}
-              </h1>
-              {subtitle && (
-                <p className="mt-2 max-w-xl text-[15px] leading-relaxed text-muted-foreground">
-                  {subtitle}
-                </p>
-              )}
-              {refreshing && (
-                <span className="mt-3 inline-flex size-1.5 animate-pulse rounded-full bg-[var(--brass)]" />
-              )}
-              <div className="rule-brass mt-5 w-24" />
-              <div className="mt-px h-px w-full bg-border" />
-            </div>
-
+          <div className="relative mx-auto flex min-h-full w-full max-w-[1360px] flex-col px-4 pb-10 pt-8 lg:px-8 lg:pt-10">
             {children}
 
-            {/* Pie de página */}
-            <footer className="mt-14 flex flex-col items-center gap-1.5 border-t border-border pt-6 text-center">
-              <span className="font-display text-sm italic text-muted-foreground">
-                USB Monitor — cada dispositivo, registrado
-              </span>
-              {lastUpdateLabel && (
-                <span className="smallcaps text-muted-foreground/70">
-                  Sincronizado: {lastUpdateLabel}
-                </span>
-              )}
+            <footer className="mt-14 flex items-center justify-between border-t border-border pt-4 text-[11px] text-muted-foreground/80">
+              <span>USB Monitor</span>
+              {lastUpdateLabel && <span>Sincronizado: {lastUpdateLabel}</span>}
             </footer>
           </div>
         </main>

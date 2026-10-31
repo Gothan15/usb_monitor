@@ -44,7 +44,7 @@ export function UserWelcomeCard({ username }: UserWelcomeCardProps) {
           </div>
           <div className="flex items-center gap-2 rounded-lg border border-border/40 bg-muted/30 p-3">
             <Key className="h-4 w-4 text-muted-foreground" />
-            <span>Proteja su API key y úsela solo en clientes oficiales.</span>
+            <span>Proteja su clave API y úsela solo en clientes oficiales.</span>
           </div>
         </CardContent>
       </Card>

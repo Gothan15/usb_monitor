@@ -1,13 +1,27 @@
 import { Server } from "socket.io";
 import { getCurrentIsoString } from "./time";
 
-/* ── Singleton reference ── */
+/* ── Singleton reference ──
+   La instancia vive en globalThis: el servidor personalizado (server.ts)
+   y las rutas de la API se cargan en registros de módulos distintos, así
+   que una variable de módulo en la ruta quedaba siempre a null y los
+   avisos en tiempo real nunca salían. */
 
-let _io: Server | null = null;
+type SocketGlobal = typeof globalThis & {
+  __usbMonitorIO?: Server | null;
+};
+
+function setIO(io: Server | null): void {
+  (globalThis as SocketGlobal).__usbMonitorIO = io;
+}
+
+function ioActual(): Server | null {
+  return (globalThis as SocketGlobal).__usbMonitorIO ?? null;
+}
 
 /** Returns the Socket.IO server instance (null before `setupSocket` is called). */
 export function getIO(): Server | null {
-  return _io;
+  return ioActual();
 }
 
 /* ── Event types shared between server & client ── */
@@ -36,21 +50,21 @@ export interface SocketComputerStatus {
 /* ── Broadcast helpers (called from API routes) ── */
 
 export function broadcastUSBEvent(event: SocketUSBEvent): void {
-  _io?.emit("usb:event", event);
+  ioActual()?.emit("usb:event", event);
 }
 
 export function broadcastComputerStatus(status: SocketComputerStatus): void {
-  _io?.emit("computer:status", status);
+  ioActual()?.emit("computer:status", status);
 }
 
 export function broadcastWhitelistChange(): void {
-  _io?.emit("whitelist:change");
+  ioActual()?.emit("whitelist:change");
 }
 
 /* ── Setup ── */
 
 export const setupSocket = (io: Server) => {
-  _io = io;
+  setIO(io);
 
   io.on("connection", (socket) => {
     console.log("Client connected:", socket.id);

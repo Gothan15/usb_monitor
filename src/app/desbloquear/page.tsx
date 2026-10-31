@@ -74,7 +74,7 @@ function DesbloquearForm() {
         className="animate-view-in relative w-full max-w-sm"
       >
         <div className="mb-8 flex items-center gap-3">
-          <div className="bg-aurora flex size-11 items-center justify-center rounded-sm text-[#EDE6D2] shadow-sm">
+          <div className="bg-aurora flex size-11 items-center justify-center rounded-sm text-[#E9EDF3] shadow-sm">
             <Usb className="size-5" />
           </div>
           <span className="font-display text-base font-bold tracking-tight">
@@ -95,7 +95,7 @@ function DesbloquearForm() {
           </div>
         ) : (
           <>
-            <p className="smallcaps text-[var(--brass)]">
+            <p className="smallcaps text-[var(--acero)]">
               Dispositivo bloqueado
             </p>
             <h1 className="font-display mt-2 text-[1.7rem] font-bold tracking-tight">
@@ -123,7 +123,7 @@ function DesbloquearForm() {
                     Usuario
                   </label>
                   <input
-                    className="w-full rounded border border-input bg-background px-3.5 py-2.5 text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brass)]/50"
+                    className="w-full rounded border border-input bg-background px-3.5 py-2.5 text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--acero)]/50"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     required
@@ -137,7 +137,7 @@ function DesbloquearForm() {
                   <div className="relative">
                     <input
                       type={showPassword ? "text" : "password"}
-                      className="w-full rounded border border-input bg-background px-3.5 py-2.5 pr-10 text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brass)]/50"
+                      className="w-full rounded border border-input bg-background px-3.5 py-2.5 pr-10 text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--acero)]/50"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required

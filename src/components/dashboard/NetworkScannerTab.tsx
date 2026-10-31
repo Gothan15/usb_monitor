@@ -3,21 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -26,7 +11,6 @@ import {
 } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Network,
@@ -37,7 +21,7 @@ import {
 } from "lucide-react";
 import { getCurrentIsoString } from "@/lib/time";
 import { formatDateTime } from "@/components/dashboard/types";
-import { getCsrfTokenFromDocument } from "@/lib/utils";
+import { cn, getCsrfTokenFromDocument } from "@/lib/utils";
 import { Spinner } from "@/components/ui/spinner";
 import { RemoteInstallDialog } from "@/components/dashboard/RemoteInstallDialog";
 
@@ -60,11 +44,13 @@ const IFACE_TYPE_LABELS: Record<NetworkInterfaceInfo["type"], string> = {
 function InterfaceIcon({ type }: { type: NetworkInterfaceInfo["type"] }) {
   switch (type) {
     case "wifi":
-      return <Wifi className="size-3.5 shrink-0 text-sky-500" />;
+      return <Wifi className="size-3.5 shrink-0 text-muted-foreground" />;
     case "ethernet":
-      return <Network className="size-3.5 shrink-0 text-emerald-500" />;
+      return <Network className="size-3.5 shrink-0 text-muted-foreground" />;
     case "vpn":
-      return <MonitorSmartphone className="size-3.5 shrink-0 text-amber-500" />;
+      return (
+        <MonitorSmartphone className="size-3.5 shrink-0 text-muted-foreground" />
+      );
     default:
       return <Network className="size-3.5 shrink-0 text-muted-foreground" />;
   }
@@ -132,7 +118,19 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
 
   // Network interface selector
   const [interfaces, setInterfaces] = useState<NetworkInterfaceInfo[]>([]);
-  const [selectedCidr, setSelectedCidr] = useState<string>("auto");
+  const [selectedCidr, setSelectedCidr] = useState<string>(() => {
+    try {
+      return localStorage.getItem("usbmonitor:interfaz") ?? "auto";
+    } catch {
+      return "auto";
+    }
+  });
+  const elegirInterfaz = (cidr: string) => {
+    setSelectedCidr(cidr);
+    try {
+      localStorage.setItem("usbmonitor:interfaz", cidr);
+    } catch { /* sin almacenamiento */ }
+  };
   const [loadingInterfaces, setLoadingInterfaces] = useState(true);
 
   useEffect(() => {
@@ -225,190 +223,172 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
       transition={{ duration: 0.3, ease: "easeOut" }}
       className="w-full"
     >
-      <Card className="relative w-full rounded-xl border border-border/60 bg-card/80 shadow-xl backdrop-blur-xl">
-        <CardHeader className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-3">
-            <span className="inline-flex size-12 items-center justify-center rounded-xl border border-border/40 bg-muted/30 text-info shadow-sm">
-              <Radar className="size-5" />
-            </span>
-            <div>
-              <CardTitle className="text-2xl font-semibold text-foreground">
-                Escaneo de red LAN
-              </CardTitle>
-              <CardDescription className="text-sm text-muted-foreground">
-                Detecta equipos activos en la red local y valida el puerto 5001
-                del servicio USBMonitor.
-              </CardDescription>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Último escaneo: {formatTimestamp(lastScanAt)}
-              </p>
-            </div>
-          </div>
+      {/* ── Fila de control ── */}
+      <div className="flex flex-col gap-6 border-b border-border pb-7 lg:flex-row lg:items-end lg:justify-between">
+        <div className="max-w-xl">
+          <h2 className="font-display text-[1.65rem] font-bold leading-tight text-foreground">
+            Escaneo de red LAN
+          </h2>
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+            Detecta equipos activos en la red local y valida el puerto 5001
+            del servicio USBMonitor.
+          </p>
+          <p className="smallcaps mt-4 text-muted-foreground">
+            Último escaneo · {formatTimestamp(lastScanAt)}
+          </p>
+        </div>
 
-          {/* Interface selector + scan button row */}
-          <div className="flex flex-wrap items-center gap-3">
-            {!loadingInterfaces && interfaces.length > 0 && (
-              <Select
-                value={selectedCidr}
-                onValueChange={setSelectedCidr}
-                disabled={scanning}
-              >
-                <SelectTrigger
-                  size="sm"
-                  className="min-w-[220px] border-border/40 bg-card/80 shadow-sm"
-                  id="network-interface-selector"
-                >
-                  <SelectValue placeholder="Seleccionar interfaz" />
-                </SelectTrigger>
-                <SelectContent>
-                  {interfaces.length > 1 && (
-                    <SelectItem value="auto">
-                      <span className="flex items-center gap-2">
-                        <Radar className="size-3.5 shrink-0 text-muted-foreground" />
-                        <span>Automática</span>
-                        <span className="text-[0.65rem] text-muted-foreground">
-                          (primera disponible)
-                        </span>
-                      </span>
-                    </SelectItem>
-                  )}
-                  {interfaces.map((iface) => (
-                    <SelectItem key={iface.cidr} value={iface.cidr}>
-                      <span className="flex items-center gap-2">
-                        <InterfaceIcon type={iface.type} />
-                        <span>{IFACE_TYPE_LABELS[iface.type]}</span>
-                        <span className="text-[0.65rem] text-muted-foreground">
-                          {iface.cidr}
-                        </span>
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
+        {/* Interface selector + scan button row */}
+        <div className="flex flex-wrap items-center gap-3">
+          {!loadingInterfaces && interfaces.length > 0 && (
+            <Select
+              value={selectedCidr}
+              onValueChange={elegirInterfaz}
               disabled={scanning}
-              onClick={triggerScan}
-              className="border border-border/40 bg-card/80 text-foreground shadow-sm transition-colors hover:border-primary/40"
             >
-              {scanning ? (
-                <div className="mr-2">
-                  <Spinner size={16} />
-                </div>
-              ) : (
-                <Network className="mr-2 size-4" />
-              )}
-              {scanning ? "Escaneando..." : "Escanear red"}
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          {scanError && (
-            <Alert className="border-rose-200/60 bg-rose-50 text-rose-700 dark:border-rose-300/40 dark:bg-rose-500/10 dark:text-rose-100">
-              <AlertDescription>{scanError}</AlertDescription>
-            </Alert>
-          )}
-
-          <div className="flex items-center justify-between rounded-xl border border-border/40 bg-card/80 px-4 py-3 text-sm shadow-sm">
-            <span className="flex items-center gap-2 text-muted-foreground">
-              <Radar className="size-4" /> Equipos encontrados
-            </span>
-            <Badge
-              variant="secondary"
-              className="rounded-full px-3 py-1 text-xs uppercase tracking-[0.2em]"
-            >
-              {results.length}
-            </Badge>
-          </div>
-
-          <ScrollArea className="max-h-[min(65vh,480px)] pr-3 [--scrollbar-size:0px] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-            <Table className="w-full">
-              <TableHeader className="sticky top-0 z-10 bg-card/95 backdrop-blur-xl">
-                <TableRow className="border-border/40">
-                  <TableHead className="text-muted-foreground">IP</TableHead>
-                  <TableHead className="text-muted-foreground">
-                    Nombre
-                  </TableHead>
-                  <TableHead className="text-muted-foreground">
-                    Puerto 3000
-                  </TableHead>
-                  <TableHead className="text-muted-foreground">
-                    Latencia
-                  </TableHead>
-                  <TableHead className="text-right text-muted-foreground">
-                    Acciones
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {results.length === 0 ? (
-                  <TableRow>
-                    <TableCell
-                      colSpan={5}
-                      className="py-6 text-center text-xs text-muted-foreground"
-                    >
-                      No hay equipos activos en la red local.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  results.map((result) => {
-                    const status = result.healthStatus
-                      ? result.healthStatus.toLowerCase()
-                      : "";
-                    const serviceOk =
-                      status.includes("200") || status.includes("ok");
-
-                    return (
-                      <TableRow
-                        key={result.ip}
-                        className="transition-colors duration-150"
-                      >
-                        <TableCell className="font-semibold text-foreground">
-                          {result.ip}
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
-                          {result.hostname || "Sin nombre"}
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={serviceOk ? "success" : "secondary"}
-                            className="rounded-full px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.2em]"
-                          >
-                            {serviceOk ? "Activo" : "Sin respuesta"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
-                          {typeof result.latencyMs === "number"
-                            ? `${Math.max(0, Math.round(result.latencyMs))} ms`
-                            : "—"}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {!serviceOk && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setInstallTarget(result);
-                                setInstallDialogOpen(true);
-                              }}
-                              className="h-7 border-border/40 px-2.5 text-xs"
-                            >
-                              <Download className="mr-1.5 size-3" />
-                              Instalar
-                            </Button>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
+              <SelectTrigger
+                size="sm"
+                className="min-w-[220px]"
+                id="network-interface-selector"
+              >
+                <SelectValue placeholder="Seleccionar interfaz" />
+              </SelectTrigger>
+              <SelectContent>
+                {interfaces.length > 1 && (
+                  <SelectItem value="auto">
+                    <span className="flex items-center gap-2">
+                      <Radar className="size-3.5 shrink-0 text-muted-foreground" />
+                      <span>Automática</span>
+                      <span className="text-[0.65rem] text-muted-foreground">
+                        (primera disponible)
+                      </span>
+                    </span>
+                  </SelectItem>
                 )}
-              </TableBody>
-            </Table>
-          </ScrollArea>
-        </CardContent>
-      </Card>
+                {interfaces.map((iface) => (
+                  <SelectItem key={iface.cidr} value={iface.cidr}>
+                    <span className="flex items-center gap-2">
+                      <InterfaceIcon type={iface.type} />
+                      <span>{IFACE_TYPE_LABELS[iface.type]}</span>
+                      <span className="text-[0.65rem] text-muted-foreground">
+                        {iface.cidr}
+                      </span>
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={scanning}
+            onClick={triggerScan}
+          >
+            {scanning ? (
+              <span className="mr-2 inline-flex">
+                <Spinner size={16} />
+              </span>
+            ) : (
+              <Network className="mr-2 size-4" />
+            )}
+            {scanning ? "Escaneando..." : "Escanear red"}
+          </Button>
+        </div>
+      </div>
+
+      {scanError && (
+        <Alert className="mt-6 border-destructive/40 bg-transparent text-destructive">
+          <AlertDescription>{scanError}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* ── Cifra de resultados ── */}
+      <div className="flex items-baseline gap-3 border-b border-border py-5">
+        <span className="font-display text-[1.9rem] font-bold leading-none tabular-nums text-foreground">
+          {results.length}
+        </span>
+        <span className="smallcaps text-muted-foreground">
+          Equipos encontrados
+        </span>
+      </div>
+
+      {/* ── Resultados: filas de anfitrión ── */}
+      <ScrollArea className="max-h-[min(65vh,480px)] [--scrollbar-size:0px] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        {results.length === 0 ? (
+          <p className="flex items-center gap-3 py-10 text-sm text-muted-foreground">
+            {scanning && <Spinner size={16} />}
+            {scanning
+              ? "Escaneando la red local…"
+              : "No hay equipos activos en la red local."}
+          </p>
+        ) : (
+          <>
+            <div className="smallcaps sticky top-0 z-10 hidden grid-cols-[1.1fr_1fr_1fr_auto_7.5rem] items-center gap-6 border-b border-border bg-card py-3 text-muted-foreground md:grid">
+              <span>IP</span>
+              <span>Nombre</span>
+              <span>Puerto del agente</span>
+              <span>Latencia</span>
+              <span className="text-right">Acciones</span>
+            </div>
+            <ul className="divide-y divide-border">
+              {results.map((result) => {
+                const status = result.healthStatus
+                  ? result.healthStatus.toLowerCase()
+                  : "";
+                const serviceOk =
+                  status.includes("200") || status.includes("ok");
+
+                return (
+                  <li
+                    key={result.ip}
+                    className="grid gap-2 py-5 transition-colors duration-150 md:grid-cols-[1.1fr_1fr_1fr_auto_7.5rem] md:items-center md:gap-6"
+                  >
+                    <span className="font-display text-[1.35rem] font-bold leading-none text-foreground">
+                      {result.ip}
+                    </span>
+                    <span className="truncate text-sm text-muted-foreground">
+                      {result.hostname || "Sin nombre"}
+                    </span>
+                    <span className="flex items-center gap-2 text-sm text-foreground">
+                      <span
+                        className={cn(
+                          "size-1.5 shrink-0 rounded-full",
+                          serviceOk
+                            ? "bg-success"
+                            : "bg-muted-foreground/50",
+                        )}
+                      />
+                      {serviceOk ? "Activo" : "Sin respuesta"}
+                    </span>
+                    <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                      {typeof result.latencyMs === "number"
+                        ? `${Math.max(0, Math.round(result.latencyMs))} ms`
+                        : "—"}
+                    </span>
+                    <span className="md:text-right">
+                      {!serviceOk && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setInstallTarget(result);
+                            setInstallDialogOpen(true);
+                          }}
+                          className="h-7 px-2.5 text-xs"
+                        >
+                          <Download className="mr-1.5 size-3" />
+                          Instalar
+                        </Button>
+                      )}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
+      </ScrollArea>
 
       {installTarget && (
         <RemoteInstallDialog

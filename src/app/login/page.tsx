@@ -100,45 +100,45 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-background lg:grid lg:grid-cols-[1.15fr_1fr]">
       {/* Panel de la casa — azul marino, serif editorial */}
-      <div className="relative hidden overflow-hidden bg-[#152238] text-[#EDE6D2] lg:flex lg:flex-col lg:justify-between lg:p-12">
+      <div className="relative hidden overflow-hidden bg-[#152238] text-[#E9EDF3] lg:flex lg:flex-col lg:justify-between lg:p-12">
         <div
           aria-hidden
-          className="dot-grid absolute inset-0 text-[#EDE6D2] opacity-30"
+          className="dot-grid absolute inset-0 text-[#E9EDF3] opacity-30"
         />
         <div className="relative flex items-center gap-3">
-          <div className="flex size-11 items-center justify-center rounded-sm bg-[#EDE6D2] text-[#152238]">
+          <div className="flex size-11 items-center justify-center rounded-sm bg-[#E9EDF3] text-[#152238]">
             <Usb className="size-6" />
           </div>
           <div className="flex flex-col">
             <span className="font-display text-lg font-bold leading-none tracking-tight">
               USB Monitor
             </span>
-            <span className="smallcaps mt-1.5 text-[#EDE6D2]/50">
+            <span className="smallcaps mt-1.5 text-[#E9EDF3]/50">
               Centro de control
             </span>
           </div>
-          <span className="ml-auto inline-flex items-center gap-2 rounded-full border border-[#EDE6D2]/25 px-3 py-1.5 text-[11px] font-medium text-[#EDE6D2]/85">
+          <span className="ml-auto inline-flex items-center gap-2 rounded-full border border-[#E9EDF3]/25 px-3 py-1.5 text-[11px] font-medium text-[#E9EDF3]/85">
             <span className="dot-pulse size-1.5 rounded-full bg-emerald-300" />
             Sistema activo
           </span>
         </div>
 
         <div className="relative max-w-md">
-          <p className="smallcaps text-[var(--brass)]">
+          <p className="smallcaps text-[var(--acero)]">
             Sistema interno
           </p>
           <h1 className="font-display mt-5 text-[2.75rem] font-bold leading-[1.08] tracking-tight">
             Monitoreo de dispositivos USB
           </h1>
-          <p className="mt-8 border-t border-[#EDE6D2]/15 pt-6 text-sm leading-relaxed text-[#EDE6D2]/75">
+          <p className="mt-8 border-t border-[#E9EDF3]/15 pt-6 text-sm leading-relaxed text-[#E9EDF3]/75">
             Panel central de los agentes instalados en los equipos.
             Acceso solo para el personal autorizado: las conexiones de
             dispositivos y los intentos de acceso quedan registrados.
           </p>
         </div>
 
-        <p className="smallcaps relative text-[#EDE6D2]/40">
-          Panel central · Agentes Windows · SSE en vivo
+        <p className="smallcaps relative text-[#E9EDF3]/40">
+          Panel central · Agentes Windows · Tiempo real
         </p>
       </div>
 
@@ -151,7 +151,7 @@ export default function LoginPage() {
           className="frame-double relative w-full max-w-sm bg-card p-8"
         >
           <div className="mb-7 flex items-center gap-3 lg:hidden">
-            <div className="bg-aurora flex size-10 items-center justify-center rounded-sm text-[#EDE6D2]">
+            <div className="bg-aurora flex size-10 items-center justify-center rounded-sm text-[#E9EDF3]">
               <Usb className="size-5" />
             </div>
             <span className="font-display text-lg font-bold tracking-tight">
@@ -159,13 +159,13 @@ export default function LoginPage() {
             </span>
           </div>
 
-          <p className="smallcaps text-[var(--brass)]">
+          <p className="smallcaps text-[var(--acero)]">
             {pcName ? "Desbloquear dispositivo USB" : "Acceso seguro al panel"}
           </p>
           <h2 className="font-display mt-2 text-[1.8rem] font-bold tracking-tight">
             Monitoreo USB
           </h2>
-          <div className="rule-brass mt-4 w-16" />
+          <div className="rule-acero mt-4 w-16" />
 
           <div className="mt-7">
             {error && (
@@ -179,7 +179,7 @@ export default function LoginPage() {
                   Usuario
                 </label>
                 <input
-                  className="w-full rounded border border-input bg-background px-3.5 py-2.5 text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brass)]/50"
+                  className="w-full rounded border border-input bg-background px-3.5 py-2.5 text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--acero)]/50"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="admin"
@@ -194,7 +194,7 @@ export default function LoginPage() {
                 <div className="relative">
                   <input
                     type={showPassword ? "text" : "password"}
-                    className="w-full rounded border border-input bg-background px-3.5 py-2.5 pr-10 text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brass)]/50"
+                    className="w-full rounded border border-input bg-background px-3.5 py-2.5 pr-10 text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--acero)]/50"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required

@@ -815,7 +815,7 @@ class ApiKeyConfiguratorDialog(tk.Toplevel):
 
     def _build_widgets(self) -> None:
         # Fondo «Herencia» de la ventana (los estilos ttk los define run_gui).
-        self.configure(bg="#F5F0E4")
+        self.configure(bg="#EDF0F4")
         header = ttk.Label(self, text="Selecciona un usuario para usar su API key.")
         header.pack(pady=(10, 5))
 
@@ -3200,45 +3200,45 @@ class UnlockHTTPHandler(BaseHTTPRequestHandler):
             "<title>USB bloqueado — emergencia sin red</title><style>"
             "*{box-sizing:border-box}"
             "body{font-family:'Segoe UI',system-ui,sans-serif;margin:0;"
-            "min-height:100vh;background:#F5F0E4;color:#221D15;display:flex;"
+            "min-height:100vh;background:#EDF0F4;color:#1B2330;display:flex;"
             "align-items:center;justify-content:center;padding:28px 16px}"
-            ".tarjeta{width:100%;max-width:430px;background:#FCF9F1;"
-            "border:1px solid #D8CDB4;outline:1px solid #A5814F;"
+            ".tarjeta{width:100%;max-width:430px;background:#F7F9FB;"
+            "border:1px solid #C2CEDC;outline:1px solid #5F7CA6;"
             "outline-offset:5px;padding:36px 32px;"
             "box-shadow:0 18px 44px rgba(34,29,21,.14);"
             "animation:aparecer .55s ease both}"
             "@keyframes aparecer{from{opacity:0;transform:translateY(10px)}"
             "to{opacity:1;transform:translateY(0)}}"
             "h1{font-family:Georgia,'Times New Roman',serif;font-size:25px;"
-            "margin:0;font-weight:700;color:#221D15;text-align:center}"
-            ".filete{width:64px;height:2px;background:#A5814F;"
+            "margin:0;font-weight:700;color:#1B2330;text-align:center}"
+            ".filete{width:64px;height:2px;background:#5F7CA6;"
             "margin:12px auto 18px}"
-            "p{color:#6E6250;line-height:1.6;font-size:15px}"
+            "p{color:#5B6B7F;line-height:1.6;font-size:15px}"
             "label{display:block;margin:16px 0 6px;font-weight:600;"
             "font-size:12px;letter-spacing:.12em;text-transform:uppercase;"
-            "color:#6E6250}"
-            "input,select{width:100%;padding:12px 13px;background:#FCF9F1;"
-            "border:1px solid #D8CDB4;border-radius:4px;color:#221D15;"
+            "color:#5B6B7F}"
+            "input,select{width:100%;padding:12px 13px;background:#F7F9FB;"
+            "border:1px solid #C2CEDC;border-radius:4px;color:#1B2330;"
             "font-family:inherit;font-size:15px;outline:none;"
             "transition:border-color .2s ease,box-shadow .2s ease}"
-            "input:focus,select:focus{border-color:#A5814F;"
+            "input:focus,select:focus{border-color:#5F7CA6;"
             "box-shadow:0 0 0 3px rgba(165,129,79,.18)}"
             "button{margin-top:22px;width:100%;padding:13px 18px;"
             "border:none;border-radius:4px;font-family:inherit;"
             "font-size:13px;font-weight:700;letter-spacing:.18em;"
-            "text-transform:uppercase;color:#F5F0E4;cursor:pointer;"
+            "text-transform:uppercase;color:#EDF0F4;cursor:pointer;"
             "background:#24365E;transition:background .2s ease,"
             "transform .2s ease}"
             "button:hover{background:#324B7D;transform:translateY(-1px)}"
             ".aviso{background:rgba(166,106,31,.10);"
-            "border:1px solid #A66A1F;border-radius:4px;"
-            "padding:12px 14px;color:#221D15}"
+            "border:1px solid #4E6E9E;border-radius:4px;"
+            "padding:12px 14px;color:#1B2330}"
             ".error{background:rgba(140,59,46,.10);"
             "border:1px solid #8C3B2E;border-radius:4px;"
-            "padding:12px 14px;color:#221D15}"
+            "padding:12px 14px;color:#1B2330}"
             ".ok{background:rgba(62,107,79,.10);"
             "border:1px solid #3E6B4F;border-radius:4px;"
-            "padding:12px 14px;color:#221D15}"
+            "padding:12px 14px;color:#1B2330}"
             "@media (max-width:480px){.tarjeta{padding:26px 20px}"
             "body{padding:16px 10px}}"
             "@media (prefers-reduced-motion:reduce){"
@@ -4891,76 +4891,76 @@ def run_gui() -> None:
         estilo = ttk.Style(root)
         if "clam" in estilo.theme_names():
             estilo.theme_use("clam")
-        estilo.configure("TFrame", background="#FCF9F1")
+        estilo.configure("TFrame", background="#F7F9FB")
         estilo.configure(
             "TLabel",
-            background="#FCF9F1",
-            foreground="#221D15",
+            background="#F7F9FB",
+            foreground="#1B2330",
             font=("Segoe UI", 10),
         )
         estilo.configure(
             "TButton",
-            background="#EFE8D8",
-            foreground="#221D15",
-            bordercolor="#D8CDB4",
+            background="#E4EAF1",
+            foreground="#1B2330",
+            bordercolor="#C2CEDC",
             focusthickness=0,
             padding=(12, 7),
             font=("Segoe UI", 10),
         )
         estilo.map(
             "TButton",
-            background=[("active", "#D8CDB4"), ("disabled", "#FCF9F1")],
-            foreground=[("disabled", "#6E6250")],
+            background=[("active", "#C2CEDC"), ("disabled", "#F7F9FB")],
+            foreground=[("disabled", "#5B6B7F")],
         )
         estilo.configure(
             "Accent.TButton",
             background="#24365E",
-            foreground="#F5F0E4",
+            foreground="#EDF0F4",
             font=("Segoe UI", 10, "bold"),
         )
         estilo.map(
             "Accent.TButton",
-            background=[("active", "#324B7D"), ("disabled", "#EFE8D8")],
-            foreground=[("active", "#F5F0E4"), ("disabled", "#6E6250")],
+            background=[("active", "#324B7D"), ("disabled", "#E4EAF1")],
+            foreground=[("active", "#EDF0F4"), ("disabled", "#5B6B7F")],
         )
         estilo.configure(
             "TEntry",
-            fieldbackground="#FCF9F1",
-            foreground="#221D15",
-            bordercolor="#D8CDB4",
+            fieldbackground="#F7F9FB",
+            foreground="#1B2330",
+            bordercolor="#C2CEDC",
             padding=6,
         )
         estilo.configure(
             "Treeview",
-            background="#FCF9F1",
-            fieldbackground="#FCF9F1",
-            foreground="#221D15",
-            bordercolor="#D8CDB4",
+            background="#F7F9FB",
+            fieldbackground="#F7F9FB",
+            foreground="#1B2330",
+            bordercolor="#C2CEDC",
             rowheight=24,
             font=("Segoe UI", 9),
         )
         estilo.configure(
             "Treeview.Heading",
-            background="#EFE8D8",
-            foreground="#6E6250",
+            background="#E4EAF1",
+            foreground="#5B6B7F",
             font=("Segoe UI", 9, "bold"),
         )
         estilo.map(
             "Treeview",
             background=[("selected", "#24365E")],
-            foreground=[("selected", "#F5F0E4")],
+            foreground=[("selected", "#EDF0F4")],
         )
         estilo.configure(
             "TScrollbar",
-            background="#EFE8D8",
-            troughcolor="#F5F0E4",
-            bordercolor="#D8CDB4",
-            arrowcolor="#6E6250",
+            background="#E4EAF1",
+            troughcolor="#EDF0F4",
+            bordercolor="#C2CEDC",
+            arrowcolor="#5B6B7F",
         )
         estilo.configure(
-            "TCheckbutton", background="#FCF9F1", foreground="#221D15"
+            "TCheckbutton", background="#F7F9FB", foreground="#1B2330"
         )
-        root.configure(bg="#F5F0E4")
+        root.configure(bg="#EDF0F4")
     except tk.TclError:
         LOGGER.debug("No se pudieron aplicar los estilos Herencia", exc_info=True)
 
@@ -4990,7 +4990,7 @@ def run_gui() -> None:
         container,
         textvariable=autostart_status_var,
         font=("Segoe UI", 9),
-        foreground="#6E6250",
+        foreground="#5B6B7F",
     )
     autostart_status_label.grid(row=1, column=0, columnspan=2, sticky="w")
 
@@ -5005,7 +5005,7 @@ def run_gui() -> None:
         scheme_ssl_frame,
         textvariable=scheme_status_var,
         font=("Segoe UI", 9),
-        foreground="#6E6250",
+        foreground="#5B6B7F",
         wraplength=360,
     )
     scheme_status_label.pack(anchor="w")
@@ -5014,7 +5014,7 @@ def run_gui() -> None:
         scheme_ssl_frame,
         textvariable=ssl_status_var,
         font=("Segoe UI", 9),
-        foreground="#6E6250",
+        foreground="#5B6B7F",
         wraplength=360,
     )
     ssl_status_label.pack(anchor="w")
@@ -5023,7 +5023,7 @@ def run_gui() -> None:
         container,
         text="Ejecuta esta herramienta como administrador para instalar o controlar el servicio.",
         wraplength=360,
-        foreground="#6E6250",
+        foreground="#5B6B7F",
     )
     info_label.grid(row=3, column=0, columnspan=2, pady=(6, 10), sticky="w")
 
@@ -5033,16 +5033,16 @@ def run_gui() -> None:
         width=52,
         state="disabled",
         wrap="word",
-        background="#FCF9F1",
-        foreground="#221D15",
-        insertbackground="#221D15",
-        selectbackground="#A5814F",
-        selectforeground="#FCF9F1",
+        background="#F7F9FB",
+        foreground="#1B2330",
+        insertbackground="#1B2330",
+        selectbackground="#5F7CA6",
+        selectforeground="#F7F9FB",
         relief="flat",
         borderwidth=1,
         highlightthickness=1,
-        highlightbackground="#D8CDB4",
-        highlightcolor="#A5814F",
+        highlightbackground="#C2CEDC",
+        highlightcolor="#5F7CA6",
         font=("Segoe UI", 9),
     )
     log_box.grid(row=3, column=0, columnspan=2, pady=(0, 12), sticky="nsew")
@@ -5071,7 +5071,7 @@ def run_gui() -> None:
         elif state is None:
             status_label.configure(foreground="#8C3B2E")
         else:
-            status_label.configure(foreground="#A66A1F")
+            status_label.configure(foreground="#4E6E9E")
         
         # Actualizar estado del inicio automático
         success, start_type = _get_service_autostart_status()

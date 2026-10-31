@@ -1,10 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { StatsCards } from "@/components/dashboard/StatsCards";
-import { GlassPanel } from "@/components/ui/glass-panel";
-import { Badge } from "@/components/ui/badge";
+import { useEffect, useMemo, useState } from "react";
 import {
   type USBEvent,
   type Computer,
@@ -12,7 +8,6 @@ import {
   formatDateTime,
   formatHour,
 } from "@/components/dashboard/types";
-import { Activity, AlertTriangle, HardDrive, ShieldCheck } from "lucide-react";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -23,14 +18,9 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
 } from "recharts";
 import { cn } from "@/lib/utils";
 import { getCurrentDate, getCurrentTimestamp } from "@/lib/time";
-import { ActivityFeed } from "@/components/shared/ActivityFeed";
 
 interface OverviewTabProps {
   events: USBEvent[];
@@ -201,519 +191,279 @@ export function OverviewTab({
   }, [events]);
 
   /* ── Chart type toggle ── */
-  const [chartType, setChartType] = useState<"area" | "bar">("area");
+  const [chartType, setChartType] = useState<"area" | "bar">(() => {
+    try {
+      return localStorage.getItem("usbmonitor:grafico") === "bar" ? "bar" : "area";
+    } catch {
+      return "area";
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("usbmonitor:grafico", chartType);
+    } catch { /* sin almacenamiento */ }
+  }, [chartType]);
+
+  const estadoTitular =
+    serviceSummary.total === 0
+      ? { titulo: "Sin agentes", detalle: "Ningún equipo está reportando al panel." }
+      : serviceSummary.offline === 0
+        ? {
+            titulo: "Monitoreo estable",
+            detalle: `${serviceSummary.running} de ${serviceSummary.total} equipos con el servicio activo.`,
+          }
+        : {
+            titulo: "Agentes sin servicio",
+            detalle: `${serviceSummary.offline} de ${serviceSummary.total} equipos no responden.`,
+          };
+  const totalDistribucion = eventDistribution.reduce(
+    (acc, entry) => acc + entry.value,
+    0,
+  );
 
   return (
-    <div className="animate-view-in space-y-6">
-      <StatsCards
-        activeComputers={activeComputers}
-        totalComputers={computers.length}
-        totalEvents={totalEvents}
-        recentEvents={recentEvents}
-        whitelistCount={whitelist.length}
-      />
+    <div className="animate-view-in">
+      {/* ── Titular: estado y cifras del día ── */}
+      <section className="grid gap-10 lg:grid-cols-[1.2fr_2fr] lg:gap-16">
+        <div>
+          <p className="smallcaps flex items-center gap-2 text-muted-foreground">
+            <span
+              className={cn(
+                "size-1.5 rounded-full",
+                serviceSummary.offline === 0 && serviceSummary.total > 0
+                  ? "dot-pulse bg-success"
+                  : "bg-warning",
+              )}
+            />
+            Estado en vivo
+          </p>
+          <h2 className="font-display mt-3 text-[2rem] font-bold leading-tight tracking-tight">
+            {estadoTitular.titulo}
+          </h2>
+          <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">
+            {estadoTitular.detalle}
+          </p>
+        </div>
+        <dl className="grid grid-cols-3 items-end gap-6">
+          {[
+            { cifra: whitelist.length, etiqueta: "En lista blanca" },
+            { cifra: totalEvents, etiqueta: "Eventos totales" },
+            { cifra: recentEvents, etiqueta: "En la última hora" },
+          ].map((dato) => (
+            <div key={dato.etiqueta} className="border-t-2 border-foreground/70 pt-3">
+              <dd className="font-display text-[2.1rem] font-bold leading-none tabular-nums">
+                {dato.cifra}
+              </dd>
+              <dt className="smallcaps mt-2 text-muted-foreground">
+                {dato.etiqueta}
+              </dt>
+            </div>
+          ))}
+        </dl>
+      </section>
 
-      <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
-        {/* ── Event Trend Chart ── */}
-        <GlassPanel
-          variant="elevated"
-          padding="none"
-          className="overflow-hidden"
-        >
-          <div className="flex items-center justify-between gap-4 border-b border-border/50 px-5 py-4">
+      {/* ── Tendencia y alertas ── */}
+      <div className="mt-14 grid gap-12 xl:grid-cols-[2fr_1fr]">
+        <section className="border-t border-border pt-6">
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
             <div>
-              <h3 className="font-display text-[1.05rem] font-bold text-foreground">
-                Tendencia de eventos (12h)
+              <h3 className="font-display text-[1.3rem] font-bold">
+                Tendencia de eventos
               </h3>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Autorizaciones vs bloqueos en tiempo real
+              <p className="mt-1 text-xs text-muted-foreground">
+                Autorizaciones y bloqueos de las últimas 12 horas ·{" "}
+                {totalEvents} en total
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              {/* Chart type toggle */}
-              <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
+              {(
+                [
+                  ["area", "Área"],
+                  ["bar", "Barras"],
+                ] as const
+              ).map(([tipo, texto]) => (
                 <button
+                  key={tipo}
                   type="button"
-                  onClick={() => setChartType("area")}
+                  onClick={() => setChartType(tipo)}
                   className={cn(
                     "text-[11px] font-semibold uppercase tracking-[0.12em] transition-colors",
-                    chartType === "area"
-                      ? "text-foreground underline decoration-[var(--brass)] decoration-2 underline-offset-4"
+                    chartType === tipo
+                      ? "text-foreground underline decoration-[var(--acero)] decoration-2 underline-offset-4"
                       : "text-muted-foreground hover:text-foreground",
                   )}
                 >
-                  Área
+                  {texto}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setChartType("bar")}
-                  className={cn(
-                    "text-[11px] font-semibold uppercase tracking-[0.12em] transition-colors",
-                    chartType === "bar"
-                      ? "text-foreground underline decoration-[var(--brass)] decoration-2 underline-offset-4"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  Barras
-                </button>
-              </div>
-              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Activity className="size-3" />
-                {totalEvents} total
-              </span>
+              ))}
             </div>
           </div>
-          <div className="h-[280px] w-full px-2 pb-2">
+          <div className="mt-4 h-[280px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               {chartType === "area" ? (
-                <AreaChart
-                  data={trendData}
-                  margin={{ left: 0, right: 0, top: 16, bottom: 4 }}
-                >
+                <AreaChart data={trendData} margin={{ left: 0, right: 0, top: 16, bottom: 4 }}>
                   <defs>
                     <linearGradient id="allowed" x1="0" x2="0" y1="0" y2="1">
-                      <stop
-                        offset="5%"
-                        stopColor="oklch(0.72 0.17 160)"
-                        stopOpacity={0.3}
-                      />
-                      <stop
-                        offset="95%"
-                        stopColor="oklch(0.72 0.17 160)"
-                        stopOpacity={0}
-                      />
+                      <stop offset="5%" stopColor="oklch(0.72 0.17 160)" stopOpacity={0.25} />
+                      <stop offset="95%" stopColor="oklch(0.72 0.17 160)" stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="blocked" x1="0" x2="0" y1="0" y2="1">
-                      <stop
-                        offset="5%"
-                        stopColor="oklch(0.7 0.18 30)"
-                        stopOpacity={0.35}
-                      />
-                      <stop
-                        offset="95%"
-                        stopColor="oklch(0.7 0.18 30)"
-                        stopOpacity={0}
-                      />
+                      <stop offset="5%" stopColor="oklch(0.7 0.18 30)" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="oklch(0.7 0.18 30)" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke="var(--color-border)"
-                    strokeOpacity={0.4}
-                  />
-                  <XAxis
-                    dataKey="label"
-                    stroke="var(--color-muted-foreground)"
-                    tickLine={false}
-                    axisLine={false}
-                    fontSize={11}
-                    className="font-mono"
-                  />
-                  <YAxis
-                    stroke="var(--color-muted-foreground)"
-                    tickLine={false}
-                    axisLine={false}
-                    fontSize={11}
-                    allowDecimals={false}
-                    className="font-mono"
-                  />
-                  <ChartTooltip
-                    cursor={{
-                      stroke: "var(--color-border)",
-                      strokeDasharray: 4,
-                    }}
-                    contentStyle={{
-                      background: "var(--color-popover)",
-                      border: "1px solid var(--color-border)",
-                      borderRadius: 12,
-                      color: "var(--color-popover-foreground)",
-                      fontSize: 12,
-                      backdropFilter: "blur(12px)",
-                    }}
-                    formatter={(value: number, name) => [
-                      value,
-                      name === "allowed"
-                        ? "Autorizados"
-                        : name === "blocked"
-                          ? "Denegados"
-                          : "Total",
-                    ]}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="allowed"
-                    stroke="oklch(0.72 0.17 160)"
-                    fill="url(#allowed)"
-                    strokeWidth={2}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="blocked"
-                    stroke="oklch(0.7 0.18 30)"
-                    fill="url(#blocked)"
-                    strokeWidth={2}
-                  />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-border/50" />
+                  <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} dy={6} />
+                  <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 10 }} width={28} allowDecimals={false} />
+                  <ChartTooltip contentStyle={{ fontSize: 12 }} />
+                  <Area type="monotone" dataKey="allowed" name="Autorizados" stroke="oklch(0.55 0.12 160)" fill="url(#allowed)" strokeWidth={2} />
+                  <Area type="monotone" dataKey="blocked" name="Bloqueados" stroke="oklch(0.55 0.16 30)" fill="url(#blocked)" strokeWidth={2} />
                 </AreaChart>
               ) : (
-                <BarChart
-                  data={trendData}
-                  margin={{ left: 0, right: 0, top: 16, bottom: 4 }}
-                >
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke="var(--color-border)"
-                    strokeOpacity={0.4}
-                  />
-                  <XAxis
-                    dataKey="label"
-                    stroke="var(--color-muted-foreground)"
-                    tickLine={false}
-                    axisLine={false}
-                    fontSize={11}
-                    className="font-mono"
-                  />
-                  <YAxis
-                    stroke="var(--color-muted-foreground)"
-                    tickLine={false}
-                    axisLine={false}
-                    fontSize={11}
-                    allowDecimals={false}
-                    className="font-mono"
-                  />
-                  <ChartTooltip
-                    contentStyle={{
-                      background: "var(--color-popover)",
-                      border: "1px solid var(--color-border)",
-                      borderRadius: 12,
-                      color: "var(--color-popover-foreground)",
-                      fontSize: 12,
-                      backdropFilter: "blur(12px)",
-                    }}
-                    formatter={(value: number, name) => [
-                      value,
-                      name === "allowed"
-                        ? "Autorizados"
-                        : name === "blocked"
-                          ? "Denegados"
-                          : "Total",
-                    ]}
-                  />
-                  <Bar
-                    dataKey="allowed"
-                    fill="oklch(0.72 0.17 160)"
-                    radius={[4, 4, 0, 0]}
-                  />
-                  <Bar
-                    dataKey="blocked"
-                    fill="oklch(0.7 0.18 30)"
-                    radius={[4, 4, 0, 0]}
-                  />
+                <BarChart data={trendData} margin={{ left: 0, right: 0, top: 16, bottom: 4 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-border/50" />
+                  <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} dy={6} />
+                  <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 10 }} width={28} allowDecimals={false} />
+                  <ChartTooltip contentStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="allowed" name="Autorizados" fill="oklch(0.72 0.17 160)" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="blocked" name="Bloqueados" fill="oklch(0.7 0.18 30)" radius={[3, 3, 0, 0]} />
                 </BarChart>
               )}
             </ResponsiveContainer>
           </div>
-        </GlassPanel>
+        </section>
 
-        {/* ── Recent Alerts ── */}
-        <GlassPanel variant="elevated" padding="none">
-          <div className="flex items-center gap-2 border-b border-border/50 px-5 py-4">
-            <AlertTriangle className="size-4 text-[oklch(0.60_0.12_85)]" />
-            <h3 className="font-display text-[1.05rem] font-bold text-foreground">
-              Alertas recientes
-            </h3>
-          </div>
-          <div className="max-h-[320px] overflow-y-auto scrollbar-thin">
-            {loading ? (
-              <div className="space-y-3 p-4">
-                {[1, 2, 3].map((i) => (
-                  <div
-                    key={i}
-                    className="h-16 animate-pulse rounded-lg bg-muted/40"
-                  />
-                ))}
-              </div>
-            ) : latestAlerts.length === 0 ? (
-              <div className="flex flex-col items-center gap-2 py-12 text-muted-foreground">
-                <ShieldCheck className="size-8 opacity-30" />
-                <p className="text-xs">Sin alertas recientes</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-border/30">
-                {latestAlerts.map((event) => {
-                  const tone = classifyEventTone(event.event);
-                  return (
-                    <div
-                      key={event.id}
-                      className={cn(
-                        "px-4 py-3 transition-colors hover:bg-muted/30",
-                        tone === "blocked" && "border-l-2 border-l-rose-500/60",
-                        tone === "allowed" &&
-                          "border-l-2 border-l-[oklch(0.55_0.12_160/0.60)]",
-                      )}
-                    >
-                      <p className="text-xs font-medium text-foreground">
+        <section className="border-t border-border pt-6">
+          <h3 className="font-display text-[1.3rem] font-bold">
+            Alertas recientes
+          </h3>
+          {loading ? (
+            <div className="mt-5 space-y-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-12 animate-pulse bg-muted/50" />
+              ))}
+            </div>
+          ) : latestAlerts.length === 0 ? (
+            <p className="mt-5 text-sm text-muted-foreground">
+              Sin alertas recientes. Todo lo registrado fue autorizado.
+            </p>
+          ) : (
+            <ol className="mt-2">
+              {latestAlerts.map((event, indice) => {
+                const tone = classifyEventTone(event.event);
+                return (
+                  <li
+                    key={event.id}
+                    className="flex gap-4 border-b border-border/60 py-3.5 last:border-b-0"
+                  >
+                    <span className="font-display text-sm italic text-[var(--acero)]">
+                      {String(indice + 1).padStart(2, "0")}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-[13px] font-medium leading-snug">
                         {event.pcName} · {event.pcUser}
                       </p>
-                      <p className="mt-0.5 text-[11px] text-muted-foreground truncate">
+                      <p
+                        className={cn(
+                          "mt-0.5 truncate text-xs",
+                          tone === "blocked"
+                            ? "text-destructive"
+                            : "text-muted-foreground",
+                        )}
+                      >
                         {event.event}
                       </p>
-                      <p className="mt-1 text-[10px] font-mono text-muted-foreground/60">
+                      <p className="mt-1 font-mono text-[10px] text-muted-foreground/70">
                         {formatDateTime(event.createdAt)}
                       </p>
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </GlassPanel>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </section>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
-        {/* ── Agent Health ── */}
-        <GlassPanel variant="elevated" padding="none">
-          <div className="border-b border-border/50 px-5 py-4">
-            <h3 className="flex items-center gap-2 font-display text-[1.05rem] font-bold text-foreground">
-              <ShieldCheck className="size-4 text-[oklch(0.55_0.12_160)]" />
-              Salud de agentes y servicios
-            </h3>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Disponibilidad de los agentes USBMonitor en la red
-            </p>
-          </div>
-          <div className="grid gap-3 p-4 md:grid-cols-2">
+      {/* ── Índices: flota, lista blanca, distribución y dispositivos ── */}
+      <div className="mt-14 grid gap-12 border-t border-border pt-8 md:grid-cols-2 xl:grid-cols-4">
+        <section>
+          <h3 className="smallcaps text-muted-foreground">La flota</h3>
+          <dl className="mt-4 space-y-3 text-sm">
             {[
-              {
-                label: "En ejecución",
-                value: serviceSummary.running,
-                total: serviceSummary.total,
-                color: "bg-[oklch(0.55_0.12_160)]",
-              },
-              {
-                label: "Con pulso reciente",
-                value: serviceSummary.responding,
-                total: serviceSummary.total,
-                color: "bg-[oklch(0.65_0.08_250)]",
-              },
-              {
-                label: "En observación",
-                value: serviceSummary.offline,
-                total: serviceSummary.total,
-                color: "bg-[oklch(0.60_0.12_85)]",
-              },
-              {
-                label: "Inventario total",
-                value: serviceSummary.total,
-                total: serviceSummary.total,
-                color: "bg-muted-foreground",
-              },
-            ].map((item) => {
-              const pct = item.total
-                ? Math.round((item.value / item.total) * 100)
-                : 0;
-              return (
-                <div
-                  key={item.label}
-                  className="border-t border-border/60 px-1 py-3.5"
-                >
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                    {item.label}
-                  </p>
-                  <div className="mt-2 flex items-end justify-between">
-                    <span className="text-2xl font-bold tabular-nums text-foreground">
-                      {item.value}
-                    </span>
-                    <span className="text-[10px] font-mono text-muted-foreground">
-                      {pct}%
-                    </span>
-                  </div>
-                  <div className="mt-2 h-1.5 w-full rounded-full bg-muted/60">
-                    <div
-                      className={cn(
-                        "h-full rounded-full transition-all duration-500",
-                        item.color,
-                      )}
-                      style={{ width: `${Math.min(pct, 100)}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </GlassPanel>
-
-        {/* ── Whitelist Summary ── */}
-        <GlassPanel variant="elevated" padding="none">
-          <div className="flex items-center gap-2 border-b border-border/50 px-5 py-4">
-            <HardDrive className="size-4 text-muted-foreground" />
-            <h3 className="font-display text-[1.05rem] font-bold text-foreground">
-              Resumen de lista blanca
-            </h3>
-          </div>
-          <div className="space-y-3 p-4 text-sm">
-            <div className="flex items-center justify-between border-t border-border/60 px-1 py-3">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                  Seriales autorizados
-                </p>
-                <p className="mt-1 text-xl font-bold tabular-nums text-foreground">
-                  {whitelistStats.total}
-                </p>
+              ["Con el servicio activo", serviceSummary.running],
+              ["Respondiendo ahora", serviceSummary.responding],
+              ["Sin servicio", serviceSummary.offline],
+              ["Equipos registrados", serviceSummary.total],
+            ].map(([texto, cifra]) => (
+              <div key={texto as string} className="flex items-baseline justify-between gap-4">
+                <dt className="text-muted-foreground">{texto}</dt>
+                <dd className="font-display text-lg font-bold tabular-nums">{cifra}</dd>
               </div>
-              <Badge variant="outline" className="text-[10px]">
-                Activo
-              </Badge>
-            </div>
-            <div className="border-t border-border/60 px-1 py-3">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                Documentados
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {whitelistStats.withNotes} con notas ·{" "}
-                {whitelistStats.withLabel} con alias
-              </p>
-            </div>
-            <div className="border-t border-border/60 px-1 py-3">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                Recomendación
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Sincroniza la lista blanca en menos de 15 min tras cambios
-                críticos.
-              </p>
-            </div>
-          </div>
-        </GlassPanel>
-      </div>
+            ))}
+          </dl>
+        </section>
 
-      {/* ── Row 3: Distribution · Top Devices · Live Feed ── */}
-      <div className="grid gap-6 xl:grid-cols-3">
-        {/* ── Event Distribution Pie ── */}
-        <GlassPanel variant="elevated" padding="none">
-          <div className="border-b border-border/50 px-5 py-4">
-            <h3 className="font-display text-[1.05rem] font-bold text-foreground">
-              Distribución de eventos
-            </h3>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Clasificación general
-            </p>
-          </div>
-          <div className="flex h-[240px] items-center justify-center px-2">
-            {eventDistribution.length === 0 ? (
-              <p className="text-xs text-muted-foreground">Sin datos</p>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={eventDistribution}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={80}
-                    paddingAngle={3}
-                    strokeWidth={0}
-                  >
-                    {eventDistribution.map((entry) => (
-                      <Cell key={entry.name} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <ChartTooltip
-                    contentStyle={{
-                      background: "var(--color-popover)",
-                      border: "1px solid var(--color-border)",
-                      borderRadius: 12,
-                      color: "var(--color-popover-foreground)",
-                      fontSize: 12,
-                      backdropFilter: "blur(12px)",
-                    }}
-                  />
-                  <Legend
-                    verticalAlign="bottom"
-                    height={36}
-                    formatter={(value: string) => (
-                      <span className="text-xs text-muted-foreground">
-                        {value}
-                      </span>
-                    )}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
+        <section>
+          <h3 className="smallcaps text-muted-foreground">Lista blanca</h3>
+          <p className="font-display mt-4 text-[2rem] font-bold leading-none tabular-nums">
+            {whitelistStats.total}
+            <span className="ml-2 align-middle font-sans text-xs font-normal text-muted-foreground">
+              seriales autorizados
+            </span>
+          </p>
+          <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+            {whitelistStats.withLabel} con alias y {whitelistStats.withNotes}{" "}
+            con notas. Conviene sincronizarla en menos de 15 minutos tras un
+            cambio importante.
+          </p>
+        </section>
+
+        <section>
+          <h3 className="smallcaps text-muted-foreground">Distribución</h3>
+          <dl className="mt-4 space-y-3 text-sm">
+            {eventDistribution.map((entry) => (
+              <div key={entry.name} className="flex items-baseline justify-between gap-4">
+                <dt className="text-muted-foreground">{entry.name}</dt>
+                <dd className="font-display text-lg font-bold tabular-nums">
+                  {totalDistribucion > 0
+                    ? `${Math.round((entry.value / totalDistribucion) * 100)} %`
+                    : "—"}
+                </dd>
+              </div>
+            ))}
+            {eventDistribution.length === 0 && (
+              <p className="text-sm text-muted-foreground">Sin datos todavía.</p>
             )}
-          </div>
-        </GlassPanel>
+          </dl>
+        </section>
 
-        {/* ── Top Devices Bar ── */}
-        <GlassPanel variant="elevated" padding="none">
-          <div className="border-b border-border/50 px-5 py-4">
-            <h3 className="font-display text-[1.05rem] font-bold text-foreground">
-              Dispositivos más activos
-            </h3>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Por cantidad de eventos
+        <section>
+          <h3 className="smallcaps text-muted-foreground">
+            Dispositivos más vistos
+          </h3>
+          {topDevices.length === 0 ? (
+            <p className="mt-4 text-sm text-muted-foreground">
+              Ningún dispositivo registrado aún.
             </p>
-          </div>
-          <div className="flex h-[240px] items-center justify-center px-2 pb-2">
-            {topDevices.length === 0 ? (
-              <p className="text-xs text-muted-foreground">Sin datos</p>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={topDevices}
-                  layout="vertical"
-                  margin={{ left: 4, right: 16, top: 8, bottom: 4 }}
+          ) : (
+            <ol className="mt-4 space-y-3">
+              {topDevices.map((device, indice) => (
+                <li
+                  key={device.serial + indice}
+                  className="flex items-baseline justify-between gap-4 text-sm"
                 >
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke="var(--color-border)"
-                    strokeOpacity={0.3}
-                    horizontal={false}
-                  />
-                  <XAxis
-                    type="number"
-                    stroke="var(--color-muted-foreground)"
-                    tickLine={false}
-                    axisLine={false}
-                    fontSize={10}
-                    allowDecimals={false}
-                    className="font-mono"
-                  />
-                  <YAxis
-                    type="category"
-                    dataKey="serial"
-                    stroke="var(--color-muted-foreground)"
-                    tickLine={false}
-                    axisLine={false}
-                    fontSize={10}
-                    width={90}
-                    className="font-mono"
-                  />
-                  <ChartTooltip
-                    contentStyle={{
-                      background: "var(--color-popover)",
-                      border: "1px solid var(--color-border)",
-                      borderRadius: 12,
-                      color: "var(--color-popover-foreground)",
-                      fontSize: 12,
-                      backdropFilter: "blur(12px)",
-                    }}
-                    formatter={(value: number) => [value, "Eventos"]}
-                  />
-                  <Bar
-                    dataKey="count"
-                    fill="var(--color-primary)"
-                    radius={[0, 4, 4, 0]}
-                    barSize={14}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </GlassPanel>
-
-        {/* ── Live Activity Feed ── */}
-        <ActivityFeed maxItems={15} mode="compact" className="max-h-[340px]" />
+                  <span className="min-w-0 truncate font-mono text-xs">
+                    {device.serial}
+                  </span>
+                  <span className="font-display text-lg font-bold tabular-nums">
+                    {device.count}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </section>
       </div>
     </div>
   );

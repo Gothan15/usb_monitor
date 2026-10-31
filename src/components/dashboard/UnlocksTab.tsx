@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { KeyRound, RefreshCw, ShieldAlert, WifiOff } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 
 /**
  * Vista «Desbloqueos» (fase 5): bloqueos en curso, historial de
@@ -83,8 +83,34 @@ function timeHHMM(dt: string | null): string {
   });
 }
 
+function RegistroHeader({
+  numeral,
+  title,
+  count,
+}: Readonly<{ numeral: string; title: string; count?: number }>) {
+  return (
+    <div className="flex items-baseline gap-3.5">
+      <span className="font-display text-xl font-bold italic text-acero">
+        {numeral}
+      </span>
+      <h3 className="font-display text-xl font-bold text-foreground">
+        {title}
+      </h3>
+      {count !== undefined && (
+        <span className="smallcaps text-muted-foreground tabular-nums">
+          {count}
+        </span>
+      )}
+    </div>
+  );
+}
+
+const thClass = "smallcaps px-4 py-2.5 text-left font-semibold text-muted-foreground";
+const tdClass = "px-4 py-2.5";
+
 export function UnlocksTab() {
   const [data, setData] = useState<UnlocksData | null>(null);
+  const [ultimaVez, setUltimaVez] = useState<Date | null>(null);
   const [loading, setLoading] = useState(true);
   const [resultFilter, setResultFilter] = useState("");
   const [pcFilter, setPcFilter] = useState("");
@@ -100,6 +126,7 @@ export function UnlocksTab() {
       });
       if (res.ok) {
         setData(await res.json());
+        setUltimaVez(new Date());
       }
     } finally {
       setLoading(false);
@@ -118,50 +145,72 @@ export function UnlocksTab() {
   );
 
   return (
-    <div className="animate-view-in space-y-6 p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
+    <div className="animate-view-in space-y-12 p-6">
+      {/* ── Cabecera de la auditoría ── */}
+      <div className="flex items-end justify-between gap-4">
+        <div className="flex flex-1 flex-col">
+          <p className="smallcaps text-acero">
             Auditoría 2FA · Solo lectura
           </p>
-          <h2 className="mt-1 text-xl font-semibold">Desbloqueos y bloqueos</h2>
+          <h2 className="font-display mt-2 text-[1.7rem] font-bold leading-none text-foreground">
+            Desbloqueos y bloqueos
+          </h2>
         </div>
-        <button
-          onClick={load}
-          className="inline-flex items-center gap-2 rounded-md border border-input bg-card px-3 py-2 text-sm hover:bg-accent"
-        >
-          <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
-          Actualizar
-        </button>
+        <div className="flex flex-col items-end gap-1">
+          <button
+            onClick={load}
+            className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-primary underline-offset-4 transition-colors hover:text-foreground hover:underline"
+          >
+            <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
+            Actualizar
+          </button>
+          {ultimaVez && (
+            <span className="text-[11px] text-muted-foreground">
+              Actualizado a las{" "}
+              {ultimaVez.toLocaleTimeString("es", {
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+              })}
+            </span>
+          )}
+        </div>
       </div>
 
       {data?.silence.serverLikelyDown && (
-        <div className="rounded-md border border-warning/40 bg-warning/10 px-4 py-3 text-sm">
-          Ningún equipo está dando señales. Lo probable es que el servidor
-          haya estado caído, no que todos los agentes fallaran a la vez:
-          los silencios de abajo no cuentan como manipulación.
+        <div className="frame-double px-5 py-4">
+          <p className="smallcaps text-acero">Aviso</p>
+          <p className="mt-2 text-sm leading-relaxed text-foreground">
+            Ningún equipo está dando señales. Lo probable es que el servidor
+            haya estado caído, no que todos los agentes fallaran a la vez:
+            los silencios de abajo no cuentan como manipulación.
+          </p>
         </div>
       )}
 
       {!data?.silence.serverLikelyDown && silentComputers.length > 0 && (
-        <section className="rounded-md border border-destructive/40 bg-destructive/5">
-          <header className="flex items-center gap-2 border-b border-destructive/20 px-4 py-3">
-            <WifiOff className="size-4 text-destructive" />
-            <h3 className="text-sm font-semibold">
-              Equipos sin agente ({silentComputers.length})
+        <section>
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h3 className="smallcaps text-destructive">
+              Equipos sin agente · {silentComputers.length}
             </h3>
-            <span className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+            <span className="smallcaps text-muted-foreground">
               Umbral: {data?.silence.thresholdMinutes} min
             </span>
-          </header>
-          <ul className="divide-y divide-border/60">
+          </div>
+          <ul className="mt-3 divide-y divide-border border-y border-border">
             {silentComputers.map((c) => (
-              <li key={c.id} className="flex items-center justify-between px-4 py-2.5 text-sm">
+              <li
+                key={c.id}
+                className="flex items-center justify-between py-3 text-sm"
+              >
                 <span className="font-medium text-destructive">
                   {c.name}
-                  <span className="ml-2 font-normal text-muted-foreground">{c.ipAddress}</span>
+                  <span className="ml-2 font-normal text-muted-foreground">
+                    {c.ipAddress}
+                  </span>
                 </span>
-                <span className="font-mono text-xs">
+                <span className="text-xs tabular-nums">
                   sin agente desde las {timeHHMM(c.silentSince)}
                 </span>
               </li>
@@ -170,133 +219,170 @@ export function UnlocksTab() {
         </section>
       )}
 
-      <section className="rounded-md border border-border bg-card">
-        <header className="flex items-center gap-2 border-b border-border px-4 py-3">
-          <ShieldAlert className="size-4 text-warning" />
-          <h3 className="text-sm font-semibold">
-            Bloqueados ahora ({data?.blockedNow.length ?? 0})
-          </h3>
-        </header>
-        {data && data.blockedNow.length === 0 ? (
-          <p className="px-4 py-4 text-sm text-muted-foreground">
-            Ningún dispositivo está esperando contraseña.
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-                  <th className="px-4 py-2">Equipo</th>
-                  <th className="px-4 py-2">Unidad</th>
-                  <th className="px-4 py-2">Dispositivo</th>
-                  <th className="px-4 py-2">Serial</th>
-                  <th className="px-4 py-2">Lista blanca</th>
-                  <th className="px-4 py-2">Desde</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/60">
-                {data?.blockedNow.map((p) => (
-                  <tr key={p.id}>
-                    <td className="px-4 py-2 font-medium">{p.pcName}</td>
-                    <td className="px-4 py-2 font-mono">{p.driveLetter}</td>
-                    <td className="px-4 py-2">{p.deviceLabel || "—"}</td>
-                    <td className="px-4 py-2 font-mono text-xs">{p.serialNumber || "—"}</td>
-                    <td className="px-4 py-2">{p.whitelisted ? "Conocido" : "Desconocido"}</td>
-                    <td className="px-4 py-2">{fmt(p.createdAt)}</td>
+      {/* ── Registro I · Bloqueados ahora ── */}
+      <section>
+        <RegistroHeader
+          numeral="I"
+          title="Bloqueados ahora"
+          count={data?.blockedNow.length ?? 0}
+        />
+        <div className="mt-4 border-t border-border">
+          {data && data.blockedNow.length === 0 ? (
+            <p className="py-5 text-sm text-muted-foreground">
+              Ningún dispositivo está esperando contraseña.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className={thClass}>Equipo</th>
+                    <th className={thClass}>Unidad</th>
+                    <th className={thClass}>Dispositivo</th>
+                    <th className={thClass}>Serial</th>
+                    <th className={thClass}>Lista blanca</th>
+                    <th className={thClass}>Desde</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {data?.blockedNow.map((p) => (
+                    <tr key={p.id}>
+                      <td className={`${tdClass} font-medium`}>{p.pcName}</td>
+                      <td className={`${tdClass} font-mono`}>
+                        {p.driveLetter}
+                      </td>
+                      <td className={tdClass}>{p.deviceLabel || "—"}</td>
+                      <td className={`${tdClass} font-mono text-xs`}>
+                        {p.serialNumber || "—"}
+                      </td>
+                      <td className={tdClass}>
+                        {p.whitelisted ? "Conocido" : "Desconocido"}
+                      </td>
+                      <td className={`${tdClass} tabular-nums`}>
+                        {fmt(p.createdAt)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </section>
 
-      <section className="rounded-md border border-border bg-card">
-        <header className="flex items-center gap-2 border-b border-border px-4 py-3">
-          <KeyRound className="size-4 text-success" />
-          <h3 className="text-sm font-semibold">
-            En uso tras desbloqueo ({data?.activeUnlocked.length ?? 0})
-          </h3>
-        </header>
-        {data && data.activeUnlocked.length === 0 ? (
-          <p className="px-4 py-4 text-sm text-muted-foreground">
-            Ningún dispositivo desbloqueado sigue conectado.
-          </p>
-        ) : (
-          <ul className="divide-y divide-border/60">
-            {data?.activeUnlocked.map((p) => (
-              <li key={p.id} className="flex items-center justify-between px-4 py-2.5 text-sm">
-                <span>
-                  <span className="font-medium">{p.pcName}</span>
-                  <span className="ml-2 font-mono text-xs">{p.driveLetter}</span>
-                  <span className="ml-2 text-muted-foreground">{p.deviceLabel || ""}</span>
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  desbloqueado por {p.unlockedBy?.username ?? "—"} · {fmt(p.unlockedAt)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
+      {/* ── Registro II · En uso tras desbloqueo ── */}
+      <section>
+        <RegistroHeader
+          numeral="II"
+          title="En uso tras desbloqueo"
+          count={data?.activeUnlocked.length ?? 0}
+        />
+        <div className="mt-4 border-t border-border">
+          {data && data.activeUnlocked.length === 0 ? (
+            <p className="py-5 text-sm text-muted-foreground">
+              Ningún dispositivo desbloqueado sigue conectado.
+            </p>
+          ) : (
+            <ul className="divide-y divide-border">
+              {data?.activeUnlocked.map((p) => (
+                <li
+                  key={p.id}
+                  className="flex items-center justify-between py-3 text-sm"
+                >
+                  <span>
+                    <span className="font-medium">{p.pcName}</span>
+                    <span className="ml-2 font-mono text-xs">
+                      {p.driveLetter}
+                    </span>
+                    <span className="ml-2 text-muted-foreground">
+                      {p.deviceLabel || ""}
+                    </span>
+                  </span>
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    desbloqueado por {p.unlockedBy?.username ?? "—"} ·{" "}
+                    {fmt(p.unlockedAt)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </section>
 
-      <section className="rounded-md border border-border bg-card">
-        <header className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3">
-          <h3 className="text-sm font-semibold">Historial de intentos</h3>
-          <select
-            value={resultFilter}
-            onChange={(e) => setResultFilter(e.target.value)}
-            className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-          >
-            <option value="">Todos los resultados</option>
-            {Object.entries(RESULT_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-          <input
-            value={pcFilter}
-            onChange={(e) => setPcFilter(e.target.value)}
-            placeholder="Filtrar por equipo…"
-            className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+      {/* ── Registro III · Historial de intentos ── */}
+      <section className="flex flex-1 flex-col">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <RegistroHeader
+            numeral="III"
+            title="Historial de intentos"
+            count={data?.attempts.length}
           />
-        </header>
-        <div className="overflow-x-auto">
+          <div className="flex flex-wrap items-center gap-5">
+            <label className="flex flex-col gap-1.5">
+              <span className="smallcaps text-muted-foreground">
+                Resultado
+              </span>
+              <select
+                value={resultFilter}
+                onChange={(e) => setResultFilter(e.target.value)}
+                className="border-b border-input bg-transparent py-1.5 text-sm outline-none transition-colors focus:border-ring"
+              >
+                <option value="">Todos los resultados</option>
+                {Object.entries(RESULT_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="smallcaps text-muted-foreground">Equipo</span>
+              <input
+                value={pcFilter}
+                onChange={(e) => setPcFilter(e.target.value)}
+                placeholder="Filtrar por equipo…"
+                className="border-b border-input bg-transparent py-1.5 text-sm outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-ring"
+              />
+            </label>
+          </div>
+        </div>
+        <div className="mt-4 overflow-x-auto border-t border-border">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-                <th className="px-4 py-2">Cuándo</th>
-                <th className="px-4 py-2">Equipo</th>
-                <th className="px-4 py-2">Usuario intentado</th>
-                <th className="px-4 py-2">Serial</th>
-                <th className="px-4 py-2">Resultado</th>
-                <th className="px-4 py-2">Origen</th>
+              <tr className="border-b border-border">
+                <th className={thClass}>Cuándo</th>
+                <th className={thClass}>Equipo</th>
+                <th className={thClass}>Usuario intentado</th>
+                <th className={thClass}>Serial</th>
+                <th className={thClass}>Resultado</th>
+                <th className={thClass}>Origen</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border/60">
+            <tbody className="divide-y divide-border">
               {data?.attempts.map((a) => (
-                <tr
-                  key={a.id}
-                  className={a.adminUnlock ? "bg-warning/5" : undefined}
-                >
-                  <td className="px-4 py-2 whitespace-nowrap">{fmt(a.createdAt)}</td>
-                  <td className="px-4 py-2 font-medium">{a.pcName}</td>
-                  <td className="px-4 py-2">
+                <tr key={a.id}>
+                  <td className={`${tdClass} whitespace-nowrap tabular-nums`}>
+                    {fmt(a.createdAt)}
+                  </td>
+                  <td className={`${tdClass} font-medium`}>{a.pcName}</td>
+                  <td className={tdClass}>
                     {a.usernameTried}
                     {a.adminUnlock && (
-                      <span className="ml-2 rounded bg-warning/15 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-warning">
+                      <span className="smallcaps ml-2.5 text-warning">
                         con cuenta admin
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-2 font-mono text-xs">{a.serialNumber || "—"}</td>
-                  <td className="px-4 py-2">
+                  <td className={`${tdClass} font-mono text-xs`}>
+                    {a.serialNumber || "—"}
+                  </td>
+                  <td className={tdClass}>
                     <span
                       className={
                         a.result === "SUCCESS" || a.result === "OFFLINE_OK"
                           ? "text-success"
-                          : a.result === "NOT_WHITELISTED" || a.result === "NOT_OWNER"
+                          : a.result === "NOT_WHITELISTED" ||
+                              a.result === "NOT_OWNER"
                             ? "text-warning"
                             : "text-destructive"
                       }
@@ -304,14 +390,14 @@ export function UnlocksTab() {
                       {RESULT_LABELS[a.result] ?? a.result}
                     </span>
                   </td>
-                  <td className="px-4 py-2 font-mono text-xs">
+                  <td className={`${tdClass} text-xs`}>
                     {a.origin === "OFFLINE_LOCAL" ? "Sin red (local)" : "En línea"}
                   </td>
                 </tr>
               ))}
               {data && data.attempts.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-4 text-muted-foreground">
+                  <td colSpan={6} className="px-4 py-5 text-muted-foreground">
                     Sin intentos registrados con esos filtros.
                   </td>
                 </tr>
