@@ -1,496 +1,100 @@
-# 🔒 Sistema de Monitoreo USB
+# USB Monitor
 
-Un sistema completo para monitorear eventos de inserción de dispositivos USB en múltiples computadoras con bloqueo automático de sesión y panel de administración centralizado.
+Sistema de monitoreo y control de dispositivos USB para una red local de PCs con Windows. Lo empecé en septiembre de 2025 para resolver un problema concreto: en una oficina nadie sabe qué memorias USB se conectan a cada computadora, ni quién las puso. Este sistema lo registra todo y, más importante, decide en el momento si ese dispositivo se puede usar o no.
 
-## 🎯 Características Principales
+Son dos piezas:
 
-### 🔍 Monitoreo en Tiempo Real
+- **Un panel web** (Next.js + PostgreSQL) donde se ven los equipos, los eventos, la lista blanca de dispositivos y los usuarios.
+- **Un agente para Windows** (Python, corre como servicio) que vigila las conexiones USB de cada PC, aplica las reglas y reporta al panel.
 
-- Detección instantánea de dispositivos USB conectados
-- Bloqueo automático de sesión de Windows
-- Notificaciones inmediatas al servidor central
+## Capturas
 
-### 📊 Panel de Administración
+Panel de resumen, con los equipos y eventos en vivo:
 
-- Dashboard web con estadísticas en tiempo real
-- Lista detallada de eventos USB
-- Monitoreo de computadoras activas
-- Auto-refresco cada 30 segundos
+![Panel de resumen](docs/capturas/02-panel.png)
 
-### 🗄️ Base de Datos Centralizada
+La pantalla de acceso:
 
-- Almacenamiento de todos los eventos USB
-- Registro de computadoras monitoreadas
-- Historial completo con fechas y horas
-- Motor PostgreSQL 18 con Prisma ORM
+![Acceso al panel](docs/capturas/01-login.png)
 
-### 🌐 Descubrimiento y Estado de Red (Nuevo)
+La página de desbloqueo, que es el respaldo cuando la ventana del agente no puede abrirse:
 
-- Escaneo de red (subred /24 local autodetectada o especificada) para encontrar hosts activos.
-- Intento de detección de agente/servicio mediante petición HTTP a puerto 5001 (`/health`).
-- Actualización de la tabla `computers` con flags `serviceInstalled`, `serviceRunning`, `lastServiceCheck`.
-- Endpoint POST `/api/network-scan` para lanzar escaneo bajo demanda.
+![Página de desbloqueo](docs/capturas/03-desbloquear.png)
 
-### �️ Whitelist Automática de Dispositivos (Nuevo)
+## Cómo funciona un bloqueo, paso a paso
 
-- Registra seriales autorizados desde el dashboard con alias y notas.
-- El agente de Windows consulta la whitelist antes de bloquear un USB.
-- Las memorias aprobadas se habilitan de inmediato sin intervención manual.
-- Eventos y estadísticas incluyen dispositivos whitelisted para auditoría rápida.
+Esto es lo que pasa de verdad cuando alguien conecta una memoria USB a una PC con el agente instalado:
 
-### 🛠️ Instalación Remota
+1. El agente detecta la inserción por eventos de Windows (WMI), sin estar preguntando cada pocos segundos. También revisa lo que ya esté conectado al arrancar.
+2. La unidad queda **bloqueada al momento**: se pone en solo lectura con `diskpart` mientras se decide. Antes el agente apagaba la PC en estos casos; lo quité, era una exageración que podía hacer perder trabajo a cualquiera.
+3. Se consulta la lista blanca por número de serie:
+   - **Si el dispositivo NO está en la lista blanca**, ahí termina todo. No hay contraseña que valga, ni siquiera la del administrador. En la pantalla del usuario sale un cartel avisando que el USB no está en la lista blanca y será bloqueado, y el evento queda registrado en el panel.
+   - **Si SÍ está en la lista blanca**, toca el segundo factor: una ventana pide el usuario y la contraseña **del dueño de esa PC** (o la del administrador). Es decir, la lista blanca dice "este pendrive es conocido" y la contraseña comprueba "y tú eres quien debería estar usando esta computadora". Que un dispositivo sea conocido no basta, porque cualquiera puede tomar prestado un pendrive autorizado.
+4. Si la contraseña es correcta, la unidad se libera y se puede usar **hasta que se extraiga**. Al volver a conectarla, se pide la contraseña de nuevo.
+5. Todo queda registrado: conexiones, desconexiones, intentos de desbloqueo fallidos, intentos con la contraseña de otra persona (el sistema comprueba que la cuenta sea la dueña de esa PC, no vale la contraseña de un compañero) y desbloqueos correctos, con quién los hizo.
 
-- Endpoint POST `/api/remote-install` (solo administradores) en dos fases — `copy` e `install` — con dos transportes:
-  - **SSH** (`src/lib/sshService.ts`): copia por SFTP y ejecuta `Install-Service.ps1` en el destino.
-  - **WinRM** (`src/lib/winrmService.ts`): WS-Man sobre HTTP 5985 / HTTPS 5986, con autenticación Basic (usuarios locales) o NTLM (cuentas de dominio). La copia sube los archivos en trozos base64 y verifica el tamaño final; la instalación sigue los mismos pasos que por SSH.
-- **Progreso en vivo (SSE):** si la llamada trae `stream: true`, la respuesta es `text/event-stream` con eventos `progress` por etapa y un evento `result` final. El diálogo de instalación del dashboard usa este modo.
-- Requisitos WinRM en el equipo destino (una vez, como administrador): `winrm quickconfig`, habilitar la autenticación (`winrm set winrm/config/service/Auth '@{Basic="true";Negotiate="true"}'`) y, si se usa HTTP, `winrm set winrm/config/service '@{AllowUnencrypted="true"}'`.
-- `POST /api/service/refresh-host` incluye el estado WinRM del equipo mediante la sonda WS-Man *Identify* (no requiere credenciales): si el listener responde, el campo `winrm.available` va en `true` con la versión de protocolo.
+Detalles de implementación que me parecen importantes:
 
-## 🏗️ Arquitectura del Sistema
+- Como el agente es un servicio de Windows (sesión 0), **no puede mostrar ventanas**. Por eso existe un proceso compañero aparte, `usb_prompt.py`, que corre en la sesión del usuario y es el que pinta la ventana de la contraseña. Ese proceso no decide nada: manda la contraseña directa al servidor y el servicio solo libera la unidad cuando el servidor se lo confirma por su propio canal. Si alguien cierra la ventana, no gana nada; el bloqueo lo mantiene el servicio. Y si cierra el proceso, el servicio lo vuelve a lanzar.
+- Las contraseñas se verifican en el servidor con Argon2, con el mismo criterio que el login del panel: 5 intentos fallidos bloquean la cuenta 15 minutos.
+- Cada usuario del panel tiene asignada su computadora. Ese vínculo es el que define quién es "el dueño" para el desbloqueo.
 
-### Servidor Central (Next.js + PostgreSQL)
+## El panel
 
-- **Framework**: Next.js 15 con TypeScript
-- **Base de Datos**: PostgreSQL 18+ con Prisma ORM
-- **UI**: shadcn/ui con Tailwind CSS
-- **API**: Endpoints REST para eventos y computadoras
+- Resumen en vivo: equipos bajo control, eventos recientes, tendencia de autorizaciones y bloqueos, salud de los agentes.
+- Lista de eventos con filtros, y lista blanca administrable (alta y baja de seriales con etiqueta y notas).
+- Gestión de usuarios y de equipos, y asignación de cada usuario a su PC.
+- Escáner de red para descubrir equipos y comprobar si tienen el agente instalado y corriendo.
+- Instalación remota del agente por SSH o por WinRM, con el progreso en vivo en pantalla.
 
-### Cliente Windows (Python)
+## Instalación
 
-- **Detección**: Monitoreo de dispositivos USB en tiempo real
-- **Seguridad**: Bloqueo automático de sesión
-- **Comunicación**: Envío de eventos al servidor central
-- **Servicio**: Instalación como servicio de Windows
+### El panel
 
-## 🚀 Configuración Rápida
-
-### 1. Servidor Central
+Necesitas Node.js 20+ y un PostgreSQL accesible.
 
 ```bash
-# Instalar dependencias
 npm install
-
-# Crear bases de datos en PostgreSQL (principal y shadow para Prisma)
-createdb monitor_usb
-createdb monitor_usb_shadow
-
-# Asegúrate de actualizar las credenciales en .env antes de migrar
-
-# Aplicar migraciones (incluye whitelist)
-npm run db:migrate
-
-# Iniciar servidor de desarrollo
-npm run dev
+# crea un .env con DATABASE_URL y SESSION_SECRET
+npx prisma db push     # crea las tablas
+npm run db:seed        # datos iniciales (revisa prisma/seed.ts antes)
+npm run dev            # desarrollo
+npm run build          # producción (se sirve con el server.ts del repo)
 ```
 
-Accede al panel en: `http://localhost:3000`
+El primer usuario administrador se crea con `npm run user:create`.
 
-### 🔐 Configuración de Seguridad
+### El agente (en cada PC Windows)
 
-Para entornos productivos se añadieron controles obligatorios:
-
-- Define `ALLOWED_ORIGINS` con la lista de orígenes confiables separados por coma (ejemplo: `https://dashboard.empresa.com,https://usbmonitor.empresa.com`).
-- Habilita TLS aportando certificados mediante variables de entorno:
-  - `TLS_KEY_PATH` y `TLS_CERT_PATH` con rutas absolutas o relativas al proyecto, **o**
-  - `TLS_KEY` y `TLS_CERT` con el contenido PEM codificado (útil para orquestadores secretos).
-- Si la aplicación se sirve detrás de un proxy que ya termina TLS, deja `TLS_*` vacías y asegúrate de que el proxy envíe la cabecera `X-Forwarded-Proto`.
-- Usa `ENFORCE_HTTPS_REDIRECT=false` únicamente en entornos controlados donde mantengas tráfico HTTP por motivos de depuración.
-- Ajusta `ALLOWED_ORIGINS` para que coincida con la configuración del proxy/reverse proxy; estos valores se reutilizan en la política CSP y en la negociación de Socket.IO.
-- Verifica que el servidor web, servidor de aplicación y balanceadores no eliminen ni sobreescriban la cabecera `Content-Security-Policy`. La cabecera se genera por petición en el middleware con `nonce`, por lo que si el proxy la redefine debe respetar el valor que entrega la app.
-
-### 2. Cliente Windows
-
-#### Requisitos
-
-- Python 3.x
-- Bibliotecas necesarias:
-  ```bash
-  pip install pywin32 requests pyinstaller
-  ```
-
-#### Configuración
-
-1. Modifica el archivo `detector_usb_fixed.py`:
-
-   ```python
-   SERVER_URL = "http://IP_DEL_SERVIDOR:3000/api/usb-event"
-   ```
-
-2. Instala el servicio:
-
-   ```bash
-   python detector_usb_fixed.py --install
-   ```
-
-3. Inicia el servicio:
-   ```bash
-   net start USBMonitor
-   ```
-
-## 📋 API Endpoints (Autenticados)
-
-Todos los endpoints (excepto `/api/auth/login`, `/api/auth/logout`, `/api/auth/register`, `/api/health`) requieren sesión válida (cookie HttpOnly `session`) o cabecera `Authorization: ApiKey <API_KEY>`.
-
-### Autenticación
-
-- `POST /api/auth/login` (username, password) -> crea cookie de sesión
-  - Rate limiting: 30 intentos por IP/5min, 5 por usuario/5min
-  - Bloqueo automático tras 7 intentos fallidos (15 minutos)
-  - Usuarios con rol "user" solo pueden acceder desde su computadora asignada
-- `POST /api/auth/logout` -> invalida sesión
-- `POST /api/auth/register` (username, password) -> crea nuevo usuario (⚠️ sin autenticación, considerar deshabilitar en producción)
-- `POST /api/auth/apikey` -> rota API Key (sesión requerida)
-- `GET /api/auth/session` -> obtiene información del usuario actual y renueva sesión
-- `POST /api/auth/extend` -> extiende sesión con TTL personalizado (body opcional: `{ "ttlSeconds": 7200 }`)
-- `HEAD|GET /api/auth/ping` -> verificación ligera de sesión (200 OK o 401)
-
-## 🔐 Login Web
-
-### Para Administradores
-
-Accede a `/login`, ingresa credenciales de administrador. Serás redirigido al dashboard principal con acceso completo a todas las computadoras, eventos y configuración.
-
-### Para Usuarios Normales
-
-Los usuarios con rol "user" tienen restricciones adicionales:
-
-- Solo pueden iniciar sesión desde su computadora asignada (verificado por hostname)
-- Son redirigidos a `/unlocked` tras el login
-- Ven únicamente los eventos y dispositivos USB de su computadora asignada
-- Pueden autorizar el desbloqueo de sus propios dispositivos USB pendientes
-
-La sesión se maneja con cookie HttpOnly rotativa con:
-
-- TTL por defecto de 1 hora
-- Renovación automática (sliding sessions)
-- Soporte para rotación de claves (múltiples secrets)
-- Rehashing progresivo de passwords antiguos a Argon2
-
-## 👤 Gestión de Usuarios (CLI)
-
-Creación de usuarios (con parámetros opcionales):
+Como administrador, dentro de la carpeta `USBMonitor`:
 
 ```powershell
-# Crear usuario básico (rol: user por defecto)
-npm run user:create -- <username> <password>
-
-# Crear con apiKey específica (opcional)
-npm run user:create -- <username> <password> <apiKey>
-
-# Crear con rol (user o admin)
-npm run user:create -- <username> <password> <apiKey> <role>
-
-# Crear y asignar computadora
-npm run user:create -- <username> <password> <apiKey> <role> <computerName>
+.\install_dependencies.ps1
+.\Install-Service.ps1
 ```
 
-Asignar computadora a usuario:
+El instalador registra el servicio `USBMonitorService` con recuperación automática (si el servicio se cae, Windows lo reinicia al minuto) y deja programado el inicio del proceso compañero al iniciar sesión. La dirección del servidor se configura con las variables de entorno `USB_MONITOR_SERVER_HOST` y `USB_MONITOR_SERVER_PORT`.
 
-```powershell
-npm run user:assign-computer -- <username> <computerName>
+## Estructura del repo
+
+```
+src/                 Panel (Next.js): páginas, API y lógica de servidor
+prisma/              Esquema de la base de datos y migraciones
+USBMonitor/          Agente Windows (servicio Python), compañero de
+                     desbloqueo (usb_prompt.py) e instaladores
+docs/capturas/       Las capturas de este README
+INSPIRACION.md       Referencias de diseño de la interfaz
 ```
 
-Listar usuarios:
+## Limitaciones, dichas claramente
 
-```powershell
-npm run user:list
-```
+- Esto es software en el espacio de usuario, no un driver. Un usuario con permisos de administrador local en su PC puede detener el servicio si sabe cómo. Lo que sí hace el sistema es **detectarlo**: cada equipo reporta su actividad y el panel marca los que dejan de dar señales, con la hora de la última señal. Detecta y deja evidencia; no lo impide.
+- Si el servidor no responde, el agente mantiene bloqueado lo que no pueda verificar. Hoy los eventos generados sin red se pueden perder (la cola es en memoria); la cola persistente está en el plan de trabajo.
+- El bloqueo por `diskpart` es a nivel de disco de solo lectura. El siguiente paso planeado es desactivar el dispositivo a nivel de PnP, que es más difícil de saltar.
+- Solo Windows en el lado del agente. El panel corre donde corra Node.
 
-Eliminar usuario:
+## Estado del proyecto
 
-```powershell
-npm run user:delete -- <username>
-```
+Lo uso como proyecto personal y de aprendizaje, y está en desarrollo activo por ramas. La rama `desbloqueo-contrasena` trae el flujo de desbloqueo con contraseña descrito arriba. En la lista de pendientes: bloqueo a nivel de PnP, cola de eventos persistente para cuando no haya red, y una vista de auditoría de intentos dentro del panel.
 
-Rotar API Key:
-
-```powershell
-npm run user:rotate-key -- <username>
-```
-
-Listar computadoras registradas:
-
-```powershell
-npm run computer:list
-```
-
-Usar API Key directamente para integraciones headless:
-
-```powershell
-curl -H "Authorization: ApiKey uk_xxx" "http://HOST:3000/api/network-scan" -X POST -H "Content-Type: application/json" -d '{}'
-```
-
-Regenerar API Key:
-
-```powershell
-curl -X POST "http://HOST:3000/api/auth/apikey" -H "Authorization: ApiKey uk_xxx"
-```
-
-### Eventos USB
-
-- `POST /api/usb-event` - Recibir nuevos eventos (sin autenticación para agentes)
-- `GET /api/usb-event` - Obtener lista de eventos (últimos 50)
-- `GET /api/usb-event/user-devices` - Eventos y USBs de la computadora asignada al usuario
-- `POST /api/usb-event/authorize` - Autorizar desbloqueo de USB específico (body: `{ "driveLetter": "E:" }`)
-- `GET /api/usb-event/pending-unlock` - Obtener desbloqueos pendientes
-- `POST /api/usb-event/connected-status` - Enviar estado de USBs conectados (desde agente)
-
-### Computadoras
-
-- `GET /api/computers` - Obtener lista de computadoras registradas
-
-### Escaneo de Red
-
-- `POST /api/network-scan` Body opcional `{ "cidr": "192.168.1.0/24" }`. Si se omite, autodetecta la primera interfaz IPv4 y asume `/24`.
-
-### Whitelist de Dispositivos
-
-- `GET /api/whitelist` (admin) - Lista seriales autorizados con metadatos.
-- `POST /api/whitelist` (admin) - Agrega un serial con alias/notas.
-- `PATCH /api/whitelist/:id` (admin) - Actualiza alias o notas.
-- `DELETE /api/whitelist/:id` (admin) - Elimina un serial.
-- `GET /api/whitelist/check?serial=XYZ` - Verificación rápida (sesión o API Key), usada por el agente.
-
-### Instalación y Control Remoto de Servicios
-
-- `POST /api/remote-install` - Instalar agente en computadora remota (body: `{ "ip": "A.B.C.D" }`)
-- `POST /api/service/install` - Instalar servicio USB en host remoto
-- `POST /api/service/uninstall` - Desinstalar servicio
-- `POST /api/service/start` - Iniciar servicio
-- `POST /api/service/stop` - Detener servicio
-- `POST /api/service/status` - Consultar estado del servicio
-- `POST /api/service/refresh-host` - Actualizar información de host específico
-
-Todos los endpoints de `/api/service/` requieren body con `{ "ip": "A.B.C.D" }`.
-
-## 🎨 Panel de Administración
-
-### Estadísticas en Tiempo Real
-
-- **Computadoras Activas**: Número de PCs monitoreadas
-- **Eventos Totales**: Contador de eventos registrados
-- **Eventos Recientes**: Eventos en la última hora
-- **Última Actualización**: Hora del último refresco
-- **Whitelist Activa**: Seriales permitidos cargados desde el panel
-
-### Gestión de Eventos
-
-- Lista completa con detalles:
-  - Nombre de computadora
-  - Usuario de la sesión
-  - Dirección IP
-  - Tipo de evento
-  - Fecha y hora exacta
-
-### Monitoreo de Computadoras
-
-- Estado de cada computadora (Activo/Inactivo)
-- Última conexión registrada
-- Dirección IP asignada
-- Fecha de registro en el sistema
-
-### Whitelist de Dispositivos
-
-- Alta rápida de seriales con alias y notas descriptivas.
-- Eliminación inmediata de dispositivos revocados.
-- Vista tabular con creador, fecha de alta y observaciones.
-- Integración directa con el agente: los seriales listados se desbloquean automáticamente.
-
-## 🔒 Características de Seguridad
-
-### En el Cliente (Agente Windows)
-
-- **Bloqueo Automático**: La sesión se bloquea instantáneamente al detectar un USB no autorizado
-- **Protección Preventiva**: Unidades USB se configuran en modo solo lectura antes de bloquear
-- **Whitelist Dinámica**: El servicio consulta el backend antes de bloquear, permitiendo dispositivos autorizados sin intervención
-- **Normalización de Seriales**: Limpieza y validación robusta de números de serie de dispositivos
-- **Monitoreo Continuo**: Reporte periódico de dispositivos conectados y estado del servicio
-- **Servidor HTTP Embebido**: Endpoint `/health` en puerto 5001 para verificaciones de estado
-
-### En el Servidor (Backend)
-
-- **Autenticación Multi-Factor**:
-  - Sesiones basadas en cookies HttpOnly firmadas con HMAC
-  - API Keys para integraciones headless
-  - Rotación de secretos de sesión (soporte para múltiples claves)
-- **Rate Limiting Avanzado**:
-  - 30 intentos de login por IP cada 5 minutos
-  - 5 intentos por usuario cada 5 minutos
-  - Delays simulados para prevenir timing attacks
-- **Protección de Cuentas**:
-  - Bloqueo automático tras 7 intentos fallidos (15 minutos)
-  - Rehashing progresivo de passwords antiguos a Argon2
-  - Contador de intentos fallidos por usuario
-- **Control de Acceso Basado en Roles**:
-  - Administradores: acceso completo al sistema
-  - Usuarios normales: restringidos a su computadora asignada
-  - Validación de hostname en login para usuarios normales
-- **Auditoría Completa**:
-  - Registro de todos los eventos USB con timestamps
-  - Historial de conexiones/desconexiones de dispositivos
-  - Tracking de desbloqueos autorizados y pendientes
-  - Logs de verificaciones de whitelist
-- **Sesiones Seguras**:
-  - TTL configurable (por defecto 1 hora, máximo 4 horas)
-  - Renovación automática (sliding sessions)
-  - Revocación inmediata en logout
-
-## 🛠️ Comandos del Cliente Windows
-
-```bash
-# Instalar servicio
-python detector_usb_fixed.py --install
-
-# Desinstalar servicio
-python detector_usb_fixed.py --uninstall
-
-# Probar conexión
-python detector_usb_fixed.py --test
-
-# Ejecutar en modo normal (para pruebas)
-python detector_usb_fixed.py
-
-# Ver ayuda
-python detector_usb_fixed.py --help
-```
-
-## 📊 Estructura de la Base de Datos
-
-### Tabla `usb_events`
-
-- `id`: Identificador único del evento
-- `pcName`: Nombre de la computadora
-- `pcIp`: Dirección IP de la computadora
-- `pcUser`: Usuario de la sesión
-- `event`: Descripción del evento
-- `timestamp`: Fecha y hora del evento
-- `createdAt`: Fecha de creación del registro
-
-### Tabla `computers`
-
-- `id`: Identificador único
-- `name`: Nombre de la computadora (único)
-- `ipAddress`: Dirección IP
-- `lastSeen`: Última conexión detectada
-- `isActive`: Estado de actividad
-- `serviceInstalled`: (bool) si el escaneo detectó endpoint saludable
-- `serviceRunning`: (bool) si responde en el momento del escaneo
-- `lastServiceCheck`: Fecha/hora del último intento de verificación
-- `agentVersion`: Versión del ejecutable/agente (opcional)
-- `createdAt`: Fecha de registro
-- `updatedAt`: Fecha de última actualización
-- Relación: `users` (usuarios asignados a esta computadora)
-
-### Tabla `usb_whitelist`
-
-- `id`: Identificador único
-- `serialNumber`: Serial normalizado del dispositivo (único)
-- `label`: Alias descriptivo opcional
-- `notes`: Comentarios o restricciones
-- `createdAt` / `updatedAt`: Timestamps automáticos
-- `createdById`: Usuario que autorizó el serial (nullable)
-
-### Tabla `users`
-
-- `id`: Identificador único
-- `username`: Nombre de usuario (único)
-- `passwordHash`: Hash Argon2 de la contraseña
-- `apiKey`: Clave API para autenticación headless (única)
-- `role`: Rol del usuario ("admin" o "user")
-- `computerId`: ID de la computadora asignada (nullable)
-- `failedAttempts`: Contador de intentos fallidos de login
-- `lockedUntil`: Fecha hasta la cual la cuenta está bloqueada (nullable)
-- `createdAt` / `updatedAt`: Timestamps automáticos
-- Relación: `computer` (computadora asignada), `whitelistEntries` (seriales autorizados)
-
-### Tabla `usb_connections`
-
-- `id`: Identificador único
-- `pcName`: Nombre de la computadora
-- `driveLetter`: Letra de unidad asignada
-- `volumeName`: Nombre del volumen
-- `serialNumber`: Serial del dispositivo USB
-- `model`: Modelo del dispositivo
-- `size`: Tamaño en bytes (BigInt)
-- `connectedAt`: Fecha/hora de conexión
-- `disconnectedAt`: Fecha/hora de desconexión (nullable)
-- `lastSeen`: Última vez detectado conectado
-- `isConnected`: Estado actual de conexión (bool)
-
-### Tabla `pending_unlocks`
-
-- `id`: Identificador único
-- `pcName`: Nombre de la computadora
-- `driveLetter`: Letra de unidad a desbloquear
-- `createdAt`: Fecha de creación de la solicitud
-- `expiresAt`: Fecha de expiración
-- `unlocked`: Si ya fue desbloqueado (bool)
-
-## 🔧 Personalización
-
-### Cambiar Intervalo de Actualización
-
-Modifica en `src/app/page.tsx`:
-
-```javascript
-const interval = setInterval(fetchData, 30000); // Cambiar 30000 por el tiempo deseado en ms
-```
-
-### Modificar URL del Servidor
-
-En el script Python, cambia:
-
-```python
-SERVER_URL = "http://nueva-ip:3000/api/usb-event"
-```
-
-### Personalizar Interfaz
-
-- Componentes en `src/components/ui/`
-- Estilos en `src/app/globals.css`
-- Configuración en `tailwind.config.ts`
-
-## 🚨 Solución de Problemas
-
-### Problemas Comunes
-
-1. **El servicio no se instala**: Ejecutar como administrador
-2. **Los eventos no llegan**: Verificar la URL del servidor y conectividad de red
-3. **El dashboard no se actualiza**: Revisar la consola del navegador por errores
-
-### Verificación de Conexión
-
-```bash
-# Probar conexión desde el cliente
-python detector_usb_fixed.py --test
-
-# Verificar estado del servicio
-sc query USBMonitor
-```
-
-## 📋 Requisitos del Sistema
-
-### Servidor
-
-- Node.js 18+
-- 512MB RAM mínimo
-- 1GB espacio en disco
-
-### Cliente Windows
-
-- Windows 7/8/10/11
-- Python 3.7+
-- 256MB RAM
-- Permisos de administrador
-
-## 📄 Documentación Adicional
-
-Para más detalles, consulta:
-
-- [Guía Completa de Configuración](USB_MONITORING_GUIDE.md)
-- [Script Python Corregido](detector_usb_fixed.py)
-
----
-
-🔒 **Mantén tu infraestructura segura con monitoreo USB proactivo**
+Si algo de este README no coincide con lo que hace el código, el código manda y el README está mal: avísame en un issue.
