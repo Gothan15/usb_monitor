@@ -133,10 +133,10 @@ export function StatCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          <p className="font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
             {title}
           </p>
-          <p className="mt-1 text-2xl font-semibold tracking-tight text-foreground tabular-nums font-display">
+          <p className="mt-1.5 text-3xl font-bold tracking-tight text-foreground tabular-nums font-display">
             {value}
           </p>
           {subtitle && (
@@ -166,7 +166,7 @@ export function StatCard({
           {icon && (
             <div
               className={cn(
-                "flex size-9 items-center justify-center rounded-lg bg-muted/50 transition-colors",
+                "flex size-9 items-center justify-center rounded-lg border border-border/60 bg-surface-2 transition-colors",
                 config.icon,
               )}
             >

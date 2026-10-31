@@ -147,7 +147,7 @@ export function AppShell({
         >
           {/* Brand */}
           <div className="flex h-20 items-center px-5 border-b border-sidebar-border">
-            <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-background/70 ring-1 ring-sidebar-border/80">
+            <div className="relative flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-sidebar-primary ring-1 ring-sidebar-border/80">
               <Image
                 src="/favicon.svg"
                 alt="USB Monitor"
@@ -155,6 +155,7 @@ export function AppShell({
                 height={24}
                 className="size-6"
               />
+              <span className="absolute right-1 top-1 size-1.5 rounded-full bg-sidebar-primary-foreground/90 dot-pulse" />
             </div>
             <AnimatePresence>
               {(sidebarExpanded || !isDesktop) && (
@@ -169,7 +170,7 @@ export function AppShell({
                     <span className="text-sm font-bold uppercase tracking-[0.2em] text-sidebar-foreground/80">
                       USB Monitor
                     </span>
-                    <span className="text-xs text-sidebar-foreground/50">
+                    <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-sidebar-foreground/50">
                       Centro de control
                     </span>
                   </div>
@@ -200,20 +201,20 @@ export function AppShell({
                     prefetch
                     onClick={() => setMobileMenuOpen(false)}
                     className={cn(
-                      "group relative flex items-center gap-4 rounded-xl p-3 text-sm font-medium outline-none transition-colors",
+                      "group relative flex items-center gap-4 rounded-lg p-3 text-sm font-medium outline-none transition-colors",
                       isActive
                         ? "text-sidebar-accent-foreground"
                         : "text-sidebar-foreground/70"
                     )}
                   >
                     {/* Hover Background */}
-                    <div className="absolute inset-0 rounded-xl bg-sidebar-accent/50 opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+                    <div className="absolute inset-0 rounded-lg bg-sidebar-accent/50 opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
                     
                     {/* Active Background */}
                     {isActive && (
                       <motion.div
                         layoutId="sidebar-active-bg"
-                        className="absolute inset-0 rounded-xl bg-sidebar-accent"
+                        className="absolute inset-0 rounded-lg bg-sidebar-accent"
                         transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
                       />
                     )}
@@ -263,7 +264,7 @@ export function AppShell({
                             initial={{ opacity: 0, scale: 0.8 }}
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 0.8 }}
-                            className="relative z-10 ml-auto inline-flex min-w-[24px] items-center justify-center rounded-md bg-muted px-2 py-0.5 text-xs font-semibold tabular-nums text-muted-foreground"
+                            className="relative z-10 ml-auto inline-flex min-w-[24px] items-center justify-center rounded-md bg-sidebar-primary/15 px-2 py-0.5 font-mono text-xs font-semibold tabular-nums text-sidebar-primary"
                           >
                             {item.badge}
                           </motion.span>
@@ -358,13 +359,13 @@ export function AppShell({
               {/* Live Sync Toggle */}
               {mounted && (
                 <div className="flex items-center gap-2 mr-2">
-                  <span className={cn("text-[10px] font-semibold uppercase tracking-wider hidden lg:inline-block", isLiveSyncEnabled ? "text-green-500" : "text-muted-foreground")}>
+                  <span className={cn("text-[10px] font-semibold uppercase tracking-wider hidden lg:inline-block", isLiveSyncEnabled ? "text-success" : "text-muted-foreground")}>
                     {isLiveSyncEnabled ? "Live" : "Paused"}
                   </span>
                   <Switch 
                     checked={isLiveSyncEnabled} 
                     onCheckedChange={toggleLiveSync}
-                    className="data-[state=checked]:bg-green-500 scale-75 lg:scale-100"
+                    className="data-[state=checked]:bg-success scale-75 lg:scale-100"
                   />
                 </div>
               )}
@@ -380,8 +381,8 @@ export function AppShell({
                 >
                   {mounted && isLiveSyncEnabled && (
                     <span className="absolute top-1.5 right-1.5 flex size-1.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full size-1.5 bg-green-500"></span>
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
+                      <span className="relative inline-flex rounded-full size-1.5 bg-success"></span>
                     </span>
                   )}
                   <motion.span
@@ -460,8 +461,12 @@ export function AppShell({
           )}
 
           {/* ── Content area ── */}
-          <main className="flex-1 overflow-y-auto scrollbar-thin">
-            <div className="mx-auto w-full max-w-[1400px] px-4 py-6 lg:px-6 lg:py-8">
+          <main className="relative flex-1 overflow-y-auto scrollbar-thin">
+            <div
+              aria-hidden
+              className="dot-grid pointer-events-none absolute inset-x-0 top-0 h-64 text-foreground opacity-40 [mask-image:linear-gradient(to_bottom,black,transparent)]"
+            />
+            <div className="relative mx-auto w-full max-w-[1400px] px-4 py-6 lg:px-6 lg:py-8">
               {children}
             </div>
           </main>
