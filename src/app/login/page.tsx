@@ -7,9 +7,6 @@ import {
   Eye,
   EyeOff,
   Usb,
-  ScanSearch,
-  ListChecks,
-  LockKeyhole,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Spinner } from "@/components/ui/spinner";
@@ -101,100 +98,88 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background lg:grid lg:grid-cols-[1.1fr_1fr]">
-      {/* Panel de marca — matriz de puntos, lenguaje técnico (INSPIRACION.md) */}
-      <div className="relative hidden overflow-hidden bg-sidebar text-sidebar-foreground lg:flex lg:flex-col lg:justify-between lg:p-12">
+    <div className="min-h-screen bg-background lg:grid lg:grid-cols-[1.15fr_1fr]">
+      {/* Panel de la casa — azul marino, serif editorial */}
+      <div className="relative hidden overflow-hidden bg-[#152238] text-[#EDE6D2] lg:flex lg:flex-col lg:justify-between lg:p-12">
         <div
           aria-hidden
-          className="dot-grid-dense absolute inset-0 text-sidebar-primary opacity-60 [mask-image:radial-gradient(ellipse_at_top_left,black,transparent_65%)]"
+          className="dot-grid absolute inset-0 text-[#EDE6D2] opacity-30"
         />
         <div className="relative flex items-center gap-3">
-          <div className="flex size-11 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+          <div className="flex size-11 items-center justify-center rounded-sm bg-[#EDE6D2] text-[#152238]">
             <Usb className="size-6" />
           </div>
           <div className="flex flex-col">
-            <span className="text-sm font-bold uppercase tracking-[0.22em]">
+            <span className="font-display text-lg font-bold leading-none tracking-tight">
               USB Monitor
             </span>
-            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-sidebar-foreground/60">
+            <span className="smallcaps mt-1.5 text-[#EDE6D2]/50">
               Centro de control
             </span>
           </div>
-          <span className="ml-auto inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-sidebar-foreground/70">
-            <span className="size-1.5 rounded-full bg-sidebar-primary dot-pulse" />
+          <span className="ml-auto inline-flex items-center gap-2 rounded-full border border-[#EDE6D2]/25 px-3 py-1.5 text-[11px] font-medium text-[#EDE6D2]/85">
+            <span className="dot-pulse size-1.5 rounded-full bg-emerald-300" />
             Sistema activo
           </span>
         </div>
 
         <div className="relative max-w-md">
-          <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-sidebar-primary">
-            Vigilancia de dispositivos
+          <p className="smallcaps text-[var(--brass)]">
+            Sistema interno
           </p>
-          <h1 className="mt-4 text-4xl font-bold leading-[1.08] tracking-tight text-sidebar-accent-foreground">
-            Cada USB que se conecta, queda registrado.
+          <h1 className="font-display mt-5 text-[2.75rem] font-bold leading-[1.08] tracking-tight">
+            Monitoreo de dispositivos USB
           </h1>
-          <ul className="mt-8 space-y-4 text-sm text-sidebar-foreground/85">
-            <li className="flex items-start gap-3">
-              <ScanSearch className="mt-0.5 size-4 shrink-0 text-sidebar-primary" />
-              Detección y registro de eventos en tiempo real
-            </li>
-            <li className="flex items-start gap-3">
-              <ListChecks className="mt-0.5 size-4 shrink-0 text-sidebar-primary" />
-              Lista blanca de dispositivos autorizados por número de serie
-            </li>
-            <li className="flex items-start gap-3">
-              <LockKeyhole className="mt-0.5 size-4 shrink-0 text-sidebar-primary" />
-              Bloqueo de sesión y unidades en solo lectura ante intrusos
-            </li>
-          </ul>
+          <p className="mt-8 border-t border-[#EDE6D2]/15 pt-6 text-sm leading-relaxed text-[#EDE6D2]/75">
+            Panel central de los agentes instalados en los equipos.
+            Acceso solo para el personal autorizado: las conexiones de
+            dispositivos y los intentos de acceso quedan registrados.
+          </p>
         </div>
 
-        <p className="relative font-mono text-[10px] uppercase tracking-[0.18em] text-sidebar-foreground/45">
+        <p className="smallcaps relative text-[#EDE6D2]/40">
           Panel central · Agentes Windows · SSE en vivo
         </p>
       </div>
 
-      {/* Formulario */}
-      <div className="relative flex min-h-screen items-center justify-center p-4 lg:min-h-0">
-        <div
-          aria-hidden
-          className="dot-grid absolute inset-x-0 top-0 h-56 text-foreground opacity-40 [mask-image:linear-gradient(to_bottom,black,transparent)] lg:hidden"
-        />
+      {/* Formulario — papel enmarcado */}
+      <div className="aurora-scene relative flex min-h-screen items-center justify-center p-4 lg:min-h-0">
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="relative w-full max-w-sm"
+          transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+          className="frame-double relative w-full max-w-sm bg-card p-8"
         >
-          <div className="mb-8 flex items-center gap-3 lg:hidden">
-            <div className="flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+          <div className="mb-7 flex items-center gap-3 lg:hidden">
+            <div className="bg-aurora flex size-10 items-center justify-center rounded-sm text-[#EDE6D2]">
               <Usb className="size-5" />
             </div>
-            <span className="text-sm font-bold uppercase tracking-[0.22em]">
+            <span className="font-display text-lg font-bold tracking-tight">
               USB Monitor
             </span>
           </div>
 
-          <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-primary">
+          <p className="smallcaps text-[var(--brass)]">
             {pcName ? "Desbloquear dispositivo USB" : "Acceso seguro al panel"}
           </p>
-          <h2 className="mt-2 text-2xl font-bold tracking-tight">
+          <h2 className="font-display mt-2 text-[1.8rem] font-bold tracking-tight">
             Monitoreo USB
           </h2>
+          <div className="rule-brass mt-4 w-16" />
 
-          <div className="mt-8">
+          <div className="mt-7">
             {error && (
-              <Alert variant="destructive" className="mb-4">
+              <Alert variant="destructive" className="mb-4 rounded">
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="space-y-2">
-                <label className="font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                <label className="smallcaps text-muted-foreground">
                   Usuario
                 </label>
                 <input
-                  className="w-full rounded-md bg-card border border-input px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                  className="w-full rounded border border-input bg-background px-3.5 py-2.5 text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brass)]/50"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="admin"
@@ -203,13 +188,13 @@ export default function LoginPage() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                <label className="smallcaps text-muted-foreground">
                   Contraseña
                 </label>
                 <div className="relative">
                   <input
                     type={showPassword ? "text" : "password"}
-                    className="w-full rounded-md bg-card border border-input px-3 py-2 text-sm pr-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                    className="w-full rounded border border-input bg-background px-3.5 py-2.5 pr-10 text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brass)]/50"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
@@ -219,26 +204,18 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() => setShowPassword((s) => !s)}
-                    className="absolute inset-y-0 right-2 flex items-center justify-center rounded-full p-2 text-muted-foreground transition-colors hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
+                    className="absolute inset-y-0 right-2 flex items-center justify-center rounded-full p-2 text-muted-foreground transition-colors hover:text-primary focus:outline-none"
+                    aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
                   >
                     {showPassword ? (
                       <EyeOff className="h-4 w-4" />
                     ) : (
                       <Eye className="h-4 w-4" />
                     )}
-                    <span className="sr-only">
-                      {showPassword
-                        ? "Ocultar contraseña"
-                        : "Mostrar contraseña"}
-                    </span>
                   </button>
                 </div>
               </div>
-              <Button
-                type="submit"
-                className="w-full font-medium"
-                disabled={loading}
-              >
+              <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? (
                   <span className="inline-flex items-center gap-2">
                     <Spinner size={16} /> Verificando…

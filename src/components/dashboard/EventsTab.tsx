@@ -176,21 +176,17 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
 
   return (
     <motion.section
-      initial={{ opacity: 0, y: 12 }}
+      initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: "easeOut" }}
       className="w-full"
     >
-      <Card className="relative w-full overflow-hidden rounded-2xl border border-border/60 bg-card/80 text-card-foreground shadow-xl backdrop-blur-xl">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,oklch(0.80_0.01_250/0.10),transparent_55%)]" />
+      <Card className="relative w-full overflow-hidden">
         <CardHeader className="relative z-10 space-y-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-3">
-              <span className="inline-flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                <Usb className="size-5" />
-              </span>
               <div>
-                <CardTitle className="text-lg font-semibold text-foreground">
+                <CardTitle className="font-display text-xl font-bold text-foreground">
                   Eventos USB recientes
                 </CardTitle>
                 <CardDescription className="text-xs text-muted-foreground">
@@ -201,11 +197,11 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
             </div>
             <div className="flex flex-col gap-2 text-xs font-medium text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-muted/30 px-3 py-1 text-[11px]">
+                <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
                   <span className="size-1.5 rounded-full bg-[oklch(0.55_0.12_160)] animate-pulse" />
                   Sincronizado
                 </span>
-                {/* <span className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-muted/30 px-3 py-1 text-[11px]">
+                {/* <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
                   <Clock3 className="size-3" />
                   Últimas 24h
                 </span> */}
@@ -229,31 +225,15 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
               )}
             </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="flex flex-wrap gap-x-12 gap-y-3 border-t border-border pt-5">
             {quickStats.map((stat) => (
-              <div
-                key={stat.label}
-                className="relative overflow-hidden rounded-xl border border-border/40 bg-card/50 p-4 backdrop-blur-sm"
-              >
-                <div
-                  className={cn(
-                    "pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-br opacity-50",
-                    stat.accent,
-                  )}
-                />
-                <div className="relative flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                      {stat.label}
-                    </p>
-                    <p className="mt-1.5 text-xl font-bold tabular-nums text-foreground">
-                      {stat.value}
-                    </p>
-                  </div>
-                  <span className="inline-flex size-8 items-center justify-center rounded-lg bg-muted/50 text-muted-foreground">
-                    {stat.icon}
-                  </span>
-                </div>
+              <div key={stat.label} className="flex items-baseline gap-3">
+                <span className="font-display text-[1.55rem] font-bold leading-none tabular-nums text-foreground">
+                  {stat.value}
+                </span>
+                <span className="smallcaps text-muted-foreground">
+                  {stat.label}
+                </span>
               </div>
             ))}
           </div>

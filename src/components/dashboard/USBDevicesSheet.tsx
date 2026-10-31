@@ -207,7 +207,7 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
                         <motion.div
                           key={d.id}
                           whileHover={{ y: -4 }}
-                          transition={{ duration: 0.2 }}
+                          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
                           className="relative overflow-hidden rounded-xl border border-border/40 bg-card/80 p-4 shadow-lg backdrop-blur-xl"
                           style={{ animationDelay: `${index * 60}ms` }}
                         >
@@ -324,7 +324,7 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
                         <motion.div
                           key={d.id}
                           whileHover={{ y: -4 }}
-                          transition={{ duration: 0.2 }}
+                          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
                           className="relative overflow-hidden rounded-xl border border-border/40 bg-card/80 p-4 shadow-lg backdrop-blur-xl"
                           style={{ animationDelay: `${index * 60}ms` }}
                         >

@@ -163,21 +163,17 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
 
   return (
     <motion.section
-      initial={{ opacity: 0, y: 12 }}
+      initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: "easeOut" }}
       className="w-full"
     >
-      <Card className="relative w-full overflow-hidden rounded-xl border border-border/60 bg-card/80 shadow-xl backdrop-blur-xl">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,oklch(0.82_0.01_250/0.10),transparent_55%),radial-gradient(circle_at_bottom_right,oklch(0.78_0.015_250/0.10),transparent_55%)]" />
+      <Card className="relative w-full overflow-hidden">
         <CardHeader className="relative z-10 space-y-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-3">
-              <span className="inline-flex size-12 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary shadow-sm dark:border-primary/30 dark:bg-primary/15 dark:text-primary">
-                <MonitorSmartphone className="size-5" />
-              </span>
               <div>
-                <CardTitle className="text-2xl font-semibold text-foreground">
+                <CardTitle className="font-display text-2xl font-bold text-foreground">
                   Computadoras monitoreadas
                 </CardTitle>
                 <CardDescription className="text-sm text-muted-foreground">
@@ -185,48 +181,26 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                 </CardDescription>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-muted-foreground">
-              <span className="inline-flex items-center gap-1 rounded-full border border-border/40 bg-muted/30 px-3 py-1 shadow-sm backdrop-blur-sm">
-                <Wifi className="size-3" />
+            <div className="flex flex-wrap items-center gap-5 text-xs text-muted-foreground">
+              <span className="inline-flex items-center gap-1.5">
+                <Wifi className="size-3.5 text-[var(--brass)]" />
                 Estado de conectividad
               </span>
-              <span className="inline-flex items-center gap-1 rounded-full border border-border/40 bg-muted/30 px-3 py-1 shadow-sm backdrop-blur-sm">
-                <Router className="size-3" />
+              <span className="inline-flex items-center gap-1.5">
+                <Router className="size-3.5 text-[var(--brass)]" />
                 Agente USB
               </span>
             </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="flex flex-wrap gap-x-12 gap-y-3 border-t border-border pt-5">
             {quickStats.map((stat) => (
-              <div
-                key={stat.label}
-                className="relative overflow-hidden rounded-xl border border-border/40 bg-card/80 p-4 backdrop-blur-sm"
-              >
-                <div
-                  className={cn(
-                    "pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-br opacity-70",
-                    stat.accent,
-                  )}
-                />
-                <div className="relative flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                      {stat.label}
-                    </p>
-                    <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
-                      {stat.value}
-                    </p>
-                  </div>
-                  <span className="inline-flex size-8 items-center justify-center rounded-lg bg-muted/50 text-muted-foreground">
-                    {stat.label === "Activos" ? (
-                      <Cpu className="size-4" />
-                    ) : stat.label === "Servicio OK" ? (
-                      <Sparkles className="size-4" />
-                    ) : (
-                      <MonitorSmartphone className="size-4" />
-                    )}
-                  </span>
-                </div>
+              <div key={stat.label} className="flex items-baseline gap-3">
+                <span className="font-display text-[1.55rem] font-bold leading-none tabular-nums text-foreground">
+                  {stat.value}
+                </span>
+                <span className="smallcaps text-muted-foreground">
+                  {stat.label}
+                </span>
               </div>
             ))}
           </div>
@@ -255,8 +229,8 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                     <motion.div
                       key={computer.id}
                       whileHover={{ y: -4 }}
-                      transition={{ duration: 0.2 }}
-                      className="rounded-xl border border-border/40 bg-card/80 p-5 shadow-lg backdrop-blur-xl"
+                      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                      className="border-t border-border pt-5"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>

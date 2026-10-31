@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
+import { Inter, Playfair_Display, JetBrains_Mono } from "next/font/google";
 import "@fontsource-variable/jetbrains-mono";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
@@ -7,8 +7,13 @@ import AuthGate from "@/components/system/AuthGate";
 import { ThemeProvider } from "@/components/system/ThemeProvider";
 import { QueryProvider } from "@/components/system/QueryProvider";
 
-const jakarta = Plus_Jakarta_Sans({
-  variable: "--font-jakarta",
+const inter = Inter({
+  variable: "--font-inter",
+  subsets: ["latin"],
+  display: "swap",
+});
+const playfair = Playfair_Display({
+  variable: "--font-playfair",
   subsets: ["latin"],
   display: "swap",
 });
@@ -73,7 +78,7 @@ export default function RootLayout({
         <meta httpEquiv="Permissions-Policy" content="usb=()" />
       </head> */}
       <body
-        className={`${jakarta.variable} ${jetbrainsMono.variable} antialiased`}
+        className={`${inter.variable} ${playfair.variable} ${jetbrainsMono.variable} antialiased`}
       >
         <ThemeProvider>
           <QueryProvider>

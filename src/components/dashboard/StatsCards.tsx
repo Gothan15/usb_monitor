@@ -63,9 +63,9 @@ function StatsCardsComponent({
     <div className="grid gap-4 lg:grid-cols-4" data-tour="stats-cards">
       {/* Hero status card */}
       <motion.div
-        initial={{ opacity: 0, y: 12 }}
+        initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35 }}
+        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
       >
         <GlassPanel
           variant="elevated"
@@ -79,48 +79,41 @@ function StatsCardsComponent({
                   Estado en vivo
                 </span>
               </div>
-              <h2 className="mt-2 text-2xl font-bold tracking-tight text-foreground">
+              <h2 className="mt-2 font-display text-2xl font-bold tracking-tight text-foreground">
                 {liveStatus.label}
               </h2>
               <p className="mt-1 text-xs text-muted-foreground">
                 {liveStatus.description}
               </p>
             </div>
-            <div
+            <Wifi
               className={cn(
-                "flex size-10 items-center justify-center rounded-xl",
-                liveStatus.tone === "success" &&
-                  "bg-[oklch(0.75_0.12_160/0.12)] text-[oklch(0.55_0.12_160)]",
-                liveStatus.tone === "warning" &&
-                  "bg-[oklch(0.80_0.10_85/0.12)] text-[oklch(0.60_0.12_85)]",
-                liveStatus.tone === "danger" && "bg-rose-500/10 text-rose-500",
+                "size-5",
+                liveStatus.tone === "success" && "text-success",
+                liveStatus.tone === "warning" && "text-warning",
+                liveStatus.tone === "danger" && "text-destructive",
+              )}
+            />
+          </div>
+          <div className="flex items-center justify-between border-t border-border pt-3 text-xs">
+            <span className="smallcaps text-muted-foreground">Cobertura</span>
+            <span
+              className={cn(
+                "font-semibold",
+                liveStatus.tone === "success" && "text-success",
+                liveStatus.tone === "warning" && "text-warning",
+                liveStatus.tone === "danger" && "text-destructive",
               )}
             >
-              <Wifi className="size-5" />
-            </div>
-          </div>
-          <div
-            className={cn(
-              "flex items-center justify-between rounded-lg border px-3 py-2 text-xs font-medium",
-              liveStatus.tone === "success" &&
-                "border-[oklch(0.75_0.12_160/0.20)] bg-[oklch(0.75_0.12_160/0.06)] text-[oklch(0.45_0.12_160)] dark:text-[oklch(0.80_0.10_160)]",
-              liveStatus.tone === "warning" &&
-                "border-[oklch(0.80_0.10_85/0.20)] bg-[oklch(0.80_0.10_85/0.06)] text-[oklch(0.50_0.12_85)] dark:text-[oklch(0.82_0.08_85)]",
-              liveStatus.tone === "danger" &&
-                "border-rose-500/20 bg-rose-500/5 text-rose-600 dark:text-rose-400",
-            )}
-          >
-            <span className="text-[10px] uppercase tracking-wider opacity-70">
-              Cobertura
+              {liveStatus.chip}
             </span>
-            <span className="font-bold">{liveStatus.chip}</span>
           </div>
         </GlassPanel>
       </motion.div>
 
       {/* KPI cards */}
       <motion.div
-        initial={{ opacity: 0, y: 12 }}
+        initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35, delay: 0.05 }}
       >
@@ -133,7 +126,7 @@ function StatsCardsComponent({
       </motion.div>
 
       <motion.div
-        initial={{ opacity: 0, y: 12 }}
+        initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35, delay: 0.1 }}
       >
@@ -145,7 +138,7 @@ function StatsCardsComponent({
       </motion.div>
 
       <motion.div
-        initial={{ opacity: 0, y: 12 }}
+        initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35, delay: 0.15 }}
       >

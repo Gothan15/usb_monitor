@@ -118,7 +118,7 @@ export function UnlocksTab() {
   );
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="animate-view-in space-y-6 p-6">
       <div className="flex items-center justify-between">
         <div>
           <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-muted-foreground">

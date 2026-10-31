@@ -182,15 +182,11 @@ export function WhitelistTab({
       transition={{ duration: 0.35, ease: "easeOut" }}
       className="w-full"
     >
-      <Card className="relative w-full overflow-hidden rounded-xl border border-border/60 bg-card/80 shadow-xl backdrop-blur-xl">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_oklch(0.82_0.01_250/0.14),transparent_55%),radial-gradient(circle_at_bottom_right,_oklch(0.78_0.015_250/0.10),transparent_55%)] dark:bg-[radial-gradient(circle_at_top_left,_oklch(0.75_0.01_250/0.12),transparent_45%),radial-gradient(circle_at_bottom_right,_oklch(0.70_0.015_250/0.12),transparent_55%)]" />
+      <Card className="relative w-full overflow-hidden">
         <CardHeader className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-4">
-            <span className="inline-flex size-12 items-center justify-center rounded-xl border border-border/40 bg-muted/30 text-primary shadow-sm">
-              <ShieldCheck className="size-5" />
-            </span>
             <div>
-              <CardTitle className="text-2xl font-semibold text-foreground">
+              <CardTitle className="font-display text-2xl font-bold text-foreground">
                 Lista blanca de dispositivos USB
               </CardTitle>
               <CardDescription className="text-sm text-muted-foreground">
@@ -200,14 +196,11 @@ export function WhitelistTab({
             </div>
           </div>
           <div className="flex flex-col items-start gap-2 text-xs font-medium text-muted-foreground sm:flex-row sm:items-center">
-            <Badge
-              variant="secondary"
-              className="rounded-full border border-border/40 bg-muted/30 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground shadow-sm backdrop-blur-sm"
-            >
+            <span className="smallcaps text-muted-foreground">
               {totalEntries} permitido{totalEntries === 1 ? "" : "s"}
-            </Badge>
+            </span>
             {latestCreatedAt && (
-              <span className="inline-flex items-center gap-2 rounded-full border border-border/40 bg-muted/30 px-3 py-1 text-muted-foreground shadow-sm backdrop-blur-sm">
+              <span className="inline-flex items-center gap-2 text-muted-foreground">
                 <CheckCircle2 className="size-3.5" />
                 Último alta: {formatDateTime(latestCreatedAt)}
               </span>
@@ -215,43 +208,27 @@ export function WhitelistTab({
           </div>
         </CardHeader>
         <CardContent className="relative z-10 space-y-8">
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="flex flex-wrap gap-x-12 gap-y-4 border-t border-border pt-5">
             {quickStats.map((stat) => (
-              <motion.div
-                key={stat.label}
-                whileHover={{ y: -4 }}
-                transition={{ duration: 0.25 }}
-                className="relative overflow-hidden rounded-xl border border-border/40 bg-card/80 p-4 shadow-lg backdrop-blur-xl"
-              >
-                <div
-                  className={cn(
-                    "pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br opacity-70",
-                    stat.accent,
-                  )}
-                />
-                <div className="relative flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                      {stat.label}
-                    </p>
-                    <p className="mt-3 text-2xl font-semibold text-foreground">
-                      {stat.value}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {stat.description}
-                    </p>
-                  </div>
-                  <span className="inline-flex size-9 items-center justify-center rounded-lg border border-border/40 bg-muted/30 text-muted-foreground shadow-sm">
-                    {stat.icon}
+              <div key={stat.label}>
+                <div className="flex items-baseline gap-3">
+                  <span className="font-display text-[1.55rem] font-bold leading-none tabular-nums text-foreground">
+                    {stat.value}
+                  </span>
+                  <span className="smallcaps text-muted-foreground">
+                    {stat.label}
                   </span>
                 </div>
-              </motion.div>
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  {stat.description}
+                </p>
+              </div>
             ))}
           </div>
 
           <form
             onSubmit={handleSubmit}
-            className="grid gap-4 rounded-xl border border-border/40 bg-card/80 p-5 shadow-xl backdrop-blur-xl sm:grid-cols-2 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]"
+            className="grid gap-4 border-t border-border pt-6 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]"
           >
             <div className="flex flex-col gap-2">
               <label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">

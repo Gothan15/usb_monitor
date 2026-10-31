@@ -367,7 +367,7 @@ export function DashboardPagination({
           onPointerUp={handlePointerUpOrCancel}
           onPointerCancel={handlePointerUpOrCancel}
           className={cn(
-            "rounded-full border border-border/40 bg-card/80 p-2.5 px-5 shadow-2xl backdrop-blur-xl dark:bg-[oklch(0.125_0.02_250/0.8)]",
+            "rounded border border-border bg-card/90 p-2.5 px-5 shadow-xl backdrop-blur-md",
             isDraggable ? "cursor-grabbing" : isFloating ? "cursor-grab" : "",
           )}
         >

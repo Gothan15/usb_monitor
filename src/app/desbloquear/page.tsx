@@ -62,30 +62,30 @@ function DesbloquearForm() {
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center bg-background p-4">
+    <div className="aurora-scene relative flex min-h-screen items-center justify-center bg-background p-4">
       <div
         aria-hidden
-        className="dot-grid absolute inset-x-0 top-0 h-56 text-foreground opacity-40 [mask-image:linear-gradient(to_bottom,black,transparent)]"
+        className="dot-grid absolute inset-x-0 top-0 h-56 text-foreground opacity-40"
       />
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="relative w-full max-w-sm"
+        className="animate-view-in relative w-full max-w-sm"
       >
         <div className="mb-8 flex items-center gap-3">
-          <div className="flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+          <div className="bg-aurora flex size-11 items-center justify-center rounded-sm text-[#EDE6D2] shadow-sm">
             <Usb className="size-5" />
           </div>
-          <span className="text-sm font-bold uppercase tracking-[0.22em]">
+          <span className="font-display text-base font-bold tracking-tight">
             USB Monitor
           </span>
         </div>
 
         {done ? (
-          <div className="rounded-lg border border-border bg-card p-6 text-center">
+          <div className="frame-double bg-card p-8 text-center">
             <CheckCircle2 className="mx-auto size-10 text-success" />
-            <h1 className="mt-3 text-xl font-bold tracking-tight">
+            <h1 className="font-display mt-3 text-xl font-bold tracking-tight">
               Dispositivo desbloqueado
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
@@ -95,10 +95,10 @@ function DesbloquearForm() {
           </div>
         ) : (
           <>
-            <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-primary">
+            <p className="smallcaps text-[var(--brass)]">
               Dispositivo bloqueado
             </p>
-            <h1 className="mt-2 text-2xl font-bold tracking-tight">
+            <h1 className="font-display mt-2 text-[1.7rem] font-bold tracking-tight">
               Introduce tu contraseña
             </h1>
             <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
@@ -119,11 +119,11 @@ function DesbloquearForm() {
               )}
               <form onSubmit={handleSubmit} className="space-y-5">
                 <div className="space-y-2">
-                  <label className="font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                  <label className="smallcaps text-muted-foreground">
                     Usuario
                   </label>
                   <input
-                    className="w-full rounded-md bg-card border border-input px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                    className="w-full rounded border border-input bg-background px-3.5 py-2.5 text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brass)]/50"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     required
@@ -131,13 +131,13 @@ function DesbloquearForm() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                  <label className="smallcaps text-muted-foreground">
                     Contraseña
                   </label>
                   <div className="relative">
                     <input
                       type={showPassword ? "text" : "password"}
-                      className="w-full rounded-md bg-card border border-input px-3 py-2 text-sm pr-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                      className="w-full rounded border border-input bg-background px-3.5 py-2.5 pr-10 text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brass)]/50"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
@@ -164,7 +164,7 @@ function DesbloquearForm() {
                 </div>
                 <Button
                   type="submit"
-                  className="w-full font-medium"
+                  className="w-full"
                   disabled={loading || !pcName}
                 >
                   {loading ? (

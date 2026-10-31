@@ -204,7 +204,7 @@ export function OverviewTab({
   const [chartType, setChartType] = useState<"area" | "bar">("area");
 
   return (
-    <div className="space-y-6">
+    <div className="animate-view-in space-y-6">
       <StatsCards
         activeComputers={activeComputers}
         totalComputers={computers.length}
@@ -222,7 +222,7 @@ export function OverviewTab({
         >
           <div className="flex items-center justify-between gap-4 border-b border-border/50 px-5 py-4">
             <div>
-              <h3 className="text-sm font-semibold text-foreground">
+              <h3 className="font-display text-[1.05rem] font-bold text-foreground">
                 Tendencia de eventos (12h)
               </h3>
               <p className="mt-0.5 text-xs text-muted-foreground">
@@ -231,14 +231,14 @@ export function OverviewTab({
             </div>
             <div className="flex items-center gap-2">
               {/* Chart type toggle */}
-              <div className="flex items-center rounded-lg border border-border/50 bg-muted/30 p-0.5">
+              <div className="flex items-center gap-3">
                 <button
                   type="button"
                   onClick={() => setChartType("area")}
                   className={cn(
-                    "rounded-md px-2 py-1 text-[10px] font-medium transition-all",
+                    "text-[11px] font-semibold uppercase tracking-[0.12em] transition-colors",
                     chartType === "area"
-                      ? "bg-background text-foreground shadow-sm"
+                      ? "text-foreground underline decoration-[var(--brass)] decoration-2 underline-offset-4"
                       : "text-muted-foreground hover:text-foreground",
                   )}
                 >
@@ -248,19 +248,19 @@ export function OverviewTab({
                   type="button"
                   onClick={() => setChartType("bar")}
                   className={cn(
-                    "rounded-md px-2 py-1 text-[10px] font-medium transition-all",
+                    "text-[11px] font-semibold uppercase tracking-[0.12em] transition-colors",
                     chartType === "bar"
-                      ? "bg-background text-foreground shadow-sm"
+                      ? "text-foreground underline decoration-[var(--brass)] decoration-2 underline-offset-4"
                       : "text-muted-foreground hover:text-foreground",
                   )}
                 >
                   Barras
                 </button>
               </div>
-              <Badge variant="outline" className="gap-1.5 text-xs">
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Activity className="size-3" />
                 {totalEvents} total
-              </Badge>
+              </span>
             </div>
           </div>
           <div className="h-[280px] w-full px-2 pb-2">
@@ -418,7 +418,7 @@ export function OverviewTab({
         <GlassPanel variant="elevated" padding="none">
           <div className="flex items-center gap-2 border-b border-border/50 px-5 py-4">
             <AlertTriangle className="size-4 text-[oklch(0.60_0.12_85)]" />
-            <h3 className="text-sm font-semibold text-foreground">
+            <h3 className="font-display text-[1.05rem] font-bold text-foreground">
               Alertas recientes
             </h3>
           </div>
@@ -473,7 +473,7 @@ export function OverviewTab({
         {/* ── Agent Health ── */}
         <GlassPanel variant="elevated" padding="none">
           <div className="border-b border-border/50 px-5 py-4">
-            <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <h3 className="flex items-center gap-2 font-display text-[1.05rem] font-bold text-foreground">
               <ShieldCheck className="size-4 text-[oklch(0.55_0.12_160)]" />
               Salud de agentes y servicios
             </h3>
@@ -514,7 +514,7 @@ export function OverviewTab({
               return (
                 <div
                   key={item.label}
-                  className="rounded-lg border border-border/40 bg-card/50 p-3.5"
+                  className="border-t border-border/60 px-1 py-3.5"
                 >
                   <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                     {item.label}
@@ -546,12 +546,12 @@ export function OverviewTab({
         <GlassPanel variant="elevated" padding="none">
           <div className="flex items-center gap-2 border-b border-border/50 px-5 py-4">
             <HardDrive className="size-4 text-muted-foreground" />
-            <h3 className="text-sm font-semibold text-foreground">
+            <h3 className="font-display text-[1.05rem] font-bold text-foreground">
               Resumen de lista blanca
             </h3>
           </div>
           <div className="space-y-3 p-4 text-sm">
-            <div className="flex items-center justify-between rounded-lg border border-border/40 bg-card/50 px-4 py-3">
+            <div className="flex items-center justify-between border-t border-border/60 px-1 py-3">
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                   Seriales autorizados
@@ -564,7 +564,7 @@ export function OverviewTab({
                 Activo
               </Badge>
             </div>
-            <div className="rounded-lg border border-border/40 bg-card/50 px-4 py-3">
+            <div className="border-t border-border/60 px-1 py-3">
               <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                 Documentados
               </p>
@@ -573,7 +573,7 @@ export function OverviewTab({
                 {whitelistStats.withLabel} con alias
               </p>
             </div>
-            <div className="rounded-lg border border-border/40 bg-card/50 px-4 py-3">
+            <div className="border-t border-border/60 px-1 py-3">
               <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                 Recomendación
               </p>
@@ -591,7 +591,7 @@ export function OverviewTab({
         {/* ── Event Distribution Pie ── */}
         <GlassPanel variant="elevated" padding="none">
           <div className="border-b border-border/50 px-5 py-4">
-            <h3 className="text-sm font-semibold text-foreground">
+            <h3 className="font-display text-[1.05rem] font-bold text-foreground">
               Distribución de eventos
             </h3>
             <p className="mt-0.5 text-xs text-muted-foreground">
@@ -647,7 +647,7 @@ export function OverviewTab({
         {/* ── Top Devices Bar ── */}
         <GlassPanel variant="elevated" padding="none">
           <div className="border-b border-border/50 px-5 py-4">
-            <h3 className="text-sm font-semibold text-foreground">
+            <h3 className="font-display text-[1.05rem] font-bold text-foreground">
               Dispositivos más activos
             </h3>
             <p className="mt-0.5 text-xs text-muted-foreground">

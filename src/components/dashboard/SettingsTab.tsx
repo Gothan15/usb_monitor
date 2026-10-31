@@ -116,7 +116,7 @@ export function SettingsTab() {
     });
 
   return (
-    <div className="grid gap-6 2xl:grid-cols-2">
+    <div className="animate-view-in grid gap-6 2xl:grid-cols-2">
       <Card className="rounded-xl border border-border/60 bg-card/80 shadow-xl backdrop-blur-xl">
         <CardHeader className="flex flex-wrap items-start justify-between gap-4">
           <div>

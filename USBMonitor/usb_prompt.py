@@ -65,6 +65,130 @@ POLL_INTERVAL_MS = 2000  # cada cuánto se revisa pending_local.json
 
 LOGGER = logging.getLogger("usb_prompt")
 
+# ---------------------------------------------------------------------------
+# Sistema visual «Herencia» (misma paleta que el panel web)
+# ---------------------------------------------------------------------------
+
+HERENCIA = {
+    "fondo": "#F5F0E4",
+    "panel": "#FCF9F1",
+    "superficie": "#EFE8D8",
+    "borde": "#D8CDB4",
+    "laton": "#A5814F",
+    "texto": "#221D15",
+    "suave": "#6E6250",
+    "verde": "#24365E",
+    "verde_activo": "#324B7D",
+    "exito": "#3E6B4F",
+    "aviso": "#A66A1F",
+    "peligro": "#8C3B2E",
+}
+
+
+def aplicar_estilos_herencia(root: tk.Misc) -> None:
+    """Configura los estilos ttk (tema clam) con la paleta Herencia."""
+    try:
+        style = ttk.Style(root)
+        if "clam" in style.theme_names():
+            style.theme_use("clam")
+        style.configure("Fondo.TFrame", background=HERENCIA["fondo"])
+        style.configure("Herencia.TFrame", background=HERENCIA["panel"])
+        style.configure(
+            "Titulo.TLabel",
+            background=HERENCIA["panel"],
+            foreground=HERENCIA["texto"],
+            font=("Georgia", 15, "bold"),
+        )
+        style.configure(
+            "Suave.TLabel",
+            background=HERENCIA["panel"],
+            foreground=HERENCIA["suave"],
+            font=("Segoe UI", 10),
+        )
+        style.configure(
+            "Campo.TLabel",
+            background=HERENCIA["panel"],
+            foreground=HERENCIA["texto"],
+            font=("Segoe UI", 10, "bold"),
+        )
+        style.configure(
+            "Estado.TLabel",
+            background=HERENCIA["panel"],
+            foreground=HERENCIA["peligro"],
+            font=("Segoe UI", 10),
+        )
+        style.configure(
+            "Info.TLabel",
+            background=HERENCIA["panel"],
+            foreground=HERENCIA["laton"],
+            font=("Segoe UI", 10),
+        )
+        style.configure(
+            "Exito.TLabel",
+            background=HERENCIA["panel"],
+            foreground=HERENCIA["exito"],
+            font=("Segoe UI", 10, "bold"),
+        )
+        style.configure(
+            "Principal.TButton",
+            background=HERENCIA["verde"],
+            foreground=HERENCIA["fondo"],
+            font=("Segoe UI", 11, "bold"),
+            padding=(20, 10),
+            borderwidth=0,
+            focusthickness=0,
+        )
+        style.map(
+            "Principal.TButton",
+            background=[
+                ("active", HERENCIA["verde_activo"]),
+                ("disabled", HERENCIA["superficie"]),
+            ],
+            foreground=[
+                ("active", HERENCIA["fondo"]),
+                ("disabled", HERENCIA["suave"]),
+            ],
+        )
+        style.configure(
+            "Secundario.TButton",
+            background=HERENCIA["superficie"],
+            foreground=HERENCIA["texto"],
+            font=("Segoe UI", 10),
+            padding=(16, 9),
+            borderwidth=0,
+            focusthickness=0,
+        )
+        style.map(
+            "Secundario.TButton",
+            background=[("active", HERENCIA["borde"])],
+        )
+        style.configure(
+            "Herencia.TEntry",
+            fieldbackground=HERENCIA["panel"],
+            foreground=HERENCIA["texto"],
+            bordercolor=HERENCIA["borde"],
+            lightcolor=HERENCIA["borde"],
+            darkcolor=HERENCIA["borde"],
+            padding=9,
+            font=("Segoe UI", 10),
+        )
+        style.map(
+            "Herencia.TEntry",
+            bordercolor=[("focus", HERENCIA["laton"])],
+        )
+        style.configure(
+            "Herencia.TCheckbutton",
+            background=HERENCIA["panel"],
+            foreground=HERENCIA["suave"],
+            font=("Segoe UI", 10),
+        )
+        style.map(
+            "Herencia.TCheckbutton",
+            foreground=[("active", HERENCIA["texto"])],
+        )
+    except tk.TclError:
+        LOGGER.debug("No se pudieron aplicar los estilos Herencia", exc_info=True)
+
 
 def get_server_host() -> str:
     return os.environ.get("USB_MONITOR_SERVER_HOST", DEFAULT_HOST)
@@ -193,17 +317,30 @@ class UnlockWindow:
         win.protocol("WM_DELETE_WINDOW", self.close)
         # Cerrar la ventana no desbloquea nada: el bloqueo es del servicio.
         win.attributes("-topmost", True)
+        win.configure(bg=HERENCIA["fondo"])
 
-        frame = ttk.Frame(win, padding=16)
+        outer = ttk.Frame(win, padding=12, style="Fondo.TFrame")
+        outer.grid(sticky="nsew")
+        frame = ttk.Frame(outer, padding=26, style="Herencia.TFrame")
         frame.grid(sticky="nsew")
 
         known = bool(pending.get("whitelisted"))
         device_label = pending.get("deviceLabel") or "Dispositivo USB"
+
+        header = ttk.Frame(frame, style="Herencia.TFrame")
+        header.grid(row=0, column=0, columnspan=2, sticky="w")
+        tk.Label(
+            header,
+            text="●",
+            bg=HERENCIA["panel"],
+            fg=HERENCIA["verde"] if known else HERENCIA["peligro"],
+            font=("Segoe UI", 13),
+        ).pack(side="left")
         ttk.Label(
-            frame,
+            header,
             text=f"Unidad {self.drive_letter} bloqueada",
-            font=("Segoe UI", 12, "bold"),
-        ).grid(row=0, column=0, columnspan=2, sticky="w")
+            style="Titulo.TLabel",
+        ).pack(side="left", padx=(9, 0))
 
         if not known:
             # Fuera de la whitelist NO hay contraseña que valga: el
@@ -220,10 +357,12 @@ class UnlockWindow:
                     "añadirlo a la lista blanca desde el panel."
                 ),
                 justify="left",
-            ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(6, 12))
-            ttk.Button(frame, text="Entendido", command=self.close).grid(
-                row=2, column=0, columnspan=2, sticky="e"
-            )
+                style="Suave.TLabel",
+                wraplength=420,
+            ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(10, 18))
+            ttk.Button(
+                frame, text="Entendido", command=self.close, style="Principal.TButton"
+            ).grid(row=2, column=0, columnspan=2, sticky="e")
             return
 
         ttk.Label(
@@ -236,19 +375,31 @@ class UnlockWindow:
                 "\nusuario dueño de esta computadora o la del administrador."
             ),
             justify="left",
-        ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(6, 12))
+            style="Suave.TLabel",
+            wraplength=420,
+        ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(10, 16))
 
-        ttk.Label(frame, text="Usuario:").grid(row=2, column=0, sticky="w", pady=2)
+        ttk.Label(frame, text="Usuario:", style="Campo.TLabel").grid(
+            row=2, column=0, sticky="w", pady=5
+        )
         self.username_var = tk.StringVar()
-        self.username_entry = ttk.Entry(frame, textvariable=self.username_var, width=34)
-        self.username_entry.grid(row=2, column=1, sticky="ew", pady=2)
+        self.username_entry = ttk.Entry(
+            frame, textvariable=self.username_var, width=36, style="Herencia.TEntry"
+        )
+        self.username_entry.grid(row=2, column=1, sticky="ew", pady=5, padx=(12, 0))
 
-        ttk.Label(frame, text="Contraseña:").grid(row=3, column=0, sticky="w", pady=2)
+        ttk.Label(frame, text="Contraseña:", style="Campo.TLabel").grid(
+            row=3, column=0, sticky="w", pady=5
+        )
         self.password_var = tk.StringVar()
         self.password_entry = ttk.Entry(
-            frame, textvariable=self.password_var, width=34, show="•"
+            frame,
+            textvariable=self.password_var,
+            width=36,
+            show="•",
+            style="Herencia.TEntry",
         )
-        self.password_entry.grid(row=3, column=1, sticky="ew", pady=2)
+        self.password_entry.grid(row=3, column=1, sticky="ew", pady=5, padx=(12, 0))
 
         self.show_password_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(
@@ -256,19 +407,26 @@ class UnlockWindow:
             text="Mostrar contraseña",
             variable=self.show_password_var,
             command=self._toggle_password,
-        ).grid(row=4, column=1, sticky="w")
+            style="Herencia.TCheckbutton",
+        ).grid(row=4, column=1, sticky="w", padx=(12, 0), pady=(4, 0))
 
         self.status_var = tk.StringVar(value="")
-        ttk.Label(frame, textvariable=self.status_var, foreground="#b00020").grid(
-            row=5, column=0, columnspan=2, sticky="w", pady=(8, 0)
+        self.status_label = ttk.Label(
+            frame, textvariable=self.status_var, style="Estado.TLabel", wraplength=420
         )
+        self.status_label.grid(row=5, column=0, columnspan=2, sticky="w", pady=(12, 0))
 
-        buttons = ttk.Frame(frame)
-        buttons.grid(row=6, column=0, columnspan=2, sticky="e", pady=(12, 0))
-        ttk.Button(buttons, text="Abrir página de desbloqueo", command=self.open_web_page).pack(
-            side="left", padx=(0, 8)
+        buttons = ttk.Frame(frame, style="Herencia.TFrame")
+        buttons.grid(row=6, column=0, columnspan=2, sticky="e", pady=(18, 0))
+        ttk.Button(
+            buttons,
+            text="Abrir página de desbloqueo",
+            command=self.open_web_page,
+            style="Secundario.TButton",
+        ).pack(side="left", padx=(0, 10))
+        self.unlock_button = ttk.Button(
+            buttons, text="Desbloquear", command=self.submit, style="Principal.TButton"
         )
-        self.unlock_button = ttk.Button(buttons, text="Desbloquear", command=self.submit)
         self.unlock_button.pack(side="left")
         # Botón de emergencia sin red: oculto salvo que el envío de la
         # contraseña falle por falta de conexión (ver handle_result).
@@ -316,9 +474,11 @@ class UnlockWindow:
         username = self.username_var.get().strip()
         password = self.password_var.get()
         if not username or not password:
+            self.status_label.configure(style="Estado.TLabel")
             self.status_var.set("Escribe tu usuario y tu contraseña.")
             return
         self.unlock_button.configure(state="disabled")
+        self.status_label.configure(style="Info.TLabel")
         self.status_var.set("Verificando con el servidor…")
         # La petición va en un hilo para no congelar la ventana; el
         # resultado vuelve a la interfaz por la cola de la aplicación.
@@ -339,14 +499,17 @@ class UnlockWindow:
             # El servicio liberará la unidad al confirmarlo por su polling;
             # aquí solo se refleja en el registro local y se avisa.
             mark_local_pending_unlocked(self.drive_letter)
+            self.status_label.configure(style="Exito.TLabel")
             self.status_var.set("Contraseña aceptada. Desbloqueando el dispositivo…")
             self.win.after(2500, self.close)
         elif result == "denied":
+            self.status_label.configure(style="Estado.TLabel")
             self.status_var.set("No autorizado. Revisa el usuario y la contraseña.")
             self.password_var.set("")
             self.unlock_button.configure(state="normal")
             self.password_entry.focus_set()
         else:  # network_error
+            self.status_label.configure(style="Estado.TLabel")
             self.status_var.set(
                 "Sin conexión con el servidor. El dispositivo sigue bloqueado."
             )
@@ -358,6 +521,7 @@ class UnlockWindow:
                     self.buttons_frame,
                     text="Usar página local de emergencia",
                     command=self.open_local_emergency,
+                    style="Secundario.TButton",
                 )
                 self.emergency_button.pack(
                     side="left", padx=(0, 8), before=self.unlock_button
@@ -367,6 +531,7 @@ class UnlockWindow:
         """El registro local ya marca UNLOCKED (lo hizo el servicio)."""
         if self.closed:
             return
+        self.status_label.configure(style="Exito.TLabel")
         self.status_var.set("Dispositivo desbloqueado.")
         self.win.after(2000, self.close)
 
@@ -390,6 +555,8 @@ class PromptApp:
         self.root = tk.Tk()
         self.root.withdraw()  # sin ventana principal: solo ventanas por bloqueo
         self.root.title("USB Monitor — compañero")
+        self.root.configure(bg=HERENCIA["fondo"])
+        aplicar_estilos_herencia(self.root)
         self.results: "queue.Queue" = queue.Queue()
         self.windows: Dict[tuple, UnlockWindow] = {}
         # Claves ya mostradas (o descartadas por el usuario): no se reabre
