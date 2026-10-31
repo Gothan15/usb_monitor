@@ -72,6 +72,16 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "✗ Error al instalar cryptography" -ForegroundColor Red
 }
 
+# Instalar argon2-cffi (verificación local de la contraseña en la
+# emergencia sin red: página :5001/desbloquear del servicio)
+Write-Host "Instalando argon2-cffi (para la emergencia sin red)..." -ForegroundColor Cyan
+python -m pip install --upgrade argon2-cffi
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "✓ argon2-cffi instalado correctamente" -ForegroundColor Green
+} else {
+    Write-Host "✗ Error al instalar argon2-cffi" -ForegroundColor Red
+}
+
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  Instalación completada" -ForegroundColor Cyan

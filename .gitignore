@@ -61,3 +61,10 @@ USBMonitor/dist_usb_serial_viewer/
 
 seed-data.json
 /scripts
+# SonarQube (salida del escáner, no código)
+.scannerwork/
+
+# Copias de seguridad locales y binarios generados
+*.backup
+*.bk2
+/dist/

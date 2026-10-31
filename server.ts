@@ -16,14 +16,18 @@ const currentPort = Number(process.env.PORT);
 const hostname = process.env.APP_HOST;
 const nextVersion = (nextPackage as { version?: string }).version ?? "dev";
 
+// Orígenes por defecto del socket: localhost y el nombre interno.
+// Los orígenes reales de la red (la IP del servidor en la LAN) se
+// definen con ALLOWED_ORIGINS o con APP_PUBLIC_HOST (p. ej.
+// la IP del hotspot); nada de IPs de una red concreta en el código.
+const APP_PUBLIC_HOST = (process.env.APP_PUBLIC_HOST || "").trim();
 const DEFAULT_SOCKET_ORIGINS = [
   "https://usbmonitor.local",
   "http://localhost:3000",
   "https://localhost:3000",
-  "http://172.20.10.12:3000",
-  "https://172.20.10.12:3000",
-  "http://172.20.10.2:3000",
-  "https://172.20.10.2:3000",
+  ...(APP_PUBLIC_HOST
+    ? [`http://${APP_PUBLIC_HOST}:3000`, `https://${APP_PUBLIC_HOST}:3000`]
+    : []),
 ];
 
 function parseSocketOrigins() {

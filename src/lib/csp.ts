@@ -1,8 +1,11 @@
+// Sin IPs de redes concretas en el código: el origen público real se
+// define con ALLOWED_ORIGINS o APP_PUBLIC_HOST en el entorno.
+const APP_PUBLIC_HOST = (process.env.APP_PUBLIC_HOST || "").trim();
 const DEFAULT_ALLOWED_ORIGINS = [
   "https://usbmonitor.local",
   "http://localhost:3000",
   "https://localhost:3000",
-  "https://172.20.10.12:3000",
+  ...(APP_PUBLIC_HOST ? [`https://${APP_PUBLIC_HOST}:3000`] : []),
 ];
 
 export function parseAllowedOrigins(raw: string | undefined): string[] {

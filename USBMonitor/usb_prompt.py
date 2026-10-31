@@ -270,6 +270,10 @@ class UnlockWindow:
         )
         self.unlock_button = ttk.Button(buttons, text="Desbloquear", command=self.submit)
         self.unlock_button.pack(side="left")
+        # Botón de emergencia sin red: oculto salvo que el envío de la
+        # contraseña falle por falta de conexión (ver handle_result).
+        self.buttons_frame = buttons
+        self.emergency_button = None
 
         win.bind("<Return>", lambda _event: self.submit())
         self.username_entry.focus_set()
@@ -288,6 +292,22 @@ class UnlockWindow:
         )
         try:
             webbrowser.open(url)
+        except Exception as exc:
+            LOGGER.warning("No se pudo abrir el navegador: %s", exc)
+            self.status_var.set("No se pudo abrir el navegador.")
+
+    def open_local_emergency(self) -> None:
+        """Abre la página local de emergencia del servicio (:5001).
+
+        Es el respaldo sin red: el propio servicio verifica la
+        contraseña contra el hash cacheado del dueño en esa página.
+        """
+        try:
+            port = int(os.environ.get("USB_MONITOR_LISTEN_PORT", "5001"))
+        except ValueError:
+            port = 5001
+        try:
+            webbrowser.open(f"http://127.0.0.1:{port}/desbloquear")
         except Exception as exc:
             LOGGER.warning("No se pudo abrir el navegador: %s", exc)
             self.status_var.set("No se pudo abrir el navegador.")
@@ -331,6 +351,17 @@ class UnlockWindow:
                 "Sin conexión con el servidor. El dispositivo sigue bloqueado."
             )
             self.unlock_button.configure(state="normal")
+            # Sin red queda un último recurso: la página local de
+            # emergencia que sirve el propio servicio en esta PC.
+            if self.emergency_button is None:
+                self.emergency_button = ttk.Button(
+                    self.buttons_frame,
+                    text="Usar página local de emergencia",
+                    command=self.open_local_emergency,
+                )
+                self.emergency_button.pack(
+                    side="left", padx=(0, 8), before=self.unlock_button
+                )
 
     def notify_unlocked_externally(self) -> None:
         """El registro local ya marca UNLOCKED (lo hizo el servicio)."""
