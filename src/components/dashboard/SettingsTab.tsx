@@ -23,6 +23,8 @@ import {
   usePaginationSettings,
   PaginationStyle,
 } from "@/hooks/usePaginationSettings";
+import { useLayoutStore, type Disposicion } from "@/store/useLayoutStore";
+import { PanelLeft, PanelTop } from "lucide-react";
 import { useLiveSyncStore } from "@/store/useLiveSyncStore";
 import { Switch } from "@/components/ui/switch";
 
@@ -59,6 +61,8 @@ export function SettingsTab() {
   });
 
   const { style, setStyle, setPosition } = usePaginationSettings();
+  const disposicion = useLayoutStore((state) => state.disposicion);
+  const setDisposicion = useLayoutStore((state) => state.setDisposicion);
   const { isLiveSyncEnabled, toggleLiveSync } = useLiveSyncStore();
   const [mounted, setMounted] = useState(false);
 
@@ -335,55 +339,63 @@ export function SettingsTab() {
             Personaliza la experiencia visual y los componentes del dashboard.
           </p>
 
-          <div className="mt-8 grid gap-10 md:grid-cols-2">
-            <div>
-              <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                Estilo de Paginación
-              </Label>
-              <Select
-                value={style}
-                onValueChange={(value) => setStyle(value as PaginationStyle)}
-              >
-                <SelectTrigger className="mt-2">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="floating">Dinámica (Flotante)</SelectItem>
-                  <SelectItem value="static">Estática (En línea)</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                El modo flotante te permite mantener la paginación a la vista en
-                cualquier momento. Puedes arrastrar la barra flotante
-                manteniendo presionado el clic por 3 segundos.
-              </p>
+          <div className="mt-8">
+            <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+              Disposición del panel
+            </Label>
+            <div className="mt-3 flex flex-wrap gap-3">
+              {(
+                [
+                  {
+                    valor: "cabecera",
+                    titulo: "Cabecera",
+                    detalle: "Navegación en la barra superior",
+                    Icono: PanelTop,
+                  },
+                  {
+                    valor: "lateral",
+                    titulo: "Barra lateral",
+                    detalle: "Navegación a la izquierda",
+                    Icono: PanelLeft,
+                  },
+                ] as const
+              ).map(({ valor, titulo, detalle, Icono }) => {
+                const activa = disposicion === valor;
+                return (
+                  <button
+                    key={valor}
+                    type="button"
+                    onClick={() => setDisposicion(valor as Disposicion)}
+                    aria-pressed={activa}
+                    className={
+                      activa
+                        ? "flex min-w-[220px] items-start gap-3 border border-[var(--acero)] bg-primary/[0.05] px-4 py-3.5 text-left"
+                        : "flex min-w-[220px] items-start gap-3 border border-border px-4 py-3.5 text-left transition-colors hover:border-muted-foreground/50"
+                    }
+                  >
+                    <Icono
+                      className={
+                        activa
+                          ? "mt-0.5 size-5 shrink-0 text-[var(--acero)]"
+                          : "mt-0.5 size-5 shrink-0 text-muted-foreground"
+                      }
+                    />
+                    <span>
+                      <span className="block text-sm font-semibold text-foreground">
+                        {titulo}
+                      </span>
+                      <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
+                        {detalle}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
             </div>
-
-            <div>
-              <Label className="block text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                Posición del Paginado
-              </Label>
-              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                Restaura la ubicación flotante por defecto al centro inferior.
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-4"
-                onClick={() => {
-                  setPosition(null);
-                  toast({
-                    title: "Posición restaurada",
-                    description:
-                      "La paginación flotante volvió a su posición central por defecto.",
-                  });
-                }}
-                disabled={style === "static"}
-              >
-                <RotateCcw className="mr-2 h-3.5 w-3.5" />
-                Restaurar posición
-              </Button>
-            </div>
+            <p className="mt-3 max-w-xl text-xs leading-relaxed text-muted-foreground">
+              Se aplica al momento y se recuerda en este navegador. En
+              pantallas pequeñas se usa siempre la cabecera.
+            </p>
           </div>
         </section>
       </div>
