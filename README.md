@@ -94,16 +94,16 @@ Como administrador, dentro de la carpeta `USBMonitor`:
 .\Install-Service.ps1
 ```
 
-El instalador registra el servicio `USBMonitorService` con recuperación automática (si el servicio se cae, Windows lo reinicia al minuto), deja programado el inicio del proceso compañero al iniciar sesión y genera el token propio de ese equipo. La dirección del servidor se configura con las variables de entorno `USB_MONITOR_SERVER_HOST` y `USB_MONITOR_SERVER_PORT`. La herramienta `usb_monitor_admin.py` sirve para configurar la clave API del agente a mano cuando hace falta, y `USBMonitor/compilacion/Build-All.ps1` compila los cuatro programas a ejecutable de una vez, cada uno a su carpeta `dist_*`. Para instalar, basta copiar los ejecutables junto a `Install-Service.ps1` en una carpeta (la instalación remota del panel usa `C:\USBMonitor`) y ejecutar ese instalador.
+El instalador registra el servicio `USBMonitorService` con recuperación automática (si el servicio se cae, Windows lo reinicia al minuto), deja programado el inicio del proceso compañero al iniciar sesión y genera el token propio de ese equipo. La dirección del servidor se configura con las variables de entorno `USB_MONITOR_SERVER_HOST` y `USB_MONITOR_SERVER_PORT`. La ventana de gestión del agente se abre con `USBMonitorService.exe gui` (es el mismo ejecutable del servicio, un solo programa) y desde ella se configura también la clave API del agente a mano cuando hace falta. `USBMonitor/compilacion/Build-All.ps1` compila los tres programas a ejecutable de una vez, cada uno a su carpeta `dist_*`. Para instalar, basta copiar los ejecutables junto a `Install-Service.ps1` en una carpeta (la instalación remota del panel usa `C:\USBMonitor`) y ejecutar ese instalador.
 
 ## Estructura del repo
 
 ```
 src/                 Panel (Next.js): páginas, API y lógica de servidor
 prisma/              Esquema de la base de datos y migraciones
-USBMonitor/          Agente Windows (servicio Python), compañero de
-                     desbloqueo (usb_prompt.py), herramienta de
-                     administración (usb_monitor_admin.py), tests
+USBMonitor/          Agente Windows (servicio Python, con su
+                     ventana de gestión integrada), compañero de
+                     desbloqueo (usb_prompt.py), tests
                      (USBMonitor/tests) e instaladores
 docs/capturas/       Las capturas de este README
 INSPIRACION.md       Referencias de diseño de la interfaz
