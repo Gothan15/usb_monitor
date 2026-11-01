@@ -238,7 +238,7 @@ def load_local_pendings() -> list:
         return []
 
 
-def mark_local_pending_unlocked(drive_letter: str) -> None:
+def mark_local_pending_unlocked(drive_letter: str, serial: Any = None) -> None:
     """Marca una entrada como UNLOCKED releyendo el archivo antes de escribir.
 
     El servicio también actualiza el mismo archivo por su polling; por eso
@@ -246,13 +246,17 @@ def mark_local_pending_unlocked(drive_letter: str) -> None:
     """
     try:
         pendings = load_local_pendings()
-        drive = drive_letter.upper()
+        drive = (drive_letter or "").upper()
         changed = False
         for pending in pendings:
-            if (
-                str(pending.get("driveLetter") or "").upper() == drive
-                and pending.get("status") == "BLOCKED"
-            ):
+            entry_drive = str(pending.get("driveLetter") or "").upper()
+            # Sin letra (móvil WPD): se casa por serial.
+            coincide = (
+                entry_drive == drive
+                if entry_drive
+                else bool(serial) and str(pending.get("serialNumber") or "") == str(serial)
+            )
+            if coincide and pending.get("status") == "BLOCKED":
                 pending["status"] = "UNLOCKED"
                 changed = True
         if changed:
@@ -345,7 +349,11 @@ class UnlockWindow:
         ).pack(side="left")
         ttk.Label(
             header,
-            text=f"Unidad {self.drive_letter} bloqueada",
+            text=(
+                f"Unidad {self.drive_letter} bloqueada"
+                if self.drive_letter
+                else f"{device_label} bloqueado"
+            ),
             style="Titulo.TLabel",
         ).pack(side="left", padx=(9, 0))
 
@@ -505,7 +513,7 @@ class UnlockWindow:
         if result == "ok":
             # El servicio liberará la unidad al confirmarlo por su polling;
             # aquí solo se refleja en el registro local y se avisa.
-            mark_local_pending_unlocked(self.drive_letter)
+            mark_local_pending_unlocked(self.drive_letter, self.serial)
             self.status_label.configure(style="Exito.TLabel")
             self.status_var.set("Contraseña aceptada. Desbloqueando el dispositivo…")
             self.win.after(2500, self.close)
@@ -595,11 +603,13 @@ class PromptApp:
             if not isinstance(pending, dict):
                 continue
             drive = str(pending.get("driveLetter") or "").upper()
-            if not drive:
+            serial = str(pending.get("serialNumber") or "")
+            if not drive and not serial:
                 continue
+            # Sin letra (móvil WPD), la identidad es el serial.
             key = (
-                drive,
-                str(pending.get("serialNumber") or ""),
+                drive or f"SER:{serial}",
+                serial,
                 str(pending.get("createdAt") or ""),
             )
             status = pending.get("status")
