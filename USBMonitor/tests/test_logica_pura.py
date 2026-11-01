@@ -253,3 +253,44 @@ def test_scsi_sin_conexion_o_con_error_queda_fuera():
 def test_usbstor_sigue_entrando_sin_conexion():
     disco = _DiscoFalso(r"USBSTOR\DISK&VEN_KINGSTON&PROD_DT\AA01&0", interface="USB")
     assert svc._classify_disk_as_usb(disco, None)[0]
+
+
+# ── Detección amplia, Parte B: móviles WPD y claves sin letra ───────────
+
+class _FilaWPD:
+    def __init__(self, device_id, name):
+        self.DeviceID = device_id
+        self.Name = name
+
+
+class _ConnWPD:
+    def __init__(self, filas=None, falla=False):
+        self.filas = filas or []
+        self.falla = falla
+
+    def query(self, wql):
+        assert "Win32_PnPEntity" in wql and "WPD" in wql
+        if self.falla:
+            raise RuntimeError("WMI caído")
+        return self.filas
+
+
+def test_wpd_enumera_solo_usb_y_deriva_serial():
+    conn = _ConnWPD([
+        _FilaWPD(r"USB\VID_18D1&PID_4EE1\ABC123PIXEL", "Pixel 8"),
+        _FilaWPD(r"BTHENUM\{0000112f-0000-1000-8000-00805f9b34fb}_VID&0001000f\7&1234", "Móvil BT"),
+    ])
+    dispositivos = svc.enumerate_wpd_devices(conn)
+    assert len(dispositivos) == 1
+    assert dispositivos[0]["name"] == "Pixel 8"
+    assert dispositivos[0]["serialNumber"] == "ABC123PIXEL"
+
+
+def test_wpd_consulta_fallida_devuelve_none():
+    assert svc.enumerate_wpd_devices(_ConnWPD(falla=True)) is None
+
+
+def test_claves_de_pendiente_con_y_sin_letra():
+    assert svc._pending_key_of({"driveLetter": "e:", "serialNumber": "X1"}) == "E:"
+    assert svc._pending_key_of({"driveLetter": None, "serialNumber": "abc123"}) == "SER:ABC123"
+    assert svc._wpd_pending_key("abc123") == "SER:ABC123"

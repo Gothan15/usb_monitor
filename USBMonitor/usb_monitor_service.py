@@ -1624,36 +1624,52 @@ def _save_local_pendings(pendings: List[Dict[str, Any]]) -> bool:
         return False
 
 
+def _pending_key_of(entry: Dict[str, Any]) -> str:
+    """Clave de un pendiente local: su letra, o SER:<serial> si no tiene
+    letra (móviles WPD, detección amplia)."""
+    letter = str(entry.get("driveLetter") or "").upper()
+    if letter:
+        return letter
+    serial = str(entry.get("serialNumber") or "").upper()
+    return f"SER:{serial}" if serial else ""
+
+
+def _wpd_pending_key(serial: Optional[str]) -> str:
+    """Clave local del pendiente de un móvil (sin letra) por su serial."""
+    return f"SER:{str(serial or '').upper()}"
+
+
 def _register_local_pending(entry: Dict[str, Any]) -> None:
     """Añade (o sustituye si sigue BLOCKED) un pendiente en el registro local."""
     pendings = _load_local_pendings()
-    drive = str(entry.get("driveLetter") or "").upper()
+    key = _pending_key_of(entry)
     pendings = [
         p
         for p in pendings
-        if not (
-            str(p.get("driveLetter") or "").upper() == drive
-            and p.get("status") == "BLOCKED"
-        )
+        if not (_pending_key_of(p) == key and p.get("status") == "BLOCKED")
     ]
     pendings.append(entry)
     _save_local_pendings(pendings)
 
 
-def _mark_local_pending_unlocked(drive_letter: str) -> None:
-    """Marca como UNLOCKED el pendiente local de una unidad (si existe)."""
+def _mark_local_pending_unlocked(pending_key: str) -> None:
+    """Marca como UNLOCKED el pendiente local de una clave (si existe).
+
+    La clave es la letra de la unidad («E:») o SER:<serial> para un
+    móvil sin letra (detección amplia).
+    """
     pendings = _load_local_pendings()
-    drive = drive_letter.upper()
+    drive = pending_key.upper()
     changed = False
     for pending in pendings:
-        if str(pending.get("driveLetter") or "").upper() == drive and pending.get("status") == "BLOCKED":
+        if _pending_key_of(pending) == drive and pending.get("status") == "BLOCKED":
             pending["status"] = "UNLOCKED"
             changed = True
     if changed:
         _save_local_pendings(pendings)
 
 
-def _mark_local_pending_closed(drive_letter: str) -> None:
+def _mark_local_pending_closed(pending_key: str) -> None:
     """Marca como CLOSED los pendientes locales de una unidad (Fase 2).
 
     Se llama al detectar la extracción física: tanto si seguía BLOCKED
@@ -1662,10 +1678,10 @@ def _mark_local_pending_closed(drive_letter: str) -> None:
     BLOCKED/UNLOCKED, así que CLOSED simplemente lo ignora.
     """
     pendings = _load_local_pendings()
-    drive = drive_letter.upper()
+    drive = pending_key.upper()
     changed = False
     for pending in pendings:
-        if str(pending.get("driveLetter") or "").upper() == drive and pending.get("status") in (
+        if _pending_key_of(pending) == drive and pending.get("status") in (
             "BLOCKED",
             "UNLOCKED",
         ):
@@ -1676,17 +1692,17 @@ def _mark_local_pending_closed(drive_letter: str) -> None:
         _save_local_pendings(pendings)
 
 
-def _get_local_block_info(drive_letter: str) -> Dict[str, Any]:
+def _get_local_block_info(pending_key: str) -> Dict[str, Any]:
     """Devuelve el pendiente local vigente (BLOCKED/UNLOCKED) de una unidad.
 
     Sirve para recuperar el método de bloqueo (blockMethod) y la
     instancia PnP (pnpDeviceId) registrados al bloquear, por si el
     estado en memoria del servicio ya no los tuviera.
     """
-    drive = (drive_letter or "").upper()
+    drive = (pending_key or "").upper()
     info: Dict[str, Any] = {}
     for pending in _load_local_pendings():
-        if str(pending.get("driveLetter") or "").upper() == drive and pending.get(
+        if _pending_key_of(pending) == drive and pending.get(
             "status"
         ) in ("BLOCKED", "UNLOCKED"):
             info = pending  # el último es el más reciente
@@ -1695,7 +1711,7 @@ def _get_local_block_info(drive_letter: str) -> Dict[str, Any]:
 
 def _create_pending_unlock_request(
     pc_name: str,
-    drive_letter: str,
+    drive_letter: Optional[str],
     serial_number: Optional[str] = None,
     device_label: Optional[str] = None,
     whitelisted: bool = False,
@@ -1724,14 +1740,46 @@ def _create_pending_unlock_request(
     return True, data.get("id")
 
 
+def enumerate_wpd_devices(conn: wmi.WMI) -> Optional[List[Dict[str, Any]]]:
+    """Móviles conectados por USB en modo transferencia (WPD/MTP).
+
+    Un teléfono no es un disco para Windows: aparece como dispositivo
+    portátil (PNPClass «WPD»), sin letra. Se filtran los enumerados por
+    USB (un WPD por Bluetooth no extrae datos por el puerto). Devuelve
+    None si la consulta falla, para distinguir «sin móviles» de
+    «no se pudo mirar» (el vigilante no debe cerrar bloqueos por un
+    error de consulta).
+    """
+    try:
+        rows = conn.query(
+            "SELECT DeviceID, Name FROM Win32_PnPEntity WHERE PNPClass = 'WPD'"
+        )
+    except Exception as exc:
+        LOGGER.debug("Consulta de dispositivos WPD falló: %s", exc)
+        return None
+    devices: List[Dict[str, Any]] = []
+    for row in rows or []:
+        device_id = str(getattr(row, "DeviceID", "") or "")
+        if not device_id.upper().startswith("USB\\"):
+            continue
+        name = str(getattr(row, "Name", "") or "").strip() or "Dispositivo móvil"
+        serial_raw = device_id.rsplit("\\", 1)[-1]
+        serial = normalize_serial_candidate(serial_raw)
+        devices.append(
+            {"deviceId": device_id, "name": name, "serialNumber": serial}
+        )
+    return devices
+
+
 def create_pending_unlock(
     pc_name: str,
-    drive_letter: str,
+    drive_letter: Optional[str],
     serial_number: Optional[str] = None,
     device_label: Optional[str] = None,
     whitelisted: bool = False,
     block_method: Optional[str] = None,
     pnp_device_id: Optional[str] = None,
+    device_kind: Optional[str] = None,
 ) -> bool:
     """Registra un dispositivo bloqueado pendiente de contraseña (Fase 1).
 
@@ -1790,6 +1838,8 @@ def create_pending_unlock(
             # para revertir lo correcto al desbloquear o al extraerla.
             "blockMethod": block_method,
             "pnpDeviceId": pnp_device_id,
+            # Detección amplia: «WPD» para móviles sin letra.
+            "deviceKind": device_kind,
         }
     )
 
@@ -1843,7 +1893,7 @@ def reconcile_local_pendings() -> int:
         try:
             ok, server_id = _create_pending_unlock_request(
                 str(entry.get("pcName") or HOSTNAME),
-                str(entry.get("driveLetter") or ""),
+                entry.get("driveLetter") or None,
                 entry.get("serialNumber"),
                 entry.get("deviceLabel"),
                 bool(entry.get("whitelisted")),
@@ -3306,6 +3356,8 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
         # Fase 2: cómo se bloqueó cada unidad (método aplicado e
         # instancia PnP), indexado por letra corta ("E").
         self.block_state: Dict[str, Dict[str, Any]] = {}
+        # Detección amplia: móviles WPD vigilados, por DeviceID PnP.
+        self.wpd_state: Dict[str, Dict[str, Any]] = {}
         # Fase 2: unidades ya desbloqueadas con contraseña en esta
         # inserción. El permiso vive hasta que se extraigan (lo limpia
         # el evento de retirada, EventType=3); este registro evita que
@@ -3521,6 +3573,14 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
             daemon=True
         )
         connected_monitor_thread.start()
+
+        # Detección amplia: vigilancia de móviles (WPD/MTP).
+        wpd_thread = threading.Thread(
+            target=self.monitor_wpd_devices,
+            daemon=True
+        )
+        wpd_thread.start()
+        LOGGER.info("Thread de vigilancia de móviles (WPD) iniciado")
 
         # Fase 4: refresco del hash del dueño para la emergencia sin
         # red (al arrancar y cada ~10 minutos).
@@ -3987,12 +4047,18 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
     def _schedule_release_retry(self, drive_letter: str, pending: Dict[str, Any], attempts: int = 1) -> None:
         """Programa (o reprograma) el reintento de una liberación fallida."""
         key = drive_letter.rstrip(":").upper()
+        # Detección amplia: la clave de un móvil es SER:<serial>.
+        label = (
+            drive_letter
+            if not drive_letter.startswith("SER:")
+            else f"el móvil {(pending or {}).get('serialNumber') or ''}"
+        )
         if attempts > len(self.RELEASE_RETRY_DELAYS):
             # Agotados: el dispositivo sigue bloqueado (fail-closed), pero
             # ya no en silencio: el evento queda en el panel.
             serial = pending.get("serialNumber") if isinstance(pending, dict) else None
             payload = _service_event_payload(
-                f"UNLOCK_RELEASE_FAILED | unidad {drive_letter} no se pudo liberar tras {attempts} intentos"
+                f"UNLOCK_RELEASE_FAILED | {label} no se pudo liberar tras {attempts} intentos"
             )
             if serial:
                 payload["serial_number"] = serial
@@ -4002,7 +4068,7 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                 LOGGER.error("No se pudo encolar UNLOCK_RELEASE_FAILED: %s", exc)
             LOGGER.error(
                 "  ✗ Liberación de %s abandonada tras %d intentos; evento UNLOCK_RELEASE_FAILED encolado",
-                drive_letter,
+                label,
                 attempts,
             )
             self.release_retries.pop(key, None)
@@ -4015,7 +4081,7 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
         }
         LOGGER.warning(
             "  ⏳ Liberación de %s falló (intento %d); se reintenta en %.0f s",
-            drive_letter,
+            label,
             attempts,
             delay,
         )
@@ -4029,6 +4095,21 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
             entry = self.release_retries.get(key)
             if not entry or entry["next_at"] > now:
                 continue
+            pending_entry = entry["pending"]
+            if not (pending_entry or {}).get("driveLetter"):
+                # Detección amplia: reintento de un móvil WPD.
+                LOGGER.info(
+                    "  ↻ Reintentando liberar el móvil %s (intento %d)",
+                    (pending_entry or {}).get("serialNumber"),
+                    entry["attempts"] + 1,
+                )
+                if self._release_wpd_pending(pending_entry):
+                    self._after_wpd_release_success(pending_entry)
+                else:
+                    self._schedule_release_retry(
+                        key, pending_entry, entry["attempts"] + 1
+                    )
+                continue
             drive_letter = f"{key}:"
             LOGGER.info(
                 "  ↻ Reintentando liberar %s (intento %d)",
@@ -4041,6 +4122,128 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                 self._schedule_release_retry(
                     drive_letter, entry["pending"], entry["attempts"] + 1
                 )
+
+    # ── Detección amplia: móviles WPD ────────────────────────────────────
+
+    def _handle_wpd_arrival(self, device: Dict[str, Any]) -> None:
+        """Un móvil apareció: se deshabilita por PnP y se registra el
+        bloqueo, con el mismo flujo 2FA que un disco (contraseña del
+        dueño o del admin; fuera de la whitelist, sin contraseña)."""
+        device_id = device["deviceId"]
+        name = device["name"]
+        serial = device.get("serialNumber")
+        LOGGER.info("  [WPD] Dispositivo móvil detectado: %s", name)
+        blocked_ok, _msg = disable_pnp_device(device_id)
+        method = BLOCK_METHOD_PNP if blocked_ok else "NONE"
+        whitelisted = False
+        if serial:
+            whitelisted, _label = check_whitelist(serial)
+        self.wpd_state[device_id] = {
+            "deviceId": device_id,
+            "name": name,
+            "serialNumber": serial,
+            "method": method,
+            "unlocked": False,
+        }
+        readonly_msg = (
+            "Bloqueo PnP aplicado (dispositivo deshabilitado)"
+            if blocked_ok
+            else "SIN BLOQUEO EFECTIVO (la deshabilitación PnP falló)"
+        )
+        payload = build_payload(name, name, readonly_msg, serial, whitelisted)
+        send_event(payload)
+        create_pending_unlock(
+            HOSTNAME,
+            None,
+            serial_number=serial,
+            device_label=name,
+            whitelisted=whitelisted,
+            block_method=method,
+            pnp_device_id=device_id,
+            device_kind="WPD",
+        )
+
+    def _handle_wpd_removal(self, device_id: str) -> None:
+        """El móvil se desenchufó: el permiso muere al extraer, igual
+        que con los discos; se cierra el registro en local y servidor."""
+        state = self.wpd_state.pop(device_id, None)
+        if not state:
+            return
+        serial = state.get("serialNumber")
+        LOGGER.info("  [WPD] Dispositivo móvil retirado: %s", state.get("name"))
+        if serial:
+            _mark_local_pending_closed(_wpd_pending_key(serial))
+            submit_network_task(
+                _send_pending_close_request, HOSTNAME, None, serial
+            )
+
+    def _release_wpd_pending(self, pending: Optional[Dict[str, Any]]) -> bool:
+        """Rehabilita el dispositivo PnP de un móvil ya desbloqueado."""
+        serial = (pending or {}).get("serialNumber")
+        device_id: Optional[str] = None
+        for state in self.wpd_state.values():
+            if serial and state.get("serialNumber") == serial:
+                device_id = state.get("deviceId")
+                break
+        if not device_id and serial:
+            local = _get_local_block_info(_wpd_pending_key(serial))
+            device_id = local.get("pnpDeviceId")
+        if not device_id:
+            LOGGER.error(
+                "  ✗ No se localiza el dispositivo WPD del pendiente %s",
+                (pending or {}).get("id"),
+            )
+            return False
+        ok, _msg = enable_pnp_device(device_id)
+        if ok:
+            for state in self.wpd_state.values():
+                if state.get("deviceId") == device_id:
+                    state["unlocked"] = True
+        return ok
+
+    def _after_wpd_release_success(self, pending: Optional[Dict[str, Any]]) -> None:
+        """Cierre tras liberar un móvil: registro local y reintentos."""
+        serial = (pending or {}).get("serialNumber")
+        if serial:
+            self.release_retries.pop(_wpd_pending_key(serial), None)
+            _mark_local_pending_unlocked(_wpd_pending_key(serial))
+        LOGGER.info("  ✓ Móvil %s desbloqueado tras verificar la contraseña", serial)
+
+    def monitor_wpd_devices(self) -> None:
+        """Vigila los móviles (WPD): sondeo cada ~5 s con diff de
+        apariciones y retiradas (no generan Win32_VolumeChangeEvent)."""
+        LOGGER.info("Thread de vigilancia de dispositivos móviles (WPD) INICIADO")
+        pythoncom.CoInitialize()
+        conn: Optional[wmi.WMI] = None
+        try:
+            while not self.stopped:
+                if conn is None:
+                    try:
+                        conn = wmi.WMI()
+                    except Exception as exc:
+                        LOGGER.error("  ✗ WPD: sin conexión WMI: %s", exc)
+                        time.sleep(10)
+                        continue
+                try:
+                    devices = enumerate_wpd_devices(conn)
+                    if devices is not None:
+                        current_ids = {d["deviceId"] for d in devices}
+                        for device in devices:
+                            if device["deviceId"] not in self.wpd_state:
+                                self._handle_wpd_arrival(device)
+                        for device_id in list(self.wpd_state.keys()):
+                            if device_id not in current_ids:
+                                self._handle_wpd_removal(device_id)
+                except Exception as exc:
+                    LOGGER.error("  ✗ Error en la vigilancia WPD: %s", exc)
+                    conn = None
+                for _ in range(5):
+                    if self.stopped:
+                        break
+                    time.sleep(1)
+        finally:
+            pythoncom.CoUninitialize()
+            LOGGER.info("Thread de vigilancia de dispositivos móviles (WPD) FINALIZADO")
 
     def monitor_unlock_authorization(self, conn: wmi.WMI) -> None:
         """Monitorea periódicamente si hay USBs autorizados para desbloquear."""
@@ -4081,6 +4284,20 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                     for pending in pendings:
                         drive_letter = pending.get("driveLetter")
                         if not drive_letter:
+                            # Detección amplia: sin letra = móvil WPD;
+                            # se libera reactivando su dispositivo PnP.
+                            LOGGER.info(
+                                "  ✓ CONTRASEÑA ACEPTADA para el móvil %s (pendiente %s): desbloqueando...",
+                                pending.get("serialNumber"),
+                                pending.get("id"),
+                            )
+                            if self._release_wpd_pending(pending):
+                                self._after_wpd_release_success(pending)
+                            else:
+                                self._schedule_release_retry(
+                                    _wpd_pending_key(pending.get("serialNumber")),
+                                    pending,
+                                )
                             continue
                         LOGGER.info(
                             "  ✓ CONTRASEÑA ACEPTADA para %s (pendiente %s): desbloqueando...",
