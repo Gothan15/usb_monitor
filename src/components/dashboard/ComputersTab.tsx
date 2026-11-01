@@ -17,10 +17,22 @@ import {
   AlertTriangle,
   ArrowDown,
   ArrowUp,
+  Copy,
+  KeyRound,
   Router,
   Search,
   Wifi,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { getCsrfTokenFromDocument } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 import { Computer, formatDateTime, formatTime } from "./types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -90,7 +102,61 @@ function PalabraEstado({
 }
 
 export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Props) {
+  const { toast } = useToast();
   const [busqueda, setBusqueda] = useState("");
+  const [tokenAbierto, setTokenAbierto] = useState(false);
+  const [tokenPc, setTokenPc] = useState("");
+  const [tokenValor, setTokenValor] = useState<string | null>(null);
+  const [tokenOcupado, setTokenOcupado] = useState(false);
+
+  const llamarProvision = useCallback(
+    async (metodo: "POST" | "DELETE") => {
+      const nombre = tokenPc.trim();
+      if (!nombre) {
+        toast({
+          title: "Escribe el nombre del equipo",
+          variant: "destructive",
+        });
+        return;
+      }
+      const csrfToken = getCsrfTokenFromDocument();
+      if (!csrfToken) {
+        toast({ title: "Sesión sin token CSRF", variant: "destructive" });
+        return;
+      }
+      setTokenOcupado(true);
+      try {
+        const respuesta = await fetch("/api/agent/provision-token", {
+          method: metodo,
+          headers: {
+            "Content-Type": "application/json",
+            "x-csrf-token": csrfToken,
+          },
+          body: JSON.stringify({ pcName: nombre }),
+        });
+        const datos = await respuesta.json().catch(() => null);
+        if (!respuesta.ok || !datos?.ok) {
+          throw new Error(datos?.error || "El servidor no respondió bien");
+        }
+        if (metodo === "POST") {
+          setTokenValor(datos.token);
+          toast({ title: `Token generado para ${datos.pcName}` });
+        } else {
+          setTokenValor(null);
+          toast({ title: `Token revocado para ${datos.pcName}` });
+        }
+      } catch (error: any) {
+        toast({
+          title: "No se pudo completar",
+          description: error?.message,
+          variant: "destructive",
+        });
+      } finally {
+        setTokenOcupado(false);
+      }
+    },
+    [tokenPc, toast],
+  );
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -269,6 +335,18 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
                 onChange={bulk.setMany}
               />
             )}
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-none"
+              onClick={() => {
+                setTokenValor(null);
+                setTokenAbierto(true);
+              }}
+            >
+              <KeyRound className="mr-2 size-4" />
+              Token del agente
+            </Button>
             <div className="relative order-last w-full sm:order-none sm:ml-auto sm:w-auto">
               <Search className="pointer-events-none absolute left-0 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -469,6 +547,82 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog
+        open={tokenAbierto}
+        onOpenChange={(open) => {
+          setTokenAbierto(open);
+          if (!open) setTokenValor(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Token del agente</DialogTitle>
+            <DialogDescription>
+              Cada equipo se acredita ante el panel con su propio token.
+              Genera uno y cópialo en la caja de herramientas del agente
+              de ese equipo: se muestra una sola vez y generar otro
+              invalida el anterior.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2">
+            <label className="smallcaps text-muted-foreground">
+              Nombre del equipo
+            </label>
+            <Input
+              value={tokenPc}
+              onChange={(event) => setTokenPc(event.target.value)}
+              placeholder="PC-RECEPCION"
+              list="nombres-equipos-token"
+              className="rounded-none font-mono"
+            />
+            <datalist id="nombres-equipos-token">
+              {computers.map((c) => (
+                <option key={c.id} value={c.name} />
+              ))}
+            </datalist>
+            {tokenValor && (
+              <div className="mt-2 flex items-center gap-2 border border-border bg-muted/30 p-3">
+                <code className="flex-1 break-all font-mono text-xs">
+                  {tokenValor}
+                </code>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="rounded-none"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(tokenValor);
+                    toast({ title: "Token copiado" });
+                  }}
+                >
+                  <Copy className="mr-1 size-3.5" />
+                  Copiar
+                </Button>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-none"
+              disabled={tokenOcupado}
+              onClick={() => void llamarProvision("DELETE")}
+            >
+              Revocar
+            </Button>
+            <Button
+              type="button"
+              className="rounded-none"
+              disabled={tokenOcupado}
+              onClick={() => void llamarProvision("POST")}
+            >
+              {tokenOcupado ? "Trabajando..." : "Generar token"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {selectedComputer && (
         <USBDevicesSheet

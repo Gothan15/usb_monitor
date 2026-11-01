@@ -12,18 +12,16 @@
 # (reactiva los dispositivos que haya deshabilitado) y solo despues
 # se quita el servicio: la maquina queda como estaba (sin huella).
 #
-# Credencial: el token por equipo solo sirve si el PANEL lo conoce
-# (guarda su hash), asi que lo normal es que lo entregue la
-# instalacion remota desde el panel (-AgentToken). En una
-# instalacion a mano, usa -ApiKey con la clave API del usuario
-# dueno, o dejalo vacio y guarda la credencial despues desde la
-# ventana de gestion (USBMonitorService.exe gui).
+# Credencial: la unica del agente es el token propio del equipo.
+# Lo genera un administrador en el panel (Equipos > Token del
+# agente) o la instalacion remota; pasalo con -AgentToken o
+# guardalo despues en la caja de herramientas
+# (USBMonitorService.exe gui).
 
 param(
     [string]$ServerHost = "localhost",
     [int]$ServerPort = 3000,
     [string]$AgentToken = "",
-    [string]$ApiKey = "",
     [string]$InstallDir = "C:\USBMonitor",
     [switch]$Uninstall
 )
@@ -93,11 +91,10 @@ $cfg = @{
     serverScheme = "http"
 }
 if ($AgentToken) { $cfg.agentToken = $AgentToken }
-if ($ApiKey) { $cfg.apiKey = $ApiKey }
 $cfg | ConvertTo-Json | Set-Content -Path (Join-Path $InstallDir "server.json") -Encoding UTF8
 Write-Host "server.json escrito (host $ServerHost, puerto $ServerPort)."
-if (-not $AgentToken -and -not $ApiKey) {
-    Write-Host "Sin credencial: abre USBMonitorService.exe gui y guarda el token del equipo o la clave API del dueno." -ForegroundColor Yellow
+if (-not $AgentToken) {
+    Write-Host "Sin credencial: genera el token en el panel (Equipos > Token del agente) y guardalo en USBMonitorService.exe gui." -ForegroundColor Yellow
 }
 
 & $serviceExe install --startup auto | Out-Null

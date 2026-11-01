@@ -34,20 +34,24 @@ cd USBMonitor
 ## Instalar / desinstalar
 
 ```powershell
-.\Install-Service.ps1 -ServerHost 192.168.1.10 -ApiKey <clave del dueño>
+.\Install-Service.ps1 -ServerHost 192.168.1.10 -AgentToken <token del equipo>
 .\Install-Service.ps1 -Uninstall   # restaura todo ANTES de quitarse
 ```
 
-Credencial: el token por equipo lo provisiona la instalación desde
-el panel; a mano, la clave API del dueño (o guárdala después en la
-ventana de gestión, queda cifrada en `server.json`).
+Credencial: la única es el token propio del equipo. Lo genera un
+administrador en el panel (Equipos → «Token del agente»: se muestra
+una sola vez y el panel guarda solo su hash) o lo provisiona la
+instalación remota; a mano se pega en el instalador (`-AgentToken`)
+o después en la caja de herramientas, donde queda cifrado en
+`server.json`. La clave API personal del usuario ya no autentica al
+agente.
 
 ## Configuración
 
-`server.json` junto al ejecutable (o en `C:\ProgramData\USBMonitor`)
-manda sobre las variables de entorno: `serverHost`, `serverPort`,
-`serverScheme`, `agentToken`, `apiKey` (estos dos aceptan el cifrado
-`ENC:` de la v1).
+Todo vive en `server.json` junto al ejecutable (o en
+`C:\ProgramData\USBMonitor`): `serverHost`, `serverPort`,
+`serverScheme`, `agentToken` (acepta el cifrado `ENC:` de la v1),
+`sslCert`, `sslVerify`. Sin variables de entorno.
 
 ## Sin huella
 

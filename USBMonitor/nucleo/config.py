@@ -8,8 +8,10 @@ se migran al archivo una única vez, al primer arranque sin
 server.json, y después se ignoran.
 
 Claves del archivo: serverHost, serverPort, serverScheme, agentToken,
-apiKey, sslCert, sslVerify. Los valores agentToken/apiKey aceptan el
-cifrado ENC: de la v1 (Fernet con clave derivada de la máquina), que
+sslCert, sslVerify. La credencial del agente es SOLO el token propio
+del equipo (la clave API de usuario dejó de autenticar al agente en
+el panel). El token acepta el cifrado ENC: de la v1 (Fernet con clave
+derivada de la máquina), que
 aquí se replica exacto para no romper instalaciones existentes; un
 ENC: que no se puede descifrar se descarta (fail-closed), nunca se
 usa como credencial.
@@ -121,7 +123,6 @@ _MIGRACION = {
     "USB_MONITOR_SERVER_PORT": "serverPort",
     "USB_MONITOR_SERVER_SCHEME": "serverScheme",
     "USB_MONITOR_AGENT_TOKEN": "agentToken",
-    "USB_MONITOR_API_KEY": "apiKey",
     "USB_MONITOR_SSL_CERT": "sslCert",
 }
 _migracion_intentada = False
@@ -283,24 +284,11 @@ def token_agente() -> Optional[str]:
     return limpio or None
 
 
-def clave_api() -> Optional[str]:
-    bruto = _texto("apiKey")
-    if not bruto:
-        return None
-    if bruto.lower().startswith("apikey "):
-        bruto = bruto[7:].strip()
-    limpio = descifrar(bruto).strip()
-    return limpio or None
-
-
 def cabeceras_auth() -> Dict[str, str]:
-    """El token por equipo manda; la clave API es el respaldo."""
+    """La única credencial del agente: el token propio del equipo."""
     token = token_agente()
     if token:
         return {"Authorization": f"AgentToken {token}"}
-    clave = clave_api()
-    if clave:
-        return {"Authorization": f"ApiKey {clave}"}
     return {}
 
 

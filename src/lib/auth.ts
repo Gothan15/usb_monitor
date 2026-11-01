@@ -47,7 +47,6 @@ const SESSION_INACTIVITY_LIMIT = 30 * 60; // 30 min
 const SESSION_CACHE_TTL_MS = 2 * 60 * 1000; // cache lookups for 2 minutos
 const SESSION_CACHE_MAX = 1000;
 const AGENT_CACHE_TTL_MS = 60 * 1000;
-const AGENT_CACHE_MAX = 200;
 
 type UserRole = "admin" | "user";
 
@@ -68,23 +67,12 @@ const sessionUserCache = new QuickLRU<
   maxSize: SESSION_CACHE_MAX,
 });
 
-const agentServiceCache = new QuickLRU<
-  string,
-  { payload: AgentServiceIdentity; expiresAt: number }
->({
-  maxSize: AGENT_CACHE_MAX,
-});
-
 function cacheKeyUser(id: string) {
   return `uid:${id}`;
 }
 
 function cacheKeyApiKey(apiKey: string) {
   return `ak:${apiKey}`;
-}
-
-function cacheKeyAgent(apiKey: string) {
-  return `svc:${apiKey}`;
 }
 
 function setCachedUser(key: string, user: CachedUser) {
@@ -99,23 +87,6 @@ function getCachedUser(key: string): CachedUser | null {
   if (!cached) return null;
   if (cached.expiresAt <= Date.now()) {
     sessionUserCache.delete(key);
-    return null;
-  }
-  return cached.payload;
-}
-
-function cacheAgentIdentity(apiKey: string, identity: AgentServiceIdentity) {
-  agentServiceCache.set(cacheKeyAgent(apiKey), {
-    payload: identity,
-    expiresAt: Date.now() + AGENT_CACHE_TTL_MS,
-  });
-}
-
-function getCachedAgentIdentity(apiKey: string): AgentServiceIdentity | null {
-  const cached = agentServiceCache.get(cacheKeyAgent(apiKey));
-  if (!cached) return null;
-  if (cached.expiresAt <= Date.now()) {
-    agentServiceCache.delete(cacheKeyAgent(apiKey));
     return null;
   }
   return cached.payload;
@@ -155,25 +126,6 @@ function toUserAuthIdentity(
   };
 }
 
-function asServiceIdentityFromAgent(
-  user: CachedUser,
-): AgentServiceIdentity | null {
-  if (user.role !== "user") {
-    return null;
-  }
-  if (!user.apiKey) {
-    return null;
-  }
-  const serviceId = user.computerName?.trim() || `service:${user.id}`;
-  return {
-    type: "service",
-    serviceId,
-    token: user.apiKey,
-    agentUserId: user.id,
-    computerId: user.computerId,
-  };
-}
-
 type AuthIdentity = UserAuthIdentity | ServiceAuthIdentity;
 
 export interface UserAuthIdentity {
@@ -194,11 +146,6 @@ export interface ServiceAuthIdentity {
   agentUserId?: string;
   computerId?: string | null;
 }
-
-type AgentServiceIdentity = ServiceAuthIdentity & {
-  agentUserId: string;
-  computerId: string | null;
-};
 
 const CSRF_COOKIE_NAME = "csrf-token";
 const CSRF_HEADER_NAME = "x-csrf-token";
@@ -571,49 +518,16 @@ export async function requireAuth(
 export async function requireServiceAuth(
   req: Request,
 ): Promise<ServiceAuthIdentity> {
-  const authHeader = req.headers.get("authorization") || "";
-  const apiKeyMatch = authHeader.match(AUTHORIZATION_HEADER_PATTERN);
-  const presentedApiKey = apiKeyMatch?.[1] ?? null;
-
-  if (presentedApiKey) {
-    const cached = getCachedAgentIdentity(presentedApiKey);
-    if (cached) {
-      return cached;
-    }
-  }
-
+  // Solo identidades de servicio: el token propio del equipo
+  // (Authorization: AgentToken ...) o las claves de servicio del
+  // operador. La clave API personal de un usuario YA NO autentica
+  // al agente (2026-11-01): era una credencial del usuario con
+  // alcance de servicio sobre cualquiera de sus equipos; el agente
+  // se acredita únicamente con el token de su equipo.
   const auth = await authenticateRequest(req);
   if (auth && auth.type === "service") {
     return auth;
   }
-
-  if (auth && auth.type === "user" && auth.role === "user") {
-    if (!auth.apiKey || !presentedApiKey || auth.apiKey !== presentedApiKey) {
-      throw new Error("UNAUTHORIZED");
-    }
-    const candidate: CachedUser = {
-      id: auth.userId,
-      username: auth.username,
-      role: auth.role,
-      apiKey: auth.apiKey,
-      computerId: auth.computerId ?? null,
-      computerName: auth.computerName ?? null,
-    };
-    const serviceIdentity = asServiceIdentityFromAgent(candidate);
-    if (!serviceIdentity) {
-      throw new Error("UNAUTHORIZED");
-    }
-    if (!serviceIdentity.computerId) {
-      const roleLabel = "user";
-      console.warn(
-        `[auth] ${roleLabel} ${auth.username} (${auth.userId}) lacks an assigned computer; rejecting service authentication.`,
-      );
-      throw new Error("UNAUTHORIZED");
-    }
-    cacheAgentIdentity(presentedApiKey, serviceIdentity);
-    return serviceIdentity;
-  }
-
   throw new Error("UNAUTHORIZED");
 }
 
@@ -698,7 +612,6 @@ export const sessionInternal = {
 export const authTesting = {
   clearCaches() {
     sessionUserCache.clear();
-    agentServiceCache.clear();
   },
   seedApiKeyUserCache(seed: {
     id: string;
