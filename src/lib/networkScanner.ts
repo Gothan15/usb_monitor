@@ -92,14 +92,14 @@ export function ipRangeFromCIDR(cidr: string): string[] {
   }
   const ipNum = ((octets[0] << 24) >>> 0) + (octets[1] << 16) + (octets[2] << 8) + octets[3];
   const hostBits = 32 - mask;
-  const total = hostBits >= 31 ? Math.pow(2, hostBits) : Math.pow(2, hostBits) - 2;
+  const total = mask >= 31 ? Math.pow(2, hostBits) : Math.pow(2, hostBits) - 2;
   if (total > MAX_SCAN_HOSTS) {
     throw new Error(
       `La red ${cidr} tiene ${total} direcciones: demasiado grande para un escaneo (máximo ${MAX_SCAN_HOSTS}). Elige una subred más pequeña.`
     );
   }
   const network = hostBits === 32 ? ipNum : (ipNum >>> hostBits) << hostBits;
-  const first = hostBits >= 31 ? network : network + 1;
+  const first = mask >= 31 ? network : network + 1;
   const ips: string[] = [];
   for (let i = 0; i < total; i++) {
     const n = first + i;
