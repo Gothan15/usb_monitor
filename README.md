@@ -51,7 +51,7 @@ Detalles de implementación que me parecen importantes:
 - Gestión de usuarios y de equipos, y asignación de cada usuario a su PC.
 - Escáner de red para descubrir equipos y comprobar si tienen el agente instalado y corriendo.
 - Instalación remota del agente por SSH o por WinRM, con el progreso en vivo en pantalla.
-- Ajustes del desbloqueo por contraseña: interruptor general, emergencia sin red, token por equipo, bloqueo de la sesión al conectar y minutos de silencio para marcar un equipo como caído.
+- Ajustes del desbloqueo por contraseña: interruptor general, emergencia sin red, token por equipo, bloqueo de la sesión al conectar y minutos de silencio para marcar un equipo como caído. Esos dos ajustes de equipo se empujan al guardarlos y, además, cada agente los pide él mismo al arrancar y periódicamente, para que un equipo apagado en el momento del cambio no se quede con los viejos.
 - La navegación se puede poner en la cabecera superior o en una barra lateral, a elegir en Ajustes.
 
 ## Instalación
@@ -100,9 +100,10 @@ INSPIRACION.md       Referencias de diseño de la interfaz
 ## Limitaciones, dichas claramente
 
 - Esto es software en el espacio de usuario, no un driver. Un usuario con permisos de administrador local en su PC puede detener el servicio si sabe cómo. Lo que sí hace el sistema es **detectarlo**: cada equipo reporta su actividad y el panel marca los que dejan de dar señales, con la hora de la última señal, distinguiendo si el que cayó fue el agente o el servidor entero. Detecta y deja evidencia; no lo impide.
-- Si el servidor no responde, el agente mantiene bloqueado lo que no pueda verificar. Los eventos no se pierden (cola persistente en disco), y la contraseña en línea se puede verificar en cuanto la conexión vuelve; mientras tanto solo queda la emergencia local descrita arriba, y solo para unidades con letra.
+- Si el servidor no responde, el agente mantiene bloqueado lo que no pueda verificar. Los eventos no se pierden (cola persistente en disco), y la contraseña en línea se puede verificar en cuanto la conexión vuelve; mientras tanto queda la emergencia local descrita arriba.
 - Si en un móvil la desactivación por PnP fallara en una PC concreta, no hay un segundo mecanismo: el evento llega al panel marcado como «sin bloqueo efectivo» en vez de fingir un bloqueo que no existe.
 - Un móvil en modo «solo carga» no expone datos y Windows ni siquiera lo enumera como dispositivo de archivos: el agente lo caza en el momento en que alguien activa la transferencia.
+- Un adaptador de red por USB que ya esté conectado al arrancar el servicio (típico: el dock que le da red al propio equipo) se registra pero no se bloquea, para no dejar a la PC sin su conexión; los que se conecten después sí se bloquean.
 - Solo Windows en el lado del agente. El panel corre donde corra Node (el escáner de red usa el `ping` del sistema: su sintaxis está ajustada a Windows).
 
 ## Estado del proyecto
