@@ -26,7 +26,7 @@ Set-Location -Path $root
 $Programs = @(
     @{ Key = "Servicio";  Spec = "USBMonitorService.spec"; Dist = "dist";                    Work = "build_usb_monitor_service"; Exe = "USBMonitorService.exe" },
     @{ Key = "Companero"; Spec = "USBMonitorPrompt.spec";  Dist = "dist_usb_prompt";         Work = "build_usb_prompt";          Exe = "USBMonitorPrompt.exe" },
-    @{ Key = "Visor";     Spec = "USBSerialViewer.spec";   Dist = "dist_usb_serial_viewer";  Work = "build_usb_serial_viewer";   Exe = "USBSerialViewer.exe" },
+    @{ Key = "Visor";     Spec = "USBSerialViewer.spec";   Dist = "dist_usb_serial_viewer";  Work = "build_usb_serial_viewer";   Exe = "USBSerialViewer.exe" }
 )
 
 $selected = $Programs | Where-Object { $Solo.Count -eq 0 -or $Solo -contains $_.Key }
