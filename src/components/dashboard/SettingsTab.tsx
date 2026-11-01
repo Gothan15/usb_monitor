@@ -19,10 +19,6 @@ import {
   Activity,
   KeyRound,
 } from "lucide-react";
-import {
-  usePaginationSettings,
-  PaginationStyle,
-} from "@/hooks/usePaginationSettings";
 import { useLayoutStore, type Disposicion } from "@/store/useLayoutStore";
 import { PanelLeft, PanelTop } from "lucide-react";
 import { useLiveSyncStore } from "@/store/useLiveSyncStore";
@@ -60,7 +56,6 @@ export function SettingsTab() {
     silenceThresholdMinutes: 5,
   });
 
-  const { style, setStyle, setPosition } = usePaginationSettings();
   const disposicion = useLayoutStore((state) => state.disposicion);
   const setDisposicion = useLayoutStore((state) => state.setDisposicion);
   const { isLiveSyncEnabled, toggleLiveSync } = useLiveSyncStore();

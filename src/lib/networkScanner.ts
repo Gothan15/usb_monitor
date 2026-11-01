@@ -1,30 +1,12 @@
 import os from "os";
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import util from "util";
 import { db } from "@/lib/db";
 import { checkServiceHealth } from "@/lib/serviceNotifier";
 import { getCurrentDate, getCurrentTimestamp } from "@/lib/time";
 import { normalizeComputerName } from "@/lib/utils";
 
-const execAsync = util.promisify(exec);
-
-/*
-  Métricas sugeridas:
-  ```ts
-  import { performance } from "node:perf_hooks";
-
-  function recordScanMetrics(durationMs: number, hosts: number) {
-    void fetch("/api/metrics", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "network_scan_latency_ms", value: durationMs, hosts }),
-    }).catch(() => {});
-  }
-  ```
-  Invocar `recordScanMetrics` tras `await Promise.all(workers);` para almacenar tiempos
-  en Prometheus/Grafana. Similarmente instrumentar `$transaction` en Prisma usando
-  `prisma.$on("query", ...)` cuando se habilite la canalización de observabilidad.
-*/
+const execFileAsync = util.promisify(execFile);
 
 export interface NetworkInterfaceInfo {
   name: string;
@@ -44,6 +26,16 @@ function guessInterfaceType(name: string): NetworkInterfaceInfo["type"] {
   return "other";
 }
 
+function cidrFromAddressNetmask(address: string, netmask: string): string {
+  const ones = netmask
+    .split(".")
+    .map((o) => (Number(o) >>> 0).toString(2))
+    .join("")
+    .split("")
+    .filter((c) => c === "1").length;
+  return `${address}/${ones || 24}`;
+}
+
 export function getAllLocalNetworks(): NetworkInterfaceInfo[] {
   const ifaces = os.networkInterfaces();
   const results: NetworkInterfaceInfo[] = [];
@@ -56,7 +48,9 @@ export function getAllLocalNetworks(): NetworkInterfaceInfo[] {
       results.push({
         name,
         address: net.address,
-        cidr: `${net.address}/24`,
+        // La CIDR real de la interfaz (Node la expone); antes se asumía
+        // /24 siempre, también en redes /16 o /23.
+        cidr: net.cidr || cidrFromAddressNetmask(net.address, net.netmask || "255.255.255.0"),
         mac: net.mac || "",
         netmask: net.netmask || "255.255.255.0",
         type: guessInterfaceType(name),
@@ -82,34 +76,50 @@ export interface HostScanResult {
 }
 
 function getLocalCIDR(): string | null {
-  const ifaces = os.networkInterfaces();
-  for (const name of Object.keys(ifaces)) {
-    for (const net of ifaces[name] || []) {
-      if (net.family === "IPv4" && !net.internal) {
-        // Asumimos máscara 24 si no la tenemos (común en LANs pequeñas)
-        return `${net.address}/24`;
-      }
-    }
-  }
-  return null;
+  // Única fuente de verdad: la misma lista que ve el selector de
+  // interfaces (salta internas y link-local, usa la máscara real).
+  return getAllLocalNetworks()[0]?.cidr ?? null;
 }
 
-function ipRangeFromCIDR(cidr: string): string[] {
+const MAX_SCAN_HOSTS = 1024;
+
+export function ipRangeFromCIDR(cidr: string): string[] {
   const [base, maskStr] = cidr.split("/");
   const mask = parseInt(maskStr, 10);
-  if (mask !== 24) return [base];
   const octets = base.split(".").map(Number);
-  const prefix = `${octets[0]}.${octets[1]}.${octets[2]}`;
+  if (octets.length !== 4 || octets.some((o) => Number.isNaN(o)) || Number.isNaN(mask) || mask < 0 || mask > 32) {
+    throw new Error(`CIDR no válido: ${cidr}`);
+  }
+  const ipNum = ((octets[0] << 24) >>> 0) + (octets[1] << 16) + (octets[2] << 8) + octets[3];
+  const hostBits = 32 - mask;
+  const total = hostBits >= 31 ? Math.pow(2, hostBits) : Math.pow(2, hostBits) - 2;
+  if (total > MAX_SCAN_HOSTS) {
+    throw new Error(
+      `La red ${cidr} tiene ${total} direcciones: demasiado grande para un escaneo (máximo ${MAX_SCAN_HOSTS}). Elige una subred más pequeña.`
+    );
+  }
+  const network = hostBits === 32 ? ipNum : (ipNum >>> hostBits) << hostBits;
+  const first = hostBits >= 31 ? network : network + 1;
   const ips: string[] = [];
-  for (let i = 1; i < 255; i++) ips.push(`${prefix}.${i}`);
+  for (let i = 0; i < total; i++) {
+    const n = first + i;
+    ips.push(`${(n >>> 24) & 255}.${(n >>> 16) & 255}.${(n >>> 8) & 255}.${n & 255}`);
+  }
   return ips;
 }
 
 async function pingHost(ip: string, timeoutMs = 800): Promise<boolean> {
+  // Sintaxis según el sistema donde corre el PANEL (no el agente):
+  // Windows usa -n/-w en ms; Linux -c/-W en segundos; macOS -c/-W en ms.
+  const platform = process.platform;
+  const args =
+    platform === "win32"
+      ? ["-n", "1", "-w", String(timeoutMs)]
+      : platform === "darwin"
+        ? ["-c", "1", "-W", String(timeoutMs)]
+        : ["-c", "1", "-W", String(Math.max(1, Math.ceil(timeoutMs / 1000)))];
   try {
-    // -n 1 un eco, -w timeout en ms (Windows). Ajustar si se despliega en Linux.
-    // Cambiar a una librería ICMP (net-ping/fast-ping) si se identifica este paso como cuello de botella.
-    await execAsync(`ping -n 1 -w ${timeoutMs} ${ip}`);
+    await execFileAsync("ping", [...args, ip], { timeout: timeoutMs + 2000 });
     return true;
   } catch {
     return false;
@@ -159,6 +169,10 @@ async function checkService(ip: string): Promise<ServiceCheckResult> {
   }
 
   if (health.available) {
+    // «Instalado» y «en ejecución» salen del mismo dato (el agente
+    // respondió en su puerto): no hay forma de distinguir un agente
+    // instalado pero detenido desde la red, así que ambos campos se
+    // rellenan juntos y la interfaz los presenta como un solo estado.
     result.serviceInstalled = true;
     result.serviceRunning = true;
   }
@@ -194,24 +208,7 @@ let lastScan: {
 } | null = null;
 const CACHE_TTL_MS = 60_000; // 60s
 
-// Jobs async
-interface ScanJob {
-  id: string;
-  cidr: string;
-  started: number;
-  finished?: number;
-  progress: number;
-  results: HostScanResult[];
-  status: "running" | "finished" | "error";
-  error?: string;
-}
-const jobs: Record<string, ScanJob> = {};
-function newJobId() {
-  return Math.random().toString(36).slice(2, 10);
-}
-
 const UPSERT_BATCH_SIZE = 25;
-const JOB_TTL_MS = 5 * 60_000;
 
 async function persistComputers(entries: ComputerUpsertPayload[]) {
   if (!entries.length) return;
@@ -244,14 +241,10 @@ async function persistComputers(entries: ComputerUpsertPayload[]) {
   }
 }
 
-export function getScanJob(jobId: string) {
-  return jobs[jobId];
-}
-
 export async function scanNetwork(
   cidr?: string,
   options?: { force?: boolean }
-): Promise<HostScanResult[]> {
+): Promise<{ results: HostScanResult[]; cached: boolean }> {
   const net = cidr || getLocalCIDR();
   if (!net) throw new Error("No se pudo determinar la red local");
   if (
@@ -260,7 +253,7 @@ export async function scanNetwork(
     lastScan.cidr === net &&
     getCurrentTimestamp() - lastScan.timestamp < CACHE_TTL_MS
   ) {
-    return lastScan.results;
+    return { results: lastScan.results, cached: true };
   }
   const ips = ipRangeFromCIDR(net);
   const concurrency = 30;
@@ -273,26 +266,32 @@ export async function scanNetwork(
       const ip = ips[i];
       const host: HostScanResult = { ip, alive: false };
       try {
-        const isUp = await pingHost(ip);
-        host.alive = isUp;
-        if (isUp) {
-          const svc = await checkService(ip);
+        // Ping y puerto del agente se comprueban A LA VEZ y por
+        // separado: un PC con el agente sano pero el ICMP bloqueado
+        // por su cortafuegos debe aparecer igual (antes el servicio
+        // solo se miraba si el ping respondía).
+        const [isUp, svc] = await Promise.all([pingHost(ip), checkService(ip)]);
+        host.alive = isUp || svc.serviceInstalled === true;
+        if (host.alive) {
           Object.assign(host, svc);
           const normalizedName = svc.hostname
             ? normalizeComputerName(svc.hostname)
             : "";
-          const computerName = normalizedName || normalizeComputerName(ip);
-          host.hostname = normalizedName || host.hostname || computerName;
-          // Defer writes so Prisma only touches the database once per batch instead of per host.
-          persistQueue.push({
-            name: computerName,
-            ip,
-            lastSeenAt: getCurrentDate(),
-            isActive: isUp,
-            serviceInstalled: (svc as any).serviceInstalled ?? false,
-            serviceRunning: (svc as any).serviceRunning ?? false,
-            lastServiceCheck: (svc as any).lastServiceCheck,
-          });
+          host.hostname = normalizedName || host.hostname;
+          // Solo se persiste lo que tiene agente: un host que solo
+          // responde al ping (impresora, teléfono) se muestra en los
+          // resultados pero NO se convierte en «equipo» del registro.
+          if (svc.serviceInstalled) {
+            persistQueue.push({
+              name: normalizedName || normalizeComputerName(ip),
+              ip,
+              lastSeenAt: getCurrentDate(),
+              isActive: true,
+              serviceInstalled: true,
+              serviceRunning: true,
+              lastServiceCheck: svc.lastServiceCheck,
+            });
+          }
         }
       } catch (e: any) {
         host.error = e.message;
@@ -304,66 +303,5 @@ export async function scanNetwork(
   await Promise.all(workers);
   await persistComputers(persistQueue);
   lastScan = { cidr: net, timestamp: getCurrentTimestamp(), results };
-  return results;
-}
-
-
-
-
-export function startScanJob(cidr?: string): ScanJob {
-  const net = cidr || getLocalCIDR();
-  if (!net) throw new Error("No se pudo determinar la red local");
-  const job: ScanJob = {
-    id: newJobId(),
-    cidr: net,
-    started: getCurrentTimestamp(),
-    progress: 0,
-    results: [],
-    status: "running",
-  };
-  jobs[job.id] = job;
-  const ips = ipRangeFromCIDR(net);
-  const total = ips.length;
-  const concurrency = 30;
-  let index = 0;
-  const runWorker = async () => {
-    while (index < ips.length && job.status === "running") {
-      const i = index++;
-      const ip = ips[i];
-      try {
-        const alive = await pingHost(ip);
-        let svc: any = {};
-        if (alive) svc = await checkService(ip);
-        const host: HostScanResult = { ip, alive, ...svc };
-        job.results.push(host);
-      } catch (e: any) {
-        job.results.push({ ip, alive: false, error: e.message });
-      }
-      job.progress = job.results.length / total;
-    }
-  };
-  Promise.all(Array.from({ length: concurrency }, () => runWorker()))
-    .then(() => {
-      job.status = "finished";
-      job.finished = getCurrentTimestamp();
-      lastScan = {
-        cidr: job.cidr,
-        timestamp: getCurrentTimestamp(),
-        results: job.results,
-      };
-      // Auto-expire finished jobs to avoid unbounded memory growth when admins fire many scans.
-      setTimeout(() => {
-        delete jobs[job.id];
-      }, JOB_TTL_MS).unref?.();
-    })
-    .catch((e) => {
-      job.status = "error";
-      job.error = e.message;
-      job.finished = getCurrentTimestamp();
-      // Ensure errored jobs also get purged after TTL.
-      setTimeout(() => {
-        delete jobs[job.id];
-      }, JOB_TTL_MS).unref?.();
-    });
-  return job;
+  return { results, cached: false };
 }
