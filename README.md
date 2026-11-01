@@ -63,7 +63,9 @@ Necesitas Node.js 20+ y un PostgreSQL accesible.
 ```bash
 npm install
 # crea un .env con DATABASE_URL y SESSION_SECRET
-npx prisma db push     # crea las tablas
+npx prisma migrate deploy   # crea las tablas (migración base)
+# Si tu base de datos ya existía de antes de la migración base:
+#   npx prisma migrate resolve --applied 20250101000000_baseline
 npm run db:seed        # datos iniciales (revisa prisma/seed.ts antes)
 npm run dev            # desarrollo
 npm run build          # producción (se sirve con el server.ts del repo)
