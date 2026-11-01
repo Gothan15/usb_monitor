@@ -26,6 +26,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { DashboardPagination } from "./DashboardPagination";
+import {
+  BulkBar,
+  PageCheckbox,
+  RowCheckbox,
+  useBulkSelection,
+} from "./BulkSelection";
 import { useTableSort } from "@/hooks/useTableSort";
 import { USBDevicesSheet } from "./USBDevicesSheet";
 import { Spinner } from "@/components/ui/spinner";
@@ -34,6 +40,7 @@ interface Props {
   computers: Computer[];
   loading: boolean;
   onDelete?: (id: string) => Promise<void> | void;
+  onBulkDelete?: (ids: string[]) => Promise<void> | void;
 }
 
 const COLUMNAS_ORDEN: { key: keyof Computer; label: string }[] = [
@@ -82,7 +89,7 @@ function PalabraEstado({
   );
 }
 
-export function ComputersTab({ computers, loading, onDelete }: Props) {
+export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Props) {
   const [busqueda, setBusqueda] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -94,6 +101,22 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
 
   const { sortedData, sortConfig, requestSort } =
     useTableSort<Computer>(computers);
+
+  const bulk = useBulkSelection();
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  const handleBulkConfirm = useCallback(async () => {
+    if (!onBulkDelete || bulk.count === 0) return;
+    try {
+      setBulkBusy(true);
+      await onBulkDelete([...bulk.selected]);
+      bulk.clear();
+    } catch (error) {
+      console.error("Error al eliminar equipos por lotes", error);
+    } finally {
+      setBulkBusy(false);
+    }
+  }, [onBulkDelete, bulk]);
 
   const quickStats = useMemo(() => {
     if (loading) {
@@ -239,6 +262,13 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
         <>
           {/* ── Ordenación y búsqueda ── */}
           <div className="mt-10 flex flex-wrap items-center gap-x-5 gap-y-2">
+            {onBulkDelete && (
+              <PageCheckbox
+                pageIds={paginatedComputers.map((c) => c.id)}
+                selected={bulk.selected}
+                onChange={bulk.setMany}
+              />
+            )}
             <div className="relative order-last w-full sm:order-none sm:ml-auto sm:w-auto">
               <Search className="pointer-events-none absolute left-0 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -288,6 +318,16 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
                   key={computer.id}
                   className="flex flex-col gap-5 py-6 md:flex-row md:items-center md:gap-8"
                 >
+                  {onBulkDelete && (
+                    <div className="pt-1.5 md:shrink-0">
+                      <RowCheckbox
+                        checked={bulk.selected.has(computer.id)}
+                        onChange={() => bulk.toggle(computer.id)}
+                        label={`Seleccionar ${computer.name}`}
+                      />
+                    </div>
+                  )}
+
                   {/* Nombre e IP */}
                   <div className="min-w-0 md:w-60 md:shrink-0">
                     <p className="font-display truncate text-xl font-bold leading-snug text-foreground">
@@ -372,6 +412,16 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
             <p className="border-t border-border pt-6 text-sm text-muted-foreground">
               Ningún equipo coincide con «{busqueda.trim()}».
             </p>
+          )}
+
+          {onBulkDelete && (
+            <BulkBar
+              count={bulk.count}
+              unidad="equipo"
+              busy={bulkBusy}
+              onConfirm={() => void handleBulkConfirm()}
+              onCancel={bulk.clear}
+            />
           )}
 
           {/* ── Paginación ── */}

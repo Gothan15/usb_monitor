@@ -34,6 +34,12 @@ import { useToast } from "@/hooks/use-toast";
 import { getCsrfTokenFromDocument } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { DashboardPagination } from "./DashboardPagination";
+import {
+  BulkBar,
+  PageCheckbox,
+  RowCheckbox,
+  useBulkSelection,
+} from "./BulkSelection";
 import { usePagination } from "@/hooks/usePagination";
 import { formatDateTime, type Computer } from "./types";
 import {
@@ -211,6 +217,55 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
   }, [deferredSearch, setPage]);
 
   const triggerReload = () => setReloadFlag((value) => value + 1);
+
+  // ── Selección por lotes ──
+  const bulk = useBulkSelection();
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  const handleBulkDeleteUsers = async () => {
+    if (bulk.count === 0 || bulkBusy) return;
+    const csrfToken = getCsrfTokenFromDocument();
+    if (!csrfToken) {
+      toast({
+        title: "Sesión sin token de seguridad",
+        description: "Inicia sesión nuevamente.",
+        variant: "destructive",
+      });
+      return;
+    }
+    try {
+      setBulkBusy(true);
+      const response = await fetch("/api/users", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": csrfToken,
+        },
+        credentials: "include",
+        body: JSON.stringify({ ids: [...bulk.selected] }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.ok) {
+        throw new Error(data?.error || `Error HTTP ${response.status}`);
+      }
+      toast({
+        title: "Usuarios eliminados",
+        description: `Se eliminaron ${data.deleted} usuario(s).${
+          data.skippedSelf ? " Tu propio usuario se omitió." : ""
+        }`,
+      });
+      bulk.clear();
+      triggerReload();
+    } catch (err: any) {
+      toast({
+        title: "No se pudieron eliminar",
+        description: err?.message || "Inténtalo de nuevo.",
+        variant: "destructive",
+      });
+    } finally {
+      setBulkBusy(false);
+    }
+  };
 
   const isInitialLoading = loading && !hasLoadedOnce;
   const isSearching = loading && hasLoadedOnce;
@@ -587,6 +642,11 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
           <div className="relative">
             {/* Ordenación */}
             <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+              <PageCheckbox
+                pageIds={sortedData.map((u) => u.id)}
+                selected={bulk.selected}
+                onChange={bulk.setMany}
+              />
               <span className="smallcaps text-muted-foreground/70">
                 Ordenar por
               </span>
@@ -629,6 +689,14 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
                   key={user.id}
                   className="flex flex-col gap-5 py-5 lg:flex-row lg:items-center lg:gap-8"
                 >
+                  <div className="pt-1.5 lg:shrink-0">
+                    <RowCheckbox
+                      checked={bulk.selected.has(user.id)}
+                      onChange={() => bulk.toggle(user.id)}
+                      label={`Seleccionar ${user.username}`}
+                    />
+                  </div>
+
                   {/* Nombre y rol */}
                   <div className="min-w-0 lg:w-56 lg:shrink-0">
                     <p className="font-display truncate text-lg font-bold leading-snug text-foreground">
@@ -718,6 +786,14 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
                 </li>
               ))}
             </motion.ul>
+
+            <BulkBar
+              count={bulk.count}
+              unidad="usuario"
+              busy={bulkBusy}
+              onConfirm={() => void handleBulkDeleteUsers()}
+              onCancel={bulk.clear}
+            />
 
             {/* Paginación */}
               <DashboardPagination
