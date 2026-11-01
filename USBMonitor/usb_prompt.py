@@ -37,6 +37,7 @@ from __future__ import annotations
 import ctypes
 import json
 import logging
+from logging.handlers import RotatingFileHandler
 import os
 import queue
 import socket
@@ -54,7 +55,7 @@ from tkinter import ttk
 # Configuración del servidor (misma lógica que usb_monitor_service.py)
 # ---------------------------------------------------------------------------
 
-DEFAULT_HOST = "172.20.10.12"
+DEFAULT_HOST = "localhost"  # Fase 5: antes la IP del hotspot; el instalador escribe el host real
 DEFAULT_PORT = 3000
 
 PROGRAM_DATA_DIR = Path(os.environ.get("ProgramData", "C:/ProgramData")) / "USBMonitor"
@@ -77,10 +78,10 @@ HERENCIA = {
     "laton": "#5F7CA6",
     "texto": "#1B2330",
     "suave": "#5B6B7F",
-    "verde": "#24365E",
-    "verde_activo": "#324B7D",
+    "verde": "#486581",
+    "verde_activo": "#57748F",
     "exito": "#3E6B4F",
-    "aviso": "#4E6E9E",
+    "aviso": "#68809B",
     "peligro": "#8C3B2E",
 }
 
@@ -203,7 +204,7 @@ def get_server_port() -> int:
 
 def build_url(endpoint: str) -> str:
     """Réplica de build_url del servicio (esquema http/https por entorno)."""
-    scheme = (os.environ.get("USB_MONITOR_SERVER_SCHEME", "https") or "").lower().strip()
+    scheme = (os.environ.get("USB_MONITOR_SERVER_SCHEME", "http") or "").lower().strip()
     if scheme not in ("http", "https"):
         scheme = "https"
     return f"{scheme}://{get_server_host()}:{get_server_port()}{endpoint}"
@@ -211,7 +212,7 @@ def build_url(endpoint: str) -> str:
 
 def get_requests_verify() -> Any:
     """Réplica simplificada de la verificación TLS del servicio."""
-    scheme = (os.environ.get("USB_MONITOR_SERVER_SCHEME", "https") or "").lower().strip()
+    scheme = (os.environ.get("USB_MONITOR_SERVER_SCHEME", "http") or "").lower().strip()
     if scheme == "http":
         return True
     cert_path = os.environ.get("USB_MONITOR_SSL_CERT", "").strip()
@@ -267,7 +268,7 @@ def mark_local_pending_unlocked(drive_letter: str) -> None:
 # ---------------------------------------------------------------------------
 
 def request_unlock(username: str, password: str, pending: Dict[str, Any]) -> str:
-    """POST /api/usb-auth. Devuelve 'ok', 'denied' o 'network_error'."""
+    """POST /api/usb-auth. Devuelve 'ok', 'denied', 'forbidden' o 'network_error'."""
     payload = {
         "username": username,
         "password": password,
@@ -289,6 +290,12 @@ def request_unlock(username: str, password: str, pending: Dict[str, Any]) -> str
         return "ok"
     if response.status_code == 401:
         return "denied"
+    if response.status_code == 403:
+        # Prohibido de verdad (la contraseña no es del dueño ni de un
+        # administrador, o el dispositivo no está en la lista blanca):
+        # NO es un fallo de red y no debe ofrecer la página de emergencia
+        # como si lo fuera (Fase 0).
+        return "forbidden"
     LOGGER.warning("Respuesta inesperada del servidor: %s", response.status_code)
     return "network_error"
 
@@ -508,6 +515,14 @@ class UnlockWindow:
             self.password_var.set("")
             self.unlock_button.configure(state="normal")
             self.password_entry.focus_set()
+        elif result == "forbidden":
+            self.status_label.configure(style="Estado.TLabel")
+            self.status_var.set(
+                "Esa contraseña no es la del dueño de este equipo ni la de un administrador."
+            )
+            self.password_var.set("")
+            self.unlock_button.configure(state="normal")
+            self.password_entry.focus_set()
         else:  # network_error
             self.status_label.configure(style="Estado.TLabel")
             self.status_var.set(
@@ -614,8 +629,16 @@ def _acquire_single_instance() -> bool:
 def _configure_logging() -> None:
     try:
         PROGRAM_DATA_DIR.mkdir(parents=True, exist_ok=True)
+        # Fase 3: con rotación (antes usb_prompt.log crecía sin límite).
         logging.basicConfig(
-            filename=str(PROGRAM_DATA_DIR / "usb_prompt.log"),
+            handlers=[
+                RotatingFileHandler(
+                    str(PROGRAM_DATA_DIR / "usb_prompt.log"),
+                    maxBytes=2_000_000,
+                    backupCount=3,
+                    encoding="utf-8",
+                )
+            ],
             level=logging.INFO,
             format="%(asctime)s [%(levelname)s] %(message)s",
         )

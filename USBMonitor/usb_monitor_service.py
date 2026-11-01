@@ -33,6 +33,7 @@ import hmac
 import html
 import json
 import logging
+import logging.handlers
 import os
 import re
 import shutil
@@ -47,7 +48,7 @@ from concurrent.futures import Future
 from datetime import datetime, timezone
 from queue import Queue, Full
 from contextlib import redirect_stderr, redirect_stdout
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from urllib.parse import urlparse, parse_qs, quote
@@ -66,9 +67,7 @@ try:  # pragma: no cover - pywintypes siempre se instala con pywin32
 except ImportError:  # pragma: no cover
     pywintypes = None  # type: ignore
 
-import tkinter as tk
-from tkinter import messagebox, simpledialog, ttk
-from tkinter.scrolledtext import ScrolledText
+# Fase 6: tkinter vive ahora en usb_monitor_admin.py (la GUI de gestión).
 
 import base64
 
@@ -99,34 +98,18 @@ except ImportError:
     _Argon2VerifyMismatch = None  # type: ignore
     ARGON2_AVAILABLE = False
 
-psycopg = None  # type: ignore
-psycopg2 = None  # type: ignore
-RealDictCursor = None  # type: ignore
-
-try:  # pragma: no cover - dependencias opcionales
-    import psycopg
-    from psycopg.rows import dict_row
-
-    DATABASE_DRIVER = "psycopg"
-except ImportError:  # pragma: no cover
-    try:
-        import psycopg2
-        from psycopg2.extras import RealDictCursor
-
-        DATABASE_DRIVER = "psycopg2"
-    except ImportError:  # pragma: no cover
-        DATABASE_DRIVER = None
+# Fase 6: el agente ya no se conecta a PostgreSQL en directo
+# (psycopg/psycopg2 y el cliente de BD se retiraron con el configurador
+# que listaba usuarios; la autenticación es por token de equipo o API key).
 
 
-DEFAULT_HOST = "172.20.10.12"
+DEFAULT_HOST = "localhost"  # Fase 5: antes la IP del hotspot; el instalador remoto escribe el host real en cada equipo
 DEFAULT_PORT = 3000
 DEFAULT_ENDPOINT = "/api/usb-event"
 PROGRAM_DATA_DIR = Path(os.environ.get("ProgramData", "C:/ProgramData")) / "USBMonitor"
 LOG_FILE_NAME = "usb_monitor_service.log"
 LEGACY_LOG_FILE_NAME = "usb_monitor.log"
 SERVICE_API_VERSION = "1.0.0"
-DATABASE_URL_ENV_VAR = "USB_MONITOR_DATABASE_URL"
-DEFAULT_DATABASE_URL = "postgresql://usb_app:usbapp123@localhost:5432/monitor_usb?schema=public"
 SYSTEM32_DIR = Path(os.environ.get("SystemRoot", "C:/Windows")) / "System32"
 
 # Cache para evitar registrar advertencias duplicadas al descartar discos no USB
@@ -392,13 +375,49 @@ def _save_service_state_marker(data: Dict[str, Any]) -> None:
         LOGGER.warning("    [Servicio] No se pudo escribir la marca de ejecución: %s", exc)
 
 
+_INTERACTIVE_USER_CACHE: Dict[str, Any] = {"value": None, "at": 0.0}
+
+
+def get_interactive_user() -> str:
+    """El usuario con la sesión interactiva abierta (Fase 3).
+
+    El servicio corre como LocalSystem (sesión 0): getpass.getuser()
+    devuelve la cuenta del servicio, no la persona que está usando la
+    PC, y ese dato erróneo era el «pc_user» de todos los eventos. Se
+    lee Win32_ComputerSystem.UserName (con caché de 60 s) y solo si no
+    hay sesión o falla la consulta se cae al comportamiento anterior.
+    """
+    now = time.time()
+    cached = _INTERACTIVE_USER_CACHE.get("value")
+    if cached and now - float(_INTERACTIVE_USER_CACHE.get("at") or 0) < 60:
+        return str(cached)
+    user = ""
+    try:
+        conn = wmi.WMI()
+        for cs in conn.Win32_ComputerSystem():
+            name = getattr(cs, "UserName", None)
+            if name:
+                user = str(name).split("\\")[-1].strip()
+                break
+    except Exception:
+        user = ""
+    if not user:
+        try:
+            user = getpass.getuser()
+        except Exception:
+            user = ""
+    if user:
+        _INTERACTIVE_USER_CACHE.update({"value": user, "at": now})
+    return user
+
+
 def _service_event_payload(event_label: str) -> Dict[str, Any]:
     """Payload de evento con la misma forma que build_payload produce."""
     return {
         "pc_name": HOSTNAME,
         "pc_ip": resolve_ip(),
         "pc_user": sanitize_required_string(
-            getpass.getuser(), max_length=120, fallback="UNKNOWN_USER"
+            get_interactive_user(), max_length=120, fallback="UNKNOWN_USER"
         ),
         "drive_letter": None,
         "readonly_status": None,
@@ -480,7 +499,6 @@ def get_default_log_path() -> Path:
 
 
 DEFAULT_LISTEN_PORT = 5001  # Puerto donde el servicio escuchará peticiones
-SIGNAL_FILE = (PROGRAM_DATA_DIR / "browser_signal.json").resolve()
 # Registro local de dispositivos bloqueados pendientes de contraseña (Fase 1).
 # Lo escribe este servicio y lo lee el proceso compañero (usb_prompt.py) para
 # saber cuándo mostrar la ventana de contraseña.
@@ -520,22 +538,6 @@ EMERGENCY_LOCK_SECONDS = 900.0  # 15 minutos
 # arrancar si la parada anterior fue limpia o un cierre a la fuerza.
 SERVICE_STATE_FILE = (PROGRAM_DATA_DIR / "service_state.json").resolve()
 HOSTNAME_RAW = (socket.gethostname() or "").strip() or "UNKNOWN_HOST"
-
-# Plan de telemetría (próxima iteración):
-#   - Registrar latencia de `unlock_usb` midiendo `time.perf_counter()` y enviar a `/api/metrics`:
-#     ```python
-#     def push_metric(name: str, value: float) -> None:
-#         submit_network_task(
-#             requests.post,
-#             build_url("/api/metrics"),
-#             expect_result=False,
-#             json={"name": name, "value": value},
-#             headers=get_auth_headers(),
-#             timeout=5,
-#         )
-#     ```
-#   - Incluir contador de consultas whitelist/pendientes en `send_event` para comparar contra el tamaño
-#     de la caché y ajustar `WHITELIST_POSITIVE_TTL` durante despliegues futuros.
 
 CONTROL_CHARS_REGEX = re.compile(r"[\x00-\x1F\x7F]")
 VALID_IPV4_REGEX = re.compile(r"^(?:\d{1,3}\.){3}\d{1,3}$")
@@ -619,8 +621,10 @@ def decrypt_value(encrypted_value: str) -> str:
         return encrypted_value
     
     if not CRYPTOGRAPHY_AVAILABLE:
-        LOGGER.warning("Cryptography no disponible, no se puede desencriptar el valor")
-        return encrypted_value
+        # Fail-closed (Fase 0): un valor ENC: que no se puede descifrar se
+        # trata como ausente, nunca como si fuera la credencial.
+        LOGGER.error("Cryptography no disponible: el valor cifrado se descarta")
+        return ""
     
     try:
         # Remover el prefijo ENC:
@@ -630,114 +634,10 @@ def decrypt_value(encrypted_value: str) -> str:
         decrypted = fernet.decrypt(encrypted_data.encode('utf-8'))
         return decrypted.decode('utf-8')
     except Exception as exc:
-        LOGGER.error("Error al desencriptar valor: %s", exc)
-        # Si falla la desencriptación, retornar el valor original
-        return encrypted_value
-
-
-class DatabaseConfig:
-    """Almacena parámetros de conexión a la base de datos."""
-
-    def __init__(
-        self,
-        user: str,
-        password: str,
-        host: str,
-        port: int,
-        database: str,
-        options: Optional[str],
-    ):
-        self.user = user
-        self.password = password
-        self.host = host
-        self.port = port
-        self.database = database
-        self.options = options
-
-
-class DatabaseClient:
-    """Envoltura mínima sobre psycopg/psycopg2 para listar usuarios."""
-
-    def __init__(self, config: DatabaseConfig):
-        self.config = config
-        self.conn: Any = None
-
-    def connect(self) -> None:
-        if DATABASE_DRIVER is None:
-            raise RuntimeError(
-                "No se encontró un driver de PostgreSQL. Instala psycopg[binary] o psycopg2-binary."
-            )
-
-        connect_args: Dict[str, Any] = {
-            "dbname": self.config.database,
-            "user": self.config.user,
-            "password": self.config.password,
-            "host": self.config.host,
-            "port": self.config.port,
-        }
-        if self.config.options:
-            connect_args["options"] = self.config.options
-
-        if DATABASE_DRIVER == "psycopg":
-            if psycopg is None:
-                raise RuntimeError("psycopg no está disponible.")
-            self.conn = psycopg.connect(row_factory=dict_row, **connect_args)  # type: ignore[arg-type]
-        elif DATABASE_DRIVER == "psycopg2":
-            if psycopg2 is None:
-                raise RuntimeError("psycopg2 no está disponible.")
-            self.conn = psycopg2.connect(**connect_args)  # type: ignore[attr-defined]
-        else:
-            raise RuntimeError("Driver de base de datos desconocido.")
-
-    def fetch_users(self) -> List[Dict[str, Any]]:
-        if self.conn is None:
-            raise RuntimeError("Database connection not established.")
-
-        query = (
-            'SELECT "User"."id", "User"."username", "User"."apiKey", "User"."role", '
-            '"User"."createdAt", c."name" AS computer_name, c."ipAddress" AS ip_address, '
-            'c."isActive" AS is_active '
-            'FROM "User" LEFT JOIN "computers" c ON c."id" = "User"."computerId" '
-            'ORDER BY "User"."createdAt" ASC'
-        )
-
-        rows: List[Dict[str, Any]]
-        if DATABASE_DRIVER == "psycopg":
-            with self.conn.cursor() as cur:  # type: ignore[call-arg]
-                cur.execute(query)
-                fetched = cur.fetchall()
-        elif DATABASE_DRIVER == "psycopg2":
-            if RealDictCursor is None:
-                raise RuntimeError("psycopg2 no soporta RealDictCursor en este entorno.")
-            with self.conn.cursor(cursor_factory=RealDictCursor) as cur:  # type: ignore[attr-defined]
-                cur.execute(query)
-                fetched = cur.fetchall()
-        else:
-            raise RuntimeError("No hay driver de base de datos disponible.")
-
-        rows = []
-        for record in fetched:
-            row_dict = dict(record)
-            rows.append(
-                {
-                    "id": row_dict.get("id"),
-                    "username": row_dict.get("username"),
-                    "apiKey": row_dict.get("apiKey"),
-                    "role": row_dict.get("role"),
-                    "createdAt": row_dict.get("createdAt"),
-                    "computer": row_dict.get("computer_name"),
-                    "ipAddress": row_dict.get("ip_address"),
-                    "isActive": row_dict.get("is_active"),
-                }
-            )
-        return rows
-
-    def close(self) -> None:
-        if self.conn is not None:
-            try:
-                self.conn.close()
-            finally:
-                self.conn = None
+        # Fail-closed (Fase 0): antes se devolvía el texto cifrado como si
+        # fuera la credencial; ahora se descarta y se avisa en el registro.
+        LOGGER.error("Error al desencriptar valor (se descarta): %s", exc)
+        return ""
 
 
 def run_setx(api_key: str) -> None:
@@ -756,341 +656,6 @@ def run_setx(api_key: str) -> None:
         LOGGER.info("setx stdout: %s", completed.stdout.strip())
     if completed.stderr:
         LOGGER.debug("setx stderr: %s", completed.stderr.strip())
-
-
-def parse_database_url(url: str) -> DatabaseConfig:
-    parsed = urlparse(url)
-    if parsed.scheme not in ("postgresql", "postgres"):
-        raise ValueError("DATABASE_URL debe usar el esquema postgresql://")
-    if not parsed.path:
-        raise ValueError("DATABASE_URL no incluye el nombre de la base de datos.")
-    database = parsed.path.lstrip("/")
-    if not database:
-        raise ValueError("DATABASE_URL no incluye el nombre de la base de datos.")
-
-    user = parsed.username or ""
-    password = parsed.password or ""
-    host = parsed.hostname or "localhost"
-    port = parsed.port or 5432
-    params = parse_qs(parsed.query)
-    schema = params.get("schema", [None])[0]
-    options = f"-c search_path={schema}" if schema else None
-    return DatabaseConfig(
-        user=user,
-        password=password,
-        host=host,
-        port=port,
-        database=database,
-        options=options,
-    )
-
-
-class ApiKeyConfiguratorDialog(tk.Toplevel):
-    """Ventana secundaria para seleccionar y aplicar una API key."""
-
-    def __init__(
-        self,
-        parent: tk.Misc,
-        db_client: DatabaseClient,
-        *,
-        on_log: Optional[Callable[[str], None]] = None,
-    ):
-        super().__init__(parent)
-        self.parent = parent
-        self.db_client = db_client
-        self.on_log = on_log
-        self.users: Dict[str, Dict[str, Any]] = {}
-
-        self.title("USB Monitor - Configurar API Key")
-        self.geometry("940x520")
-        self.resizable(True, True)
-        self.transient(parent)
-
-        self._build_widgets()
-        self.protocol("WM_DELETE_WINDOW", self._on_close)
-        self._populate_users()
-        self._emit_log("Configurador de API key abierto.")
-        self.grab_set()
-        self.focus_set()
-
-    def _build_widgets(self) -> None:
-        # Fondo «Herencia» de la ventana (los estilos ttk los define run_gui).
-        self.configure(bg="#EDF0F4")
-        header = ttk.Label(self, text="Selecciona un usuario para usar su API key.")
-        header.pack(pady=(10, 5))
-
-        columns_frame = ttk.Frame(self)
-        columns_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=5)
-
-        self.tree = ttk.Treeview(columns_frame, columns=(
-            "username",
-            "role",
-            "api_key",
-            "computer",
-            "ip_address",
-            "status",
-            "created_at",
-        ), show="headings", height=16)
-        self.tree.heading("username", text="Usuario")
-        self.tree.heading("role", text="Rol")
-        self.tree.heading("api_key", text="API key")
-        self.tree.heading("computer", text="Computadora")
-        self.tree.heading("ip_address", text="IP")
-        self.tree.heading("status", text="Estado")
-        self.tree.heading("created_at", text="Creado")
-
-        self.tree.column("username", width=140, anchor=tk.W)
-        self.tree.column("role", width=80, anchor=tk.CENTER)
-        self.tree.column("api_key", width=260, anchor=tk.W)
-        self.tree.column("computer", width=140, anchor=tk.W)
-        self.tree.column("ip_address", width=110, anchor=tk.CENTER)
-        self.tree.column("status", width=90, anchor=tk.CENTER)
-        self.tree.column("created_at", width=160, anchor=tk.CENTER)
-        self.tree.pack(fill=tk.BOTH, expand=True, side=tk.LEFT)
-
-        scrollbar = ttk.Scrollbar(columns_frame, orient=tk.VERTICAL, command=self.tree.yview)
-        scrollbar.pack(fill=tk.Y, side=tk.RIGHT)
-        self.tree.configure(yscrollcommand=scrollbar.set)
-
-        buttons_frame = ttk.Frame(self)
-        buttons_frame.pack(fill=tk.X, padx=12, pady=10)
-
-        self.refresh_button = ttk.Button(buttons_frame, text="Refrescar", command=self._handle_refresh)
-        self.refresh_button.pack(side=tk.LEFT)
-
-        self.apply_button = ttk.Button(
-            buttons_frame,
-            text="Usar API key seleccionada",
-            command=self._handle_apply,
-            style="Accent.TButton",
-        )
-        self.apply_button.pack(side=tk.RIGHT)
-
-        # Bloque de entrada manual correctamente indentado
-        manual_frame = ttk.Frame(self)
-        manual_frame.pack(fill=tk.X, padx=12, pady=(0, 12))
-
-        manual_label = ttk.Label(manual_frame, text="Pegar API key manualmente:")
-        manual_label.pack(anchor=tk.W)
-
-        self.manual_api_key = tk.StringVar()
-        manual_entry = ttk.Entry(manual_frame, textvariable=self.manual_api_key, width=60)
-        manual_entry.pack(side=tk.LEFT, padx=(0, 8))
-
-        manual_button = ttk.Button(
-            manual_frame,
-            text="Usar API key pegada",
-            command=self._handle_apply_manual,
-        )
-        manual_button.pack(side=tk.LEFT)
-
-        self.status_var = tk.StringVar(value="Listo.")
-        status_label = ttk.Label(self, textvariable=self.status_var, anchor=tk.W)
-        status_label.pack(fill=tk.X, padx=12, pady=(0, 12))
-
-    def _handle_refresh(self) -> None:
-        self._set_status("Actualizando usuarios...")
-        self.after(50, self._populate_users)
-
-    def _handle_apply(self) -> None:
-        selection = self.tree.selection()
-        if not selection:
-            messagebox.showinfo("Selección requerida", "Selecciona un usuario primero.", parent=self)
-            return
-
-        item_id = selection[0]
-        record = self.users.get(item_id)
-        if not record:
-            messagebox.showerror("Error", "No se pudo recuperar la información del usuario.", parent=self)
-            return
-
-        api_key = record.get("apiKey")
-        username = record.get("username", "")
-        if not api_key:
-            messagebox.showerror("Error", "El usuario seleccionado no tiene API key disponible.", parent=self)
-            return
-
-        confirm = messagebox.askyesno(
-            "Confirmar",
-            f"Se configurará la API key del usuario '{username}'.\n\n¿Continuar?",
-            parent=self,
-        )
-        if not confirm:
-            return
-
-        try:
-            run_setx(str(api_key))
-        except subprocess.CalledProcessError as exc:
-            messagebox.showerror(
-                "Error",
-                "Falló la ejecución de setx. Asegúrate de contar con permisos de administrador.\n\n"
-                f"Código de salida: {exc.returncode}\nSalida: {exc.stderr}",
-                parent=self,
-            )
-            self._set_status("Error al configurar la API key.")
-            return
-        except Exception as exc:  # pragma: no cover - errores inesperados
-            messagebox.showerror("Error", f"No se pudo configurar la API key.\n\nDetalles: {exc}", parent=self)
-            self._set_status("Error al configurar la API key.")
-            return
-
-        self._set_status(f"API key configurada para {username}. Reinicia el servicio para aplicar cambios.")
-        messagebox.showinfo(
-            "Éxito",
-            "API key configurada correctamente. Reinicia el servicio USBMonitorService para aplicar cambios.",
-            parent=self,
-        )
-        self._emit_log(f"API key configurada para {username}.")
-
-    def _handle_apply_manual(self) -> None:
-        api_key = self.manual_api_key.get().strip()
-
-        if not api_key:
-            messagebox.showerror(
-                "API key vacía",
-                "Debes pegar una API key válida.",
-                parent=self,
-            )
-            return
-
-        confirm = messagebox.askyesno(
-            "Confirmar",
-            "Se configurará la API key pegada manualmente.\n\n¿Continuar?",
-            parent=self,
-        )
-        if not confirm:
-            return
-
-        try:
-            run_setx(api_key)
-        except Exception as exc:
-            messagebox.showerror(
-                "Error",
-                f"No se pudo configurar la API key.\n\nDetalles: {exc}",
-                parent=self,
-            )
-            self._set_status("Error al configurar la API key manual.")
-            return
-
-        self._set_status("API key configurada manualmente. Reinicia el servicio para aplicar cambios.")
-        messagebox.showinfo(
-            "Éxito",
-            "API key configurada correctamente. Reinicia el servicio USBMonitorService para aplicar cambios.",
-            parent=self,
-        )
-        self._emit_log("API key manual aplicada correctamente.")
-
-    def _populate_users(self) -> None:
-        try:
-            records = self.db_client.fetch_users()
-        except Exception as exc:  # pragma: no cover - depende de la base de datos
-            self._set_status(f"Error al cargar usuarios: {exc}")
-            messagebox.showerror("Error", f"No se pudieron cargar los usuarios.\n\nDetalles: {exc}", parent=self)
-            return
-
-        self.tree.delete(*self.tree.get_children())
-        self.users.clear()
-
-        for record in records:
-            computer = record.get("computer") or "Sin asignar"
-            ip_address = record.get("ipAddress") or "-"
-            is_active = record.get("isActive")
-            status = "Activa" if is_active else ("Inactiva" if is_active is not None else "-")
-            created_at = self._format_timestamp(record.get("createdAt"))
-            item_values = (
-                record.get("username", ""),
-                record.get("role", ""),
-                "••••••••" if record.get("apiKey") else "",
-                computer,
-                ip_address,
-                status,
-                created_at,
-            )
-            item_id = self.tree.insert("", tk.END, values=item_values)
-            self.users[item_id] = record
-
-        self._set_status(f"Usuarios cargados: {len(records)}")
-
-    def _format_timestamp(self, value: Any) -> str:
-        if value is None:
-            return "-"
-        return str(value)
-
-    def _set_status(self, message: str) -> None:
-        self.status_var.set(message)
-
-    def _emit_log(self, text: str) -> None:
-        if self.on_log:
-            try:
-                self.on_log(text)
-            except Exception:
-                LOGGER.debug("No se pudo reenviar mensaje al log de la GUI principal: %s", text, exc_info=True)
-
-    def _on_close(self) -> None:
-        try:
-            self.db_client.close()
-        finally:
-            self._emit_log("Configurador de API key cerrado.")
-            self.destroy()
-
-
-def launch_api_key_configurator(
-    parent: tk.Misc,
-    *,
-    on_log: Optional[Callable[[str], None]] = None,
-) -> None:
-    if not is_user_admin():
-        messagebox.showerror(
-            "Permisos requeridos",
-            "Ejecuta esta herramienta como administrador para escribir variables de entorno de sistema.",
-            parent=parent,
-        )
-        if on_log:
-            on_log("No se pudo abrir el configurador de API key: se requieren privilegios de administrador.")
-        return
-
-    db_url = os.environ.get(DATABASE_URL_ENV_VAR, DEFAULT_DATABASE_URL)
-    if not db_url:
-        messagebox.showerror(
-            "Configuración inválida",
-            "No se encontró una cadena de conexión válida en USB_MONITOR_DATABASE_URL.",
-            parent=parent,
-        )
-        if on_log:
-            on_log("No se pudo abrir el configurador de API key: DATABASE_URL ausente.")
-        return
-
-    try:
-        config = parse_database_url(db_url)
-    except Exception as exc:
-        messagebox.showerror(
-            "Configuración inválida",
-            f"No se pudo interpretar la cadena de conexión.\n\nDetalles: {exc}",
-            parent=parent,
-        )
-        LOGGER.error("No se pudo interpretar DATABASE_URL: %s", exc)
-        if on_log:
-            on_log("No se pudo abrir el configurador de API key: cadena de conexión inválida.")
-        return
-
-    client = DatabaseClient(config)
-    try:
-        client.connect()
-    except Exception as exc:
-        client.close()
-        messagebox.showerror(
-            "Conexión fallida",
-            "No se pudo conectar a la base de datos.\n\nRevisa USB_MONITOR_DATABASE_URL y que la base de datos esté en ejecución.\n\n"
-            f"Detalles: {exc}",
-            parent=parent,
-        )
-        LOGGER.error("No se pudo conectar a la base de datos: %s", exc)
-        if on_log:
-            on_log("No se pudo abrir el configurador de API key: error de conexión.")
-        return
-
-    dialog = ApiKeyConfiguratorDialog(parent, client, on_log=on_log)
-    dialog.wait_visibility()
 
 
 def _sanitize_string(value: Optional[str], max_length: int) -> Optional[str]:
@@ -1149,6 +714,10 @@ def normalize_serial_candidate(serial: Optional[str]) -> Optional[str]:
     if not stripped:
         return None
     collapsed = re.sub(r"\s+", "", stripped)
+    # Los centinelas se comprueban también ANTES de quitar caracteres:
+    # «N/A» perdía la barra al sanear y sobrevivía como «NA» (Fase 7).
+    if collapsed.upper() in SERIAL_SENTINELS:
+        return None
     sanitized = SERIAL_ALLOWED_CHARS_REGEX.sub("", collapsed.upper())
     if not sanitized:
         return None
@@ -1163,10 +732,16 @@ def extract_serial_from_device_id(device_id: Optional[str]) -> Optional[str]:
     if not isinstance(device_id, str):
         return None
     tail = device_id.split("\\")[-1]
-    for token in reversed(re.split(r"[&/_]", tail)):
-        candidate = normalize_serial_candidate(token)
-        if candidate:
-            return candidate
+    candidates = [
+        candidate
+        for token in re.split(r"[&/_]", tail)
+        if (candidate := normalize_serial_candidate(token))
+    ]
+    if candidates:
+        # El identificador de instancia suele ser «<serial>&0»: el último
+        # trozo («0») es un contador, no el serial. Se elige el candidato
+        # MÁS LARGO, que es el serial real (Fase 7).
+        return max(candidates, key=len)
     return normalize_serial_candidate(tail)
 
 
@@ -1221,14 +796,14 @@ def get_listen_port() -> int:
 def build_url(endpoint: str) -> str:
     host = get_server_host()
     port = get_server_port()
-    scheme_env = os.environ.get("USB_MONITOR_SERVER_SCHEME", "https")
+    scheme_env = os.environ.get("USB_MONITOR_SERVER_SCHEME", "http")
     scheme = (scheme_env or "").lower().strip()
     if scheme not in ("http", "https"):
         LOGGER.warning(
-            "USB_MONITOR_SERVER_SCHEME inválido ('%s'), usando HTTPS por defecto",
+            "USB_MONITOR_SERVER_SCHEME inválido ('%s'), usando HTTP por defecto",
             scheme_env,
         )
-        scheme = "https"
+        scheme = "http"
     return f"{scheme}://{host}:{port}{endpoint}"
 
 
@@ -1243,7 +818,7 @@ def get_requests_verify() -> any:
       - En cualquier otro caso, retorna True.
     """
     # Si el esquema es HTTP, la verificación SSL no aplica
-    scheme = (os.environ.get("USB_MONITOR_SERVER_SCHEME", "https") or "").lower().strip()
+    scheme = (os.environ.get("USB_MONITOR_SERVER_SCHEME", "http") or "").lower().strip()
     if scheme == "http":
         return True
 
@@ -1346,7 +921,9 @@ def get_logger() -> logging.Logger:
         pending_warning: Optional[str] = None
 
         try:
-            handler: logging.Handler = logging.FileHandler(log_file, encoding="utf-8")
+            handler: logging.Handler = logging.handlers.RotatingFileHandler(
+                log_file, maxBytes=5_000_000, backupCount=5, encoding="utf-8"
+            )
         except OSError as exc:
             fallback_paths = [
                 (PROGRAM_DATA_DIR / get_log_file_name()).resolve(),
@@ -1359,7 +936,9 @@ def get_logger() -> logging.Logger:
                     continue
                 try:
                     candidate.parent.mkdir(parents=True, exist_ok=True)
-                    handler = logging.FileHandler(candidate, encoding="utf-8")
+                    handler = logging.handlers.RotatingFileHandler(
+                        candidate, maxBytes=5_000_000, backupCount=5, encoding="utf-8"
+                    )
                     pending_warning = (
                         "No se pudo crear el log en %s (%s). Se usará %s."
                         % (log_file, exc, candidate)
@@ -1414,16 +993,18 @@ def ensure_admin_or_exit() -> None:
         "Cierra y vuelve a abrirlo con privilegios elevados."
     )
     LOGGER.critical(message)
-    root: Optional[tk.Tk] = None
+    # Fase 6: tkinter se importa solo aquí, para este aviso; el servicio
+    # ya no depende de tkinter en su arranque.
     try:
+        import tkinter as tk
+        from tkinter import messagebox
+
         root = tk.Tk()
         root.withdraw()
         messagebox.showerror("USB Monitor Service", message, parent=root)
+        root.destroy()
     except Exception as exc:
         LOGGER.debug("No se pudo mostrar el mensaje de permisos: %s", exc)
-    finally:
-        if root is not None:
-            root.destroy()
     print(message, file=sys.stderr)
     sys.exit(5)
 
@@ -1525,7 +1106,7 @@ def build_payload(
         "pc_name": HOSTNAME,
         "pc_ip": resolve_ip(),
         "pc_user": sanitize_required_string(
-            getpass.getuser(), max_length=120, fallback="UNKNOWN_USER"
+            get_interactive_user(), max_length=120, fallback="UNKNOWN_USER"
         ),
         "drive_letter": drive_letter_clean,
         "readonly_status": readonly_clean,
@@ -1740,7 +1321,46 @@ def resolve_disk_number_with_fallback(
     return disk_number
 
 
-def set_disk_readonly(drive_letter: str, conn: wmi.WMI) -> Tuple[bool, str]:
+def _disk_readonly_state(drive_letter: str, conn: wmi.WMI) -> Optional[bool]:
+    """Lee el atributo REAL de solo lectura del disco (Fase 2).
+
+    diskpart devuelve código 0 aunque la operación falle, así que el
+    éxito no se puede fiar a su salida de «set/clear»: se vuelve a
+    consultar con «attributes disk» y se interpreta la línea del estado
+    (inglés o español). Devuelve True/False, o None si no se pudo
+    determinar (en ese caso manda el criterio anterior).
+    """
+    letter = drive_letter.rstrip(":").upper()
+    if len(letter) != 1 or not letter.isalpha():
+        return None
+    disk_number = resolve_disk_number_with_fallback(letter, conn)
+    if not disk_number:
+        return None
+    try:
+        result = run_diskpart(f"select disk {disk_number}\nattributes disk\nexit\n")
+    except Exception as exc:
+        LOGGER.debug("No se pudo verificar el atributo del disco %s: %s", disk_number, exc)
+        return None
+    for line in (result.stdout or "").splitlines():
+        low = line.lower()
+        if "read-only" in low or "solo lectura" in low:
+            value = low.split(":", 1)[-1].strip()
+            if value.startswith(("yes", "sí", "si")):
+                return True
+            if value.startswith("no"):
+                return False
+    return None
+
+
+def _set_disk_readonly_flag(
+    drive_letter: str, conn: wmi.WMI, enable: bool
+) -> Tuple[bool, str]:
+    """Aplica o quita el atributo de solo lectura del disco (Fase 5).
+
+    set_disk_readonly y clear_disk_readonly eran la misma función dos
+    veces (~60 líneas gemelas); ahora son envoltorios de esta. Incluye
+    la verificación real del atributo tras diskpart (Fase 2).
+    """
     letter = drive_letter.rstrip(":").upper()
     if len(letter) != 1 or not letter.isalpha():
         msg = f"Letra de unidad inválida ({drive_letter})"
@@ -1753,7 +1373,8 @@ def set_disk_readonly(drive_letter: str, conn: wmi.WMI) -> Tuple[bool, str]:
         LOGGER.warning("%s", msg)
         return False, msg
 
-    script = f"select disk {disk_number}\nattributes disk set readonly\nexit\n"
+    verb = "set" if enable else "clear"
+    script = f"select disk {disk_number}\nattributes disk {verb} readonly\nexit\n"
 
     try:
         result = run_diskpart(script)
@@ -1764,99 +1385,69 @@ def set_disk_readonly(drive_letter: str, conn: wmi.WMI) -> Tuple[bool, str]:
             and "error" not in stdout_lower
             and "error" not in stderr_lower
         ):
-            msg = f"readonly aplicado al disco {disk_number} (unidad {drive_letter})"
-            LOGGER.info(
-                "Disco %s (unidad %s) establecido en modo solo lectura. Salida: %s",
-                disk_number,
-                drive_letter,
-                result.stdout.strip(),
-            )
+            # Verificación real: diskpart puede devolver 0 sin aplicar.
+            estado = _disk_readonly_state(drive_letter, conn)
+            if enable and estado is False:
+                msg = f"diskpart dijo OK pero el disco {disk_number} NO quedó en solo lectura (unidad {drive_letter})"
+                LOGGER.error("%s", msg)
+                return False, msg
+            if not enable and estado is True:
+                msg = f"diskpart dijo OK pero el disco {disk_number} SIGUE en solo lectura (unidad {drive_letter})"
+                LOGGER.error("%s", msg)
+                return False, msg
+            if enable:
+                msg = f"readonly aplicado al disco {disk_number} (unidad {drive_letter})"
+                LOGGER.info(
+                    "Disco %s (unidad %s) establecido en modo solo lectura. Salida: %s",
+                    disk_number,
+                    drive_letter,
+                    result.stdout.strip(),
+                )
+            else:
+                msg = f"readonly removido del disco {disk_number} (unidad {drive_letter})"
+                LOGGER.info(
+                    "Disco %s (unidad %s) desbloqueado. Salida: %s",
+                    disk_number,
+                    drive_letter,
+                    result.stdout.strip(),
+                )
             return True, msg
 
         LOGGER.error(
-            "diskpart devolvió código %s al bloquear disco %s (unidad %s). Stdout: %s | Stderr: %s",
+            "diskpart devolvió código %s al %s disco %s (unidad %s). Stdout: %s | Stderr: %s",
             result.returncode,
+            "bloquear" if enable else "desbloquear",
             disk_number,
             drive_letter,
             result.stdout.strip(),
             result.stderr.strip(),
         )
         msg = (
-            f"Fallo al aplicar readonly en disco {disk_number} para unidad {drive_letter}"
+            f"Fallo al {'aplicar' if enable else 'remover'} readonly en disco {disk_number} para unidad {drive_letter}"
         )
         return False, msg
     except FileNotFoundError:
         msg = "diskpart no está disponible en el sistema"
-        LOGGER.error("%s. No se puede bloquear escritura.", msg)
+        LOGGER.error("%s. No se puede %s.", msg, "bloquear escritura" if enable else "desbloquear")
         return False, msg
     except subprocess.TimeoutExpired:
-        msg = f"diskpart tardó demasiado en proteger la unidad {drive_letter}"
+        msg = f"diskpart tardó demasiado en {'proteger' if enable else 'desbloquear'} la unidad {drive_letter}"
         LOGGER.error("%s. Operación cancelada.", msg)
         return False, msg
     except Exception as exc:
-        msg = f"Error inesperado al establecer unidad {drive_letter} solo lectura: {exc}"
+        msg = f"Error inesperado al {'establecer unidad' if enable else 'desbloquear unidad'} {drive_letter}: {exc}"
         LOGGER.error("%s", msg)
         return False, msg
+
+
+def set_disk_readonly(drive_letter: str, conn: wmi.WMI) -> Tuple[bool, str]:
+    """Establece el atributo de solo lectura del disco de la unidad USB."""
+    return _set_disk_readonly_flag(drive_letter, conn, True)
 
 
 def clear_disk_readonly(drive_letter: str, conn: wmi.WMI) -> Tuple[bool, str]:
     """Remueve el atributo de solo lectura del disco que contiene la unidad USB."""
-    letter = drive_letter.rstrip(":").upper()
-    if len(letter) != 1 or not letter.isalpha():
-        msg = f"Letra de unidad inválida ({drive_letter})"
-        LOGGER.warning("%s", msg)
-        return False, msg
-
-    disk_number = resolve_disk_number_with_fallback(letter, conn)
-    if not disk_number:
-        msg = f"No se pudo resolver el disco asociado a la unidad {drive_letter}"
-        LOGGER.warning("%s", msg)
-        return False, msg
-
-    script = f"select disk {disk_number}\nattributes disk clear readonly\nexit\n"
-
-    try:
-        result = run_diskpart(script)
-        stdout_lower = result.stdout.lower()
-        stderr_lower = result.stderr.lower()
-
-        if (
-            result.returncode == 0
-            and "error" not in stdout_lower
-            and "error" not in stderr_lower
-        ):
-            msg = f"readonly removido del disco {disk_number} (unidad {drive_letter})"
-            LOGGER.info(
-                "Disco %s (unidad %s) desbloqueado. Salida: %s",
-                disk_number,
-                drive_letter,
-                result.stdout.strip(),
-            )
-            return True, msg
-
-        LOGGER.error(
-            "diskpart devolvió código %s al desbloquear disco %s (unidad %s). Stdout: %s | Stderr: %s",
-            result.returncode,
-            disk_number,
-            drive_letter,
-            result.stdout.strip(),
-            result.stderr.strip(),
-        )
-        msg = f"Fallo al remover readonly en disco {disk_number} para unidad {drive_letter}"
-        return False, msg
-
-    except FileNotFoundError:
-        msg = "diskpart no está disponible en el sistema"
-        LOGGER.error("%s. No se puede desbloquear.", msg)
-        return False, msg
-    except subprocess.TimeoutExpired:
-        msg = f"diskpart tardó demasiado en desbloquear la unidad {drive_letter}"
-        LOGGER.error("%s. Operación cancelada.", msg)
-        return False, msg
-    except Exception as exc:
-        msg = f"Error inesperado al desbloquear unidad {drive_letter}: {exc}"
-        LOGGER.error("%s", msg)
-        return False, msg
+    return _set_disk_readonly_flag(drive_letter, conn, False)
 
 
 def _drive_key(drive_letter: Optional[str]) -> str:
@@ -2008,29 +1599,6 @@ def apply_block(
     return letter_used, success, detail, BLOCK_METHOD_READONLY
 
 
-def create_browser_signal(pc_name: str, drive_letter: str) -> None:
-    """Crea el archivo de señal para que el agente muestre el login."""
-    try:
-        LOGGER.debug(
-            "    → Creando archivo de señal para %s en unidad %s", pc_name, drive_letter
-        )
-        SIGNAL_FILE.parent.mkdir(parents=True, exist_ok=True)
-        
-        signal_data = {
-            "pc_name": pc_name,
-            "drive_letter": drive_letter,
-            "timestamp": time.time(),
-            "processed": False,
-        }
-        
-        with open(SIGNAL_FILE, "w", encoding="utf-8") as f:
-            json.dump(signal_data, f, indent=2)
-        
-        LOGGER.info("    ✓ Archivo de señal creado: %s", SIGNAL_FILE)
-    except Exception as exc:
-        LOGGER.error("    ✗ Error al crear archivo de señal: %s", exc)
-
-
 def _load_local_pendings() -> List[Dict[str, Any]]:
     """Lee el registro local de pendientes (pending_local.json). Tolerante a fallos."""
     try:
@@ -2173,9 +1741,10 @@ def create_pending_unlock(
     Lo crea en el servidor y lo guarda también en el registro local
     (pending_local.json), del que el proceso compañero lee para mostrar
     la ventana de contraseña. Si el servidor no responde, el pendiente
-    local queda con id null: el bloqueo se mantiene, pero la contraseña
-    online no podrá verificar hasta que el pendiente exista en el
-    servidor (sin sincronización extra en esta fase).
+    local queda con id null: el bloqueo se mantiene, y
+    reconcile_local_pendings() lo registra en el servidor en cuanto hay
+    conexión (Fase 1 del plan de arreglos); hasta entonces la contraseña
+    online no puede verificar.
     """
     server_id: Optional[str] = None
     registered = False
@@ -2238,6 +1807,64 @@ def create_pending_unlock(
             pc_name,
             drive_letter,
         )
+    return registered
+
+
+def reconcile_local_pendings() -> int:
+    """Re-registra en el servidor los bloqueos creados sin red (Fase 1).
+
+    Un bloqueo creado cuando el servidor no respondía queda en
+    pending_local.json con «id» null; sin pendiente en el servidor,
+    /api/usb-auth responde 401 NO_PENDING y la contraseña en línea no
+    puede verificar NUNCA, ni cuando la red vuelve. Esta función recorre
+    el registro local y registra cada BLOCKED sin id, guardando el id
+    devuelto. Devuelve cuántos se registraron.
+
+    Solo se consideran los BLOCKED: el vigilante de extracción cierra
+    (CLOSED) los de las unidades extraídas, así que un BLOCKED en el
+    registro es una unidad que sigue insertada — no se resucitan
+    bloqueos de dispositivos ausentes. Al arrancar, el Boot Sweep ya
+    sustituye los BLOCKED de las unidades presentes por pendientes
+    nuevos, así que basta con llamar a esto desde el bucle de
+    autorizaciones: cubre tanto el arranque sin red (en cuanto la red
+    vuelve) como la caída de red con el servicio en marcha.
+    """
+    pendings = _load_local_pendings()
+    candidates = [
+        p
+        for p in pendings
+        if p.get("status") == "BLOCKED" and not p.get("id")
+    ]
+    if not candidates:
+        return 0
+
+    registered = 0
+    for entry in candidates:
+        try:
+            ok, server_id = _create_pending_unlock_request(
+                str(entry.get("pcName") or HOSTNAME),
+                str(entry.get("driveLetter") or ""),
+                entry.get("serialNumber"),
+                entry.get("deviceLabel"),
+                bool(entry.get("whitelisted")),
+            )
+        except Exception as exc:
+            LOGGER.warning(
+                "    [Pendiente] Reconciliación sin éxito para %s (se reintentará): %s",
+                entry.get("driveLetter"),
+                exc,
+            )
+            continue
+        if ok and server_id:
+            entry["id"] = server_id
+            registered += 1
+            LOGGER.info(
+                "    [Pendiente] ✓ Bloqueo creado sin red registrado al fin en el servidor (id=%s) para %s",
+                server_id,
+                entry.get("driveLetter"),
+            )
+    if registered:
+        _save_local_pendings(pendings)
     return registered
 
 
@@ -2780,25 +2407,47 @@ def _check_emergency_credentials(
 
 
 def _is_companion_running() -> bool:
-    """Comprueba por nombre de imagen si el proceso compañero está en ejecución."""
-    tasklist_path = resolve_executable("tasklist.exe")
-    result = subprocess.run(  # nosec B603 - ejecutable del sistema y argumentos fijos
-        [tasklist_path, "/FI", f"IMAGENAME eq {COMPANION_IMAGE_NAME}", "/NH"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    return COMPANION_IMAGE_NAME.lower() in (result.stdout or "").lower()
+    """Comprueba si el proceso compañero está en ejecución (Fase 4).
+
+    Detecta los DOS modos de instalación: el .exe compilado
+    (USBMonitorPrompt.exe, por nombre de imagen) y el script
+    (pythonw/python con usb_prompt.py en la línea de comandos, vía
+    Win32_Process). Antes solo se buscaba el .exe y, con el compañero
+    como script, el watchdog lo creía caído cada 15 s y relanzaba la
+    tarea en bucle.
+    """
+    try:
+        tasklist_path = resolve_executable("tasklist.exe")
+        result = subprocess.run(  # nosec B603 - ejecutable del sistema y argumentos fijos
+            [tasklist_path, "/FI", f"IMAGENAME eq {COMPANION_IMAGE_NAME}", "/NH"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if COMPANION_IMAGE_NAME.lower() in (result.stdout or "").lower():
+            return True
+    except Exception:
+        pass
+    try:
+        conn = wmi.WMI()
+        for proc in conn.Win32_Process():
+            name = (getattr(proc, "Name", "") or "").lower()
+            if name in ("pythonw.exe", "python.exe"):
+                cmd = (getattr(proc, "CommandLine", "") or "").lower()
+                if "usb_prompt.py" in cmd:
+                    return True
+    except Exception:
+        pass
+    return False
 
 
 def _ensure_companion_running() -> None:
     """Watchdog del proceso compañero (Fase 1).
 
-    Si USBMonitorPrompt.exe no está en ejecución y existe su tarea
-    programada, la lanza con schtasks /run. Cualquier fallo se registra
-    y se ignora: este watchdog nunca debe tumbar el servicio. (La
-    detección es por el nombre del .exe compilado; ejecutando el
-    compañero como script pythonw no es detectable así.)
+    Si el compañero no está en ejecución y existe su tarea programada,
+    la lanza con schtasks /run. Cualquier fallo se registra y se ignora:
+    este watchdog nunca debe tumbar el servicio. (La detección cubre el
+    .exe y el script: ver _is_companion_running.)
     """
     try:
         if _is_companion_running():
@@ -3101,9 +2750,13 @@ class UnlockHTTPHandler(BaseHTTPRequestHandler):
         LOGGER.info("%s - %s", self.address_string(), format % args)
 
     def _apply_cors_headers(self) -> None:
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        # Fase 0: sin CORS. El panel habla con el agente de servidor a
+        # servidor; ningún navegador necesita leer localhost:5001, y con
+        # «Access-Control-Allow-Origin: *» cualquier web visitada podía
+        # leer /health y /service-status (hostname, bloqueos, PID…).
+        # Se conserva el método (y sus llamadas) para no tocar los
+        # respondedores; simplemente ya no emite cabeceras CORS.
+        return None
 
     def _send_json_response(self, status_code: int, payload: Dict[str, Any]) -> None:
         body = json.dumps(payload).encode("utf-8")
@@ -3227,11 +2880,11 @@ class UnlockHTTPHandler(BaseHTTPRequestHandler):
             "border:none;border-radius:4px;font-family:inherit;"
             "font-size:13px;font-weight:700;letter-spacing:.18em;"
             "text-transform:uppercase;color:#EDF0F4;cursor:pointer;"
-            "background:#24365E;transition:background .2s ease,"
+            "background:#486581;transition:background .2s ease,"
             "transform .2s ease}"
-            "button:hover{background:#324B7D;transform:translateY(-1px)}"
+            "button:hover{background:#57748F;transform:translateY(-1px)}"
             ".aviso{background:rgba(166,106,31,.10);"
-            "border:1px solid #4E6E9E;border-radius:4px;"
+            "border:1px solid #68809B;border-radius:4px;"
             "padding:12px 14px;color:#1B2330}"
             ".error{background:rgba(140,59,46,.10);"
             "border:1px solid #8C3B2E;border-radius:4px;"
@@ -3600,6 +3253,9 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
         # el rebote de inserción al reactivar un dispositivo PnP lo
         # vuelva a bloquear.
         self.unlocked_active: Dict[str, Dict[str, Any]] = {}
+        # Fase 2 (arreglos): liberaciones que fallaron tras la contraseña
+        # y esperan reintento: {letra_corta: {pending, attempts, next_at}}.
+        self.release_retries: Dict[str, Dict[str, Any]] = {}
         self.wmi_connection = None  # Referencia a la conexión WMI
         self.http_server = None  # Servidor HTTP
         self.http_thread = None  # Thread del servidor HTTP
@@ -3635,6 +3291,110 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
         servicemanager.LogInfoMsg("USBMonitorService - iniciado")
         self.started_at = time.time()
         self.main()
+
+    def _block_and_register(
+        self,
+        *,
+        event: Any,
+        drive_letter: Optional[str],
+        serial_number: Optional[str],
+        whitelisted: bool,
+        model: Optional[str],
+        pnp_device_id: Optional[str],
+        conn: wmi.WMI,
+        hostname: str,
+        modo: str,
+    ) -> None:
+        """Bloquea una unidad recién detectada y registra el bloqueo (Fase 5).
+
+        Este era el flujo copiado TRES veces (Boot Sweep, rama de lista
+        blanca y rama de no autorizado): aplicar el bloqueo → enviar el
+        evento → crear el registro de bloqueo y el estado local. Ahora
+        la lógica vive una sola vez; «modo» ("arranque" | "autorizado" |
+        "no_autorizado") solo elige los mensajes de registro de cada
+        contexto, que se conservan tal cual.
+        """
+        if modo == "autorizado":
+            LOGGER.info(
+                "  [4/5] Dispositivo AUTORIZADO en whitelist; la contraseña (2FA) sigue siendo necesaria"
+            )
+        elif modo == "no_autorizado":
+            LOGGER.info("  [Paso 1/3] Aplicando bloqueo (PnP o solo lectura)...")
+
+        # 1. Bloquear (Fase 2: PnP primero, diskpart de respaldo)
+        letter_used, readonly_ok, readonly_msg, block_method = apply_block(
+            drive_letter,
+            conn,
+            pnp_device_id,
+        )
+        if readonly_ok:
+            if modo == "autorizado":
+                LOGGER.info("  [4/5] ✓ Bloqueo aplicado a %s (método %s)", letter_used, block_method)
+            elif modo == "no_autorizado":
+                LOGGER.info("  [Paso 1/3] ✓ Bloqueo aplicado exitosamente a %s (método %s)", letter_used, block_method)
+        else:
+            if modo == "autorizado":
+                LOGGER.error("  [4/5] ✗ Fallo al bloquear la unidad: %s", readonly_msg)
+            elif modo == "no_autorizado":
+                LOGGER.error("  [Paso 1/3] ✗ Fallo al bloquear la unidad: %s", readonly_msg)
+
+        # 2. Enviar el evento al backend
+        if modo == "autorizado":
+            LOGGER.info("  [5/5] Enviando evento autorizado al backend")
+        elif modo == "no_autorizado":
+            LOGGER.info("  [Paso 2/3] Notificando al backend del evento...")
+        payload = build_payload(
+            event,
+            letter_used,
+            readonly_msg,
+            serial_number,
+            whitelisted,
+        )
+        send_event(payload)
+        if modo == "no_autorizado":
+            LOGGER.info("  [Paso 2/3] ✓ Evento enviado al backend")
+
+        # Sin apagado (Fase 0): la PC NO se apaga; el dispositivo queda
+        # bloqueado hasta desbloquearlo con la contraseña.
+        if modo == "arranque":
+            LOGGER.info(
+                "Boot Sweep: la PC NO se apaga; la unidad %s queda bloqueada pendiente de contraseña",
+                drive_letter,
+            )
+        elif modo == "no_autorizado":
+            LOGGER.info(
+                "  [Paso 3/3] La PC NO se apaga; el dispositivo queda bloqueado pendiente de contraseña"
+            )
+
+        # 3. Crear el registro de bloqueo (del que lee el compañero)
+        if letter_used:
+            if modo == "no_autorizado":
+                LOGGER.info("  [Paso 3/3] Creando registro de desbloqueo pendiente...")
+            create_pending_unlock(
+                hostname,
+                letter_used,
+                serial_number=serial_number,
+                device_label=model,
+                whitelisted=whitelisted,
+                block_method=block_method,
+                pnp_device_id=pnp_device_id,
+            )
+            self.pending_usbs[letter_used] = hostname
+            self.block_state[_drive_key(letter_used)] = {
+                "method": block_method,
+                "pnpDeviceId": pnp_device_id,
+                "serialNumber": serial_number,
+            }
+            if modo == "autorizado":
+                LOGGER.info(
+                    "  [5/5] ✓ Unidad %s bloqueada, pendiente de contraseña (whitelist)",
+                    letter_used,
+                )
+            elif modo == "no_autorizado":
+                LOGGER.info("  [Paso 3/3] ✓ Unidad %s añadida a pendientes de desbloqueo", letter_used)
+        elif modo == "no_autorizado":
+            LOGGER.error("  [Paso 3/3] ✗ No se pudo determinar letra de unidad para pending unlock")
+
 
     def main(self) -> None:
         LOGGER.info("Inicializando bucle principal del servicio")
@@ -3766,54 +3526,23 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                     else:
                         LOGGER.warning("Boot Sweep: PROTOCOLO DE SEGURIDAD - Unidad %s NO AUTORIZADA", drive_letter)
 
-                    # La contraseña es 2FA siempre: se bloquea y se crea el
-                    # pendiente esté o no el dispositivo en la whitelist.
-                    # 1. Protect USB (Fase 2: PnP primero, diskpart de
-                    # respaldo; el PNPDeviceID llega en el propio dict de
-                    # get_connected_usb_drives, desde _classify_disk_as_usb)
-                    letter_used, readonly_ok, readonly_msg, block_method = apply_block(
-                        drive_letter, c, drive.get("pnpDeviceId")
-                    )
-
-                    # 2. Send Event
+                    # La contraseña es 2FA siempre: se bloquea y se crea
+                    # el registro esté o no el dispositivo en la whitelist
+                    # (flujo único en _block_and_register, Fase 5).
                     event = MockEvent()
                     setattr(event, "DriveName", drive_letter)
-
-                    payload = build_payload(
-                        event,
-                        letter_used,
-                        readonly_msg,
-                        serial_number,
-                        whitelisted,
-                    )
-                    send_event(payload)
-
-                    # 3. Sin apagado (Fase 0): la PC NO se apaga; el
-                    # dispositivo queda bloqueado hasta desbloquearlo
-                    # con la contraseña del dueño o del admin.
-                    LOGGER.info(
-                        "Boot Sweep: la PC NO se apaga; la unidad %s queda bloqueada pendiente de contraseña",
-                        drive_letter,
+                    self._block_and_register(
+                        event=event,
+                        drive_letter=drive_letter,
+                        serial_number=serial_number,
+                        whitelisted=whitelisted,
+                        model=drive.get("model"),
+                        pnp_device_id=drive.get("pnpDeviceId"),
+                        conn=c,
+                        hostname=hostname,
+                        modo="arranque",
                     )
 
-                    # 4. Pending unlock
-                    if letter_used:
-                        create_browser_signal(hostname, letter_used)
-                        create_pending_unlock(
-                            hostname,
-                            letter_used,
-                            serial_number=serial_number,
-                            device_label=drive.get("model"),
-                            whitelisted=whitelisted,
-                            block_method=block_method,
-                            pnp_device_id=drive.get("pnpDeviceId"),
-                        )
-                        self.pending_usbs[letter_used] = hostname
-                        self.block_state[_drive_key(letter_used)] = {
-                            "method": block_method,
-                            "pnpDeviceId": drive.get("pnpDeviceId"),
-                            "serialNumber": serial_number,
-                        }
 
                 except Exception as drive_exc:
                     LOGGER.error("Boot Sweep: Error al verificar unidad %s: %s", drive.get("driveLetter", "desconocida"), drive_exc)
@@ -3914,125 +3643,37 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                             LOGGER.warning("  [3/5] ✗ NO AUTORIZADO - Serial no en whitelist")
 
                     if whitelisted:
-                        # Dispositivo conocido, pero la contraseña es 2FA
-                        # siempre: también se bloquea y se crea el pendiente.
-                        LOGGER.info(
-                            "  [4/5] Dispositivo AUTORIZADO en whitelist; la contraseña (2FA) sigue siendo necesaria"
+                        self._block_and_register(
+                            event=event,
+                            drive_letter=drive_letter,
+                            serial_number=serial_number,
+                            whitelisted=True,
+                            model=drive_info.get("model") if drive_info else None,
+                            pnp_device_id=drive_info.get("pnpDeviceId") if drive_info else None,
+                            conn=c,
+                            hostname=hostname,
+                            modo="autorizado",
                         )
-                        letter_used, readonly_ok, readonly_msg, block_method = apply_block(
-                            drive_letter,
-                            c,
-                            drive_info.get("pnpDeviceId") if drive_info else None,
-                        )
-                        if readonly_ok:
-                            LOGGER.info("  [4/5] ✓ Bloqueo aplicado a %s (método %s)", letter_used, block_method)
-                        else:
-                            LOGGER.error("  [4/5] ✗ Fallo al bloquear la unidad: %s", readonly_msg)
-                        payload = build_payload(
-                            event,
-                            letter_used,
-                            readonly_msg,
-                            serial_number,
-                            True,
-                        )
-                        LOGGER.info("  [5/5] Enviando evento autorizado al backend")
-                        send_event(payload)
-                        if letter_used:
-                            create_browser_signal(hostname, letter_used)
-                            create_pending_unlock(
-                                hostname,
-                                letter_used,
-                                serial_number=serial_number,
-                                device_label=(
-                                    drive_info.get("model") if drive_info else None
-                                ),
-                                whitelisted=True,
-                                block_method=block_method,
-                                pnp_device_id=(
-                                    drive_info.get("pnpDeviceId") if drive_info else None
-                                ),
-                            )
-                            self.pending_usbs[letter_used] = hostname
-                            self.block_state[_drive_key(letter_used)] = {
-                                "method": block_method,
-                                "pnpDeviceId": (
-                                    drive_info.get("pnpDeviceId") if drive_info else None
-                                ),
-                                "serialNumber": serial_number,
-                            }
-                            LOGGER.info(
-                                "  [5/5] ✓ Unidad %s bloqueada, pendiente de contraseña (whitelist)",
-                                letter_used,
-                            )
                         LOGGER.info("═══ EVENTO COMPLETADO: USB AUTORIZADO EN WHITELIST, PENDIENTE DE CONTRASEÑA ═══\n")
                         continue
+
 
                     # --- Proceso para dispositivos no autorizados ---
                     LOGGER.warning("═══ PROTOCOLO DE SEGURIDAD: DISPOSITIVO NO AUTORIZADO ═══")
                     LOGGER.warning("  Dispositivo: %s | Serial: %s", drive_letter or "desconocido", serial_number or "sin serial")
-                    
-                    # 1. Bloquear USB (Fase 2: PnP primero, diskpart de respaldo)
-                    LOGGER.info("  [Paso 1/3] Aplicando bloqueo (PnP o solo lectura)...")
-                    letter_used, readonly_ok, readonly_msg, block_method = apply_block(
-                        drive_letter,
-                        c,
-                        drive_info.get("pnpDeviceId") if drive_info else None,
+                    self._block_and_register(
+                        event=event,
+                        drive_letter=drive_letter,
+                        serial_number=serial_number,
+                        whitelisted=False,
+                        model=drive_info.get("model") if drive_info else None,
+                        pnp_device_id=drive_info.get("pnpDeviceId") if drive_info else None,
+                        conn=c,
+                        hostname=hostname,
+                        modo="no_autorizado",
                     )
-                    if readonly_ok:
-                        LOGGER.info("  [Paso 1/3] ✓ Bloqueo aplicado exitosamente a %s (método %s)", letter_used, block_method)
-                    else:
-                        LOGGER.error("  [Paso 1/3] ✗ Fallo al bloquear la unidad: %s", readonly_msg)
-
-                    # 2. Enviar evento al backend
-                    LOGGER.info("  [Paso 2/3] Notificando al backend del evento...")
-                    payload = build_payload(
-                        event,
-                        letter_used,
-                        readonly_msg,
-                        serial_number,
-                        False,
-                    )
-                    send_event(payload)
-                    LOGGER.info("  [Paso 2/3] ✓ Evento enviado al backend")
-
-                    # Sin apagado (Fase 0): la PC NO se apaga. El dispositivo
-                    # queda bloqueado hasta que el dueño (o el admin) lo
-                    # desbloquee con su contraseña.
-                    LOGGER.info(
-                        "  [Paso 3/3] La PC NO se apaga; el dispositivo queda bloqueado pendiente de contraseña"
-                    )
-
-                    # 3. Crear señal para el agente local (si aplica)
-                    if letter_used:
-                        LOGGER.info("  [Paso 3/3] Creando registro de desbloqueo pendiente...")
-                        create_browser_signal(hostname, letter_used)
-                        create_pending_unlock(
-                            hostname,
-                            letter_used,
-                            serial_number=serial_number,
-                            device_label=(
-                                drive_info.get("model") if drive_info else None
-                            ),
-                            whitelisted=False,
-                            block_method=block_method,
-                            pnp_device_id=(
-                                drive_info.get("pnpDeviceId") if drive_info else None
-                            ),
-                        )
-                        self.pending_usbs[letter_used] = hostname
-                        self.block_state[_drive_key(letter_used)] = {
-                            "method": block_method,
-                            "pnpDeviceId": (
-                                drive_info.get("pnpDeviceId") if drive_info else None
-                            ),
-                            "serialNumber": serial_number,
-                        }
-                        LOGGER.info("  [Paso 3/3] ✓ Unidad %s añadida a pendientes de desbloqueo", letter_used)
-                    else:
-                        LOGGER.error("  [Paso 3/3] ✗ No se pudo determinar letra de unidad para pending unlock")
-                    
                     LOGGER.warning("═══ PROTOCOLO DE SEGURIDAD COMPLETADO ═══\n")
-                    
+
             except wmi.x_wmi_timed_out:
                 continue
             except Exception as exc:
@@ -4055,7 +3696,8 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
             
             # Crear el servidor HTTP
             listen_host = os.environ.get("USB_MONITOR_LISTEN_HOST", "127.0.0.1")
-            self.http_server = HTTPServer((listen_host, listen_port), UnlockHTTPHandler)
+            # Fase 3: multihilo — una petición lenta ya no bloquea /health ni la página de emergencia.
+            self.http_server = ThreadingHTTPServer((listen_host, listen_port), UnlockHTTPHandler)
             
             # Iniciar en un thread separado
             self.http_thread = threading.Thread(
@@ -4262,6 +3904,85 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
             drive_letter,
         )
 
+    # ── Fase 2 (arreglos): liberación fiable tras la contraseña ──────────
+    # El servidor entrega cada desbloqueo una sola vez (check=true); si
+    # liberar la unidad falla en esta PC, antes el dispositivo quedaba
+    # bloqueado para siempre y nadie se enteraba. Ahora se reintenta con
+    # esperas crecientes y, si se agotan, queda constancia en el panel.
+
+    RELEASE_RETRY_DELAYS = (10.0, 30.0, 60.0, 60.0)
+
+    def _after_release_success(self, drive_letter: str) -> None:
+        """Cierre común tras liberar una unidad (camino directo y reintentos)."""
+        normalized_letter = drive_letter.rstrip(":").upper()
+        self.pending_usbs.pop(drive_letter, None)
+        self.pending_usbs.pop(normalized_letter, None)
+        self.pending_usbs.pop(f"{normalized_letter}:", None)
+        self.release_retries.pop(normalized_letter, None)
+        _mark_local_pending_unlocked(drive_letter)
+        LOGGER.info(
+            "  ✓ USB %s desbloqueado tras verificar la contraseña",
+            drive_letter,
+        )
+
+    def _schedule_release_retry(self, drive_letter: str, pending: Dict[str, Any], attempts: int = 1) -> None:
+        """Programa (o reprograma) el reintento de una liberación fallida."""
+        key = drive_letter.rstrip(":").upper()
+        if attempts > len(self.RELEASE_RETRY_DELAYS):
+            # Agotados: el dispositivo sigue bloqueado (fail-closed), pero
+            # ya no en silencio: el evento queda en el panel.
+            serial = pending.get("serialNumber") if isinstance(pending, dict) else None
+            payload = _service_event_payload(
+                f"UNLOCK_RELEASE_FAILED | unidad {drive_letter} no se pudo liberar tras {attempts} intentos"
+            )
+            if serial:
+                payload["serial_number"] = serial
+            try:
+                enqueue_persistent("event", payload)
+            except Exception as exc:
+                LOGGER.error("No se pudo encolar UNLOCK_RELEASE_FAILED: %s", exc)
+            LOGGER.error(
+                "  ✗ Liberación de %s abandonada tras %d intentos; evento UNLOCK_RELEASE_FAILED encolado",
+                drive_letter,
+                attempts,
+            )
+            self.release_retries.pop(key, None)
+            return
+        delay = self.RELEASE_RETRY_DELAYS[attempts - 1]
+        self.release_retries[key] = {
+            "pending": pending,
+            "attempts": attempts,
+            "next_at": time.time() + delay,
+        }
+        LOGGER.warning(
+            "  ⏳ Liberación de %s falló (intento %d); se reintenta en %.0f s",
+            drive_letter,
+            attempts,
+            delay,
+        )
+
+    def _process_release_retries(self, conn: wmi.WMI) -> None:
+        """Ejecuta los reintentos de liberación que ya vencieron."""
+        if not self.release_retries:
+            return
+        now = time.time()
+        for key in list(self.release_retries.keys()):
+            entry = self.release_retries.get(key)
+            if not entry or entry["next_at"] > now:
+                continue
+            drive_letter = f"{key}:"
+            LOGGER.info(
+                "  ↻ Reintentando liberar %s (intento %d)",
+                drive_letter,
+                entry["attempts"] + 1,
+            )
+            if self.release_blocked_drive(drive_letter, conn, entry["pending"]):
+                self._after_release_success(drive_letter)
+            else:
+                self._schedule_release_retry(
+                    drive_letter, entry["pending"], entry["attempts"] + 1
+                )
+
     def monitor_unlock_authorization(self, conn: wmi.WMI) -> None:
         """Monitorea periódicamente si hay USBs autorizados para desbloquear."""
         LOGGER.info("╔════════════════════════════════════════════════════════════╗")
@@ -4283,6 +4004,14 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                     if now - last_watchdog_check >= COMPANION_WATCHDOG_INTERVAL:
                         last_watchdog_check = now
                         _ensure_companion_running()
+
+                    # Fase 1 (arreglos): antes de preguntar por
+                    # desbloqueos, registrar los bloqueos que se crearon
+                    # sin red y quedaron solo en local (id null). Sin
+                    # esto, un USB conectado sin conexión no podría
+                    # desbloquearse con contraseña ni al volver la red.
+                    reconcile_local_pendings()
+                    self._process_release_retries(conn)
 
                     # Polling real (Fase 1): el servidor devuelve los
                     # pendientes que acaban de desbloquearse con
@@ -4307,34 +4036,12 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                         )
 
                         if success:
-                            # Remover de la lista de pendientes (todas las
-                            # variantes de la letra que se hayan usado)
-                            normalized_letter = drive_letter.rstrip(":").upper()
-                            self.pending_usbs.pop(drive_letter, None)
-                            self.pending_usbs.pop(normalized_letter, None)
-                            self.pending_usbs.pop(f"{normalized_letter}:", None)
-
-                            # Actualizar el registro local que lee el compañero
-                            _mark_local_pending_unlocked(drive_letter)
-
-                            # Limpiar archivo de señal
-                            try:
-                                if SIGNAL_FILE.exists():
-                                    SIGNAL_FILE.unlink()
-                                    LOGGER.info("    → Archivo de señal limpiado")
-                            except Exception as e:
-                                LOGGER.warning("    ⚠  Error al limpiar archivo de señal: %s", e)
-
-                            LOGGER.info(
-                                "  ✓ USB %s desbloqueado tras verificar la contraseña",
-                                drive_letter,
-                            )
+                            self._after_release_success(drive_letter)
                         else:
-                            LOGGER.error(
-                                "  ✗ Fallo al desbloquear USB %s tras verificar la contraseña "
-                                "(el servidor ya lo marcó como entregado; no se reintentará solo)",
-                                drive_letter,
-                            )
+                            # Fase 2 (arreglos): el fallo ya no es
+                            # final — reintento con esperas crecientes
+                            # y aviso al panel si se agotan los intentos.
+                            self._schedule_release_retry(drive_letter, pending)
 
                 except Exception as exc:
                     LOGGER.error("  ✗ Error en monitoreo de autorizaciones: %s", exc)
@@ -4805,7 +4512,7 @@ def _set_server_host(new_host: str) -> Tuple[bool, str]:
 
 def _toggle_server_scheme() -> Tuple[bool, str]:
     """Alterna USB_MONITOR_SERVER_SCHEME entre http y https y persiste con setx."""
-    current = (os.environ.get("USB_MONITOR_SERVER_SCHEME", "https") or "").lower().strip()
+    current = (os.environ.get("USB_MONITOR_SERVER_SCHEME", "http") or "").lower().strip()
     new_value = "http" if current == "https" else "https"
     try:
         setx_path = resolve_executable("setx.exe")
@@ -4879,385 +4586,6 @@ def _toggle_ssl_verify() -> Tuple[bool, str]:
     return True, output_message
 
 
-def run_gui() -> None:
-    root = tk.Tk()
-    root.title("USB Monitor Service")
-    root.resizable(False, False)
-
-    # --- Sistema visual «Herencia» (misma paleta que el panel web) ---
-    # Los estilos por defecto (TFrame/TLabel/TButton/TEntry/Treeview) los
-    # hereda también el configurador de API key, que cuelga de esta raíz.
-    try:
-        estilo = ttk.Style(root)
-        if "clam" in estilo.theme_names():
-            estilo.theme_use("clam")
-        estilo.configure("TFrame", background="#F7F9FB")
-        estilo.configure(
-            "TLabel",
-            background="#F7F9FB",
-            foreground="#1B2330",
-            font=("Segoe UI", 10),
-        )
-        estilo.configure(
-            "TButton",
-            background="#E4EAF1",
-            foreground="#1B2330",
-            bordercolor="#C2CEDC",
-            focusthickness=0,
-            padding=(12, 7),
-            font=("Segoe UI", 10),
-        )
-        estilo.map(
-            "TButton",
-            background=[("active", "#C2CEDC"), ("disabled", "#F7F9FB")],
-            foreground=[("disabled", "#5B6B7F")],
-        )
-        estilo.configure(
-            "Accent.TButton",
-            background="#24365E",
-            foreground="#EDF0F4",
-            font=("Segoe UI", 10, "bold"),
-        )
-        estilo.map(
-            "Accent.TButton",
-            background=[("active", "#324B7D"), ("disabled", "#E4EAF1")],
-            foreground=[("active", "#EDF0F4"), ("disabled", "#5B6B7F")],
-        )
-        estilo.configure(
-            "TEntry",
-            fieldbackground="#F7F9FB",
-            foreground="#1B2330",
-            bordercolor="#C2CEDC",
-            padding=6,
-        )
-        estilo.configure(
-            "Treeview",
-            background="#F7F9FB",
-            fieldbackground="#F7F9FB",
-            foreground="#1B2330",
-            bordercolor="#C2CEDC",
-            rowheight=24,
-            font=("Segoe UI", 9),
-        )
-        estilo.configure(
-            "Treeview.Heading",
-            background="#E4EAF1",
-            foreground="#5B6B7F",
-            font=("Segoe UI", 9, "bold"),
-        )
-        estilo.map(
-            "Treeview",
-            background=[("selected", "#24365E")],
-            foreground=[("selected", "#EDF0F4")],
-        )
-        estilo.configure(
-            "TScrollbar",
-            background="#E4EAF1",
-            troughcolor="#EDF0F4",
-            bordercolor="#C2CEDC",
-            arrowcolor="#5B6B7F",
-        )
-        estilo.configure(
-            "TCheckbutton", background="#F7F9FB", foreground="#1B2330"
-        )
-        root.configure(bg="#EDF0F4")
-    except tk.TclError:
-        LOGGER.debug("No se pudieron aplicar los estilos Herencia", exc_info=True)
-
-    icon_path = get_app_directory() / "usb_monitor_service.ico"
-    if icon_path.exists():
-        try:
-            root.iconbitmap(default=str(icon_path))
-        except Exception as exc:
-            LOGGER.debug("No se pudo establecer el icono de la app: %s", exc)
-
-    root.columnconfigure(0, weight=1)
-    root.rowconfigure(0, weight=1)
-
-    container = ttk.Frame(root, padding=20)
-    container.grid(row=0, column=0, sticky="nsew")
-    container.columnconfigure(0, weight=1)
-    container.columnconfigure(1, weight=1)
-    container.rowconfigure(3, weight=1)
-
-    status_var = tk.StringVar()
-    status_label = ttk.Label(container, textvariable=status_var, font=("Segoe UI", 11, "bold"))
-    status_label.grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 2))
-
-    # Variable para mostrar el estado del inicio automático
-    autostart_status_var = tk.StringVar()
-    autostart_status_label = ttk.Label(
-        container,
-        textvariable=autostart_status_var,
-        font=("Segoe UI", 9),
-        foreground="#5B6B7F",
-    )
-    autostart_status_label.grid(row=1, column=0, columnspan=2, sticky="w")
-
-    # Estado de esquema y SSL verify junto a "Inicio automático"
-    scheme_status_var = tk.StringVar()
-    ssl_status_var = tk.StringVar()
-
-    scheme_ssl_frame = ttk.Frame(container)
-    scheme_ssl_frame.grid(row=2, column=0, columnspan=2, sticky="w", pady=(2, 6))
-
-    scheme_status_label = ttk.Label(
-        scheme_ssl_frame,
-        textvariable=scheme_status_var,
-        font=("Segoe UI", 9),
-        foreground="#5B6B7F",
-        wraplength=360,
-    )
-    scheme_status_label.pack(anchor="w")
-
-    ssl_status_label = ttk.Label(
-        scheme_ssl_frame,
-        textvariable=ssl_status_var,
-        font=("Segoe UI", 9),
-        foreground="#5B6B7F",
-        wraplength=360,
-    )
-    ssl_status_label.pack(anchor="w")
-
-    info_label = ttk.Label(
-        container,
-        text="Ejecuta esta herramienta como administrador para instalar o controlar el servicio.",
-        wraplength=360,
-        foreground="#5B6B7F",
-    )
-    info_label.grid(row=3, column=0, columnspan=2, pady=(6, 10), sticky="w")
-
-    log_box = ScrolledText(
-        container,
-        height=8,
-        width=52,
-        state="disabled",
-        wrap="word",
-        background="#F7F9FB",
-        foreground="#1B2330",
-        insertbackground="#1B2330",
-        selectbackground="#5F7CA6",
-        selectforeground="#F7F9FB",
-        relief="flat",
-        borderwidth=1,
-        highlightthickness=1,
-        highlightbackground="#C2CEDC",
-        highlightcolor="#5F7CA6",
-        font=("Segoe UI", 9),
-    )
-    log_box.grid(row=3, column=0, columnspan=2, pady=(0, 12), sticky="nsew")
-
-    command_buttons: list[ttk.Button] = []
-
-    def append_log(text: str) -> None:
-        timestamp = time.strftime("%H:%M:%S")
-        log_box.configure(state="normal")
-        log_box.insert("end", f"[{timestamp}] {text}\n")
-        log_box.see("end")
-        log_box.configure(state="disabled")
-        LOGGER.info("GUI: %s", text)
-
-    def set_buttons_state(state: str) -> None:
-        for btn in command_buttons:
-            btn.configure(state=state)
-
-    def update_status() -> None:
-        state, description = _query_service_state()
-        status_var.set(f"Estado del servicio: {description}")
-        if state == win32service.SERVICE_RUNNING:
-            status_label.configure(foreground="#3E6B4F")
-        elif state == win32service.SERVICE_STOPPED:
-            status_label.configure(foreground="#8C3B2E")
-        elif state is None:
-            status_label.configure(foreground="#8C3B2E")
-        else:
-            status_label.configure(foreground="#4E6E9E")
-        
-        # Actualizar estado del inicio automático
-        success, start_type = _get_service_autostart_status()
-        if success and start_type is not None:
-            if start_type == win32service.SERVICE_AUTO_START:
-                autostart_status_var.set("Inicio automático: ✓ Activado")
-            elif start_type == win32service.SERVICE_DEMAND_START:
-                autostart_status_var.set("Inicio automático: ✗ Desactivado (Manual)")
-            else:
-                autostart_status_var.set(f"Inicio automático: Tipo {start_type}")
-        else:
-            autostart_status_var.set("Inicio automático: Estado desconocido")
-
-        # Actualizar esquema y verificación SSL
-        scheme = os.environ.get("USB_MONITOR_SERVER_SCHEME", "https").lower()
-        scheme_status_var.set(f"Esquema del backend: {scheme.upper()}")
-        cert_path = os.environ.get("USB_MONITOR_SSL_CERT", "").strip()
-        verify_env = os.environ.get("USB_MONITOR_SSL_VERIFY", "true").lower()
-        if cert_path and Path(cert_path).exists():
-            ssl_status_var.set(f"Verificación SSL: CA personalizada ({cert_path})")
-        else:
-            ssl_status_var.set("Verificación SSL: Activada" if verify_env != "false" else "Verificación SSL: Desactivada")
-
-    def finish_command(success: bool, message: str) -> None:
-        set_buttons_state("normal")
-        append_log(message)
-        update_status()
-        if not success:
-            messagebox.showerror("USB Monitor Service", message, parent=root)
-            LOGGER.error("GUI: comando finalizado con error - %s", message)
-        else:
-            LOGGER.info("GUI: comando finalizado correctamente - %s", message)
-
-    def run_command_async(command: str) -> None:
-        def worker() -> None:
-            success, message = _execute_service_command(command)
-            root.after(0, lambda: finish_command(success, message))
-
-        append_log(f"Ejecutando '{command}'...")
-        LOGGER.info("GUI: se solicitó ejecución del comando '%s'", command)
-        set_buttons_state("disabled")
-        threading.Thread(target=worker, daemon=True).start()
-
-    def configure_autostart_async() -> None:
-        def worker() -> None:
-            success, message = _toggle_service_autostart()
-            root.after(0, lambda: finish_command(success, message))
-
-        append_log("Alternando configuración de inicio automático...")
-        LOGGER.info("GUI: se solicitó alternar inicio automático")
-        set_buttons_state("disabled")
-        threading.Thread(target=worker, daemon=True).start()
-
-    def configure_server_host() -> None:
-        current_host = os.environ.get("USB_MONITOR_SERVER_HOST", get_server_host())
-        prompt = "Ingresa la nueva dirección IP o hostname del servidor backend:"
-        new_host = simpledialog.askstring(
-            "Configurar IP del servidor",
-            prompt,
-            initialvalue=current_host,
-            parent=root,
-        )
-        if new_host is None:
-            return
-
-        value = new_host.strip()
-        if not value:
-            messagebox.showerror(
-                "Valor inválido",
-                "Debes ingresar una IP o hostname válido.",
-                parent=root,
-            )
-            return
-
-        def worker() -> None:
-            success, message = _set_server_host(value)
-            root.after(0, lambda: finish_command(success, message))
-
-        append_log(f"Actualizando IP del servidor a '{value}'...")
-        LOGGER.info("GUI: se solicitó actualizar USB_MONITOR_SERVER_HOST a %s", value)
-        set_buttons_state("disabled")
-        threading.Thread(target=worker, daemon=True).start()
-
-    def configure_server_scheme_async() -> None:
-        def worker() -> None:
-            success, message = _toggle_server_scheme()
-            root.after(0, lambda: finish_command(success, message))
-
-        append_log("Alternando esquema HTTP/HTTPS...")
-        LOGGER.info("GUI: se solicitó alternar USB_MONITOR_SERVER_SCHEME")
-        set_buttons_state("disabled")
-        threading.Thread(target=worker, daemon=True).start()
-
-    def configure_ssl_verify_async() -> None:
-        def worker() -> None:
-            success, message = _toggle_ssl_verify()
-            root.after(0, lambda: finish_command(success, message))
-
-        append_log("Alternando verificación SSL...")
-        LOGGER.info("GUI: se solicitó alternar USB_MONITOR_SSL_VERIFY")
-        set_buttons_state("disabled")
-        threading.Thread(target=worker, daemon=True).start()
-
-    def open_api_key_configurator_dialog() -> None:
-        append_log("Abriendo configurador de API key...")
-        try:
-            launch_api_key_configurator(root, on_log=append_log)
-        except Exception as exc:  # pragma: no cover - errores inesperados de GUI
-            LOGGER.error("GUI: error al abrir configurador de API key: %s", exc, exc_info=True)
-            messagebox.showerror(
-                "USB Monitor Service",
-                f"No se pudo abrir el configurador de API key.\n\nDetalles: {exc}",
-                parent=root,
-            )
-
-    commands = [
-        ("Instalar servicio", "install"),
-        ("Iniciar servicio", "start"),
-        ("Detener servicio", "stop"),
-        ("Desinstalar servicio", "remove"),
-    ]
-
-    for idx, (label, command) in enumerate(commands):
-        row = 4 + idx // 2
-        column = idx % 2
-        btn = ttk.Button(container, text=label, command=lambda c=command: run_command_async(c))
-        btn.grid(row=row, column=column, padx=4, pady=4, sticky="ew")
-        command_buttons.append(btn)
-
-    autostart_button = ttk.Button(
-        container,
-        text="Alternar inicio automático",
-        command=configure_autostart_async,
-    )
-    autostart_button.grid(row=6, column=0, columnspan=2, padx=4, pady=(8, 0), sticky="ew")
-    command_buttons.append(autostart_button)
-
-    server_host_button = ttk.Button(
-        container,
-        text="Configurar IP del servidor",
-        command=configure_server_host,
-    )
-    server_host_button.grid(row=7, column=0, columnspan=2, padx=4, pady=(8, 0), sticky="ew")
-    command_buttons.append(server_host_button)
-
-    api_key_button = ttk.Button(
-        container,
-        text="Configurar API key del backend",
-        command=open_api_key_configurator_dialog,
-    )
-    api_key_button.grid(row=8, column=0, columnspan=2, padx=4, pady=(8, 0), sticky="ew")
-    command_buttons.append(api_key_button)
-
-    scheme_button = ttk.Button(
-        container,
-        text="Alternar HTTP/HTTPS",
-        command=configure_server_scheme_async,
-    )
-    scheme_button.grid(row=12, column=0, columnspan=2, padx=4, pady=(8, 0), sticky="ew")
-    command_buttons.append(scheme_button)
-
-    ssl_button = ttk.Button(
-        container,
-        text="Alternar verificación SSL",
-        command=configure_ssl_verify_async,
-    )
-    ssl_button.grid(row=13, column=0, columnspan=2, padx=4, pady=(8, 0), sticky="ew")
-    command_buttons.append(ssl_button)
-
-    refresh_button = ttk.Button(
-        container, text="Actualizar estado", command=update_status, style="Accent.TButton"
-    )
-    refresh_button.grid(row=9, column=0, columnspan=2, pady=(8, 0), sticky="ew")
-
-    append_log("Interfaz iniciada.")
-    update_status()
-
-    def periodic_status_refresh() -> None:
-        update_status()
-        root.after(5000, periodic_status_refresh)
-
-    root.after(5000, periodic_status_refresh)
-
-    root.mainloop()
-
-
 if __name__ == "__main__":
     ensure_admin_or_exit()
 
@@ -5278,6 +4606,10 @@ if __name__ == "__main__":
 
     def _launch_gui() -> None:
         try:
+            # Fase 6: la GUI vive en usb_monitor_admin.py; se importa
+            # solo al pedirla (el servicio no carga tkinter al arrancar).
+            from usb_monitor_admin import run_gui
+
             run_gui()
         except Exception as exc:  # pragma: no cover - gui solo en Windows con Tk
             LOGGER.error("Error al iniciar la interfaz gráfica: %s", exc)
