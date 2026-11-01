@@ -2466,8 +2466,8 @@ def _emergency_register_success(
 def _check_emergency_credentials(
     username: str,
     password: str,
-    drive_letter: str,
-) -> Tuple[str, Optional[str]]:
+    pending_key: str,
+) -> Tuple[str, Optional[str], Optional[Dict[str, Any]]]:
     """Verifica usuario+contraseña contra el hash cacheado del dueño.
 
     Devuelve (estado, serial_del_bloqueo):
@@ -2478,22 +2478,34 @@ def _check_emergency_credentials(
       - "invalid": la unidad indicada no está entre los bloqueos locales.
     """
     if _emergency_locked_remaining() > 0:
-        return "locked", None
+        return "locked", None, None
 
     cache = _load_owner_hash_cache()
     if cache is None or not ARGON2_AVAILABLE:
-        return "unavailable", None
+        return "unavailable", None, None
 
+    # La clave identifica el bloqueo: la letra de una unidad o
+    # SER:<serial> para un dispositivo sin letra (un móvil).
+    key = (pending_key or "").strip()
+    is_serial_key = key.upper().startswith("SER:")
+    if not is_serial_key:
+        key = key.upper()
+        if key and not key.endswith(":"):
+            key += ":"
     pending = None
     for entry in _load_local_pendings():
-        if (
-            str(entry.get("driveLetter") or "").upper() == drive_letter.upper()
-            and entry.get("status") == "BLOCKED"
-        ):
+        if entry.get("status") != "BLOCKED":
+            continue
+        if is_serial_key:
+            matched = _pending_key_of(entry) == key.upper()
+        else:
+            matched = str(entry.get("driveLetter") or "").upper() == key
+        if matched:
             pending = entry  # el último es el más reciente
     if pending is None:
-        return "invalid", None
+        return "invalid", None, None
     serial = pending.get("serialNumber")
+    drive_letter = pending.get("driveLetter")
 
     if username.strip().casefold() != str(cache["username"]).casefold():
         LOGGER.warning(
@@ -2502,33 +2514,33 @@ def _check_emergency_credentials(
             cache["username"],
         )
         _emergency_register_failure(username, drive_letter, serial)
-        return "fail", serial
+        return "fail", serial, pending
 
     phc = _extract_argon2_phc(str(cache["passwordHash"]))
     if phc is None:
         LOGGER.error(
             "    [Emergencia] ✗ El hash cacheado no contiene una parte PHC reconocible"
         )
-        return "unavailable", serial
+        return "unavailable", serial, pending
 
     try:
         _Argon2PasswordHasher().verify(phc, password)
     except _Argon2VerifyMismatch:
         LOGGER.warning("    [Emergencia] ✗ Contraseña incorrecta en la página local")
         _emergency_register_failure(username, drive_letter, serial)
-        return "fail", serial
+        return "fail", serial, pending
     except _Argon2InvalidHash:
         LOGGER.error("    [Emergencia] ✗ Hash PHC inválido en la caché del dueño")
-        return "unavailable", serial
+        return "unavailable", serial, pending
     except Exception as exc:
         LOGGER.error("    [Emergencia] ✗ Error verificando la contraseña: %s", exc)
-        return "unavailable", serial
+        return "unavailable", serial, pending
 
     LOGGER.info(
         "    [Emergencia] ✓ Contraseña del dueño verificada en local para %s",
-        drive_letter,
+        key,
     )
-    return "ok", serial
+    return "ok", serial, pending
 
 
 def _is_companion_running() -> bool:
@@ -3061,17 +3073,24 @@ class UnlockHTTPHandler(BaseHTTPRequestHandler):
                 "Máximo 5 intentos.</p>"
             )
             options = "".join(
-                "<option value='{drive}'>{drive} — {label} (serial {serial})</option>".format(
-                    drive=html.escape(str(p.get("driveLetter") or ""), quote=True),
-                    label=html.escape(str(p.get("deviceLabel") or "Dispositivo USB")),
-                    serial=html.escape(str(p.get("serialNumber") or "sin serial")),
+                "<option value='{key}'>{text}</option>".format(
+                    key=html.escape(_pending_key_of(p), quote=True),
+                    text=html.escape(
+                        (
+                            f"{p.get('driveLetter')} — "
+                            if p.get("driveLetter")
+                            else ""
+                        )
+                        + f"{p.get('deviceLabel') or 'Dispositivo USB'} "
+                        f"(serial {p.get('serialNumber') or 'sin serial'})"
+                    ),
                 )
                 for p in blocked
             )
             form = (
                 "<form method='POST' action='/desbloquear'>"
-                "<label>Unidad bloqueada"
-                f"<select name='driveLetter'>{options}</select></label>"
+                "<label>Dispositivo bloqueado"
+                f"<select name='pendingKey'>{options}</select></label>"
                 "<label>Usuario"
                 "<input name='username' autocomplete='username' required></label>"
                 "<label>Contraseña"
@@ -3157,21 +3176,24 @@ class UnlockHTTPHandler(BaseHTTPRequestHandler):
         form = parse_qs(raw.decode("utf-8", errors="replace"))
         username = (form.get("username") or [""])[0].strip()
         password = (form.get("password") or [""])[0]
-        drive_letter = (form.get("driveLetter") or [""])[0].strip().upper()
-        if drive_letter and not drive_letter.endswith(":"):
-            drive_letter += ":"
+        pending_key = (
+            form.get("pendingKey") or form.get("driveLetter") or [""]
+        )[0].strip()
 
-        if not username or not password or not drive_letter:
+        if not username or not password or not pending_key:
             self._send_html_response(
                 400,
                 self._emergency_page(
-                    "Faltan datos: usuario, contraseña y unidad son obligatorios.",
+                    "Faltan datos: usuario, contraseña y dispositivo son obligatorios.",
                     is_error=True,
                 ),
             )
             return
 
-        status, serial = _check_emergency_credentials(username, password, drive_letter)
+        status, serial, pending = _check_emergency_credentials(
+            username, password, pending_key
+        )
+
 
         if status == "locked":
             self._send_html_response(
@@ -3196,7 +3218,7 @@ class UnlockHTTPHandler(BaseHTTPRequestHandler):
             self._send_html_response(
                 400,
                 self._emergency_page(
-                    "Esa unidad no está entre los dispositivos bloqueados.",
+                    "Ese dispositivo no está entre los bloqueados.",
                     is_error=True,
                 ),
             )
@@ -3217,20 +3239,29 @@ class UnlockHTTPHandler(BaseHTTPRequestHandler):
         # de liberación).
         service = self.service_instance
         released = False
+        drive_letter = (pending or {}).get("driveLetter")
+        device_label = (pending or {}).get("deviceLabel") or "Dispositivo USB"
         if service is not None:
             try:
-                released = bool(
-                    service.release_blocked_drive(
-                        drive_letter, service.wmi_connection
+                if pending is not None and not drive_letter:
+                    # Sin letra (un móvil): se libera reactivando su
+                    # dispositivo PnP, como en el desbloqueo con red.
+                    released = bool(service._release_wpd_pending(pending))
+                    if released:
+                        service._after_wpd_release_success(pending)
+                else:
+                    released = bool(
+                        service.release_blocked_drive(
+                            drive_letter, service.wmi_connection
+                        )
                     )
-                )
             except Exception as exc:
                 LOGGER.error(
                     "    [Emergencia] ✗ Error al liberar %s tras verificar: %s",
-                    drive_letter,
+                    pending_key,
                     exc,
                 )
-            if released:
+            if released and drive_letter:
                 key = _drive_key(drive_letter)
                 for variant in (drive_letter, key, f"{key}:" if key else ""):
                     if variant:
@@ -3239,19 +3270,20 @@ class UnlockHTTPHandler(BaseHTTPRequestHandler):
         else:
             LOGGER.error(
                 "    [Emergencia] Sin referencia al servicio: no se puede liberar %s",
-                drive_letter,
+                pending_key,
             )
         _emergency_register_success(username, drive_letter, serial)
 
         if released:
             LOGGER.info(
-                "    [Emergencia] ✓ Unidad %s desbloqueada sin red por su dueño",
-                drive_letter,
+                "    [Emergencia] ✓ %s desbloqueado sin red por su dueño",
+                drive_letter or device_label,
             )
+            shown = drive_letter or device_label
             self._send_html_response(
                 200,
                 self._emergency_page(
-                    f"Dispositivo {drive_letter} desbloqueado. El intento "
+                    f"Dispositivo {shown} desbloqueado. El intento "
                     "quedará registrado en el panel cuando vuelva la red."
                 ),
             )
