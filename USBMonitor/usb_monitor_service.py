@@ -1771,6 +1771,44 @@ def enumerate_wpd_devices(conn: wmi.WMI) -> Optional[List[Dict[str, Any]]]:
     return devices
 
 
+def enumerate_net_devices(conn: wmi.WMI) -> Optional[List[Dict[str, Any]]]:
+    """Adaptadores de red conectados por USB (tethering y NICs USB).
+
+    Un teléfono compartiendo su conexión (o una tarjeta de red USB)
+    abre una vía de salida de datos que no pasa por los discos:
+    aparece como Win32_PnPEntity de clase «Net» enumerado por USB.
+    Misma forma de dict que enumerate_wpd_devices, con deviceKind
+    «NET». None si la consulta falla (no cerrar nada por un error).
+    """
+    try:
+        rows = conn.query(
+            "SELECT DeviceID, Name FROM Win32_PnPEntity WHERE PNPClass = 'Net'"
+        )
+    except Exception as exc:
+        LOGGER.debug("Consulta de dispositivos de red falló: %s", exc)
+        return None
+    devices: List[Dict[str, Any]] = []
+    for row in rows or []:
+        device_id = str(getattr(row, "DeviceID", "") or "")
+        if not device_id.upper().startswith("USB\\"):
+            continue
+        name = (
+            str(getattr(row, "Name", "") or "").strip()
+            or "Adaptador de red USB"
+        )
+        serial_raw = device_id.rsplit("\\", 1)[-1]
+        serial = normalize_serial_candidate(serial_raw)
+        devices.append(
+            {
+                "deviceId": device_id,
+                "name": name,
+                "serialNumber": serial,
+                "deviceKind": "NET",
+            }
+        )
+    return devices
+
+
 def create_pending_unlock(
     pc_name: str,
     drive_letter: Optional[str],
@@ -3508,6 +3546,11 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
         self.block_state: Dict[str, Dict[str, Any]] = {}
         # Detección amplia: móviles WPD vigilados, por DeviceID PnP.
         self.wpd_state: Dict[str, Dict[str, Any]] = {}
+        # Tethering: adaptadores de red USB ya presentes al arrancar el
+        # servicio (base): se registran pero NO se bloquean, porque
+        # podrían ser la propia conexión del equipo (un dock USB).
+        self.net_baseline: set = set()
+        self._net_baseline_done = False
         # Fase 2: unidades ya desbloqueadas con contraseña en esta
         # inserción. El permiso vive hasta que se extraigan (lo limpia
         # el evento de retirada, EventType=3); este registro evita que
@@ -4282,7 +4325,37 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
         device_id = device["deviceId"]
         name = device["name"]
         serial = device.get("serialNumber")
-        LOGGER.info("  [WPD] Dispositivo móvil detectado: %s", name)
+        kind = device.get("deviceKind") or "WPD"
+        if kind == "NET" and device_id in self.net_baseline:
+            # Ya estaba al arrancar el servicio: podría ser la red
+            # del propio equipo (un dock). Se registra el evento a
+            # título informativo, sin bloquear ni pedir contraseña;
+            # lo que se conecte DESPUÉS sí pasa por el flujo entero.
+            LOGGER.info(
+                "  [NET] Adaptador de red USB presente al arranque: %s "
+                "(registrado, no bloqueado)", name,
+            )
+            self.wpd_state[device_id] = {
+                "deviceId": device_id,
+                "name": name,
+                "serialNumber": serial,
+                "method": "BASELINE",
+                "unlocked": False,
+                "deviceKind": "NET",
+            }
+            payload = build_payload(
+                name,
+                name,
+                "Adaptador de red USB detectado al arrancar el servicio: "
+                "registrado sin bloquear (podría ser la red del equipo)",
+                serial,
+                False,
+            )
+            send_event(payload)
+            return
+        LOGGER.info(
+            "  [%s] Dispositivo detectado: %s", kind, name
+        )
         blocked_ok, _msg = disable_pnp_device(device_id)
         method = BLOCK_METHOD_PNP if blocked_ok else "NONE"
         whitelisted = False
@@ -4294,6 +4367,7 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
             "serialNumber": serial,
             "method": method,
             "unlocked": False,
+            "deviceKind": kind,
         }
         readonly_msg = (
             "Bloqueo PnP aplicado (dispositivo deshabilitado)"
@@ -4310,7 +4384,7 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
             whitelisted=whitelisted,
             block_method=method,
             pnp_device_id=device_id,
-            device_kind="WPD",
+            device_kind=kind,
         )
 
     def _handle_wpd_removal(self, device_id: str) -> None:
@@ -4320,7 +4394,13 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
         if not state:
             return
         serial = state.get("serialNumber")
-        LOGGER.info("  [WPD] Dispositivo móvil retirado: %s", state.get("name"))
+        LOGGER.info(
+            "  [%s] Dispositivo retirado: %s",
+            state.get("deviceKind") or "WPD",
+            state.get("name"),
+        )
+        if state.get("method") == "BASELINE":
+            return  # nunca tuvo pendiente: nada que cerrar
         if serial:
             _mark_local_pending_closed(_wpd_pending_key(serial))
             submit_network_task(
@@ -4376,7 +4456,16 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                         continue
                 try:
                     devices = enumerate_wpd_devices(conn)
-                    if devices is not None:
+                    net_devices = enumerate_net_devices(conn)
+                    if devices is not None and net_devices is not None:
+                        if not self._net_baseline_done:
+                            # Primera enumeración completa: todo lo de
+                            # red que ya esté es la base del arranque.
+                            self.net_baseline = {
+                                d["deviceId"] for d in net_devices
+                            }
+                            self._net_baseline_done = True
+                        devices = devices + net_devices
                         current_ids = {d["deviceId"] for d in devices}
                         for device in devices:
                             if device["deviceId"] not in self.wpd_state:

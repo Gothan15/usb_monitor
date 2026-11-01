@@ -111,3 +111,77 @@ def test_emergencia_letra_sigue_funcionando(tmp_path, monkeypatch):
     )
     assert status == "ok"
     assert serial == "SERDISCO"
+
+
+# ─── Tethering / red por USB: enumeración y regla de arranque ─────
+class FakeRow:
+    def __init__(self, device_id, name):
+        self.DeviceID = device_id
+        self.Name = name
+
+
+class FakeConnNet:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def query(self, _q):
+        return self._rows
+
+
+def test_net_solo_usb_fisicos():
+    conn = FakeConnNet([
+        FakeRow("USB\\VID_0B95&PID_1790\\00000123", "Adaptador USB Ethernet"),
+        FakeRow("ROOT\\NET\\0000", "Adaptador virtual TAP"),  # virtual -> fuera
+        FakeRow("PCI\\VEN_8086&DEV_15D6\\3&1", "Ethernet interno"),  # interno -> fuera
+    ])
+    devices = svc.enumerate_net_devices(conn)
+    assert len(devices) == 1
+    assert devices[0]["deviceKind"] == "NET"
+    assert devices[0]["serialNumber"] == "00000123"
+
+
+def _servicio_minimo():
+    service = svc.USBMonitorService.__new__(svc.USBMonitorService)
+    service.wpd_state = {}
+    service.net_baseline = set()
+    service._net_baseline_done = False
+    return service
+
+
+def test_net_de_la_base_no_se_bloquea(monkeypatch):
+    service = _servicio_minimo()
+    device = {
+        "deviceId": "USB\\VID_1\\DOCK123",
+        "name": "Dock Ethernet",
+        "serialNumber": "DOCK123",
+        "deviceKind": "NET",
+    }
+    service.net_baseline = {device["deviceId"]}
+    eventos = []
+    monkeypatch.setattr(svc, "send_event", lambda payload: eventos.append(payload))
+    monkeypatch.setattr(
+        svc, "disable_pnp_device", lambda _d: (_ for _ in ()).throw(AssertionError("no debía bloquear"))
+    )
+    service._handle_wpd_arrival(device)
+    assert service.wpd_state[device["deviceId"]]["method"] == "BASELINE"
+    assert len(eventos) == 1
+
+
+def test_net_nuevo_si_se_bloquea(monkeypatch):
+    service = _servicio_minimo()
+    device = {
+        "deviceId": "USB\\VID_2\\PHONE99",
+        "name": "Remote NDIS (tethering)",
+        "serialNumber": "PHONE99",
+        "deviceKind": "NET",
+    }
+    monkeypatch.setattr(svc, "disable_pnp_device", lambda _d: (True, "ok"))
+    monkeypatch.setattr(svc, "check_whitelist", lambda _s: (False, None))
+    monkeypatch.setattr(svc, "send_event", lambda _p: None)
+    pendientes = []
+    monkeypatch.setattr(
+        svc, "create_pending_unlock", lambda *a, **k: pendientes.append(k)
+    )
+    service._handle_wpd_arrival(device)
+    assert service.wpd_state[device["deviceId"]]["method"] == svc.BLOCK_METHOD_PNP
+    assert pendientes and pendientes[0]["device_kind"] == "NET"
