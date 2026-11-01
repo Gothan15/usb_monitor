@@ -95,3 +95,23 @@ def test_optico_usb():
     assert dis.es_optico_usb("USBSTOR\\CDROM&VEN_HL-DT-ST", "DVDRAM")
     assert not dis.es_optico_usb("USBSTOR\\CDROM&VEN_X", "Virtual CD")
     assert not dis.es_optico_usb("SCSI\\CDROM&VEN_X", "DVDRAM")
+
+
+def test_solo_token_es_credencial(tmp_path, monkeypatch):
+    # Una server.json con SOLO apiKey ya no autentica nada: la clave
+    # personal del usuario salio de las rutas del agente.
+    (tmp_path / "server.json").write_text(
+        json.dumps({"apiKey": "uk_lo_que_sea", "agentToken": ""}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(config, "directorio_app", lambda: tmp_path)
+    monkeypatch.setattr(config, "PROGRAM_DATA_DIR", tmp_path / "pd")
+    config._cache.update(ruta=None, mtime=None, datos={})
+    assert config.cabeceras_auth() == {}
+    (tmp_path / "server.json").write_text(
+        json.dumps({"agentToken": "tok-del-equipo"}), encoding="utf-8"
+    )
+    config._cache.update(ruta=None, mtime=None, datos={})
+    assert config.cabeceras_auth() == {
+        "Authorization": "AgentToken tok-del-equipo"
+    }

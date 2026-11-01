@@ -7,9 +7,16 @@ import os
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-PROGRAM_DATA_DIR = (
-    Path(os.environ.get("ProgramData", "C:/ProgramData")) / "USBMonitor"
-)
+if os.name == "nt":
+    PROGRAM_DATA_DIR = (
+        Path(os.environ.get("ProgramData", "C:/ProgramData")) / "USBMonitor"
+    )
+else:
+    # Fuera de Windows (pruebas): jamás tratar "C:/ProgramData" como
+    # ruta relativa — eso creó un directorio fantasma C: en el repo.
+    import tempfile
+
+    PROGRAM_DATA_DIR = Path(tempfile.gettempdir()) / "USBMonitor"
 
 _configurado = False
 

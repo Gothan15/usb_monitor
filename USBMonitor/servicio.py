@@ -758,7 +758,7 @@ def ejecutar_gui() -> None:
     marco2.pack(fill="x", padx=18, pady=4)
     fila = tk.Frame(marco2, bg=FONDO)
     fila.pack(fill="x", padx=10, pady=6)
-    tk.Label(fila, text="Token del equipo o clave API", font=NORMAL, fg=TEXTO,
+    tk.Label(fila, text="Token del equipo", font=NORMAL, fg=TEXTO,
              bg=FONDO).pack(anchor="w")
     var_credencial = tk.StringVar()
     tk.Entry(fila, textvariable=var_credencial, font=MONO, width=52, show="•").pack(
@@ -768,7 +768,7 @@ def ejecutar_gui() -> None:
     def guardar_credencial():
         valor = var_credencial.get().strip()
         if not valor:
-            messagebox.showwarning("Vacío", "Escribe el token o la clave.")
+            messagebox.showwarning("Vacío", "Escribe el token del equipo.")
             return
         if config.guardar({"agentToken": config.cifrar(valor)}):
             var_credencial.set("")
@@ -783,7 +783,7 @@ def ejecutar_gui() -> None:
     ).pack(anchor="w", pady=4)
     tk.Label(
         marco2,
-        text="El token por equipo es la vía normal; la clave API solo es respaldo.",
+        text="Lo genera un administrador en el panel: Equipos, botón «Token del agente».",
         font=("Segoe UI", 8), fg=TENUE, bg=FONDO,
     ).pack(anchor="w", padx=10, pady=(0, 8))
 
