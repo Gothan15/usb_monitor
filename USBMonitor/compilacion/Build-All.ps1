@@ -5,12 +5,12 @@
 # compila y deja cada exe en su carpeta dist_*.
 #
 # Uso:
-#   .\Build-All.ps1                     - los cuatro programas
+#   .\Build-All.ps1                     - los tres programas
 #   .\Build-All.ps1 -Solo Servicio      - solo ese (o varios)
 #   .\Build-All.ps1 -Clean              - borra dist/build antes
 
 param(
-    [ValidateSet("Servicio", "Companero", "Visor", "Admin")]
+    [ValidateSet("Servicio", "Companero", "Visor")]
     [string[]]$Solo = @(),
     [switch]$Clean,
     [string]$Python = "python"
@@ -27,7 +27,6 @@ $Programs = @(
     @{ Key = "Servicio";  Spec = "USBMonitorService.spec"; Dist = "dist";                    Work = "build_usb_monitor_service"; Exe = "USBMonitorService.exe" },
     @{ Key = "Companero"; Spec = "USBMonitorPrompt.spec";  Dist = "dist_usb_prompt";         Work = "build_usb_prompt";          Exe = "USBMonitorPrompt.exe" },
     @{ Key = "Visor";     Spec = "USBSerialViewer.spec";   Dist = "dist_usb_serial_viewer";  Work = "build_usb_serial_viewer";   Exe = "USBSerialViewer.exe" },
-    @{ Key = "Admin";     Spec = "USBMonitorAdmin.spec";   Dist = "dist_usb_monitor_admin";  Work = "build_usb_monitor_admin";   Exe = "USBMonitorAdmin.exe" }
 )
 
 $selected = $Programs | Where-Object { $Solo.Count -eq 0 -or $Solo -contains $_.Key }
