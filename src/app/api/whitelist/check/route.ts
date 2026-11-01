@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { authenticateRequest } from "@/lib/auth";
+import { requireServiceAuth } from "@/lib/auth";
 import { normalizeSerial, serializeWhitelistEntry } from "../_helpers";
 
 export async function GET(req: NextRequest) {
-  const auth = await authenticateRequest(req);
-  if (!auth) {
+  // Ruta del agente: solo token del equipo (o clave de servicio del
+  // operador). La clave API de un usuario ya no vale aquí.
+  try {
+    await requireServiceAuth(req);
+  } catch {
     return NextResponse.json(
       { ok: false, error: "No autorizado" },
       { status: 401 }
