@@ -67,7 +67,8 @@ try:  # pragma: no cover - pywintypes siempre se instala con pywin32
 except ImportError:  # pragma: no cover
     pywintypes = None  # type: ignore
 
-# Fase 6: tkinter vive ahora en usb_monitor_admin.py (la GUI de gestión).
+# La GUI de gestión vive en usb_monitor_admin.py (interfaz Fluent
+# con pywebview); el servicio no carga ninguna interfaz al arrancar.
 
 import base64
 
@@ -993,16 +994,14 @@ def ensure_admin_or_exit() -> None:
         "Cierra y vuelve a abrirlo con privilegios elevados."
     )
     LOGGER.critical(message)
-    # Fase 6: tkinter se importa solo aquí, para este aviso; el servicio
-    # ya no depende de tkinter en su arranque.
+    # Aviso nativo de Windows por ctypes (MessageBoxW): la interfaz
+    # Fluent vive en las herramientas; este es solo el cartel de error
+    # cuando alguien ejecuta el servicio a mano sin permisos, y el
+    # proyecto ya no depende de tkinter en ninguna parte.
     try:
-        import tkinter as tk
-        from tkinter import messagebox
+        import ctypes
 
-        root = tk.Tk()
-        root.withdraw()
-        messagebox.showerror("USB Monitor Service", message, parent=root)
-        root.destroy()
+        ctypes.windll.user32.MessageBoxW(None, message, "USB Monitor Service", 0x10)
     except Exception as exc:
         LOGGER.debug("No se pudo mostrar el mensaje de permisos: %s", exc)
     print(message, file=sys.stderr)
@@ -5121,12 +5120,12 @@ if __name__ == "__main__":
 
     def _launch_gui() -> None:
         try:
-            # Fase 6: la GUI vive en usb_monitor_admin.py; se importa
-            # solo al pedirla (el servicio no carga tkinter al arrancar).
+            # La GUI vive en usb_monitor_admin.py; se importa solo
+            # al pedirla (el servicio no carga interfaz al arrancar).
             from usb_monitor_admin import run_gui
 
             run_gui()
-        except Exception as exc:  # pragma: no cover - gui solo en Windows con Tk
+        except Exception as exc:  # pragma: no cover - gui solo en Windows
             LOGGER.error("Error al iniciar la interfaz gráfica: %s", exc)
             print("No se pudo iniciar la interfaz gráfica. Ejecuta con 'debug' para más detalles.")
 

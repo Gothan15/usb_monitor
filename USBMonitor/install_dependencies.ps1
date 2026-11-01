@@ -63,6 +63,15 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "✗ Error al instalar requests" -ForegroundColor Red
 }
 
+# Instalar pywebview (interfaz Fluent de las herramientas de escritorio)
+Write-Host "Instalando pywebview..." -ForegroundColor Cyan
+python -m pip install --upgrade pywebview
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "✓ pywebview instalado correctamente" -ForegroundColor Green
+} else {
+    Write-Host "✗ Error al instalar pywebview" -ForegroundColor Red
+}
+
 # Instalar cryptography (nueva dependencia)
 Write-Host "Instalando cryptography (para encriptación de API keys)..." -ForegroundColor Cyan
 python -m pip install --upgrade cryptography
