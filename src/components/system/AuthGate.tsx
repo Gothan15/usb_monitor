@@ -5,7 +5,12 @@ import { FullscreenSpinner } from "@/components/ui/spinner";
 // Componente cliente separado para control de sesión sin forzar layout a client component
 export default function AuthGate({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<"checking" | "ok" | "login">("checking");
+  const [mounted, setMounted] = useState(false);
   const channelRef = React.useRef<BroadcastChannel | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // NOTA HIDRATACIÓN:
   // Antes devolvíamos 'children' en SSR y 'null' en el primer render cliente (status = 'checking'),
@@ -97,10 +102,18 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     }
   }, [status]);
 
-  // SSR: devolvemos un contenedor estable. No mostramos children todavía para evitar renderizar
-  // datos potencialmente sensibles sin saber si hay sesión. El primer render cliente verá lo mismo.
-  const isServer = typeof window === "undefined";
-  if (isServer) {
+  // Hidratación: el servidor y el PRIMER render del cliente deben
+  // coincidir al carácter. Antes esto se intentaba con una rama
+  // `typeof window === "undefined"`, que es justamente lo contrario:
+  // el servidor devolvía este marcador y el cliente, ya con window,
+  // devolvía el spinner — React lo detectaba y regeneraba el árbol
+  // (el error "Hydration failed"). Con `mounted` (falso en el
+  // servidor y en el primer render cliente, verdadero tras el efecto
+  // de montaje) ambos lados dibujan lo mismo; el spinner y el resto
+  // de estados llegan como una actualización normal, sin comparación.
+  // No mostramos children hasta montar para no renderizar datos
+  // potencialmente sensibles sin saber si hay sesión.
+  if (!mounted) {
     return <div data-auth-gate="ssr-placeholder" />;
   }
 
