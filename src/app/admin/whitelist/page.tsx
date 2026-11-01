@@ -20,7 +20,13 @@ const WhitelistTab = dynamic(
 );
 
 export default function AdminWhitelistPage() {
-  const { whitelist, loading, handleCreateWhitelist, handleDeleteWhitelist } =
+  const {
+    whitelist,
+    loading,
+    handleCreateWhitelist,
+    handleDeleteWhitelist,
+    handleBulkDeleteWhitelist,
+  } =
     useAdminDashboard();
 
   return (
@@ -29,6 +35,7 @@ export default function AdminWhitelistPage() {
       loading={loading && whitelist.length === 0}
       onCreate={handleCreateWhitelist}
       onDelete={handleDeleteWhitelist}
+      onBulkDelete={handleBulkDeleteWhitelist}
     />
   );
 }

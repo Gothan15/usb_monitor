@@ -20,13 +20,15 @@ const ComputersTab = dynamic(
 );
 
 export default function AdminComputersPage() {
-  const { computers, loading, handleDeleteComputer } = useAdminDashboard();
+  const { computers, loading, handleDeleteComputer, handleBulkDeleteComputers } =
+    useAdminDashboard();
 
   return (
     <ComputersTab
       computers={computers}
       loading={loading}
       onDelete={handleDeleteComputer}
+      onBulkDelete={handleBulkDeleteComputers}
     />
   );
 }

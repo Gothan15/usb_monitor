@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,12 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { WhitelistEntry, formatDateTime } from "./types";
 import { DashboardPagination } from "./DashboardPagination";
+import {
+  BulkBar,
+  PageCheckbox,
+  RowCheckbox,
+  useBulkSelection,
+} from "./BulkSelection";
 import { usePagination } from "@/hooks/usePagination";
 import { useTableSort } from "@/hooks/useTableSort";
 import { SortableTableHead } from "./SortableTableHead";
@@ -31,6 +37,7 @@ interface Props {
   loading: boolean;
   onCreate: (payload: CreatePayload) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  onBulkDelete?: (ids: string[]) => Promise<void> | void;
 }
 
 export function WhitelistTab({
@@ -38,6 +45,7 @@ export function WhitelistTab({
   loading,
   onCreate,
   onDelete,
+  onBulkDelete,
 }: Readonly<Props>) {
   const [serialNumber, setSerialNumber] = useState("");
   const [label, setLabel] = useState("");
@@ -45,6 +53,22 @@ export function WhitelistTab({
   const [formError, setFormError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const bulk = useBulkSelection();
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  const handleBulkConfirm = useCallback(async () => {
+    if (!onBulkDelete || bulk.count === 0) return;
+    try {
+      setBulkBusy(true);
+      await onBulkDelete([...bulk.selected]);
+      bulk.clear();
+    } catch (error) {
+      console.error("Error al eliminar seriales por lotes", error);
+    } finally {
+      setBulkBusy(false);
+    }
+  }, [onBulkDelete, bulk]);
 
   const { sortedData, sortConfig, requestSort } =
     useTableSort<WhitelistEntry>(entries);
@@ -285,6 +309,16 @@ export function WhitelistTab({
         </p>
       )}
 
+      {onBulkDelete && entries.length > 0 && (
+        <div className="mt-8">
+          <PageCheckbox
+            pageIds={paginatedEntries.map((e) => e.id)}
+            selected={bulk.selected}
+            onChange={bulk.setMany}
+          />
+        </div>
+      )}
+
       {/* ── Asientos del registro ── */}
       <div className="mt-10 border-t border-border">
         {/* Móvil: asientos en filas */}
@@ -304,9 +338,18 @@ export function WhitelistTab({
               return (
                 <article key={entry.id} className="py-5">
                   <div className="flex items-baseline justify-between gap-3">
-                    <p className="font-mono text-sm text-foreground">
-                      {entry.serialNumber}
-                    </p>
+                    <span className="flex items-center gap-2.5">
+                      {onBulkDelete && (
+                        <RowCheckbox
+                          checked={bulk.selected.has(entry.id)}
+                          onChange={() => bulk.toggle(entry.id)}
+                          label={`Seleccionar ${entry.serialNumber}`}
+                        />
+                      )}
+                      <p className="font-mono text-sm text-foreground">
+                        {entry.serialNumber}
+                      </p>
+                    </span>
                     <p className="text-xs text-muted-foreground tabular-nums">
                       {formatDateTime(entry.createdAt)}
                     </p>
@@ -427,8 +470,19 @@ export function WhitelistTab({
               ) : (
                 paginatedEntries.map((entry) => (
                   <TableRow key={entry.id}>
-                    <TableCell className="font-mono text-sm">
-                      {entry.serialNumber}
+                    <TableCell>
+                      <span className="flex items-center gap-2.5">
+                        {onBulkDelete && (
+                          <RowCheckbox
+                            checked={bulk.selected.has(entry.id)}
+                            onChange={() => bulk.toggle(entry.id)}
+                            label={`Seleccionar ${entry.serialNumber}`}
+                          />
+                        )}
+                        <span className="font-mono text-sm">
+                          {entry.serialNumber}
+                        </span>
+                      </span>
                     </TableCell>
                     <TableCell>
                       {entry.label ? (
@@ -474,6 +528,16 @@ export function WhitelistTab({
             </TableBody>
           </Table>
         </div>
+
+        {onBulkDelete && (
+          <BulkBar
+            count={bulk.count}
+            unidad="dispositivo"
+            busy={bulkBusy}
+            onConfirm={() => void handleBulkConfirm()}
+            onCancel={bulk.clear}
+          />
+        )}
 
         {entries.length > 0 && !loading && (
             <DashboardPagination

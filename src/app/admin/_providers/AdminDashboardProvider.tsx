@@ -78,6 +78,8 @@ interface AdminDashboardContextValue {
   }) => Promise<void>;
   handleDeleteWhitelist: (id: string) => Promise<void>;
   handleDeleteComputer: (id: string) => Promise<void>;
+  handleBulkDeleteWhitelist: (ids: string[]) => Promise<void>;
+  handleBulkDeleteComputers: (ids: string[]) => Promise<void>;
   handleUsersSummaryChange: (payload: { total: number }) => void;
   refreshComputers: () => Promise<void>;
   navigateTo: (key: ViewKey) => void;
@@ -445,6 +447,90 @@ export function AdminDashboardProvider({
     [queryClient, toast]
   );
 
+  const handleBulkDeleteComputers = useCallback(
+    async (ids: string[]) => {
+      if (!ids.length) return;
+      const csrfToken = getCsrfTokenFromDocument();
+      if (!csrfToken) {
+        throw new Error(
+          "Sesión sin token de seguridad. Vuelve a iniciar sesión e inténtalo otra vez."
+        );
+      }
+      const response = await fetch(`/api/computers`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": csrfToken,
+        },
+        credentials: "include",
+        body: JSON.stringify({ ids }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.ok) {
+        const message = data?.error || `Error HTTP ${response.status}`;
+        toast({
+          title: "No se pudieron eliminar los equipos",
+          description: message,
+          variant: "destructive",
+        });
+        throw new Error(message);
+      }
+      const quitados = new Set(ids);
+      queryClient.setQueryData<Computer[] | undefined>(
+        ["computers"],
+        (prev = []) => prev.filter((computer) => !quitados.has(computer.id))
+      );
+      void queryClient.invalidateQueries({ queryKey: ["computers"] });
+      toast({
+        title: "Equipos eliminados",
+        description: `Se eliminaron ${data.deleted} equipo(s) del inventario.`,
+      });
+    },
+    [queryClient, toast]
+  );
+
+  const handleBulkDeleteWhitelist = useCallback(
+    async (ids: string[]) => {
+      if (!ids.length) return;
+      const csrfToken = getCsrfTokenFromDocument();
+      if (!csrfToken) {
+        throw new Error(
+          "Sesión sin token de seguridad. Vuelve a iniciar sesión e inténtalo otra vez."
+        );
+      }
+      const response = await fetch(`/api/whitelist`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": csrfToken,
+        },
+        credentials: "include",
+        body: JSON.stringify({ ids }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.ok) {
+        const message = data?.error || `Error HTTP ${response.status}`;
+        toast({
+          title: "No se pudieron eliminar los seriales",
+          description: message,
+          variant: "destructive",
+        });
+        throw new Error(message);
+      }
+      const quitados = new Set(ids);
+      queryClient.setQueryData<WhitelistEntry[] | undefined>(
+        ["whitelist"],
+        (prev = []) => prev.filter((entry) => !quitados.has(entry.id))
+      );
+      void queryClient.invalidateQueries({ queryKey: ["whitelist"] });
+      toast({
+        title: "Seriales removidos",
+        description: `Se eliminaron ${data.deleted} dispositivo(s) de la whitelist.`,
+      });
+    },
+    [queryClient, toast]
+  );
+
   const handleClearEvents = useCallback(async () => {
     if (clearingEvents) return;
     setClearingEvents(true);
@@ -525,6 +611,8 @@ export function AdminDashboardProvider({
       handleCreateWhitelist,
       handleDeleteWhitelist,
       handleDeleteComputer,
+      handleBulkDeleteWhitelist,
+      handleBulkDeleteComputers,
       handleUsersSummaryChange,
       refreshComputers,
       navigateTo,
@@ -539,6 +627,8 @@ export function AdminDashboardProvider({
       handleCreateWhitelist,
       handleDeleteComputer,
       handleDeleteWhitelist,
+      handleBulkDeleteComputers,
+      handleBulkDeleteWhitelist,
       handleRefreshAll,
       handleUsersSummaryChange,
       lastUpdate,

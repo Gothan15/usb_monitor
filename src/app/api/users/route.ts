@@ -162,3 +162,49 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+function sanitizeIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (typeof item === "string" && item.trim()) seen.add(item.trim());
+    if (seen.size >= 500) break;
+  }
+  return [...seen];
+}
+
+export async function DELETE(req: NextRequest) {
+  const admin = await requireAdminUser(req);
+  if (!admin) return unauthorized();
+
+  const body = await req.json().catch(() => null);
+  const ids = sanitizeIds((body as any)?.ids);
+  if (!ids.length) return badRequest("Selecciona al menos un usuario");
+
+  // La misma guarda del borrado individual: nunca tu propio usuario.
+  const skippedSelf = ids.includes(admin.userId);
+  const targets = ids.filter((id) => id !== admin.userId);
+
+  try {
+    const existing = await db.user.findMany({
+      where: { id: { in: targets } },
+      select: { id: true },
+    });
+    const found = existing.map((u) => u.id);
+    if (found.length) {
+      await db.user.deleteMany({ where: { id: { in: found } } });
+    }
+    return NextResponse.json({
+      ok: true,
+      deleted: found.length,
+      skippedSelf,
+      notFound: targets.filter((id) => !found.includes(id)),
+    });
+  } catch (error) {
+    console.error("Error deleting users in bulk:", error);
+    return NextResponse.json(
+      { ok: false, error: "Error interno del servidor" },
+      { status: 500 },
+    );
+  }
+}
