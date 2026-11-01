@@ -94,7 +94,7 @@ Como administrador, dentro de la carpeta `USBMonitor`:
 .\Install-Service.ps1
 ```
 
-El instalador registra el servicio `USBMonitorService` con recuperación automática (si el servicio se cae, Windows lo reinicia al minuto), deja programado el inicio del proceso compañero al iniciar sesión y genera el token propio de ese equipo. La dirección del servidor se configura con las variables de entorno `USB_MONITOR_SERVER_HOST` y `USB_MONITOR_SERVER_PORT`. La herramienta `usb_monitor_admin.py` sirve para configurar la clave API del agente a mano cuando hace falta, y los scripts de `USBMonitor/compilacion` compilan cada programa a ejecutable. Para hacerlo todo de una vez, `USBMonitor/Install-All.ps1` compila los cuatro programas y los instala juntos en una sola carpeta (`C:\USBMonitor`).
+El instalador registra el servicio `USBMonitorService` con recuperación automática (si el servicio se cae, Windows lo reinicia al minuto), deja programado el inicio del proceso compañero al iniciar sesión y genera el token propio de ese equipo. La dirección del servidor se configura con las variables de entorno `USB_MONITOR_SERVER_HOST` y `USB_MONITOR_SERVER_PORT`. La herramienta `usb_monitor_admin.py` sirve para configurar la clave API del agente a mano cuando hace falta, y `USBMonitor/compilacion/Build-All.ps1` compila los cuatro programas a ejecutable de una vez, cada uno a su carpeta `dist_*`. Para instalar, basta copiar los ejecutables junto a `Install-Service.ps1` en una carpeta (la instalación remota del panel usa `C:\USBMonitor`) y ejecutar ese instalador.
 
 ## Estructura del repo
 

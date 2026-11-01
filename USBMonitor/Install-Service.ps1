@@ -3,7 +3,7 @@
 
 param(
     [string]$Action = "install",
-    [string]$ServerHost = "172.20.10.12",
+    [string]$ServerHost = "localhost",
     [int]$ServerPort = 3000,
     [string]$LogPath = "C:\ProgramData\USBMonitor",
     [string]$AgentToken = ""
@@ -362,7 +362,7 @@ Acciones disponibles:
   logs         - Muestra las ultimas lineas del log
 
 Opciones:
-  -ServerHost   - Host del servidor backend (defecto: 172.20.10.12)
+  -ServerHost   - Host del servidor backend (defecto: localhost)
   -ServerPort   - Puerto del servidor backend (defecto: 3000)
   -LogPath      - Ruta para los logs (defecto: C:\ProgramData\USBMonitor)
   -AgentToken   - Token por equipo para autenticar al agente ante el
