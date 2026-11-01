@@ -27,7 +27,7 @@ La página de desbloqueo, que es el respaldo cuando la ventana del agente no pue
 
 Esto es lo que pasa de verdad cuando alguien conecta un dispositivo a una PC con el agente instalado:
 
-1. El agente detecta la inserción. En los discos lo sabe por eventos de Windows (WMI), sin estar preguntando cada pocos segundos; los móviles no generan ese evento, así que un vigilante aparte los sondea cada pocos segundos. También revisa lo que ya esté conectado al arrancar. Un detalle importante: las carcasas de disco con puente moderno (UAS) se presentan como un disco SCSI genérico, igual que un disco interno SATA, así que el agente solo las trata como USB si comprueba que el dispositivo «padre» en el árbol de hardware es un puente USB. Los discos internos no se tocan nunca.
+1. El agente detecta la inserción. En los discos lo sabe por eventos de Windows (WMI), sin estar preguntando cada pocos segundos; los móviles, las unidades ópticas (CD/DVD por USB, que Windows enumera aparte) y los adaptadores de red por USB no generan ese evento, así que un vigilante aparte los sondea cada pocos segundos. También revisa lo que ya esté conectado al arrancar. Un detalle importante: las carcasas de disco con puente moderno (UAS) se presentan como un disco SCSI genérico, igual que un disco interno SATA, así que el agente solo las trata como USB si comprueba que el dispositivo «padre» en el árbol de hardware es un puente USB. Los discos internos no se tocan nunca.
 2. El dispositivo queda **bloqueado al momento**: se desactiva a nivel de dispositivo (PnP), que es el bloqueo fuerte. Si eso falla en un disco, se cae al respaldo de ponerlo en solo lectura con `diskpart`. Un teléfono no tiene letra de unidad, así que su único bloqueo posible es el de PnP. Antes el agente apagaba la PC en estos casos; lo quité, era una exageración que podía hacer perder trabajo a cualquiera.
 3. Se consulta la lista blanca por número de serie (en un móvil, el serial que trae su identificador de dispositivo):
    - **Si el dispositivo NO está en la lista blanca**, ahí termina todo. No hay contraseña que valga, ni siquiera la del administrador. En la pantalla del usuario sale un cartel avisando que el dispositivo no está en la lista blanca y será bloqueado, y el evento queda registrado en el panel.
@@ -41,7 +41,7 @@ Detalles de implementación que me parecen importantes:
 - Las contraseñas se verifican en el servidor con Argon2, con el mismo criterio que el login del panel: 5 intentos fallidos bloquean la cuenta 15 minutos.
 - Cada equipo tiene su propio token de agente, y cada usuario del panel tiene asignada su computadora. Ese vínculo es el que define quién es "el dueño" para el desbloqueo.
 - **Sin red no se pierde nada**: los eventos que no se pueden enviar se guardan en una cola en disco y se envían cuando vuelve la conexión, incluidos los arranques y paradas del servicio. Y si un dispositivo se conectó sin red, su bloqueo se registra en el servidor en cuanto hay conexión, para que la contraseña pueda verificarse entonces.
-- **Emergencia sin red**: para las unidades con letra existe además una salida de emergencia cuando el servidor no responde: el agente guarda una copia cifrada de la contraseña del dueño y la página local del propio agente (`http://localhost:5001/desbloquear`) puede liberar la unidad con ella, con el mismo límite de intentos. Los intentos hechos así se suben al panel cuando vuelve la red. Los móviles no tienen esta salida: sin letra no hay página que valga, así que sin red quedan bloqueados hasta que vuelva la conexión.
+- **Emergencia sin red**: para las unidades con letra existe además una salida de emergencia cuando el servidor no responde: el agente guarda una copia cifrada de la contraseña del dueño y la página local del propio agente (`http://localhost:5001/desbloquear`) puede liberar la unidad con ella, con el mismo límite de intentos. Los intentos hechos así se suben al panel cuando vuelve la red. La página ofrece todos los bloqueos del equipo, también un móvil sin letra: al desbloquearlo sin red se reactiva su dispositivo, igual que con conexión.
 
 ## El panel
 
@@ -51,7 +51,7 @@ Detalles de implementación que me parecen importantes:
 - Gestión de usuarios y de equipos, y asignación de cada usuario a su PC.
 - Escáner de red para descubrir equipos y comprobar si tienen el agente instalado y corriendo.
 - Instalación remota del agente por SSH o por WinRM, con el progreso en vivo en pantalla.
-- Ajustes del desbloqueo por contraseña: interruptor general, emergencia sin red, token por equipo, bloqueo de la sesión al conectar y minutos de silencio para marcar un equipo como caído.
+- Ajustes del desbloqueo por contraseña: interruptor general, emergencia sin red, token por equipo, bloqueo de la sesión al conectar y minutos de silencio para marcar un equipo como caído. Esos dos ajustes de equipo se empujan al guardarlos y, además, cada agente los pide él mismo al arrancar y periódicamente, para que un equipo apagado en el momento del cambio no se quede con los viejos.
 - La navegación se puede poner en la cabecera superior o en una barra lateral, a elegir en Ajustes.
 
 ## Instalación
@@ -63,7 +63,9 @@ Necesitas Node.js 20+ y un PostgreSQL accesible.
 ```bash
 npm install
 # crea un .env con DATABASE_URL y SESSION_SECRET
-npx prisma db push     # crea las tablas
+npx prisma migrate deploy   # crea las tablas (migración base)
+# Si tu base de datos ya existía de antes de la migración base:
+#   npx prisma migrate resolve --applied 20250101000000_baseline
 npm run db:seed        # datos iniciales (revisa prisma/seed.ts antes)
 npm run dev            # desarrollo
 npm run build          # producción (se sirve con el server.ts del repo)
@@ -98,9 +100,10 @@ INSPIRACION.md       Referencias de diseño de la interfaz
 ## Limitaciones, dichas claramente
 
 - Esto es software en el espacio de usuario, no un driver. Un usuario con permisos de administrador local en su PC puede detener el servicio si sabe cómo. Lo que sí hace el sistema es **detectarlo**: cada equipo reporta su actividad y el panel marca los que dejan de dar señales, con la hora de la última señal, distinguiendo si el que cayó fue el agente o el servidor entero. Detecta y deja evidencia; no lo impide.
-- Si el servidor no responde, el agente mantiene bloqueado lo que no pueda verificar. Los eventos no se pierden (cola persistente en disco), y la contraseña en línea se puede verificar en cuanto la conexión vuelve; mientras tanto solo queda la emergencia local descrita arriba, y solo para unidades con letra.
+- Si el servidor no responde, el agente mantiene bloqueado lo que no pueda verificar. Los eventos no se pierden (cola persistente en disco), y la contraseña en línea se puede verificar en cuanto la conexión vuelve; mientras tanto queda la emergencia local descrita arriba.
 - Si en un móvil la desactivación por PnP fallara en una PC concreta, no hay un segundo mecanismo: el evento llega al panel marcado como «sin bloqueo efectivo» en vez de fingir un bloqueo que no existe.
 - Un móvil en modo «solo carga» no expone datos y Windows ni siquiera lo enumera como dispositivo de archivos: el agente lo caza en el momento en que alguien activa la transferencia.
+- Un adaptador de red por USB que ya esté conectado al arrancar el servicio (típico: el dock que le da red al propio equipo) se registra pero no se bloquea, para no dejar a la PC sin su conexión; los que se conecten después sí se bloquean.
 - Solo Windows en el lado del agente. El panel corre donde corra Node (el escáner de red usa el `ping` del sistema: su sintaxis está ajustada a Windows).
 
 ## Estado del proyecto

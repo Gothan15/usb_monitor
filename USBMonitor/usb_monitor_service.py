@@ -1771,6 +1771,44 @@ def enumerate_wpd_devices(conn: wmi.WMI) -> Optional[List[Dict[str, Any]]]:
     return devices
 
 
+def enumerate_net_devices(conn: wmi.WMI) -> Optional[List[Dict[str, Any]]]:
+    """Adaptadores de red conectados por USB (tethering y NICs USB).
+
+    Un teléfono compartiendo su conexión (o una tarjeta de red USB)
+    abre una vía de salida de datos que no pasa por los discos:
+    aparece como Win32_PnPEntity de clase «Net» enumerado por USB.
+    Misma forma de dict que enumerate_wpd_devices, con deviceKind
+    «NET». None si la consulta falla (no cerrar nada por un error).
+    """
+    try:
+        rows = conn.query(
+            "SELECT DeviceID, Name FROM Win32_PnPEntity WHERE PNPClass = 'Net'"
+        )
+    except Exception as exc:
+        LOGGER.debug("Consulta de dispositivos de red falló: %s", exc)
+        return None
+    devices: List[Dict[str, Any]] = []
+    for row in rows or []:
+        device_id = str(getattr(row, "DeviceID", "") or "")
+        if not device_id.upper().startswith("USB\\"):
+            continue
+        name = (
+            str(getattr(row, "Name", "") or "").strip()
+            or "Adaptador de red USB"
+        )
+        serial_raw = device_id.rsplit("\\", 1)[-1]
+        serial = normalize_serial_candidate(serial_raw)
+        devices.append(
+            {
+                "deviceId": device_id,
+                "name": name,
+                "serialNumber": serial,
+                "deviceKind": "NET",
+            }
+        )
+    return devices
+
+
 def create_pending_unlock(
     pc_name: str,
     drive_letter: Optional[str],
@@ -2211,6 +2249,80 @@ def _delete_owner_hash_cache() -> None:
         LOGGER.warning("    [Emergencia] No se pudo eliminar la caché del dueño: %s", exc)
 
 
+def _persist_machine_env_var(name: str, encrypted_value: str) -> bool:
+    """Guarda una variable de máquina con setx /M (patrón del agente)."""
+    try:
+        setx_path = resolve_executable("setx.exe")
+        subprocess.run(
+            [setx_path, name, encrypted_value, "/M"],  # nosec B603
+            capture_output=True,
+            text=True,
+            encoding="cp850",
+            check=True,
+        )
+        return True
+    except subprocess.CalledProcessError as exc:
+        LOGGER.error("Error al guardar configuración (%s): %s", name, exc)
+        return False
+
+
+def refresh_server_config() -> None:
+    """Pide al panel los ajustes del agente (arranque y periódico).
+
+    Hasta ahora los ajustes solo llegaban por empuje (el panel hacía
+    POST a :5001/config al guardarlos): si el equipo estaba apagado en
+    ese momento, el cambio no le llegaba nunca. Ahora el agente los
+    pide él (GET /api/agent/config) y los persiste con el mismo
+    mecanismo cifrado del empuje, solo si han cambiado.
+    """
+    url = build_url("/api/agent/config")
+    headers = get_auth_headers()
+    verify = get_requests_verify()
+    try:
+        response = requests.get(url, headers=headers, timeout=8, verify=verify)
+    except Exception as exc:
+        LOGGER.debug("    [Config] Sin contacto para refrescar ajustes: %s", exc)
+        return
+    if response.status_code != 200:
+        LOGGER.debug(
+            "    [Config] El panel respondió %s al pedir ajustes", response.status_code
+        )
+        return
+    try:
+        data = response.json()
+    except Exception:
+        return
+
+    delay = data.get("startupNetworkDelay")
+    if isinstance(delay, (int, float)):
+        delay_str = str(int(delay))
+        current = decrypt_value(
+            (os.environ.get("USB_MONITOR_STARTUP_DELAY") or "").strip()
+        )
+        if current != delay_str and _persist_machine_env_var(
+            "USB_MONITOR_STARTUP_DELAY", encrypt_value(delay_str)
+        ):
+            LOGGER.info("    [Config] Espera de red al arranque: %s s", delay_str)
+
+    lock_session = data.get("lockSessionOnInsert")
+    if isinstance(lock_session, bool):
+        value = "true" if lock_session else "false"
+        encrypted = encrypt_value(value)
+        current = decrypt_value(
+            (os.environ.get("USB_MONITOR_LOCK_SESSION_ON_INSERT") or "").strip()
+        ).lower()
+        if current != value:
+            if _persist_machine_env_var(
+                "USB_MONITOR_LOCK_SESSION_ON_INSERT", encrypted
+            ):
+                # Igual que en /config: rige ya en este proceso, sin
+                # esperar al próximo arranque del servicio.
+                os.environ["USB_MONITOR_LOCK_SESSION_ON_INSERT"] = encrypted
+                LOGGER.info(
+                    "    [Config] Bloqueo de sesión al conectar: %s", value
+                )
+
+
 def refresh_owner_hash_cache() -> None:
     """GET /api/agent/owner-hash: refresca la caché del hash del dueño.
 
@@ -2260,9 +2372,10 @@ def refresh_owner_hash_cache() -> None:
 
 
 def _owner_hash_refresh_loop(service: "USBMonitorService") -> None:
-    """Refresca el hash del dueño al arrancar y cada ~10 minutos."""
+    """Refresca el hash del dueño y los ajustes al arrancar y cada ~10 min."""
     while not service.stopped:
         refresh_owner_hash_cache()
+        refresh_server_config()
         deadline = time.time() + OWNER_HASH_REFRESH_SECONDS
         while not service.stopped and time.time() < deadline:
             time.sleep(5)
@@ -2391,8 +2504,8 @@ def _emergency_register_success(
 def _check_emergency_credentials(
     username: str,
     password: str,
-    drive_letter: str,
-) -> Tuple[str, Optional[str]]:
+    pending_key: str,
+) -> Tuple[str, Optional[str], Optional[Dict[str, Any]]]:
     """Verifica usuario+contraseña contra el hash cacheado del dueño.
 
     Devuelve (estado, serial_del_bloqueo):
@@ -2403,22 +2516,34 @@ def _check_emergency_credentials(
       - "invalid": la unidad indicada no está entre los bloqueos locales.
     """
     if _emergency_locked_remaining() > 0:
-        return "locked", None
+        return "locked", None, None
 
     cache = _load_owner_hash_cache()
     if cache is None or not ARGON2_AVAILABLE:
-        return "unavailable", None
+        return "unavailable", None, None
 
+    # La clave identifica el bloqueo: la letra de una unidad o
+    # SER:<serial> para un dispositivo sin letra (un móvil).
+    key = (pending_key or "").strip()
+    is_serial_key = key.upper().startswith("SER:")
+    if not is_serial_key:
+        key = key.upper()
+        if key and not key.endswith(":"):
+            key += ":"
     pending = None
     for entry in _load_local_pendings():
-        if (
-            str(entry.get("driveLetter") or "").upper() == drive_letter.upper()
-            and entry.get("status") == "BLOCKED"
-        ):
+        if entry.get("status") != "BLOCKED":
+            continue
+        if is_serial_key:
+            matched = _pending_key_of(entry) == key.upper()
+        else:
+            matched = str(entry.get("driveLetter") or "").upper() == key
+        if matched:
             pending = entry  # el último es el más reciente
     if pending is None:
-        return "invalid", None
+        return "invalid", None, None
     serial = pending.get("serialNumber")
+    drive_letter = pending.get("driveLetter")
 
     if username.strip().casefold() != str(cache["username"]).casefold():
         LOGGER.warning(
@@ -2427,33 +2552,33 @@ def _check_emergency_credentials(
             cache["username"],
         )
         _emergency_register_failure(username, drive_letter, serial)
-        return "fail", serial
+        return "fail", serial, pending
 
     phc = _extract_argon2_phc(str(cache["passwordHash"]))
     if phc is None:
         LOGGER.error(
             "    [Emergencia] ✗ El hash cacheado no contiene una parte PHC reconocible"
         )
-        return "unavailable", serial
+        return "unavailable", serial, pending
 
     try:
         _Argon2PasswordHasher().verify(phc, password)
     except _Argon2VerifyMismatch:
         LOGGER.warning("    [Emergencia] ✗ Contraseña incorrecta en la página local")
         _emergency_register_failure(username, drive_letter, serial)
-        return "fail", serial
+        return "fail", serial, pending
     except _Argon2InvalidHash:
         LOGGER.error("    [Emergencia] ✗ Hash PHC inválido en la caché del dueño")
-        return "unavailable", serial
+        return "unavailable", serial, pending
     except Exception as exc:
         LOGGER.error("    [Emergencia] ✗ Error verificando la contraseña: %s", exc)
-        return "unavailable", serial
+        return "unavailable", serial, pending
 
     LOGGER.info(
         "    [Emergencia] ✓ Contraseña del dueño verificada en local para %s",
-        drive_letter,
+        key,
     )
-    return "ok", serial
+    return "ok", serial, pending
 
 
 def _is_companion_running() -> bool:
@@ -2603,6 +2728,59 @@ def _scsi_disk_has_usb_parent(conn: wmi.WMI, pnp_device_id: str) -> bool:
         current = parent
     _UAS_VERDICT_CACHE[key] = verdict
     return verdict
+
+
+def get_connected_optical_drives(conn: wmi.WMI) -> List[Dict[str, Any]]:
+    """Unidades ópticas (CD/DVD) conectadas por USB.
+
+    Viven en Win32_CDROMDrive, fuera de Win32_DiskDrive, así que la
+    enumeración de discos nunca las veía: una grabadora USB podía
+    leer y grabar datos sin pasar por el bloqueo. Se filtran a las
+    físicas por USB (el PNPDeviceID de una óptica USB cuelga de
+    USBSTOR; las virtuales tipo Daemon Tools cuelgan de ROOT/SCSI y
+    quedan fuera). Devuelven la misma forma de dict que los discos:
+    el bloqueo es el PnP de siempre (el respaldo de solo lectura de
+    diskpart no aplica a un CD, y si PnP falla el bloqueo falla y se
+    registra como tal). El serial es el de la UNIDAD, no el del
+    disco metido en ella: la lista blanca registra el aparato.
+    """
+    optical: List[Dict[str, Any]] = []
+    try:
+        for cd in conn.Win32_CDROMDrive():
+            pnp_id = (getattr(cd, "PNPDeviceID", None) or "").strip()
+            if not pnp_id:
+                continue
+            upper = pnp_id.upper()
+            if "USBSTOR" not in upper and not upper.startswith("USB\\"):
+                continue
+            letter = sanitize_drive_letter(getattr(cd, "Drive", None))
+            if not letter:
+                continue
+            serial = extract_serial_from_device_id(pnp_id)
+            model = (getattr(cd, "Name", None) or getattr(cd, "Caption", None) or "Unidad óptica USB").strip()
+            optical.append(
+                {
+                    "driveLetter": letter,
+                    "volumeName": (getattr(cd, "VolumeName", None) or "").strip(),
+                    "serialNumber": serial,
+                    "model": model,
+                    "size": 0,
+                    "fileSystem": "",
+                    "mediaType": "CD-ROM",
+                    "interfaceType": "USB",
+                    "busType": None,
+                    "capabilities": [],
+                    "pnpDeviceId": pnp_id,
+                    "detectionReasons": ["Unidad óptica USB (Win32_CDROMDrive)"],
+                }
+            )
+            LOGGER.debug(
+                "    Óptica USB detectada: %s %s (serial %s)",
+                letter, model, serial,
+            )
+    except Exception as exc:
+        LOGGER.warning("    Error enumerando unidades ópticas: %s", exc)
+    return optical
 
 
 def _classify_disk_as_usb(disk: Any, conn: Optional[wmi.WMI] = None) -> Tuple[bool, List[str], Dict[str, Any]]:
@@ -2792,6 +2970,8 @@ def get_connected_usb_drives(conn: wmi.WMI) -> list:
                     free_space,
                 )
 
+    # Las unidades ópticas no son Win32_DiskDrive: van por su clase.
+    usb_drives.extend(get_connected_optical_drives(conn))
     return usb_drives
 
 
@@ -2931,17 +3111,24 @@ class UnlockHTTPHandler(BaseHTTPRequestHandler):
                 "Máximo 5 intentos.</p>"
             )
             options = "".join(
-                "<option value='{drive}'>{drive} — {label} (serial {serial})</option>".format(
-                    drive=html.escape(str(p.get("driveLetter") or ""), quote=True),
-                    label=html.escape(str(p.get("deviceLabel") or "Dispositivo USB")),
-                    serial=html.escape(str(p.get("serialNumber") or "sin serial")),
+                "<option value='{key}'>{text}</option>".format(
+                    key=html.escape(_pending_key_of(p), quote=True),
+                    text=html.escape(
+                        (
+                            f"{p.get('driveLetter')} — "
+                            if p.get("driveLetter")
+                            else ""
+                        )
+                        + f"{p.get('deviceLabel') or 'Dispositivo USB'} "
+                        f"(serial {p.get('serialNumber') or 'sin serial'})"
+                    ),
                 )
                 for p in blocked
             )
             form = (
                 "<form method='POST' action='/desbloquear'>"
-                "<label>Unidad bloqueada"
-                f"<select name='driveLetter'>{options}</select></label>"
+                "<label>Dispositivo bloqueado"
+                f"<select name='pendingKey'>{options}</select></label>"
                 "<label>Usuario"
                 "<input name='username' autocomplete='username' required></label>"
                 "<label>Contraseña"
@@ -3027,21 +3214,24 @@ class UnlockHTTPHandler(BaseHTTPRequestHandler):
         form = parse_qs(raw.decode("utf-8", errors="replace"))
         username = (form.get("username") or [""])[0].strip()
         password = (form.get("password") or [""])[0]
-        drive_letter = (form.get("driveLetter") or [""])[0].strip().upper()
-        if drive_letter and not drive_letter.endswith(":"):
-            drive_letter += ":"
+        pending_key = (
+            form.get("pendingKey") or form.get("driveLetter") or [""]
+        )[0].strip()
 
-        if not username or not password or not drive_letter:
+        if not username or not password or not pending_key:
             self._send_html_response(
                 400,
                 self._emergency_page(
-                    "Faltan datos: usuario, contraseña y unidad son obligatorios.",
+                    "Faltan datos: usuario, contraseña y dispositivo son obligatorios.",
                     is_error=True,
                 ),
             )
             return
 
-        status, serial = _check_emergency_credentials(username, password, drive_letter)
+        status, serial, pending = _check_emergency_credentials(
+            username, password, pending_key
+        )
+
 
         if status == "locked":
             self._send_html_response(
@@ -3066,7 +3256,7 @@ class UnlockHTTPHandler(BaseHTTPRequestHandler):
             self._send_html_response(
                 400,
                 self._emergency_page(
-                    "Esa unidad no está entre los dispositivos bloqueados.",
+                    "Ese dispositivo no está entre los bloqueados.",
                     is_error=True,
                 ),
             )
@@ -3087,20 +3277,29 @@ class UnlockHTTPHandler(BaseHTTPRequestHandler):
         # de liberación).
         service = self.service_instance
         released = False
+        drive_letter = (pending or {}).get("driveLetter")
+        device_label = (pending or {}).get("deviceLabel") or "Dispositivo USB"
         if service is not None:
             try:
-                released = bool(
-                    service.release_blocked_drive(
-                        drive_letter, service.wmi_connection
+                if pending is not None and not drive_letter:
+                    # Sin letra (un móvil): se libera reactivando su
+                    # dispositivo PnP, como en el desbloqueo con red.
+                    released = bool(service._release_wpd_pending(pending))
+                    if released:
+                        service._after_wpd_release_success(pending)
+                else:
+                    released = bool(
+                        service.release_blocked_drive(
+                            drive_letter, service.wmi_connection
+                        )
                     )
-                )
             except Exception as exc:
                 LOGGER.error(
                     "    [Emergencia] ✗ Error al liberar %s tras verificar: %s",
-                    drive_letter,
+                    pending_key,
                     exc,
                 )
-            if released:
+            if released and drive_letter:
                 key = _drive_key(drive_letter)
                 for variant in (drive_letter, key, f"{key}:" if key else ""):
                     if variant:
@@ -3109,19 +3308,20 @@ class UnlockHTTPHandler(BaseHTTPRequestHandler):
         else:
             LOGGER.error(
                 "    [Emergencia] Sin referencia al servicio: no se puede liberar %s",
-                drive_letter,
+                pending_key,
             )
         _emergency_register_success(username, drive_letter, serial)
 
         if released:
             LOGGER.info(
-                "    [Emergencia] ✓ Unidad %s desbloqueada sin red por su dueño",
-                drive_letter,
+                "    [Emergencia] ✓ %s desbloqueado sin red por su dueño",
+                drive_letter or device_label,
             )
+            shown = drive_letter or device_label
             self._send_html_response(
                 200,
                 self._emergency_page(
-                    f"Dispositivo {drive_letter} desbloqueado. El intento "
+                    f"Dispositivo {shown} desbloqueado. El intento "
                     "quedará registrado en el panel cuando vuelva la red."
                 ),
             )
@@ -3225,19 +3425,7 @@ class UnlockHTTPHandler(BaseHTTPRequestHandler):
 
     def _persist_machine_env(self, name: str, encrypted_value: str) -> bool:
         """Guarda una variable de máquina con setx /M (patrón del agente)."""
-        try:
-            setx_path = resolve_executable("setx.exe")
-            subprocess.run(
-                [setx_path, name, encrypted_value, "/M"],  #nosec B603
-                capture_output=True,
-                text=True,
-                encoding='cp850',
-                check=True,
-            )
-            return True
-        except subprocess.CalledProcessError as exc:
-            LOGGER.error("Error al guardar configuración (%s): %s", name, exc)
-            return False
+        return _persist_machine_env_var(name, encrypted_value)
 
     def _handle_config_post(self) -> None:
         # Fase 3: /config modifica el estado del equipo; sin una
@@ -3358,6 +3546,11 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
         self.block_state: Dict[str, Dict[str, Any]] = {}
         # Detección amplia: móviles WPD vigilados, por DeviceID PnP.
         self.wpd_state: Dict[str, Dict[str, Any]] = {}
+        # Tethering: adaptadores de red USB ya presentes al arrancar el
+        # servicio (base): se registran pero NO se bloquean, porque
+        # podrían ser la propia conexión del equipo (un dock USB).
+        self.net_baseline: set = set()
+        self._net_baseline_done = False
         # Fase 2: unidades ya desbloqueadas con contraseña en esta
         # inserción. El permiso vive hasta que se extraigan (lo limpia
         # el evento de retirada, EventType=3); este registro evita que
@@ -4132,7 +4325,37 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
         device_id = device["deviceId"]
         name = device["name"]
         serial = device.get("serialNumber")
-        LOGGER.info("  [WPD] Dispositivo móvil detectado: %s", name)
+        kind = device.get("deviceKind") or "WPD"
+        if kind == "NET" and device_id in self.net_baseline:
+            # Ya estaba al arrancar el servicio: podría ser la red
+            # del propio equipo (un dock). Se registra el evento a
+            # título informativo, sin bloquear ni pedir contraseña;
+            # lo que se conecte DESPUÉS sí pasa por el flujo entero.
+            LOGGER.info(
+                "  [NET] Adaptador de red USB presente al arranque: %s "
+                "(registrado, no bloqueado)", name,
+            )
+            self.wpd_state[device_id] = {
+                "deviceId": device_id,
+                "name": name,
+                "serialNumber": serial,
+                "method": "BASELINE",
+                "unlocked": False,
+                "deviceKind": "NET",
+            }
+            payload = build_payload(
+                name,
+                name,
+                "Adaptador de red USB detectado al arrancar el servicio: "
+                "registrado sin bloquear (podría ser la red del equipo)",
+                serial,
+                False,
+            )
+            send_event(payload)
+            return
+        LOGGER.info(
+            "  [%s] Dispositivo detectado: %s", kind, name
+        )
         blocked_ok, _msg = disable_pnp_device(device_id)
         method = BLOCK_METHOD_PNP if blocked_ok else "NONE"
         whitelisted = False
@@ -4144,6 +4367,7 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
             "serialNumber": serial,
             "method": method,
             "unlocked": False,
+            "deviceKind": kind,
         }
         readonly_msg = (
             "Bloqueo PnP aplicado (dispositivo deshabilitado)"
@@ -4160,7 +4384,7 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
             whitelisted=whitelisted,
             block_method=method,
             pnp_device_id=device_id,
-            device_kind="WPD",
+            device_kind=kind,
         )
 
     def _handle_wpd_removal(self, device_id: str) -> None:
@@ -4170,7 +4394,13 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
         if not state:
             return
         serial = state.get("serialNumber")
-        LOGGER.info("  [WPD] Dispositivo móvil retirado: %s", state.get("name"))
+        LOGGER.info(
+            "  [%s] Dispositivo retirado: %s",
+            state.get("deviceKind") or "WPD",
+            state.get("name"),
+        )
+        if state.get("method") == "BASELINE":
+            return  # nunca tuvo pendiente: nada que cerrar
         if serial:
             _mark_local_pending_closed(_wpd_pending_key(serial))
             submit_network_task(
@@ -4226,7 +4456,16 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                         continue
                 try:
                     devices = enumerate_wpd_devices(conn)
-                    if devices is not None:
+                    net_devices = enumerate_net_devices(conn)
+                    if devices is not None and net_devices is not None:
+                        if not self._net_baseline_done:
+                            # Primera enumeración completa: todo lo de
+                            # red que ya esté es la base del arranque.
+                            self.net_baseline = {
+                                d["deviceId"] for d in net_devices
+                            }
+                            self._net_baseline_done = True
+                        devices = devices + net_devices
                         current_ids = {d["deviceId"] for d in devices}
                         for device in devices:
                             if device["deviceId"] not in self.wpd_state:
