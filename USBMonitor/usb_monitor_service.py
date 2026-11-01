@@ -2211,6 +2211,80 @@ def _delete_owner_hash_cache() -> None:
         LOGGER.warning("    [Emergencia] No se pudo eliminar la caché del dueño: %s", exc)
 
 
+def _persist_machine_env_var(name: str, encrypted_value: str) -> bool:
+    """Guarda una variable de máquina con setx /M (patrón del agente)."""
+    try:
+        setx_path = resolve_executable("setx.exe")
+        subprocess.run(
+            [setx_path, name, encrypted_value, "/M"],  # nosec B603
+            capture_output=True,
+            text=True,
+            encoding="cp850",
+            check=True,
+        )
+        return True
+    except subprocess.CalledProcessError as exc:
+        LOGGER.error("Error al guardar configuración (%s): %s", name, exc)
+        return False
+
+
+def refresh_server_config() -> None:
+    """Pide al panel los ajustes del agente (arranque y periódico).
+
+    Hasta ahora los ajustes solo llegaban por empuje (el panel hacía
+    POST a :5001/config al guardarlos): si el equipo estaba apagado en
+    ese momento, el cambio no le llegaba nunca. Ahora el agente los
+    pide él (GET /api/agent/config) y los persiste con el mismo
+    mecanismo cifrado del empuje, solo si han cambiado.
+    """
+    url = build_url("/api/agent/config")
+    headers = get_auth_headers()
+    verify = get_requests_verify()
+    try:
+        response = requests.get(url, headers=headers, timeout=8, verify=verify)
+    except Exception as exc:
+        LOGGER.debug("    [Config] Sin contacto para refrescar ajustes: %s", exc)
+        return
+    if response.status_code != 200:
+        LOGGER.debug(
+            "    [Config] El panel respondió %s al pedir ajustes", response.status_code
+        )
+        return
+    try:
+        data = response.json()
+    except Exception:
+        return
+
+    delay = data.get("startupNetworkDelay")
+    if isinstance(delay, (int, float)):
+        delay_str = str(int(delay))
+        current = decrypt_value(
+            (os.environ.get("USB_MONITOR_STARTUP_DELAY") or "").strip()
+        )
+        if current != delay_str and _persist_machine_env_var(
+            "USB_MONITOR_STARTUP_DELAY", encrypt_value(delay_str)
+        ):
+            LOGGER.info("    [Config] Espera de red al arranque: %s s", delay_str)
+
+    lock_session = data.get("lockSessionOnInsert")
+    if isinstance(lock_session, bool):
+        value = "true" if lock_session else "false"
+        encrypted = encrypt_value(value)
+        current = decrypt_value(
+            (os.environ.get("USB_MONITOR_LOCK_SESSION_ON_INSERT") or "").strip()
+        ).lower()
+        if current != value:
+            if _persist_machine_env_var(
+                "USB_MONITOR_LOCK_SESSION_ON_INSERT", encrypted
+            ):
+                # Igual que en /config: rige ya en este proceso, sin
+                # esperar al próximo arranque del servicio.
+                os.environ["USB_MONITOR_LOCK_SESSION_ON_INSERT"] = encrypted
+                LOGGER.info(
+                    "    [Config] Bloqueo de sesión al conectar: %s", value
+                )
+
+
 def refresh_owner_hash_cache() -> None:
     """GET /api/agent/owner-hash: refresca la caché del hash del dueño.
 
@@ -2260,9 +2334,10 @@ def refresh_owner_hash_cache() -> None:
 
 
 def _owner_hash_refresh_loop(service: "USBMonitorService") -> None:
-    """Refresca el hash del dueño al arrancar y cada ~10 minutos."""
+    """Refresca el hash del dueño y los ajustes al arrancar y cada ~10 min."""
     while not service.stopped:
         refresh_owner_hash_cache()
+        refresh_server_config()
         deadline = time.time() + OWNER_HASH_REFRESH_SECONDS
         while not service.stopped and time.time() < deadline:
             time.sleep(5)
@@ -3225,19 +3300,7 @@ class UnlockHTTPHandler(BaseHTTPRequestHandler):
 
     def _persist_machine_env(self, name: str, encrypted_value: str) -> bool:
         """Guarda una variable de máquina con setx /M (patrón del agente)."""
-        try:
-            setx_path = resolve_executable("setx.exe")
-            subprocess.run(
-                [setx_path, name, encrypted_value, "/M"],  #nosec B603
-                capture_output=True,
-                text=True,
-                encoding='cp850',
-                check=True,
-            )
-            return True
-        except subprocess.CalledProcessError as exc:
-            LOGGER.error("Error al guardar configuración (%s): %s", name, exc)
-            return False
+        return _persist_machine_env_var(name, encrypted_value)
 
     def _handle_config_post(self) -> None:
         # Fase 3: /config modifica el estado del equipo; sin una
