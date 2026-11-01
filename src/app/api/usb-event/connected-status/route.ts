@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { requireServiceAuth } from "@/lib/auth";
 import { getCurrentDate } from "@/lib/time";
 import { hit } from "@/lib/rateLimit";
+import { registrarContactoAgente } from "@/lib/agentDebug";
 import { logError } from "@/lib/logger";
 import { normalizeComputerName } from "@/lib/utils";
 
@@ -169,6 +170,11 @@ export async function POST(req: NextRequest) {
       await (db as any).$transaction(operations);
     }
 
+    registrarContactoAgente(
+      normalizedPcName,
+      "/api/usb-event/connected-status",
+      200
+    );
     const res = NextResponse.json({
       ok: true,
       message: "Estado actualizado",
@@ -178,6 +184,7 @@ export async function POST(req: NextRequest) {
     return res;
   } catch (error: any) {
     if (error?.message === "UNAUTHORIZED") {
+      registrarContactoAgente(null, "/api/usb-event/connected-status", 401);
       return NextResponse.json(
         { ok: false, error: "No autorizado" },
         { status: 401 }

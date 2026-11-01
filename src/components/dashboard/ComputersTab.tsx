@@ -266,6 +266,24 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
     }
   }, [onDelete, pendingDelete]);
 
+  // El botón del token vive fuera de la lista: tiene que verse
+  // también sin equipos, porque el diálogo es justamente la vía
+  // para dar de alta el primer equipo (crea su fila al generar).
+  const botonTokenAgente = (
+    <Button
+      type="button"
+      variant="outline"
+      className="rounded-none"
+      onClick={() => {
+        setTokenValor(null);
+        setTokenAbierto(true);
+      }}
+    >
+      <KeyRound className="mr-2 size-4" />
+      Token del agente
+    </Button>
+  );
+
   return (
     <motion.section
       initial={{ opacity: 0, y: 16 }}
@@ -320,9 +338,16 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
           ))}
         </div>
       ) : computers.length === 0 ? (
-        <div className="mt-4 flex items-start gap-3 border-t border-border pt-6 text-sm text-muted-foreground">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-[var(--acero)]" />
-          <p>No hay computadoras monitoreadas aún.</p>
+        <div className="mt-4 border-t border-border pt-6">
+          <div className="flex items-start gap-3 text-sm text-muted-foreground">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-[var(--acero)]" />
+            <p>
+              No hay computadoras monitoreadas aún. Genera el token del
+              primer equipo y cópialo en su agente: el equipo queda dado
+              de alta en cuanto el agente se presenta con ese token.
+            </p>
+          </div>
+          <div className="mt-4">{botonTokenAgente}</div>
         </div>
       ) : (
         <>
@@ -335,18 +360,7 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
                 onChange={bulk.setMany}
               />
             )}
-            <Button
-              type="button"
-              variant="outline"
-              className="rounded-none"
-              onClick={() => {
-                setTokenValor(null);
-                setTokenAbierto(true);
-              }}
-            >
-              <KeyRound className="mr-2 size-4" />
-              Token del agente
-            </Button>
+            {botonTokenAgente}
             <div className="relative order-last w-full sm:order-none sm:ml-auto sm:w-auto">
               <Search className="pointer-events-none absolute left-0 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input

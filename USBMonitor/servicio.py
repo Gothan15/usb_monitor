@@ -44,6 +44,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from nucleo import config, pnp, registro
 from nucleo.api import ClientePanel
 from nucleo.bloqueo import MotorBloqueo
+from nucleo.depuracion import iniciar_latido
 from nucleo.diario import Diario
 from nucleo.dispositivos import (
     Detector,
@@ -56,6 +57,7 @@ from nucleo.volumen import CandadosVolumen, es_accesible
 
 LOG = registro.configurar("agente.log")
 LOG_SERVICIO = registro.obtener("servicio")
+LOG_GUI = registro.obtener("gui")
 
 ARCHIVO_PENDIENTES = registro.PROGRAM_DATA_DIR / "pending_local.json"
 PUERTO_LOCAL = 5001
@@ -112,6 +114,9 @@ class Agente:
         self._ultimo_hash = 0.0
         self._ultima_config = 0.0
         self._servidor_local: Optional[ThreadingHTTPServer] = None
+        self._inicio = time.monotonic()
+        self._companero_cache: tuple[Optional[bool], float] = (None, 0.0)
+        self._lock_companero = threading.Lock()
 
     # ── solo lectura (capa degradada, vía diskpart) ───────────────
     @staticmethod
@@ -174,6 +179,47 @@ class Agente:
                 }
             )
         _escribir_pendientes_locales(pendientes)
+
+    # ── ¿vive el compañero? (para el latido de depuración) ───────
+    def _companero_en_marcha(self) -> Optional[bool]:
+        """True/False según los procesos vivos; None si la consulta
+        WMI falla. La consulta se cachea 5 s: WMI es caro y el
+        latido de depuración pregunta cada segundo."""
+        ahora = time.monotonic()
+        with self._lock_companero:
+            valor, marca = self._companero_cache
+            if marca and ahora - marca < 5:
+                return valor
+        resultado: Optional[bool] = None
+        try:
+            import pythoncom
+            import wmi
+
+            pythoncom.CoInitialize()
+            try:
+                encontrado = False
+                for proceso in wmi.WMI().Win32_Process():
+                    comando = (
+                        getattr(proceso, "CommandLine", None) or ""
+                    ).lower()
+                    if not comando:
+                        continue
+                    es_companero_py = "companero.py" in comando
+                    es_modo_prompt = " prompt" in comando and (
+                        "usbmonitor" in comando or "servicio.py" in comando
+                    )
+                    if es_companero_py or es_modo_prompt:
+                        encontrado = True
+                        break
+                resultado = encontrado
+            finally:
+                pythoncom.CoUninitialize()
+        except Exception as exc:
+            LOG_SERVICIO.debug("Consulta WMI del compañero falló: %s", exc)
+            resultado = None
+        with self._lock_companero:
+            self._companero_cache = (resultado, ahora)
+        return resultado
 
     # ── llegada y extracción ──────────────────────────────────────
     def _al_llegar(self, disp: Dispositivo) -> None:
@@ -335,6 +381,7 @@ class Agente:
 
     # ── arranque y parada ─────────────────────────────────────────
     def arrancar(self) -> None:
+        self._inicio = time.monotonic()
         LOG_SERVICIO.info("Agente v2 arrancando en %s", config.nombre_pc())
         # Espera de red al arrancar (ajuste del panel, con su defecto).
         espera = 0
@@ -380,6 +427,19 @@ class Agente:
         ):
             threading.Thread(target=bucle, daemon=True).start()
         self._iniciar_servidor_local()
+
+        # Latido de depuración (1 línea/s en latido.log) para poder
+        # reconstruir un cierre inesperado del servicio/compañero.
+        def proveedor_latido() -> Dict:
+            return {
+                "segundos_en_marcha": time.monotonic() - self._inicio,
+                "companero": self._companero_en_marcha(),
+                "bloqueados": len(self.motor.bloqueados()),
+                "cola_eventos": self.cliente.eventos_en_cola(),
+                "salud": self.cliente.salud(),
+            }
+
+        iniciar_latido(proveedor_latido, self._deteniendo)
         LOG_SERVICIO.info("Agente v2 en marcha")
 
     def detener(self) -> None:
@@ -671,13 +731,33 @@ try:
             self._hilo: Optional[threading.Thread] = None
 
         def SvcStop(self):
+            LOG_SERVICIO.info("Parada del servicio pedida por el SCM")
             self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
             if self._agente:
                 self._agente.detener()
 
         def SvcDoRun(self):
-            self._agente = Agente()
-            self._hilo = threading.Thread(target=self._agente.arrancar, daemon=True)
+            LOG_SERVICIO.info("Servicio iniciado por el SCM")
+
+            def objetivo():
+                # Si el agente muere por un error no controlado, que
+                # quede la traza completa en agente.log: un servicio
+                # que «se detiene solo» sin log no se puede depurar.
+                try:
+                    self._agente.arrancar()
+                except Exception:
+                    LOG_SERVICIO.exception(
+                        "EL AGENTE SE DETUVO POR UN ERROR NO CONTROLADO"
+                    )
+
+            try:
+                self._agente = Agente()
+            except Exception:
+                LOG_SERVICIO.exception(
+                    "EL AGENTE SE DETUVO POR UN ERROR NO CONTROLADO"
+                )
+                return
+            self._hilo = threading.Thread(target=objetivo, daemon=True)
             self._hilo.start()
             self._hilo.join()
 
@@ -905,10 +985,56 @@ def ejecutar_gui() -> None:
                 "Reinicia el servicio para aplicar la nueva dirección.",
             )
 
+    fila_botones_servidor = tk.Frame(marco, bg=FONDO)
+    fila_botones_servidor.pack(anchor="e", padx=10, pady=8)
     tk.Button(
-        marco, text="Guardar servidor", command=guardar_servidor,
+        fila_botones_servidor, text="Guardar servidor", command=guardar_servidor,
         bg=ACERO, fg="white", font=NORMAL, bd=0, padx=12, pady=4,
-    ).pack(anchor="e", padx=10, pady=8)
+    ).pack(side="left", padx=(0, 6))
+
+    def escribir_en_registro(texto: str) -> None:
+        # La caja «Registro» se crea más abajo; este cierre la
+        # resuelve al pulsar el botón, cuando ya existe.
+        try:
+            caja.configure(state="normal")
+            caja.insert("end", texto + "\n")
+            caja.see("end")
+            caja.configure(state="disabled")
+        except Exception:
+            pass
+
+    def probar_conexion():
+        boton_probar.configure(state="disabled", text="Probando…")
+
+        def trabajo():
+            try:
+                resultados = ClientePanel().probar_conexion()
+                lineas = [f"— Prueba de conexión a {config.url_base()} —"]
+                for paso in resultados:
+                    marca = "✓" if paso["ok"] else "✗"
+                    lineas.append(
+                        f"{marca} {paso['paso']}: {paso['detalle']} "
+                        f"({paso['ms']:.0f} ms)"
+                    )
+                texto = "\n".join(lineas)
+                LOG_GUI.info("Prueba de conexión:\n%s", texto)
+            except Exception as exc:
+                texto = f"✗ Prueba de conexión interrumpida: {exc}"
+                LOG_GUI.exception("Prueba de conexión interrumpida")
+
+            def volcar():
+                escribir_en_registro(texto)
+                boton_probar.configure(state="normal", text="Probar conexión")
+
+            ventana.after(0, volcar)
+
+        threading.Thread(target=trabajo, daemon=True).start()
+
+    boton_probar = tk.Button(
+        fila_botones_servidor, text="Probar conexión", command=probar_conexion,
+        bg=PANEL, fg=TEXTO, font=NORMAL, bd=0, padx=12, pady=4,
+    )
+    boton_probar.pack(side="left")
 
     # Credencial
     marco2 = tk.LabelFrame(
@@ -1058,6 +1184,10 @@ def main() -> None:
                 time.sleep(1)
         except KeyboardInterrupt:
             agente.detener()
+        except Exception:
+            LOG_SERVICIO.exception(
+                "EL AGENTE SE DETUVO POR UN ERROR NO CONTROLADO"
+            )
         return
     if ServicioUSBMonitor is not None:
         import win32serviceutil

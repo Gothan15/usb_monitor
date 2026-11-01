@@ -6,6 +6,7 @@ import { readAppSettings } from "@/lib/appSettings";
 import { usbEventPayloadSchema } from "@/lib/validators";
 import { getCurrentDate } from "@/lib/time";
 import { normalizeComputerName } from "@/lib/utils";
+import { registrarContactoAgente } from "@/lib/agentDebug";
 import { broadcastUSBEvent, broadcastComputerStatus } from "@/lib/socket";
 
 const prisma = resolve<PrismaClient>(TOKENS.prisma);
@@ -22,6 +23,8 @@ export async function POST(request: NextRequest) {
       try {
         await requireServiceAuth(request);
       } catch {
+        // El body aún no se leyó: la PC no se conoce en este punto.
+        registrarContactoAgente(null, "/api/usb-event", 401);
         return NextResponse.json(
           { error: "No autorizado" },
           { status: 401 },
@@ -33,6 +36,13 @@ export async function POST(request: NextRequest) {
 
     if (!parsed.success) {
       const firstIssue = parsed.error.issues.at(0)?.message || "invalid body";
+      registrarContactoAgente(
+        typeof (body as any)?.pc_name === "string"
+          ? normalizeComputerName((body as any).pc_name)
+          : null,
+        "/api/usb-event",
+        400
+      );
       return NextResponse.json(
         { error: "Payload invalido", detail: firstIssue },
         { status: 400 },
@@ -135,6 +145,7 @@ export async function POST(request: NextRequest) {
       lastSeen: occurredAt.toISOString(),
     });
 
+    registrarContactoAgente(computerName, "/api/usb-event", 200);
     return NextResponse.json({
       success: true,
       message: "Evento USB registrado correctamente",

@@ -3,6 +3,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import { requireServiceAuth } from "@/lib/auth";
 import { readAppSettings } from "@/lib/appSettings";
+import { registrarContactoAgente } from "@/lib/agentDebug";
 import { logError } from "@/lib/logger";
 
 /**
@@ -32,6 +33,7 @@ export async function GET(req: Request) {
       // Sin archivo: el valor por defecto manda.
     }
 
+    registrarContactoAgente(null, "/api/agent/config", 200);
     const res = NextResponse.json({
       ok: true,
       startupNetworkDelay,
@@ -41,6 +43,7 @@ export async function GET(req: Request) {
     return res;
   } catch (error: any) {
     if (error?.message === "UNAUTHORIZED") {
+      registrarContactoAgente(null, "/api/agent/config", 401);
       return NextResponse.json(
         { ok: false, error: "No autorizado" },
         { status: 401 }

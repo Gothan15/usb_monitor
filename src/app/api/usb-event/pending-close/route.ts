@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireServiceAuth } from "@/lib/auth";
 import { hit } from "@/lib/rateLimit";
+import { registrarContactoAgente } from "@/lib/agentDebug";
 import { logError } from "@/lib/logger";
 
 /**
@@ -62,11 +63,17 @@ export async function POST(req: Request) {
       },
     });
 
+    registrarContactoAgente(
+      typeof pcName === "string" ? pcName.trim() : null,
+      "/api/usb-event/pending-close",
+      200
+    );
     const res = NextResponse.json({ ok: true, closed: result.count });
     res.headers.set("Cache-Control", "no-store");
     return res;
   } catch (error: any) {
     if (error?.message === "UNAUTHORIZED") {
+      registrarContactoAgente(null, "/api/usb-event/pending-close", 401);
       return NextResponse.json(
         { ok: false, error: "No autorizado" },
         { status: 401 }
