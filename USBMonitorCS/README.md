@@ -21,6 +21,10 @@ con DPAPI de Windows).
   compañero, caja de herramientas y visor en WPF, papel frío y azul
   marino como la web.
 - **Cifrado con DPAPI** (ámbito máquina) para el token en `server.json`.
+- **Los iconos del proyecto**: el ejecutable y las ventanas usan los
+  `.ico` de siempre (`USBMonitor/usb_monitor_service.ico` y
+  `usb_prompt.ico` para el compañero), enlazados desde su carpeta —
+  no hay copias dentro de `USBMonitorCS/`.
 - La depuración de la otra rama viene de serie: latido cada segundo en
   `latido.log`, salud de la conexión registrada y botón «Probar
   conexión» (en el asistente y en la caja de herramientas).
