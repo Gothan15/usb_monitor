@@ -21,6 +21,7 @@ a = Analysis(
         'pywintypes',
         'wmi',
         'win32com',
+        'win32timezone',
     ],
     hookspath=[],
     hooksconfig={},
