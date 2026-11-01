@@ -72,3 +72,6 @@ seed-data.json
 # Los .spec de PyInstaller de USBMonitor son código fuente (builds del compañero y del visor)
 !USBMonitor/USBMonitorPrompt.spec
 !USBMonitor/USBSerialViewer.spec
+
+# Artefactos de las pruebas en el sandbox (stubs crean rutas C:/...)
+/C:/
