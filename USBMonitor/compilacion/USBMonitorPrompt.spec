@@ -37,5 +37,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=os.path.join(SPECPATH, '..', 'usb_monitor_service.ico'),
+    icon=os.path.join(SPECPATH, '..', 'usb_prompt.ico'),
 )
