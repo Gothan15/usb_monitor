@@ -1,13 +1,14 @@
 # -*- mode: python ; coding: utf-8 -*-
-# Spec de PyInstaller para el visor de seriales (usb_serial_viewer.py).
-# Genera USBSerialViewer.exe (sin consola: es una ventana de
-# escritorio). Compilar con build_usb_serial_viewer_pyinstaller.ps1.
-# Este archivo faltaba en el repo: el script de compilación lo
-# referenciaba y sin él el visor no se podía construir desde un
-# clon limpio.
+import os
+# Spec de PyInstaller para la herramienta de administración
+# (usb_monitor_admin.py: configurar la clave API de un equipo y
+# utilidades manuales). Genera USBMonitorAdmin.exe (sin consola:
+# es una ventana). Compilar con build_usb_monitor_admin_pyinstaller.ps1.
+# La herramienta importa los ayudantes del propio servicio; el
+# análisis de PyInstaller los incluye siguiendo ese import.
 
 a = Analysis(
-    ['usb_serial_viewer.py'],
+    [os.path.join(SPECPATH, '..', 'usb_monitor_admin.py')],
     pathex=[],
     binaries=[],
     datas=[],
@@ -26,7 +27,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='USBSerialViewer',
+    name='USBMonitorAdmin',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

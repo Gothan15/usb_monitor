@@ -5,10 +5,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-Set-Location -Path $PSScriptRoot
+# Este script vive en compilacion\; la raíz del agente es su carpeta
+# madre, que es donde están las fuentes y donde quedan los dist_*.
+$root = Split-Path -Parent $PSScriptRoot
+Set-Location -Path $root
 
-$distPath = Join-Path $PSScriptRoot "dist_usb_serial_viewer"
-$buildPath = Join-Path $PSScriptRoot "build_usb_serial_viewer"
+$distPath = Join-Path $root "dist_usb_serial_viewer"
+$buildPath = Join-Path $root "build_usb_serial_viewer"
 $specPath = Join-Path $PSScriptRoot "USBSerialViewer.spec"
 
 if (!(Test-Path $specPath)) {

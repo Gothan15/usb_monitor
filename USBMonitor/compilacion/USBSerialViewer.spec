@@ -1,14 +1,18 @@
 # -*- mode: python ; coding: utf-8 -*-
-# Spec de PyInstaller para el proceso compañero (usb_prompt.py).
-# Genera USBMonitorPrompt.exe (sin consola: es una ventana de sesión
-# de usuario). Compilar con build_usb_prompt_pyinstaller.ps1.
+import os
+# Spec de PyInstaller para el visor de seriales (usb_serial_viewer.py).
+# Genera USBSerialViewer.exe (sin consola: es una ventana de
+# escritorio). Compilar con build_usb_serial_viewer_pyinstaller.ps1.
+# Este archivo faltaba en el repo: el script de compilación lo
+# referenciaba y sin él el visor no se podía construir desde un
+# clon limpio.
 
 a = Analysis(
-    ['usb_prompt.py'],
+    [os.path.join(SPECPATH, '..', 'usb_serial_viewer.py')],
     pathex=[],
     binaries=[],
     datas=[],
-    hiddenimports=[],
+    hiddenimports=['wmi', 'pythoncom', 'pywintypes', 'win32com'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -23,7 +27,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='USBMonitorPrompt',
+    name='USBSerialViewer',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

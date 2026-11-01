@@ -5,14 +5,17 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-Set-Location -Path $PSScriptRoot
+# Este script vive en compilacion\; la raíz del agente es su carpeta
+# madre, que es donde están las fuentes y donde quedan los dist_*.
+$root = Split-Path -Parent $PSScriptRoot
+Set-Location -Path $root
 
-$distPath = Join-Path $PSScriptRoot "dist_usb_prompt"
-$buildPath = Join-Path $PSScriptRoot "build_usb_prompt"
-$specPath = Join-Path $PSScriptRoot "USBMonitorPrompt.spec"
+$distPath = Join-Path $root "dist"
+$buildPath = Join-Path $root "build_usb_monitor_service"
+$specPath = Join-Path $PSScriptRoot "USBMonitorService.spec"
 
 if (!(Test-Path $specPath)) {
-    Write-Error "No se encontró USBMonitorPrompt.spec en $PSScriptRoot"
+    Write-Error "No se encontró USBMonitorService.spec en $PSScriptRoot"
 }
 
 if ($Clean) {
@@ -37,7 +40,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "PyInstaller devolvió código $LASTEXITCODE"
 }
 
-$exePath = Join-Path $distPath "USBMonitorPrompt.exe"
+$exePath = Join-Path $distPath "USBMonitorService.exe"
 if (Test-Path $exePath) {
     Write-Host "Ejecutable generado en $exePath"
 } else {
