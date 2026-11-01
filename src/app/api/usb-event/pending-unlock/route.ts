@@ -33,20 +33,21 @@ export async function POST(req: Request) {
     const { pcName, driveLetter, serialNumber, deviceLabel, whitelisted } =
       await req.json();
 
-    if (
-      typeof pcName !== "string" ||
-      !pcName.trim() ||
-      typeof driveLetter !== "string" ||
-      !driveLetter.trim()
-    ) {
+    // Detección amplia: un móvil (WPD) no tiene letra de unidad; su
+    // bloqueo se identifica por el serial. Se exige letra O serial.
+    const hasLetter =
+      typeof driveLetter === "string" && driveLetter.trim().length > 0;
+    const hasSerial =
+      typeof serialNumber === "string" && serialNumber.trim().length > 0;
+    if (typeof pcName !== "string" || !pcName.trim() || (!hasLetter && !hasSerial)) {
       return NextResponse.json(
-        { ok: false, error: "pcName y driveLetter requeridos" },
+        { ok: false, error: "pcName y (driveLetter o serialNumber) requeridos" },
         { status: 400 }
       );
     }
 
     const normalizedPcName = pcName.trim();
-    const normalizedDriveLetter = driveLetter.trim();
+    const normalizedDriveLetter = hasLetter ? driveLetter.trim() : null;
 
     const computer = await db.computer.findUnique({
       where: { name: normalizedPcName },
@@ -58,7 +59,9 @@ export async function POST(req: Request) {
     await db.pendingUnlock.updateMany({
       where: {
         pcName: normalizedPcName,
-        driveLetter: normalizedDriveLetter,
+        ...(normalizedDriveLetter
+          ? { driveLetter: normalizedDriveLetter }
+          : { serialNumber: serialNumber.trim() }),
         status: "BLOCKED",
       },
       data: {

@@ -12,7 +12,7 @@ import { RefreshCw } from "lucide-react";
 interface Pending {
   id: string;
   pcName: string;
-  driveLetter: string;
+  driveLetter: string | null;
   serialNumber: string | null;
   deviceLabel: string | null;
   whitelisted: boolean;
@@ -249,7 +249,7 @@ export function UnlocksTab() {
                     <tr key={p.id}>
                       <td className={`${tdClass} font-medium`}>{p.pcName}</td>
                       <td className={`${tdClass} font-mono`}>
-                        {p.driveLetter}
+                        {p.driveLetter ?? p.deviceLabel ?? "Sin unidad"}
                       </td>
                       <td className={tdClass}>{p.deviceLabel || "—"}</td>
                       <td className={`${tdClass} font-mono text-xs`}>
@@ -292,7 +292,7 @@ export function UnlocksTab() {
                   <span>
                     <span className="font-medium">{p.pcName}</span>
                     <span className="ml-2 font-mono text-xs">
-                      {p.driveLetter}
+                      {p.driveLetter ?? p.deviceLabel ?? "Sin unidad"}
                     </span>
                     <span className="ml-2 text-muted-foreground">
                       {p.deviceLabel || ""}

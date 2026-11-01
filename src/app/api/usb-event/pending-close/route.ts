@@ -32,14 +32,14 @@ export async function POST(req: Request) {
 
     const { pcName, driveLetter, serialNumber } = await req.json();
 
-    if (
-      typeof pcName !== "string" ||
-      !pcName.trim() ||
-      typeof driveLetter !== "string" ||
-      !driveLetter.trim()
-    ) {
+    // Detección amplia: sin letra (móvil WPD) se cierra por serial.
+    const hasLetter =
+      typeof driveLetter === "string" && driveLetter.trim().length > 0;
+    const hasSerial =
+      typeof serialNumber === "string" && serialNumber.trim().length > 0;
+    if (typeof pcName !== "string" || !pcName.trim() || (!hasLetter && !hasSerial)) {
       return NextResponse.json(
-        { ok: false, error: "pcName y driveLetter requeridos" },
+        { ok: false, error: "pcName y (driveLetter o serialNumber) requeridos" },
         { status: 400 }
       );
     }
@@ -47,9 +47,11 @@ export async function POST(req: Request) {
     const result = await db.pendingUnlock.updateMany({
       where: {
         pcName: pcName.trim(),
-        driveLetter: driveLetter.trim(),
+        ...(hasLetter
+          ? { driveLetter: driveLetter.trim() }
+          : { serialNumber: serialNumber.trim() }),
         status: { in: ["BLOCKED", "UNLOCKED"] },
-        ...(typeof serialNumber === "string" && serialNumber.trim()
+        ...(hasLetter && hasSerial
           ? { serialNumber: serialNumber.trim() }
           : {}),
       },

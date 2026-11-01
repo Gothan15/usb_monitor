@@ -130,7 +130,7 @@ model PendingUnlock {
   computerId   String?
   computer     Computer?     @relation(fields: [computerId], references: [id], onDelete: SetNull)
   pcName       String
-  driveLetter  String
+  driveLetter  String? // null en dispositivos sin unidad (móviles WPD, detección amplia)
   serialNumber String?
   deviceLabel  String?
   whitelisted  Boolean       @default(false) // conocido o no: solo informativo
