@@ -10,6 +10,10 @@ Modos según el primer argumento:
   prompt       el compañero (la ventana de la contraseña); lo
                arranca la tarea de inicio de sesión
   visor        el visor de seriales
+  instalar     instala el servicio (y la tarea del compañero) y
+               lo arranca; pide administrador
+  desinstalar  restaura todo, detiene y quita el servicio y la
+               tarea del compañero
   restaurar    revierte todo lo del diario y sale (lo usa el
                desinstalador antes de quitar el servicio)
   debug        el agente en consola, para depurar
@@ -537,6 +541,116 @@ def restaurar_sin_servicio() -> Dict:
     return diario.restaurar_todo(pnp.habilitar, lambda _activo: True)
 
 
+# ══ Instalación y desinstalación desde el propio ejecutable ══════
+
+NOMBRE_SERVICIO = "USBMonitorService"
+NOMBRE_TAREA = "USBMonitorCompanero"
+
+
+def es_admin() -> bool:
+    try:
+        import ctypes
+
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except Exception:
+        return False
+
+
+def _ruta_instalada() -> Path:
+    """El servicio se registra desde donde vive el ejecutable: el
+    administrador lo coloca primero en su sitio (C:\\USBMonitor o
+    donde prefiera); Install-Service.ps1 sigue existiendo para el
+    camino copiar + instalar de una vez."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve()
+    return Path(__file__).resolve()
+
+
+def instalar_servicio() -> str:
+    """Registra el servicio en Windows, crea la tarea del compañero
+    al iniciar sesión, ajusta la recuperación automática y arranca.
+    Devuelve un resumen para mostrar. Requiere administrador."""
+    import subprocess
+
+    import win32service
+    import win32serviceutil
+
+    exe = _ruta_instalada()
+    if _estado_servicio() != "no instalado":
+        raise RuntimeError("El servicio ya está instalado.")
+    scm = win32service.OpenSCManager(None, None, win32service.SC_MANAGER_ALL_ACCESS)
+    try:
+        svc = win32service.CreateService(
+            scm,
+            NOMBRE_SERVICIO,
+            "USB Monitor Service",
+            win32service.SERVICE_ALL_ACCESS,
+            win32service.SERVICE_WIN32_OWN_PROCESS,
+            win32service.SERVICE_AUTO_START,
+            win32service.SERVICE_ERROR_NORMAL,
+            f'"{exe}"',
+            None,
+            0,
+            None,
+            None,
+            None,
+        )
+        try:
+            win32service.ChangeServiceConfig2(
+                svc,
+                win32service.SERVICE_CONFIG_DESCRIPTION,
+                "Supervisa dispositivos USB, los bloquea y exige la "
+                "contraseña del dueño o de un administrador para usarlos.",
+            )
+        except Exception:
+            pass
+        win32service.CloseServiceHandle(svc)
+    finally:
+        win32service.CloseServiceHandle(scm)
+    # Recuperación automática: reiniciar al fallar (1 min), 3 veces.
+    subprocess.run(
+        ["sc.exe", "failure", NOMBRE_SERVICIO, "reset=", "86400",
+         "actions=", "restart/60000/restart/60000/restart/60000"],
+        capture_output=True,
+    )
+    # El compañero al iniciar sesión: el mismo exe en modo prompt.
+    subprocess.run(
+        ["schtasks.exe", "/Create", "/TN", NOMBRE_TAREA,
+         "/TR", f'\"{exe}\" prompt', "/SC", "ONLOGON",
+         "/RL", "LIMITED", "/F"],
+        capture_output=True,
+    )
+    win32serviceutil.StartService(NOMBRE_SERVICIO)
+    return f"Servicio instalado desde {exe} y en marcha."
+
+
+def desinstalar_servicio() -> str:
+    """Orden sin huella: parar (la parada ya restaura), restaurar lo
+    que pudiera quedar, quitar el servicio y la tarea. No borra los
+    archivos del ejecutable: eso se hace a mano."""
+    import subprocess
+
+    import win32serviceutil
+
+    if _estado_servicio() == "no instalado":
+        raise RuntimeError("El servicio no está instalado.")
+    try:
+        win32serviceutil.StopService(NOMBRE_SERVICIO)
+        import win32service as _ws
+        win32serviceutil.WaitForServiceStatus(
+            NOMBRE_SERVICIO, _ws.SERVICE_STOPPED, 30
+        )
+    except Exception:
+        pass
+    restaurar_sin_servicio()
+    win32serviceutil.RemoveService(NOMBRE_SERVICIO)
+    subprocess.run(
+        ["schtasks.exe", "/Delete", "/TN", NOMBRE_TAREA, "/F"],
+        capture_output=True,
+    )
+    return "Servicio desinstalado y sistema restaurado."
+
+
 # ══ Servicio de Windows ══════════════════════════════════════════
 
 try:
@@ -705,6 +819,52 @@ def ejecutar_gui() -> None:
         command=lambda: _lanzar_modo("visor"),
         bg=PANEL, fg=TEXTO, font=NORMAL, bd=0, padx=10, pady=4,
     ).pack(side="left")
+    fila0b = tk.Frame(marco0, bg=FONDO)
+    fila0b.pack(fill="x", padx=10, pady=(0, 8))
+
+    def instalar_desde_gui():
+        if not es_admin():
+            messagebox.showwarning(
+                "Falta administrador",
+                "Instalar el servicio requiere ejecutar la caja de "
+                "herramientas como administrador.",
+            )
+            return
+        try:
+            messagebox.showinfo("Instalar servicio", instalar_servicio())
+        except Exception as exc:
+            messagebox.showerror("Instalar servicio", str(exc))
+        refrescar_estado()
+
+    def desinstalar_desde_gui():
+        if not es_admin():
+            messagebox.showwarning(
+                "Falta administrador",
+                "Desinstalar el servicio requiere ejecutar la caja de "
+                "herramientas como administrador.",
+            )
+            return
+        if not messagebox.askyesno(
+            "Desinstalar servicio",
+            "Se restaura todo lo bloqueado, se detiene el servicio y "
+            "se quita de Windows, junto con la tarea del compañero. "
+            "¿Continuar?",
+        ):
+            return
+        try:
+            messagebox.showinfo("Desinstalar servicio", desinstalar_servicio())
+        except Exception as exc:
+            messagebox.showerror("Desinstalar servicio", str(exc))
+        refrescar_estado()
+
+    tk.Button(
+        fila0b, text="Instalar servicio", command=instalar_desde_gui,
+        bg=ACERO, fg="white", font=NORMAL, bd=0, padx=10, pady=4,
+    ).pack(side="left", padx=(0, 6))
+    tk.Button(
+        fila0b, text="Desinstalar servicio", command=desinstalar_desde_gui,
+        bg=PANEL, fg=TEXTO, font=NORMAL, bd=0, padx=10, pady=4,
+    ).pack(side="left")
 
     # Servidor
     marco = tk.LabelFrame(
@@ -871,6 +1031,20 @@ def main() -> None:
         import visor
 
         visor.main()
+        return
+    if argumentos and argumentos[0] == "instalar":
+        try:
+            print(instalar_servicio())
+        except Exception as exc:
+            print(f"No se pudo instalar: {exc}")
+            print("Ejecuta este programa como administrador.")
+        return
+    if argumentos and argumentos[0] == "desinstalar":
+        try:
+            print(desinstalar_servicio())
+        except Exception as exc:
+            print(f"No se pudo desinstalar: {exc}")
+            print("Ejecuta este programa como administrador.")
         return
     if argumentos and argumentos[0] == "restaurar":
         resumen = restaurar_sin_servicio()

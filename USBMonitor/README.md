@@ -15,6 +15,8 @@ primer argumento:
 | `gui` | La caja de herramientas del administrador: estado y control del servicio (iniciar/detener/reiniciar), servidor, credencial, accesos al compañero y al visor, registro y **Restaurar todo**. |
 | `prompt` | El compañero: la ventana de la contraseña cuando hay un dispositivo bloqueado. Lo arranca la tarea de inicio de sesión. |
 | `visor` | Lista los dispositivos conectados con su serial, para llevarlo a la lista blanca. |
+| `instalar` | Instala el servicio (desde donde vive el exe), crea la tarea del compañero, ajusta la recuperación automática y lo arranca. También hay botones en la `gui`. |
+| `desinstalar` | Restaura todo, detiene el servicio y lo quita de Windows, con su tarea. También en la `gui`. |
 | `restaurar` | Revierte todo lo que el agente haya deshabilitado y sale (lo usa el desinstalador). |
 | `debug` | El agente en consola, para depurar. |
 
@@ -33,9 +35,22 @@ cd USBMonitor
 
 ## Instalar / desinstalar
 
+El propio ejecutable se instala y se desinstala (como
+administrador), desde la caja de herramientas (`gui`, botones
+«Instalar servicio» / «Desinstalar servicio») o por consola:
+
+```powershell
+.\USBMonitorService.exe instalar
+.\USBMonitorService.exe desinstalar   # restaura todo ANTES de quitarse
+```
+
+El servicio se registra desde la carpeta donde vive el ejecutable.
+Para el camino copiar a `C:\USBMonitor` + instalar de una vez, o
+para instalaciones remotas, sigue estando el script:
+
 ```powershell
 .\Install-Service.ps1 -ServerHost 192.168.1.10 -AgentToken <token del equipo>
-.\Install-Service.ps1 -Uninstall   # restaura todo ANTES de quitarse
+.\Install-Service.ps1 -Uninstall
 ```
 
 Credencial: la única es el token propio del equipo. Lo genera un
