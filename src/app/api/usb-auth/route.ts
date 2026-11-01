@@ -73,13 +73,24 @@ async function registerFailedAttempt(
   user: { id: string; failedAttempts: number },
   now: Date
 ) {
-  const updatedAttempts = user.failedAttempts + 1;
-  const data: Record<string, unknown> = { failedAttempts: updatedAttempts };
-  if (updatedAttempts >= MAX_FAILED_ATTEMPTS) {
-    data.failedAttempts = 0;
-    data.lockedUntil = new Date(now.getTime() + LOCK_DURATION_MINUTES * 60000);
+  // Incremento atómico dentro de la propia UPDATE: antes el nuevo
+  // valor se calculaba en memoria desde una lectura anterior, y dos
+  // intentos simultáneos podían pisarse y perder incrementos (el
+  // bloqueo de la cuenta tardaba más de lo debido en saltar).
+  const updated = await db.user.update({
+    where: { id: user.id },
+    data: { failedAttempts: { increment: 1 } },
+    select: { failedAttempts: true },
+  });
+  if (updated.failedAttempts >= MAX_FAILED_ATTEMPTS) {
+    await db.user.update({
+      where: { id: user.id },
+      data: {
+        failedAttempts: 0,
+        lockedUntil: new Date(now.getTime() + LOCK_DURATION_MINUTES * 60000),
+      },
+    });
   }
-  await db.user.update({ where: { id: user.id }, data });
 }
 
 async function registerSuccess(
