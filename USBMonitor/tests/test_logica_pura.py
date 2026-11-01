@@ -194,3 +194,62 @@ def test_reintento_agotado_avisa_al_panel_y_se_descarta(monkeypatch):
     )
     assert "E" not in obj.release_retries
     assert encolados and "UNLOCK_RELEASE_FAILED" in encolados[0][1]["event"]
+
+
+# ── Detección amplia, Parte A: carcasas UAS ─────────────────────────────
+
+class _DiscoFalso:
+    def __init__(self, pnp, interface="SCSI", bus=None):
+        self.PNPDeviceID = pnp
+        self.DeviceID = r"\\.\PHYSICALDRIVE2"
+        self.InterfaceType = interface
+        self.BusType = bus
+        self.MediaType = "Fixed hard disk media"
+
+
+class _FilaPadre:
+    def __init__(self, padre):
+        self.PropertyData = padre
+
+
+class _ConnPadres:
+    """WMI falso: responde DEVPKEY_Device_Parent desde un mapa."""
+
+    def __init__(self, padres):
+        self.padres = padres
+
+    def query(self, wql):
+        for instancia, padre in self.padres.items():
+            if instancia.replace("\\", "\\\\") in wql:
+                return [_FilaPadre(padre)] if padre else []
+        return []
+
+
+def test_uas_con_padre_usb_entra():
+    disco = _DiscoFalso(r"SCSI\DISK&VEN_ASMT&PROD_2115\00000000000000000000&0")
+    conn = _ConnPadres({disco.PNPDeviceID: r"USB\VID_174C&PID_55AA\MSFT30..."})
+    es_usb, razones, _ = svc._classify_disk_as_usb(disco, conn)
+    assert es_usb and any("UAS" in r for r in razones)
+
+
+def test_scsi_interno_con_padre_pci_queda_fuera():
+    disco = _DiscoFalso(r"SCSI\DISK&VEN_ATA&PROD_SSD_INTERNO\1234&0")
+    conn = _ConnPadres({disco.PNPDeviceID: r"PCI\VEN_8086&DEV_9D03\3&0&0"})
+    es_usb, _, _ = svc._classify_disk_as_usb(disco, conn)
+    assert not es_usb
+
+
+def test_scsi_sin_conexion_o_con_error_queda_fuera():
+    disco = _DiscoFalso(r"SCSI\DISK&VEN_X&PROD_Y\999&0")
+    assert not svc._classify_disk_as_usb(disco, None)[0]
+
+    class ConnRota:
+        def query(self, wql):
+            raise RuntimeError("WMI caído")
+
+    assert not svc._classify_disk_as_usb(disco, ConnRota())[0]
+
+
+def test_usbstor_sigue_entrando_sin_conexion():
+    disco = _DiscoFalso(r"USBSTOR\DISK&VEN_KINGSTON&PROD_DT\AA01&0", interface="USB")
+    assert svc._classify_disk_as_usb(disco, None)[0]

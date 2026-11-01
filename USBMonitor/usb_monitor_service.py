@@ -2505,7 +2505,57 @@ def _shorten(value: Optional[str], *, limit: int = 120) -> str:
     return value[: limit - 3] + "..."
 
 
-def _classify_disk_as_usb(disk: Any) -> Tuple[bool, List[str], Dict[str, Any]]:
+# ── Detección amplia (Parte A): carcasas de disco con puente UAS ─────────
+# Muchas carcasas USB 3.x de discos duros/SSD no se presentan como
+# USBSTOR sino como un disco SCSI genérico (SCSI\DISK&VEN_...), sin la
+# palabra USB en ningún campo, y el clasificador las descartaba. Pero un
+# disco SATA INTERNO también se anuncia como SCSI\DISK: para no tocar
+# jamás un disco interno, un disco SCSI solo cuenta como USB si su
+# PADRE en el árbol PnP (o un ancestro cercano) es un dispositivo USB
+# (el puente de la carcasa). Ante cualquier error de consulta, NO se
+# clasifica (fallar hacia el interno es innegociable).
+
+_UAS_VERDICT_CACHE: Dict[str, bool] = {}
+
+
+def _pnp_parent_id(conn: wmi.WMI, instance_id: str) -> Optional[str]:
+    """Padre PnP de un dispositivo (DEVPKEY_Device_Parent), o None."""
+    try:
+        escaped = instance_id.replace("\\", "\\\\").replace("'", "\\'")
+        rows = conn.query(
+            "SELECT PropertyData FROM Win32_PnPDeviceProperty "
+            f"WHERE InstanceId = '{escaped}' AND KeyName = 'DEVPKEY_Device_Parent'"
+        )
+        for row in rows:
+            data = getattr(row, "PropertyData", None)
+            if data:
+                return str(data)
+    except Exception as exc:
+        LOGGER.debug("No se pudo consultar el padre PnP de %s: %s", instance_id, exc)
+    return None
+
+
+def _scsi_disk_has_usb_parent(conn: wmi.WMI, pnp_device_id: str) -> bool:
+    """True si el disco SCSI cuelga de un puente USB (carcasa UAS)."""
+    key = pnp_device_id or ""
+    if key in _UAS_VERDICT_CACHE:
+        return _UAS_VERDICT_CACHE[key]
+    verdict = False
+    current = key
+    for _ in range(3):  # disco → puente → (a veces) hub/controlador
+        parent = _pnp_parent_id(conn, current)
+        if not parent:
+            break
+        parent_upper = parent.upper()
+        if parent_upper.startswith("USB\\") or "USBSTOR" in parent_upper:
+            verdict = True
+            break
+        current = parent
+    _UAS_VERDICT_CACHE[key] = verdict
+    return verdict
+
+
+def _classify_disk_as_usb(disk: Any, conn: Optional[wmi.WMI] = None) -> Tuple[bool, List[str], Dict[str, Any]]:
     interface_type_raw = getattr(disk, "InterfaceType", None)
     interface_type = str(interface_type_raw).strip() if interface_type_raw else ""
     interface_type_upper = interface_type.upper()
@@ -2547,6 +2597,15 @@ def _classify_disk_as_usb(disk: Any) -> Tuple[bool, List[str], Dict[str, Any]]:
     if "\\USB" in device_id_upper or device_id_upper.startswith("USB"):
         reasons.append("DeviceID contiene USB")
 
+    # Parte A (detección amplia): disco SCSI cuyo padre PnP es el puente
+    # USB de una carcasa (UAS). Sin conexión WMI o sin prueba, no entra.
+    if (
+        conn is not None
+        and pnp_device_id_upper.startswith("SCSI\\DISK")
+        and _scsi_disk_has_usb_parent(conn, pnp_device_id)
+    ):
+        reasons.append("SCSI con padre USB (carcasa UAS)")
+
     is_usb = bool(reasons)
 
     metadata = {
@@ -2570,7 +2629,7 @@ def get_connected_usb_drives(conn: wmi.WMI) -> list:
         if disk_index is None:
             continue
 
-        is_usb, reasons, metadata = _classify_disk_as_usb(disk)
+        is_usb, reasons, metadata = _classify_disk_as_usb(disk, conn)
         disk_identifier = f"{disk_index}:{metadata.get('deviceId') or metadata.get('pnpDeviceId') or 'UNKNOWN'}"
 
         if not is_usb:
