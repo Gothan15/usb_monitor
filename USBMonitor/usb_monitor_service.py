@@ -2680,6 +2680,59 @@ def _scsi_disk_has_usb_parent(conn: wmi.WMI, pnp_device_id: str) -> bool:
     return verdict
 
 
+def get_connected_optical_drives(conn: wmi.WMI) -> List[Dict[str, Any]]:
+    """Unidades ópticas (CD/DVD) conectadas por USB.
+
+    Viven en Win32_CDROMDrive, fuera de Win32_DiskDrive, así que la
+    enumeración de discos nunca las veía: una grabadora USB podía
+    leer y grabar datos sin pasar por el bloqueo. Se filtran a las
+    físicas por USB (el PNPDeviceID de una óptica USB cuelga de
+    USBSTOR; las virtuales tipo Daemon Tools cuelgan de ROOT/SCSI y
+    quedan fuera). Devuelven la misma forma de dict que los discos:
+    el bloqueo es el PnP de siempre (el respaldo de solo lectura de
+    diskpart no aplica a un CD, y si PnP falla el bloqueo falla y se
+    registra como tal). El serial es el de la UNIDAD, no el del
+    disco metido en ella: la lista blanca registra el aparato.
+    """
+    optical: List[Dict[str, Any]] = []
+    try:
+        for cd in conn.Win32_CDROMDrive():
+            pnp_id = (getattr(cd, "PNPDeviceID", None) or "").strip()
+            if not pnp_id:
+                continue
+            upper = pnp_id.upper()
+            if "USBSTOR" not in upper and not upper.startswith("USB\\"):
+                continue
+            letter = sanitize_drive_letter(getattr(cd, "Drive", None))
+            if not letter:
+                continue
+            serial = extract_serial_from_device_id(pnp_id)
+            model = (getattr(cd, "Name", None) or getattr(cd, "Caption", None) or "Unidad óptica USB").strip()
+            optical.append(
+                {
+                    "driveLetter": letter,
+                    "volumeName": (getattr(cd, "VolumeName", None) or "").strip(),
+                    "serialNumber": serial,
+                    "model": model,
+                    "size": 0,
+                    "fileSystem": "",
+                    "mediaType": "CD-ROM",
+                    "interfaceType": "USB",
+                    "busType": None,
+                    "capabilities": [],
+                    "pnpDeviceId": pnp_id,
+                    "detectionReasons": ["Unidad óptica USB (Win32_CDROMDrive)"],
+                }
+            )
+            LOGGER.debug(
+                "    Óptica USB detectada: %s %s (serial %s)",
+                letter, model, serial,
+            )
+    except Exception as exc:
+        LOGGER.warning("    Error enumerando unidades ópticas: %s", exc)
+    return optical
+
+
 def _classify_disk_as_usb(disk: Any, conn: Optional[wmi.WMI] = None) -> Tuple[bool, List[str], Dict[str, Any]]:
     interface_type_raw = getattr(disk, "InterfaceType", None)
     interface_type = str(interface_type_raw).strip() if interface_type_raw else ""
@@ -2867,6 +2920,8 @@ def get_connected_usb_drives(conn: wmi.WMI) -> list:
                     free_space,
                 )
 
+    # Las unidades ópticas no son Win32_DiskDrive: van por su clase.
+    usb_drives.extend(get_connected_optical_drives(conn))
     return usb_drives
 
 
