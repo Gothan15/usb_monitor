@@ -33,6 +33,24 @@ def test_config_guardar_y_releer(tmp_path, monkeypatch):
     assert config.host_servidor() == "1.2.3.4"
 
 
+def test_config_migra_del_entorno_una_sola_vez(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "directorio_app", lambda: tmp_path)
+    monkeypatch.setattr(config, "PROGRAM_DATA_DIR", tmp_path / "pd")
+    monkeypatch.setenv("USB_MONITOR_SERVER_HOST", "10.9.9.9")
+    monkeypatch.setenv("USB_MONITOR_AGENT_TOKEN", "tok-legado")
+    config._cache.update(ruta=None, mtime=None, datos={})
+    config._migracion_intentada = False
+    # Sin server.json, la primera lectura vuelca el entorno al archivo.
+    assert config.host_servidor() == "10.9.9.9"
+    datos = json.loads((tmp_path / "server.json").read_text(encoding="utf-8"))
+    assert datos["serverHost"] == "10.9.9.9"
+    assert datos["agentToken"] == "tok-legado"
+    # Despues, el entorno ya no manda: manda el archivo.
+    monkeypatch.setenv("USB_MONITOR_SERVER_HOST", "10.1.1.1")
+    config._cache.update(ruta=None, mtime=None, datos={})
+    assert config.host_servidor() == "10.9.9.9"
+
+
 # ── diario ────────────────────────────────────────────────────────
 
 def test_diario_restaurar_solo_lo_confirmado(tmp_path):

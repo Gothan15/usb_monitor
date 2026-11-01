@@ -1,9 +1,15 @@
 # -*- coding: utf-8 -*-
-"""Servicio USBMonitor v2 — proceso principal del agente.
+"""USBMonitor v2 — UN solo ejecutable para todo el agente.
 
-Un solo ejecutable, varios modos:
-  (servicio)   sin argumentos bajo el SCM de Windows
-  gui          ventana de gestión (sección 8 de la especificación)
+Modos según el primer argumento:
+  (ninguno)    el servicio, bajo el SCM de Windows (o la gestión si
+               se lanza a mano con doble clic)
+  gui          la caja de herramientas del administrador: estado,
+               servidor, credencial, control del servicio, accesos
+               al compañero y al visor, registro y Restaurar todo
+  prompt       el compañero (la ventana de la contraseña); lo
+               arranca la tarea de inicio de sesión
+  visor        el visor de seriales
   restaurar    revierte todo lo del diario y sale (lo usa el
                desinstalador antes de quitar el servicio)
   debug        el agente en consola, para depurar
@@ -565,7 +571,43 @@ except Exception:  # pragma: no cover - fuera de Windows
     ServicioUSBMonitor = None  # type: ignore
 
 
-# ══ Ventana de gestión (modo gui) ════════════════════════════════
+# ══ Ventana de gestión (modo gui): la caja de herramientas ═══════
+
+def _estado_servicio() -> str:
+    try:
+        import win32service
+
+        scm = win32service.OpenSCManager(
+            None, None, win32service.SC_MANAGER_CONNECT
+        )
+        try:
+            svc = win32service.OpenService(
+                scm, "USBMonitorService", win32service.SERVICE_QUERY_STATUS
+            )
+        except Exception:
+            return "no instalado"
+        estado = win32service.QueryServiceStatus(svc)[1]
+        return {
+            win32service.SERVICE_RUNNING: "en ejecución",
+            win32service.SERVICE_STOPPED: "detenido",
+            win32service.SERVICE_START_PENDING: "arrancando…",
+            win32service.SERVICE_STOP_PENDING: "deteniéndose…",
+            win32service.SERVICE_PAUSED: "en pausa",
+        }.get(estado, "desconocido")
+    except Exception:
+        return "sin acceso"
+
+
+def _control_servicio(accion: str) -> None:
+    import win32serviceutil
+
+    if accion == "start":
+        win32serviceutil.StartService("USBMonitorService")
+    elif accion == "stop":
+        win32serviceutil.StopService("USBMonitorService")
+    elif accion == "restart":
+        win32serviceutil.RestartService("USBMonitorService")
+
 
 def ejecutar_gui() -> None:
     """Instrumento de seguridad: grafito y acero, datos en
@@ -587,7 +629,7 @@ def ejecutar_gui() -> None:
     ventana = tk.Tk()
     ventana.title("USBMonitor — Gestión del agente")
     ventana.configure(bg=FONDO)
-    ventana.geometry("560x520")
+    ventana.geometry("560x600")
     ventana.resizable(False, False)
     try:
         ventana.iconbitmap(str(Path(__file__).with_name("usb_monitor_service.ico")))
@@ -607,6 +649,8 @@ def ejecutar_gui() -> None:
         ventana, textvariable=estado_var, font=MONO, fg=TENUE, bg=FONDO, anchor="w"
     ).pack(anchor="w", padx=18)
 
+    servicio_var = tk.StringVar(value="servicio: …")
+
     def refrescar_estado():
         diario = Diario().estado()
         n = len(diario["dispositivos_deshabilitados"])
@@ -620,7 +664,47 @@ def ejecutar_gui() -> None:
             f"● servidor {config.url_base()} · bloqueados ahora: {bloqueados}"
             f" · nodos por restaurar: {n}"
         )
+        servicio_var.set(f"servicio: {_estado_servicio()}")
         ventana.after(4000, refrescar_estado)
+
+    # Control del servicio y accesos (la «caja de herramientas»)
+    marco0 = tk.LabelFrame(
+        ventana, text=" Servicio y herramientas ", font=NORMAL, fg=TENUE,
+        bg=FONDO, bd=1, relief="solid",
+    )
+    marco0.pack(fill="x", padx=18, pady=(10, 2))
+    tk.Label(
+        marco0, textvariable=servicio_var, font=MONO, fg=TEXTO, bg=FONDO
+    ).pack(anchor="w", padx=10, pady=(6, 2))
+    fila0 = tk.Frame(marco0, bg=FONDO)
+    fila0.pack(fill="x", padx=10, pady=(2, 8))
+
+    def controlar(accion):
+        try:
+            _control_servicio(accion)
+        except Exception as exc:
+            messagebox.showwarning(
+                "Servicio",
+                f"No se pudo {accion} el servicio (¿falta administrador?): {exc}",
+            )
+        ventana.after(800, refrescar_estado)
+
+    for texto, accion in (("Iniciar", "start"), ("Detener", "stop"),
+                          ("Reiniciar", "restart")):
+        tk.Button(
+            fila0, text=texto, command=lambda a=accion: controlar(a),
+            bg=PANEL, fg=TEXTO, font=NORMAL, bd=0, padx=10, pady=4,
+        ).pack(side="left", padx=(0, 6))
+    tk.Button(
+        fila0, text="Compañero",
+        command=lambda: _lanzar_modo("prompt"),
+        bg=PANEL, fg=TEXTO, font=NORMAL, bd=0, padx=10, pady=4,
+    ).pack(side="left", padx=(6, 6))
+    tk.Button(
+        fila0, text="Visor de seriales",
+        command=lambda: _lanzar_modo("visor"),
+        bg=PANEL, fg=TEXTO, font=NORMAL, bd=0, padx=10, pady=4,
+    ).pack(side="left")
 
     # Servidor
     marco = tk.LabelFrame(
@@ -762,10 +846,31 @@ def ejecutar_gui() -> None:
 
 # ══ Entrada ══════════════════════════════════════════════════════
 
+def _lanzar_modo(modo: str) -> None:
+    """Abre otro modo de ESTE ejecutable (compañero, visor)."""
+    import subprocess
+
+    if getattr(sys, "frozen", False):
+        comando = [sys.executable, modo]
+    else:
+        comando = [sys.executable, str(Path(__file__).resolve()), modo]
+    subprocess.Popen(comando, close_fds=True)
+
+
 def main() -> None:
     argumentos = sys.argv[1:]
     if argumentos and argumentos[0] == "gui":
         ejecutar_gui()
+        return
+    if argumentos and argumentos[0] == "prompt":
+        import companero
+
+        companero.main()
+        return
+    if argumentos and argumentos[0] == "visor":
+        import visor
+
+        visor.main()
         return
     if argumentos and argumentos[0] == "restaurar":
         resumen = restaurar_sin_servicio()

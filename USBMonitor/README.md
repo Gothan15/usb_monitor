@@ -4,13 +4,24 @@ Reescritura del agente de Windows (2026-11-01). La especificación
 completa está en el documento de diseño del proyecto; este README
 cubre el uso diario.
 
-## Los programas
+## Un solo ejecutable
 
-| Ejecutable | Qué hace |
+Todo el agente es `USBMonitorService.exe`; el modo depende del
+primer argumento:
+
+| Modo | Qué hace |
 |---|---|
-| `USBMonitorService.exe` | El servicio. Sin argumentos corre como servicio; `gui` abre la ventana de gestión; `restaurar` revierte todo lo que el agente haya deshabilitado y sale; `debug` lo ejecuta en consola. |
-| `USBMonitorPrompt.exe` | El compañero: muestra la ventana de la contraseña cuando hay un dispositivo bloqueado. Se registra al iniciar sesión. |
-| `USBSerialViewer.exe` | Lista los dispositivos conectados con su serial, para llevarlo a la lista blanca. |
+| *(sin argumentos)* | El servicio, bajo el control de Windows. |
+| `gui` | La caja de herramientas del administrador: estado y control del servicio (iniciar/detener/reiniciar), servidor, credencial, accesos al compañero y al visor, registro y **Restaurar todo**. |
+| `prompt` | El compañero: la ventana de la contraseña cuando hay un dispositivo bloqueado. Lo arranca la tarea de inicio de sesión. |
+| `visor` | Lista los dispositivos conectados con su serial, para llevarlo a la lista blanca. |
+| `restaurar` | Revierte todo lo que el agente haya deshabilitado y sale (lo usa el desinstalador). |
+| `debug` | El agente en consola, para depurar. |
+
+La configuración vive solo en `server.json`: el agente no usa
+variables de entorno del sistema ni del usuario. Si encuentra una
+instalación de la v1 configurada por entorno, la vuelca a
+`server.json` en el primer arranque y no vuelve a leerla.
 
 ## Compilar
 

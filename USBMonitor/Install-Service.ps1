@@ -31,7 +31,6 @@ param(
 $ErrorActionPreference = "Stop"
 $serviceName = "USBMonitorService"
 $serviceExe = Join-Path $InstallDir "USBMonitorService.exe"
-$promptExe = Join-Path $InstallDir "USBMonitorPrompt.exe"
 $taskName = "USBMonitorCompanero"
 
 function Assert-Admin {
@@ -77,7 +76,6 @@ if ($Uninstall) {
 
 Write-Host "Instalando el agente USBMonitor v2 en $InstallDir..." -ForegroundColor Cyan
 $srcService = Find-BuiltExe "USBMonitorService.exe" "dist"
-$srcPrompt = Find-BuiltExe "USBMonitorPrompt.exe" "dist_usb_prompt"
 
 $existing = Get-Service $serviceName -ErrorAction SilentlyContinue
 if ($existing) {
@@ -88,10 +86,6 @@ if ($existing) {
 
 New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
 Copy-Item $srcService -Destination $serviceExe -Force
-Copy-Item $srcPrompt -Destination $promptExe -Force
-$srcViewer = $null
-try { $srcViewer = Find-BuiltExe "USBSerialViewer.exe" "dist_usb_serial_viewer" } catch { }
-if ($srcViewer) { Copy-Item $srcViewer -Destination (Join-Path $InstallDir "USBSerialViewer.exe") -Force }
 
 $cfg = @{
     serverHost   = $ServerHost
@@ -109,7 +103,8 @@ if (-not $AgentToken -and -not $ApiKey) {
 & $serviceExe install --startup auto | Out-Null
 & sc.exe failure $serviceName reset= 86400 actions= restart/60000/restart/60000/restart/60000 | Out-Null
 
-$action = New-ScheduledTaskAction -Execute $promptExe
+# El companero es el mismo ejecutable en modo prompt.
+$action = New-ScheduledTaskAction -Execute $serviceExe -Argument "prompt"
 $trigger = New-ScheduledTaskTrigger -AtLogOn
 $principalTask = New-ScheduledTaskPrincipal -GroupId "S-1-5-32-545" -RunLevel Limited
 Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principalTask -Force | Out-Null

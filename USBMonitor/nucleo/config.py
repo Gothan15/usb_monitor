@@ -1,15 +1,18 @@
 # -*- coding: utf-8 -*-
 """Configuración del agente.
 
-Precedencia: `server.json` (junto al ejecutable, o en ProgramData)
-> variables de entorno USB_MONITOR_* > valores por defecto.
+La configuración vive SOLO en `server.json` (junto al ejecutable, o
+en ProgramData): la v2 no usa variables de entorno del sistema ni
+del usuario para configurarse. Las variables USB_MONITOR_* de la v1
+se migran al archivo una única vez, al primer arranque sin
+server.json, y después se ignoran.
 
 Claves del archivo: serverHost, serverPort, serverScheme, agentToken,
-apiKey. Los valores agentToken/apiKey aceptan el cifrado ENC: de la
-v1 (Fernet con clave derivada de la máquina), que aquí se replica
-exacto para no romper instalaciones existentes; un ENC: que no se
-puede descifrar se descarta (fail-closed), nunca se usa como
-credencial.
+apiKey, sslCert, sslVerify. Los valores agentToken/apiKey aceptan el
+cifrado ENC: de la v1 (Fernet con clave derivada de la máquina), que
+aquí se replica exacto para no romper instalaciones existentes; un
+ENC: que no se puede descifrar se descarta (fail-closed), nunca se
+usa como credencial.
 
 Concurrencia: la lectura se cachea por (ruta, mtime); la escritura es
 atómica (temporal + os.replace) y va bajo un lock del módulo.
@@ -112,8 +115,59 @@ def _rutas_candidatas() -> list[Path]:
     return rutas
 
 
+_MIGRACION = {
+    # variable de entorno de la v1 -> clave de server.json
+    "USB_MONITOR_SERVER_HOST": "serverHost",
+    "USB_MONITOR_SERVER_PORT": "serverPort",
+    "USB_MONITOR_SERVER_SCHEME": "serverScheme",
+    "USB_MONITOR_AGENT_TOKEN": "agentToken",
+    "USB_MONITOR_API_KEY": "apiKey",
+    "USB_MONITOR_SSL_CERT": "sslCert",
+}
+_migracion_intentada = False
+
+
+def _migrar_desde_entorno() -> None:
+    """Migración única v1 -> v2: si no hay server.json pero el
+    entorno trae la configuración antigua, se vuelca al archivo y
+    el entorno deja de leerse. Así ninguna instalación pierde su
+    configuración y ningún PC nuevo necesita variables del sistema.
+    """
+    global _migracion_intentada
+    if _migracion_intentada:
+        return
+    _migracion_intentada = True
+    datos: Dict[str, Any] = {}
+    for variable, clave in _MIGRACION.items():
+        valor = os.environ.get(variable, "").strip()
+        if valor:
+            datos[clave] = int(valor) if clave == "serverPort" and valor.isdigit() else valor
+    if os.environ.get("USB_MONITOR_SSL_VERIFY", "").lower() == "false":
+        datos["sslVerify"] = False
+    if not datos:
+        return
+    if guardar(datos):
+        LOG.info("Configuración migrada del entorno a server.json")
+        return
+    # La carpeta del ejecutable no admitió la escritura: a ProgramData.
+    try:
+        destino = PROGRAM_DATA_DIR / "server.json"
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        temporal = destino.with_suffix(".json.tmp")
+        temporal.write_text(json.dumps(datos, indent=2), encoding="utf-8")
+        os.replace(temporal, destino)
+        LOG.info("Configuración migrada del entorno a %s", destino)
+    except Exception as exc:
+        LOG.warning("Migración de configuración imposible: %s", exc)
+
+
 def cargar() -> Dict[str, Any]:
-    """Contenido del primer server.json legible ({} si no hay)."""
+    """Contenido del primer server.json legible ({} si no hay).
+
+    La configuración vive SOLO en el archivo (v2): no se lee ninguna
+    variable de entorno de configuración; las de la v1 se migran una
+    sola vez con _migrar_desde_entorno().
+    """
     for ruta in _rutas_candidatas():
         try:
             if not ruta.is_file():
@@ -130,6 +184,19 @@ def cargar() -> Dict[str, Any]:
             return dict(datos)
         except Exception as exc:
             LOG.warning("server.json ilegible en %s: %s", ruta, exc)
+    _migrar_desde_entorno()
+    return cargar_sin_migrar()
+
+
+def cargar_sin_migrar() -> Dict[str, Any]:
+    for ruta in _rutas_candidatas():
+        try:
+            if ruta.is_file():
+                datos = json.loads(ruta.read_text(encoding="utf-8"))
+                if isinstance(datos, dict):
+                    return datos
+        except Exception:
+            pass
     return {}
 
 
@@ -161,17 +228,17 @@ def guardar(actualizaciones: Dict[str, Any]) -> bool:
             return False
 
 
-def _texto(clave_archivo: str, variable: str, defecto: str = "") -> str:
+def _texto(clave_archivo: str, defecto: str = "") -> str:
     valor = cargar().get(clave_archivo)
     if isinstance(valor, str) and valor.strip():
         return valor.strip()
-    return os.environ.get(variable, defecto).strip()
+    return defecto
 
 
-# ── Valores efectivos ──────────────────────────────────────────────
+# ── Valores efectivos (solo server.json) ───────────────────────────
 
 def host_servidor() -> str:
-    return _texto("serverHost", "USB_MONITOR_SERVER_HOST", DEFAULT_HOST) or DEFAULT_HOST
+    return _texto("serverHost", DEFAULT_HOST) or DEFAULT_HOST
 
 
 def puerto_servidor() -> int:
@@ -181,16 +248,11 @@ def puerto_servidor() -> int:
             return int(bruto)
         except (TypeError, ValueError):
             LOG.warning("serverPort inválido en server.json: %r", bruto)
-    try:
-        return int(os.environ.get("USB_MONITOR_SERVER_PORT", str(DEFAULT_PORT)))
-    except ValueError:
-        return DEFAULT_PORT
+    return DEFAULT_PORT
 
 
 def esquema_servidor() -> str:
-    esquema = (
-        _texto("serverScheme", "USB_MONITOR_SERVER_SCHEME", "http") or "http"
-    ).lower()
+    esquema = (_texto("serverScheme", "http") or "http").lower()
     return esquema if esquema in ("http", "https") else "http"
 
 
@@ -198,24 +260,23 @@ def url_base() -> str:
     return f"{esquema_servidor()}://{host_servidor()}:{puerto_servidor()}"
 
 
-def verificar_tls() -> bool:
-    if esquema_servidor() == "http":
-        return True
-    certificado = os.environ.get("USB_MONITOR_SSL_CERT", "").strip()
-    if certificado and Path(certificado).is_file():
-        return True  # requests acepta la ruta; ver api.py para el bundle
-    return os.environ.get("USB_MONITOR_SSL_VERIFY", "true").lower() != "false"
-
-
 def certificado_tls() -> Optional[str]:
-    certificado = os.environ.get("USB_MONITOR_SSL_CERT", "").strip()
+    certificado = _texto("sslCert")
     if certificado and Path(certificado).is_file():
         return certificado
     return None
 
 
+def verificar_tls() -> bool:
+    if esquema_servidor() == "http":
+        return True
+    if certificado_tls():
+        return True  # api.py pasa la ruta del certificado como verify
+    return cargar().get("sslVerify") is not False
+
+
 def token_agente() -> Optional[str]:
-    bruto = _texto("agentToken", "USB_MONITOR_AGENT_TOKEN")
+    bruto = _texto("agentToken")
     if not bruto:
         return None
     limpio = descifrar(bruto).strip()
@@ -223,7 +284,7 @@ def token_agente() -> Optional[str]:
 
 
 def clave_api() -> Optional[str]:
-    bruto = _texto("apiKey", "USB_MONITOR_API_KEY")
+    bruto = _texto("apiKey")
     if not bruto:
         return None
     if bruto.lower().startswith("apikey "):
