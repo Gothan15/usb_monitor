@@ -508,10 +508,16 @@ PENDING_LOCAL_FILE = (PROGRAM_DATA_DIR / "pending_local.json").resolve()
 COMPANION_IMAGE_NAME = "USBMonitorPrompt.exe"
 COMPANION_TASK_NAME = "USBMonitorPrompt"
 COMPANION_WATCHDOG_INTERVAL = 15.0  # segundos entre comprobaciones del compañero
-# Fase 2: métodos de bloqueo por unidad. Primero se intenta deshabilitar
-# el dispositivo PnP (bloqueo fuerte); si no se puede, se cae al solo
-# lectura de diskpart de siempre. El método aplicado se registra por
-# unidad para revertir exactamente lo que se hizo.
+# Métodos de bloqueo por unidad. Orden de intento: primero el
+# VOLUMEN (lock + dismount con handle retenido: ilegible e
+# inescribible, verificado con una sonda), luego deshabilitar el
+# dispositivo PnP y, como último respaldo, el solo lectura de
+# diskpart (que impide escribir pero deja leer: es un bloqueo
+# degradado). El método aplicado se registra por unidad para
+# revertir exactamente lo que se hizo. El orden cambió tras la
+# prueba en PC del 2026-11-01: PnP «con éxito» no desmontó la
+# memoria y el solo lectura la dejaba leer entera.
+BLOCK_METHOD_VOLUME = "VOLUME"
 BLOCK_METHOD_PNP = "PNP"
 BLOCK_METHOD_READONLY = "READONLY"
 # El permiso de una unidad desbloqueada con contraseña vive hasta que se
@@ -1566,17 +1572,157 @@ def lock_session_on_insert_if_enabled() -> None:
         LOGGER.warning("    ⚠ No se pudo bloquear la sesión de Windows: %s", exc)
 
 
+# ---------------------------------------------------------------------------
+# Bloqueo por volumen (FSCTL_LOCK_VOLUME + FSCTL_DISMOUNT_VOLUME)
+#
+# El servicio abre el volumen (\\.\X:), lo bloquea y lo desmonta, y
+# CONSERVA el handle abierto mientras dura el bloqueo: con el handle
+# retenido, Windows no remonta el volumen y cualquier intento de
+# leer o escribir en la unidad falla. Al cerrar el handle (al
+# desbloquear o al limpiar una retirada), el volumen se remonta
+# solo. Es la ruta fuerte en modo usuario, sin driver.
+# ---------------------------------------------------------------------------
+
+FSCTL_LOCK_VOLUME = 0x00090018
+FSCTL_DISMOUNT_VOLUME = 0x00090020
+
+# Handles retenidos por letra corta («E»). Si el servicio se
+# reinicia, los handles mueren con el proceso y el volumen se
+# remonta; el Boot Sweep vuelve a bloquearlo al arrancar.
+_VOLUME_LOCKS: Dict[str, int] = {}
+_VOLUME_LOCKS_GUARD = threading.Lock()
+
+
+def _open_volume_handle(letter_key: str) -> Optional[int]:
+    """Abre el volumen de la letra dada y devuelve su handle (o None)."""
+    try:
+        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+        kernel32.CreateFileW.restype = ctypes.c_void_p
+        handle = kernel32.CreateFileW(
+            f"\\\\.\\{letter_key}:",
+            0xC0000000,  # GENERIC_READ | GENERIC_WRITE
+            0x00000003,  # FILE_SHARE_READ | FILE_SHARE_WRITE
+            None,
+            3,  # OPEN_EXISTING
+            0,
+            None,
+        )
+        if not handle or int(handle) == (1 << 64) - 1:  # INVALID_HANDLE_VALUE
+            return None
+        return int(handle)
+    except Exception as exc:
+        LOGGER.debug("No se pudo abrir el volumen %s: %s", letter_key, exc)
+        return None
+
+
+def _volume_ioctl(handle: int, control_code: int) -> bool:
+    """DeviceIoControl sin buffers (lock/dismount no los necesitan)."""
+    try:
+        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+        returned = ctypes.c_ulong(0)
+        ok = kernel32.DeviceIoControl(
+            handle, control_code, None, 0, None, 0, ctypes.byref(returned), None
+        )
+        return bool(ok)
+    except Exception:
+        return False
+
+
+def _close_volume_handle(handle: int) -> None:
+    try:
+        ctypes.windll.kernel32.CloseHandle(handle)  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
+
+def _volume_is_accessible(drive_letter: str) -> bool:
+    """Sonda de verificación: ¿se puede listar la raíz de la unidad?"""
+    try:
+        os.listdir(f"{drive_letter}\\")
+        return True
+    except OSError:
+        return False
+
+
+def lock_and_dismount_volume(
+    drive_letter: str, attempts: int = 8, delay_s: float = 0.4
+) -> Tuple[bool, str]:
+    """Bloquea el VOLUMEN de la unidad y retiene el handle.
+
+    Se reintenta el lock unas veces (el explorador, el antivirus o
+    el indexador pueden tener handles abiertos un instante) y al
+    final se VERIFICA con una sonda de lectura: si la raíz aún se
+    puede listar, el bloqueo no existe y se devuelve fallo, para
+    que apply_block caiga al siguiente método en vez de dar por
+    bloqueado lo que sigue abierto.
+    """
+    key = _drive_key(drive_letter)
+    if not key:
+        return False, "letra de unidad vacía"
+    with _VOLUME_LOCKS_GUARD:
+        if key in _VOLUME_LOCKS:
+            return True, f"el volumen {drive_letter} ya estaba bloqueado"
+    handle = _open_volume_handle(key)
+    if handle is None:
+        return False, f"no se pudo abrir el volumen {drive_letter}"
+    try:
+        locked = False
+        for _ in range(max(1, attempts)):
+            if _volume_ioctl(handle, FSCTL_LOCK_VOLUME):
+                locked = True
+                break
+            time.sleep(delay_s)
+        if not locked:
+            _close_volume_handle(handle)
+            return False, f"no se pudo bloquear (lock) el volumen {drive_letter}"
+        if not _volume_ioctl(handle, FSCTL_DISMOUNT_VOLUME):
+            _close_volume_handle(handle)
+            return False, f"no se pudo desmontar el volumen {drive_letter}"
+    except Exception as exc:
+        _close_volume_handle(handle)
+        return False, f"error bloqueando el volumen {drive_letter}: {exc}"
+    time.sleep(0.2)
+    if _volume_is_accessible(drive_letter):
+        _close_volume_handle(handle)
+        return False, f"el volumen {drive_letter} sigue accesible tras desmontarlo"
+    with _VOLUME_LOCKS_GUARD:
+        _VOLUME_LOCKS[key] = handle
+    return True, f"volumen {drive_letter} bloqueado y desmontado (handle retenido)"
+
+
+def release_volume_lock(drive_letter: str) -> Tuple[bool, str]:
+    """Suelta el handle retenido: Windows remonta el volumen solo."""
+    key = _drive_key(drive_letter)
+    with _VOLUME_LOCKS_GUARD:
+        handle = _VOLUME_LOCKS.pop(key, None)
+    if handle is None:
+        return True, f"sin handle retenido para {drive_letter} (ya remontado)"
+    _close_volume_handle(handle)
+    return True, f"volumen {drive_letter} liberado (handle cerrado; se remonta solo)"
+
+
 def apply_block(
     drive_letter: Optional[str],
     conn: wmi.WMI,
     pnp_device_id: Optional[str] = None,
 ) -> Tuple[Optional[str], bool, str, str]:
-    """Bloquea una unidad (Fase 2): primero PnP, diskpart de respaldo.
+    """Bloquea una unidad: primero el VOLUMEN, luego PnP, diskpart al final.
 
     Devuelve (letra, ok, detalle, método), donde método es
-    BLOCK_METHOD_PNP o BLOCK_METHOD_READONLY según lo que realmente
-    se aplicó, para poder revertir lo correcto al desbloquear.
+    BLOCK_METHOD_VOLUME, BLOCK_METHOD_PNP o BLOCK_METHOD_READONLY
+    según lo que realmente se aplicó, para poder revertir lo
+    correcto al desbloquear.
     """
+    if drive_letter:
+        vol_ok, vol_msg = lock_and_dismount_volume(drive_letter)
+        if vol_ok:
+            LOGGER.info("    ✓ Volumen bloqueado y desmontado | %s", vol_msg)
+            lock_session_on_insert_if_enabled()
+            return drive_letter, True, vol_msg, BLOCK_METHOD_VOLUME
+        LOGGER.warning(
+            "    ⚠ No se pudo bloquear el volumen (%s); se intenta PnP",
+            vol_msg,
+        )
     if pnp_device_id:
         pnp_ok, pnp_msg = disable_pnp_device(pnp_device_id)
         if pnp_ok:
@@ -4063,8 +4209,9 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
     ) -> bool:
         """Revierte el bloqueo de una unidad según el método aplicado (Fase 2).
 
-        PNP -> Enable-PnpDevice vía pnputil; READONLY -> unlock_usb de
-        siempre. Si el método se desconoce (p. ej. el servicio se
+        VOLUME -> cerrar el handle retenido (el volumen se remonta
+        solo); PNP -> Enable-PnpDevice vía pnputil; READONLY ->
+        unlock_usb de siempre. Si el método se desconoce (p. ej. el servicio se
         reinició y solo queda el registro local, o ni eso), se intenta
         rehabilitar por PnP si hay instancia guardada y después el
         desbloqueo por solo lectura.
@@ -4086,7 +4233,15 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
         )
 
         success: bool
-        if method == BLOCK_METHOD_PNP:
+        if method == BLOCK_METHOD_VOLUME:
+            success, _vol_msg = release_volume_lock(drive_letter)
+            if not success:
+                LOGGER.warning(
+                    "  ⚠ No se pudo soltar el volumen %s; último recurso: quitar solo lectura",
+                    drive_letter,
+                )
+                success = unlock_usb(drive_letter, conn)
+        elif method == BLOCK_METHOD_PNP:
             success = False
             if pnp_id:
                 success, _pnp_msg = enable_pnp_device(pnp_id)
@@ -4186,6 +4341,12 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                 "  [Retirada] Estaba desbloqueada: el permiso muere al extraerla; "
                 "si se vuelve a conectar, se bloqueará y pedirá la contraseña de nuevo"
             )
+
+        # Si quedaba un handle de volumen retenido (bloqueo por
+        # volumen), se suelta: el dispositivo nunca se deshabilitó,
+        # así que no hay nada que reactivar para futuras inserciones.
+        if key in _VOLUME_LOCKS:
+            release_volume_lock(drive_letter)
 
         # Si seguía bloqueada por PnP, se intenta reactivar el
         # dispositivo aunque ya no esté presente: así una futura
