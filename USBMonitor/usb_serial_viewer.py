@@ -4,20 +4,20 @@ Requisitos de ejecucion directa:
     pip install wmi pywin32
 
 El script esta pensado para convertirse en un ejecutable (por ejemplo con
-PyInstaller o Nuitka). Proporciona una interfaz Fluent (Windows 11, pywebview sin
-tkinter) para inspeccionar unidades conectadas por USB y ver sus
-numeros de serie.
+PyInstaller o Nuitka). Proporciona una interfaz grafica simple basada en Tkinter
+que permite inspeccionar unidades conectadas por USB y ver sus numeros de
+serie.
 """
 from __future__ import annotations
 
-import json
 import logging
-import subprocess
 import re
 import threading
 from dataclasses import dataclass
 from typing import Iterable, List, Optional, Sequence
 
+import tkinter as tk
+from tkinter import messagebox, ttk
 
 try:  # type: ignore
     import pythoncom  # type: ignore
@@ -28,8 +28,6 @@ except ImportError as exc:  # pragma: no cover - dependencias externas
     IMPORT_ERROR = exc
 else:
     IMPORT_ERROR = None
-
-from fluent_ui import create_window as fluent_window, fluent_page, start as fluent_start
 
 LOGGER = logging.getLogger("usb_serial_viewer")
 logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(message)s")
@@ -159,141 +157,136 @@ def collect_usb_devices() -> List[USBDevice]:
         pythoncom.CoUninitialize()
 
 
-# ---------------------------------------------------------------------------
-# Interfaz Fluent (pywebview): tabla de dispositivos y copia del serial
-# ---------------------------------------------------------------------------
-
-_PAGE_JS = """
-const $=id=>document.getElementById(id);
-let seleccionado='';
-function estado(msg){$('estado').textContent=msg;}
-function renderDevices(devices){
-  const tb=$('cuerpo'); tb.innerHTML=''; seleccionado='';
-  for(const d of devices){
-    const tr=document.createElement('tr'); tr.className='fila-dato';
-    tr.onclick=()=>{document.querySelectorAll('tr.seleccionada').forEach(x=>x.classList.remove('seleccionada'));
-      tr.classList.add('seleccionada'); seleccionado=d.serial;};
-    for(const v of [d.serial, d.letters, d.size, d.model]){
-      const td=document.createElement('td'); td.textContent=v; tr.appendChild(td);}
-    tb.appendChild(tr);
-  }
-  estado(devices.length ? ('Se detectaron '+devices.length+' dispositivo(s) USB.')
-                         : 'No se detectaron dispositivos USB.');
-  $('actualizar').disabled=false;
-}
-function renderError(msg){ estado('Error al escanear: '+msg); $('actualizar').disabled=false; }
-function refrescar(){ $('actualizar').disabled=true; estado('Escaneando dispositivos USB…');
-  window.pywebview.api.refresh(); }
-async function copiar(){
-  if(!seleccionado){ estado('Selecciona un dispositivo para copiar su serial.'); return; }
-  const ok=await window.pywebview.api.copy_serial(seleccionado);
-  estado(ok ? 'Serial copiado al portapapeles.' : 'No se pudo copiar el serial.');
-}
-window.addEventListener('pywebviewready', refrescar);
-"""
-
-
-def _viewer_page() -> str:
-    body = """
-    <h1>USB Serial Inspector</h1>
-    <p class="sub">Unidades USB conectadas y sus números de serie.
-    Haz clic en una fila para seleccionarla y copiar su serial.</p>
-    <div class="tarjeta" style="padding:6px 12px">
-      <table>
-        <thead><tr><th>Serial</th><th>Letras</th><th>Tamaño</th><th>Modelo</th></tr></thead>
-        <tbody id="cuerpo"></tbody>
-      </table>
-    </div>
-    <div class="fila">
-      <button class="acento" id="actualizar" onclick="refrescar()">Actualizar</button>
-      <button onclick="copiar()">Copiar serial</button>
-    </div>
-    <div class="estado" id="estado">Listo</div>
-    """
-    return fluent_page(body, extra_js=_PAGE_JS)
-
-
-class ViewerApi:
-    """Puente JS->Python del visor."""
-
+class USBSerialViewer(tk.Tk):
     def __init__(self) -> None:
-        self.window = None
-        self._refreshing = False
+        super().__init__()
+        self.title("USB Serial Inspector")
+        self.geometry("720x360")
+        self.resizable(True, True)
 
-    def refresh(self) -> None:
-        if self._refreshing:
+        self._create_widgets()
+        self.after(100, self.refresh_devices)
+
+    def _create_widgets(self) -> None:
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
+
+        self.tree = ttk.Treeview(
+            self,
+            columns=("serial", "letters", "size", "model"),
+            show="headings",
+        )
+        self.tree.heading("serial", text="Serial")
+        self.tree.heading("letters", text="Letras")
+        self.tree.heading("size", text="Tamano")
+        self.tree.heading("model", text="Modelo")
+        self.tree.column("serial", width=180, anchor="w")
+        self.tree.column("letters", width=120, anchor="center")
+        self.tree.column("size", width=120, anchor="e")
+        self.tree.column("model", width=240, anchor="w")
+        self.tree.grid(row=0, column=0, sticky="nsew", padx=12, pady=(12, 6))
+
+        scrollbar = ttk.Scrollbar(
+            self, orient="vertical", command=self.tree.yview
+        )
+        self.tree.configure(yscrollcommand=scrollbar.set)
+        scrollbar.grid(row=0, column=1, sticky="ns", pady=(12, 6))
+
+        btn_frame = ttk.Frame(self)
+        btn_frame.grid(row=1, column=0, columnspan=2, sticky="ew", padx=12, pady=6)
+        btn_frame.columnconfigure(0, weight=1)
+        btn_frame.columnconfigure(1, weight=1)
+
+        self.refresh_button = ttk.Button(
+            btn_frame, text="Actualizar", command=self.refresh_devices
+        )
+        self.refresh_button.grid(row=0, column=0, padx=(0, 6), sticky="ew")
+
+        self.copy_button = ttk.Button(
+            btn_frame, text="Copiar serial", command=self.copy_selected_serial
+        )
+        self.copy_button.grid(row=0, column=1, sticky="ew")
+
+        self.status_var = tk.StringVar(value="Listo")
+        status_bar = ttk.Label(self, textvariable=self.status_var, anchor="w")
+        status_bar.grid(row=2, column=0, columnspan=2, sticky="ew", padx=12, pady=6)
+
+    def refresh_devices(self) -> None:
+        if getattr(self, "_refresh_in_progress", False):
             return
-        self._refreshing = True
-        threading.Thread(target=self._worker, daemon=True).start()
+        self._refresh_in_progress = True
+        self.refresh_button.state(["disabled"])
+        self.status_var.set("Escaneando dispositivos USB...")
+        thread = threading.Thread(target=self._refresh_worker, daemon=True)
+        thread.start()
 
-    def _worker(self) -> None:
+    def _refresh_worker(self) -> None:
         try:
             devices = collect_usb_devices()
-            data = [
-                {
-                    "serial": d.serial,
-                    "letters": ", ".join(d.letters) if d.letters else "-",
-                    "size": format_size(d.size_bytes),
-                    "model": d.model,
-                }
-                for d in devices
-            ]
-            self._js(f"window.renderDevices && window.renderDevices({json.dumps(data)})")
         except Exception as exc:
             LOGGER.exception("Fallo al escanear dispositivos USB: %s", exc)
-            self._js(
-                "window.renderError && window.renderError("
-                f"{json.dumps(str(exc))})"
-            )
-        finally:
-            self._refreshing = False
-
-    def copy_serial(self, serial: str) -> bool:
-        if not serial:
-            return False
-        try:
-            subprocess.run(
-                ["clip"], input=str(serial), text=True, check=True,
-                capture_output=True,
-            )
-            return True
-        except Exception as exc:
-            LOGGER.warning("No se pudo copiar al portapapeles: %s", exc)
-            return False
-
-    def _js(self, code: str) -> None:
-        if self.window is None:
+            self.after(0, self._handle_refresh_error, exc)
             return
-        try:
-            self.window.evaluate_js(code)
-        except Exception:
-            pass
+        self.after(0, self._complete_refresh, devices)
+
+    def _handle_refresh_error(self, exc: Exception) -> None:
+        self._refresh_in_progress = False
+        self.refresh_button.state(["!disabled"])
+        self.status_var.set("Error al escanear. Revise el log.")
+        messagebox.showerror("USB Serial Inspector", str(exc), parent=self)
+
+    def _complete_refresh(self, devices: Sequence[USBDevice]) -> None:
+        self.tree.delete(*self.tree.get_children())
+        for device in devices:
+            letters = ", ".join(device.letters) if device.letters else "-"
+            size = format_size(device.size_bytes)
+            self.tree.insert(
+                "",
+                "end",
+                values=(device.serial, letters, size, device.model),
+                tags=(device.device_id,),
+            )
+        count = len(devices)
+        self.status_var.set(
+            "Se detectaron %d dispositivo(s) USB." % count
+            if count
+            else "No se detectaron dispositivos USB."
+        )
+        self.refresh_button.state(["!disabled"])
+        self._refresh_in_progress = False
+
+    def copy_selected_serial(self) -> None:
+        selection = self.tree.selection()
+        if not selection:
+            messagebox.showinfo(
+                "USB Serial Inspector",
+                "Seleccione un dispositivo para copiar el serial.",
+                parent=self,
+            )
+            return
+        item = self.tree.item(selection[0])
+        serial = item.get("values", [""])[0]
+        if not serial:
+            messagebox.showwarning(
+                "USB Serial Inspector",
+                "El dispositivo seleccionado no tiene serial disponible.",
+                parent=self,
+            )
+            return
+        self.clipboard_clear()
+        self.clipboard_append(serial)
+        self.status_var.set("Serial copiado al portapapeles.")
 
 
 def main() -> None:
     if IMPORT_ERROR is not None:
-        body = (
-            "<h1>USB Serial Inspector</h1><div class='tarjeta'>"
-            "<p class='sub' style='margin:0'>No se pudieron importar las "
-            "dependencias requeridas (wmi, pywin32): "
-            f"{_escape(str(IMPORT_ERROR))}</p></div>"
+        messagebox.showerror(
+            "USB Serial Inspector",
+            "No se pudieron importar las dependencias requeridas: %s" % IMPORT_ERROR,
         )
-        fluent_window("USB Serial Inspector", html=fluent_page(body),
-                      width=560, height=260, resizable=False)
-        fluent_start()
         return
-    api = ViewerApi()
-    api.window = fluent_window(
-        "USB Serial Inspector", html=_viewer_page(), js_api=api,
-        width=780, height=460,
-    )
-    fluent_start()
-
-
-def _escape(text: str) -> str:
-    import html
-
-    return html.escape(text)
+    app = USBSerialViewer()
+    app.mainloop()
 
 
 if __name__ == "__main__":
