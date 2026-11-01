@@ -55,9 +55,14 @@ server.log
 
 # pyinstaller artifacts
 USBMonitor/build/
+USBMonitor/build_usb_prompt/
 USBMonitor/build_usb_serial_viewer/
+USBMonitor/build_usb_monitor_service/
+USBMonitor/build_usb_monitor_admin/
 USBMonitor/dist/
+USBMonitor/dist_usb_prompt/
 USBMonitor/dist_usb_serial_viewer/
+USBMonitor/dist_usb_monitor_admin/
 
 seed-data.json
 /scripts
@@ -69,11 +74,11 @@ seed-data.json
 *.bk2
 /dist/
 
-# Los .spec de PyInstaller de USBMonitor son código fuente (builds del compañero y del visor)
-!USBMonitor/USBMonitorPrompt.spec
-!USBMonitor/USBSerialViewer.spec
-!USBMonitor/USBMonitorService.spec
-!USBMonitor/USBMonitorAdmin.spec
+# Los .spec de PyInstaller de USBMonitor son código fuente (viven en compilacion/)
+!USBMonitor/compilacion/USBMonitorPrompt.spec
+!USBMonitor/compilacion/USBSerialViewer.spec
+!USBMonitor/compilacion/USBMonitorService.spec
+!USBMonitor/compilacion/USBMonitorAdmin.spec
 
 # Artefactos de las pruebas en el sandbox (stubs crean rutas C:/...)
 /C:/
