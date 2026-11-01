@@ -1,4 +1,10 @@
-import { randomBytes, scryptSync, timingSafeEqual, createHmac } from "crypto";
+import {
+  randomBytes,
+  scryptSync,
+  timingSafeEqual,
+  createHmac,
+  createHash,
+} from "crypto";
 import QuickLRU from "quick-lru";
 import argon2 from "argon2";
 import { db } from "./db";
@@ -14,12 +20,12 @@ import { getCurrentTimestamp } from "./time";
 const primarySecret = process.env.SESSION_SECRET;
 if (!primarySecret) {
   throw new Error(
-    "SESSION_SECRET environment variable is required. Rotate any existing sessions after setting it."
+    "SESSION_SECRET environment variable is required. Rotate any existing sessions after setting it.",
   );
 }
 
 const rolloverSecrets = (process.env.SESSION_SECRET_ROLLOVER || "")
-  .split(/[,;\s]+/)
+  .split(/[,;]/)
   .map((value) => value.trim())
   .filter(Boolean);
 
@@ -135,7 +141,7 @@ function cacheUserRecord(user: CachedUser) {
 
 function toUserAuthIdentity(
   user: CachedUser,
-  sessionNeedsRotation?: boolean
+  sessionNeedsRotation?: boolean,
 ): UserAuthIdentity {
   return {
     type: "user",
@@ -150,7 +156,7 @@ function toUserAuthIdentity(
 }
 
 function asServiceIdentityFromAgent(
-  user: CachedUser
+  user: CachedUser,
 ): AgentServiceIdentity | null {
   if (user.role !== "user") {
     return null;
@@ -202,7 +208,7 @@ const AUTHORIZATION_HEADER_PATTERN = /^ApiKey\s+(\S+)$/i;
 const SERVICE_API_KEYS = (() => {
   const raw = process.env.SERVICE_API_KEYS || "";
   const entries = raw
-    .split(/[,\s]+/)
+    .split(",")
     .map((value) => value.trim())
     .filter(Boolean);
   const map = new Map<string, string>();
@@ -215,10 +221,56 @@ const SERVICE_API_KEYS = (() => {
   return map;
 })();
 
+/**
+ * Credencial por equipo (fase 3 del plan de desbloqueo): cada PC tiene
+ * un token propio; el servidor guarda solo su hash SHA-256 en
+ * Computer.agentTokenHash y el agente lo presenta como
+ * `Authorization: AgentToken <token>`.
+ */
+export function hashAgentToken(token: string): string {
+  return createHash("sha256").update(token, "utf8").digest("hex");
+}
+
+export function generateAgentToken(): string {
+  return randomBytes(32).toString("hex");
+}
+
+const computerTokenCache = new Map<
+  string,
+  { identity: ServiceAuthIdentity; expiresAt: number }
+>();
+
+async function authenticateAgentToken(
+  token: string,
+): Promise<ServiceAuthIdentity | null> {
+  const cached = computerTokenCache.get(token);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.identity;
+  }
+  const computer = await (db as any).computer.findFirst({
+    where: { agentTokenHash: hashAgentToken(token) },
+    select: { id: true, name: true },
+  });
+  if (!computer) {
+    return null;
+  }
+  const identity: ServiceAuthIdentity = {
+    type: "service",
+    serviceId: computer.name,
+    token,
+    computerId: computer.id,
+  };
+  computerTokenCache.set(token, {
+    identity,
+    expiresAt: Date.now() + AGENT_CACHE_TTL_MS,
+  });
+  return identity;
+}
+
 function parseCookies(headerValue: string | null): Record<string, string> {
   if (!headerValue) return {};
   const pairs = headerValue
-    .split(/; */)
+    .split(";")
     .map((chunk) => chunk.trim())
     .filter(Boolean)
     .map((cookie) => {
@@ -234,7 +286,7 @@ function safeRandomCsrfToken() {
 
 function readCsrfTokenFromRequest(
   req: Request,
-  cookies?: Record<string, string>
+  cookies?: Record<string, string>,
 ) {
   const cookieBag = cookies || parseCookies(req.headers.get("cookie"));
   return cookieBag[CSRF_COOKIE_NAME];
@@ -277,7 +329,7 @@ export function hashPasswordLegacyScrypt(password: string): string {
   const salt = randomBytes(16);
   const derived = scryptSync(password, salt, 64);
   return `${PASSWORD_HASH_PREFIX_SCRYPT}$${salt.toString(
-    "hex"
+    "hex",
   )}$${derived.toString("hex")}`;
 }
 
@@ -288,7 +340,7 @@ export async function hashPassword(password: string): Promise<string> {
 
 export async function verifyPassword(
   password: string,
-  stored: string
+  stored: string,
 ): Promise<{
   valid: boolean;
   needsRehash: boolean;
@@ -355,7 +407,7 @@ function signSession(p: SessionPayload) {
 }
 
 function verifySessionInternal(
-  token: string
+  token: string,
 ): SessionVerificationResult | null {
   const [body, sig] = token.split(".");
   if (!body || !sig) return null;
@@ -372,8 +424,8 @@ function verifySessionInternal(
     const payload = JSON.parse(
       Buffer.from(
         body.replace(/-/g, "+").replace(/_/g, "/"),
-        "base64"
-      ).toString()
+        "base64",
+      ).toString(),
     ) as SessionPayload;
     const now = Math.floor(getCurrentTimestamp() / 1000);
     if (payload.exp < now) return null;
@@ -394,7 +446,7 @@ function verifySession(token: string): SessionPayload | null {
 export function createSessionToken(
   userId: string,
   apiKey: string | null,
-  ttlSeconds = SESSION_TTL_SECONDS
+  ttlSeconds = SESSION_TTL_SECONDS,
 ) {
   const now = Math.floor(getCurrentTimestamp() / 1000);
   return signSession({
@@ -422,7 +474,7 @@ export function renewSessionToken(token: string): string | null {
 }
 
 export async function authenticateRequest(
-  req: Request
+  req: Request,
 ): Promise<AuthIdentity | null> {
   // 1) Cookie de sesión
   const cookies = parseCookies(req.headers.get("cookie"));
@@ -453,8 +505,14 @@ export async function authenticateRequest(
       }
     }
   }
-  // 2) API Key fallback
+  // 1b) Token por equipo (agente): Authorization: AgentToken <token>
   const authHeader = req.headers.get("authorization") || "";
+  const agentTokenMatch = authHeader.match(/^AgentToken\s+(\S+)$/i);
+  if (agentTokenMatch) {
+    return authenticateAgentToken(agentTokenMatch[1]);
+  }
+
+  // 2) API Key fallback
   const apiKeyMatch = authHeader.match(AUTHORIZATION_HEADER_PATTERN);
   if (apiKeyMatch) {
     const apiKey = apiKeyMatch[1];
@@ -492,7 +550,7 @@ export async function authenticateRequest(
 
 export async function requireAuth(
   req: Request,
-  options: { role?: UserRole; enforceCsrf?: boolean } = {}
+  options: { role?: UserRole; enforceCsrf?: boolean } = {},
 ): Promise<UserAuthIdentity> {
   const auth = await authenticateRequest(req);
   if (!auth || auth.type !== "user") {
@@ -511,7 +569,7 @@ export async function requireAuth(
 }
 
 export async function requireServiceAuth(
-  req: Request
+  req: Request,
 ): Promise<ServiceAuthIdentity> {
   const authHeader = req.headers.get("authorization") || "";
   const apiKeyMatch = authHeader.match(AUTHORIZATION_HEADER_PATTERN);
@@ -548,7 +606,7 @@ export async function requireServiceAuth(
     if (!serviceIdentity.computerId) {
       const roleLabel = "user";
       console.warn(
-        `[auth] ${roleLabel} ${auth.username} (${auth.userId}) lacks an assigned computer; rejecting service authentication.`
+        `[auth] ${roleLabel} ${auth.username} (${auth.userId}) lacks an assigned computer; rejecting service authentication.`,
       );
       throw new Error("UNAUTHORIZED");
     }
@@ -567,7 +625,7 @@ export async function simulatePasswordCheckDelay() {
  * Verifica sesión desde un Request y devuelve información del usuario
  */
 export async function verifySessionFromRequest(
-  req: Request
+  req: Request,
 ): Promise<{ username: string; role: string } | null> {
   const cookies = parseCookies(req.headers.get("cookie"));
   if (!cookies.session) return null;
@@ -590,7 +648,7 @@ export async function verifySessionFromRequest(
 
 export function buildSessionCookie(
   token: string,
-  ttlSeconds = SESSION_TTL_SECONDS
+  ttlSeconds = SESSION_TTL_SECONDS,
 ) {
   const isProd = process.env.NODE_ENV === "production";
   const cookieFlags = [
@@ -605,7 +663,7 @@ export function buildSessionCookie(
 
 export function buildCsrfCookie(
   token: string,
-  ttlSeconds = SESSION_TTL_SECONDS
+  ttlSeconds = SESSION_TTL_SECONDS,
 ) {
   const isProd = process.env.NODE_ENV === "production";
   const cookieFlags = ["Path=/", "SameSite=Strict", `Max-Age=${ttlSeconds}`];

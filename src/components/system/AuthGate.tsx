@@ -66,7 +66,13 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (status === "login" && window.location.pathname !== "/login") {
+    // /desbloquear es pública a propósito: es la página de respaldo del
+    // desbloqueo por contraseña y pide las credenciales en su propio
+    // formulario (POST /api/usb-auth); no requiere sesión del panel.
+    const isPublicPage =
+      window.location.pathname === "/login" ||
+      window.location.pathname === "/desbloquear";
+    if (status === "login" && !isPublicPage) {
       window.location.href = "/login";
     }
     if (status === "ok" && window.location.pathname === "/login") {
@@ -103,8 +109,12 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     return <FullscreenSpinner label="Verificando sesión" />;
   }
 
-  if (status === "login" && window.location.pathname === "/login") {
-    // Estamos en la página de login: permitir render normal (children será el formulario)
+  if (
+    status === "login" &&
+    (window.location.pathname === "/login" ||
+      window.location.pathname === "/desbloquear")
+  ) {
+    // Login y la página pública de desbloqueo: render normal sin sesión.
     return <>{children}</>;
   }
   if (status === "login") {

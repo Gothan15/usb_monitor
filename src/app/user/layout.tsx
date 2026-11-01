@@ -37,10 +37,10 @@ function resolveView(pathname: string | null): UserViewKey {
 function UserLayoutContent({
   children,
   pathname,
-}: {
+}: Readonly<{
   children: ReactNode;
   pathname: string | null;
-}) {
+}>) {
   const { user, loading, error, activeView } = useUserDashboard();
 
   const navItems = useMemo<AppShellNavItem[]>(
@@ -112,7 +112,9 @@ function UserLayoutContent({
   );
 }
 
-export default function UserLayout({ children }: { children: ReactNode }) {
+export default function UserLayout({
+  children,
+}: Readonly<{ children: ReactNode }>) {
   const pathname = usePathname();
   const activeView = resolveView(pathname);
 

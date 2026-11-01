@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState, useRef, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import type { LucideIcon } from "lucide-react";
-import { ChevronRight, Keyboard, Menu, RefreshCw, Search, X } from "lucide-react";
+import { Keyboard, RefreshCw, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -22,6 +22,7 @@ import {
 import { KeyboardShortcutsDialog } from "@/components/shell/KeyboardShortcutsDialog";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useLiveSyncStore } from "@/store/useLiveSyncStore";
+import { useLayoutStore } from "@/store/useLayoutStore";
 import { Switch } from "@/components/ui/switch";
 
 /* ────── Types ────── */
@@ -49,11 +50,10 @@ interface AppShellProps {
   children: ReactNode;
 }
 
-/* ────── Constants ────── */
-const SIDEBAR_COLLAPSED = 80;
-const SIDEBAR_EXPANDED = 240;
-
-/* ────── Component ────── */
+/* ────── Component — cabecera editorial «Herencia» ──────
+   Sin barra lateral: membrete superior con la marca en serif,
+   navegación horizontal con subrayado de latón y cabecera de
+   página editorial sobre el contenido. */
 export function AppShell({
   navItems,
   activeKey,
@@ -65,16 +65,9 @@ export function AppShell({
   user,
   children,
 }: AppShellProps) {
-  const [sidebarExpanded, setSidebarExpanded] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-
-  const sidebarRef = useRef<HTMLDivElement>(null);
-  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(
-    undefined,
-  );
-  const [isDesktop, setIsDesktop] = useState(false);
   const { isLiveSyncEnabled, toggleLiveSync } = useLiveSyncStore();
+  const disposicionGuardada = useLayoutStore((state) => state.disposicion);
   const [mounted, setMounted] = useState(false);
 
   useKeyboardShortcuts(navItems, {
@@ -84,387 +77,586 @@ export function AppShell({
 
   useEffect(() => {
     setMounted(true);
-    const query = window.matchMedia("(min-width: 1280px)");
-    const handleChange = (event: MediaQueryListEvent) => {
-      setIsDesktop(event.matches);
-      if (event.matches) setMobileMenuOpen(false);
-    };
-    setIsDesktop(query.matches);
-    query.addEventListener("change", handleChange);
-    return () => query.removeEventListener("change", handleChange);
   }, []);
+
+  const esLateral = mounted && disposicionGuardada === "lateral";
+
+  /* Barra lateral desplegable: riel de iconos que se abre al pasar
+     el ratón (180 ms al entrar, 300 ms al salir), como la original. */
+  const [lateralAbierta, setLateralAbierta] = useState(false);
+  const hoverRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const abrirLateral = () => {
+    clearTimeout(hoverRef.current);
+    hoverRef.current = setTimeout(() => setLateralAbierta(true), 180);
+  };
+  const cerrarLateral = () => {
+    clearTimeout(hoverRef.current);
+    hoverRef.current = setTimeout(() => setLateralAbierta(false), 300);
+  };
 
   const activeItem = useMemo(
     () => navItems.find((item) => item.key === activeKey) ?? navItems[0],
     [activeKey, navItems],
   );
 
-  const handleSidebarEnter = () => {
-    clearTimeout(hoverTimeoutRef.current);
-    hoverTimeoutRef.current = setTimeout(() => setSidebarExpanded(true), 180);
-  };
-  const handleSidebarLeave = () => {
-    clearTimeout(hoverTimeoutRef.current);
-    hoverTimeoutRef.current = setTimeout(() => setSidebarExpanded(false), 300);
-  };
-
   const initials = user?.name ? user.name.slice(0, 2).toUpperCase() : "US";
-
   return (
     <NotificationProvider>
-      <div className="relative flex h-screen overflow-hidden bg-background text-foreground">
-        {/* ── Mobile overlay ── */}
-        {!isDesktop && mobileMenuOpen && (
-          <button
-            type="button"
-            onClick={() => setMobileMenuOpen(false)}
-            className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
-            aria-label="Cerrar menú"
-          />
-        )}
-
-        {/* ═══ SIDEBAR ═══ */}
-        <aside
-          ref={sidebarRef}
-          data-tour="sidebar"
-          onMouseEnter={isDesktop ? handleSidebarEnter : undefined}
-          onMouseLeave={isDesktop ? handleSidebarLeave : undefined}
-          style={{
-            width: isDesktop
-              ? sidebarExpanded
-                ? SIDEBAR_EXPANDED
-                : SIDEBAR_COLLAPSED
-              : SIDEBAR_EXPANDED,
-          }}
-          className={cn(
-            "z-50 flex h-full flex-shrink-0 flex-col bg-sidebar border-r border-sidebar-border",
-            "transition-[width] duration-300 ease-[var(--ease-out-expo)]",
-            /* Mobile positioning */
-            !isDesktop && "fixed inset-y-0 left-0",
-            !isDesktop && !mobileMenuOpen && "-translate-x-full",
-            isDesktop && "relative",
-          )}
-        >
-          {/* Brand */}
-          <div className="flex h-20 items-center px-5 border-b border-sidebar-border">
-            <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-background/70 ring-1 ring-sidebar-border/80">
-              <Image
-                src="/favicon.svg"
-                alt="USB Monitor"
-                width={24}
-                height={24}
-                className="size-6"
-              />
-            </div>
-            <AnimatePresence>
-              {(sidebarExpanded || !isDesktop) && (
-                <motion.div
-                  initial={{ opacity: 0, width: 0 }}
-                  animate={{ opacity: 1, width: "auto" }}
-                  exit={{ opacity: 0, width: 0 }}
-                  transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-                  className="overflow-hidden"
-                >
-                  <div className="ml-4 flex flex-col whitespace-nowrap">
-                    <span className="text-sm font-bold uppercase tracking-[0.2em] text-sidebar-foreground/80">
-                      USB Monitor
-                    </span>
-                    <span className="text-xs text-sidebar-foreground/50">
-                      Centro de control
-                    </span>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-            {!isDesktop && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="ml-auto size-8 text-sidebar-foreground"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                <X className="size-4" />
-              </Button>
-            )}
-          </div>
-
-          {/* Navigation */}
-          <nav className="flex-1 overflow-y-auto overflow-x-hidden py-6 scrollbar-thin">
-            <div className="flex flex-col space-y-4 px-3">
-              {navItems.map((item) => {
-                const isActive = item.key === activeKey;
-                return (
-                  <Link
-                    key={item.key}
-                    href={item.href}
-                    prefetch
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={cn(
-                      "group relative flex items-center gap-4 rounded-xl p-3 text-sm font-medium outline-none transition-colors",
-                      isActive
-                        ? "text-sidebar-accent-foreground"
-                        : "text-sidebar-foreground/70"
-                    )}
-                  >
-                    {/* Hover Background */}
-                    <div className="absolute inset-0 rounded-xl bg-sidebar-accent/50 opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
-                    
-                    {/* Active Background */}
-                    {isActive && (
-                      <motion.div
-                        layoutId="sidebar-active-bg"
-                        className="absolute inset-0 rounded-xl bg-sidebar-accent"
-                        transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                      />
-                    )}
-
-                    {/* Active indicator bar */}
-                    {isActive && (
-                      <motion.div
-                        layoutId="sidebar-active-indicator"
-                        className="absolute -left-3 top-1/2 h-8 w-1 -translate-y-1/2 rounded-r-full bg-primary"
-                        transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                      />
-                    )}
-
-                    <div className="relative z-10 flex size-8 shrink-0 items-center justify-center">
-                      <item.icon
-                        className={cn(
-                          "size-6 transition-colors duration-200",
-                          isActive
-                            ? "text-primary"
-                            : "text-sidebar-foreground/50 group-hover:text-sidebar-foreground/80"
-                        )}
-                      />
-                    </div>
-
-                    <AnimatePresence>
-                      {(sidebarExpanded || !isDesktop) && (
-                        <motion.span
-                          initial={{ opacity: 0, width: 0 }}
-                          animate={{ opacity: 1, width: "auto" }}
-                          exit={{ opacity: 0, width: 0 }}
-                          transition={{
-                            duration: 0.2,
-                            ease: [0.16, 1, 0.3, 1],
-                          }}
-                          className="relative z-10 truncate whitespace-nowrap text-base"
-                        >
-                          {item.label}
-                        </motion.span>
-                      )}
-                    </AnimatePresence>
-
-                    {/* Badge */}
-                    {item.badge !== undefined && (
-                      <AnimatePresence>
-                        {sidebarExpanded || !isDesktop ? (
-                          <motion.span
-                            initial={{ opacity: 0, scale: 0.8 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.8 }}
-                            className="relative z-10 ml-auto inline-flex min-w-[24px] items-center justify-center rounded-md bg-muted px-2 py-0.5 text-xs font-semibold tabular-nums text-muted-foreground"
-                          >
-                            {item.badge}
-                          </motion.span>
-                        ) : (
-                          <span className="absolute right-2 top-2 size-2 rounded-full bg-primary" />
-                        )}
-                      </AnimatePresence>
-                    )}
-                  </Link>
-                );
-              })}
-            </div>
-          </nav>
-
-          {/* Sidebar footer */}
-          <div className="flex flex-col gap-2 border-t border-sidebar-border p-4">
-            <div className="flex h-10 items-center justify-center">
-              <ThemeToggle />
-            </div>
-            <AnimatePresence>
-              {(sidebarExpanded || !isDesktop) && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.15 }}
-                  className="overflow-hidden"
-                >
-                  {lastUpdateLabel && (
-                    <p className="pt-2 text-center text-[11px] text-sidebar-foreground/40">
-                      Sincronizado: {lastUpdateLabel}
-                    </p>
-                  )}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </aside>
-
-        {/* ═══ MAIN AREA ═══ */}
-        <div className="relative flex flex-1 flex-col overflow-hidden">
-          {/* ── Header ── */}
-          <header className="z-30 flex h-14 flex-shrink-0 items-center gap-4 border-b border-border bg-background/80 backdrop-blur-xl px-4 lg:px-6">
-            {/* Mobile menu trigger */}
-            {!isDesktop && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-8 lg:hidden"
-                onClick={() => setMobileMenuOpen(true)}
-              >
-                <Menu className="size-4" />
-              </Button>
-            )}
-
-            {/* Breadcrumb */}
-            <div className="flex items-center gap-1.5 text-sm">
-              <span className="text-muted-foreground/60 font-medium">
-                {user?.role === "ADMIN" ? "Admin" : "Panel"}
-              </span>
-              <ChevronRight className="size-3 text-muted-foreground/40" />
-              <span className="font-semibold text-foreground">{title}</span>
-            </div>
-
-            {/* Command Palette trigger (center) */}
-            <div
-              className="hidden flex-1 justify-center lg:flex"
-              data-tour="command-trigger"
+      <div className="relative flex h-screen flex-col overflow-hidden bg-background text-foreground">
+        {/* ═══ ARMazón: cabecera reorganizada o barra lateral ═══ */}
+        <div className="flex min-h-0 flex-1">
+          {esLateral && (
+            <aside
+              data-tour="sidebar"
+              onMouseEnter={abrirLateral}
+              onMouseLeave={cerrarLateral}
+              style={{ width: lateralAbierta ? 248 : 76 }}
+              className="hidden shrink-0 flex-col overflow-hidden border-r border-border bg-background transition-[width] duration-300 ease-out lg:flex"
             >
-              <button
-                type="button"
-                className="flex h-8 w-full max-w-sm items-center gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/50 hover:border-border"
-                onClick={() => {
-                  /* Abre la paleta con el atajo */
-                  document.dispatchEvent(
-                    new KeyboardEvent("keydown", { key: "k", metaKey: true }),
-                  );
-                }}
-              >
-                <Search className="size-3.5" />
-                <span className="flex-1 text-left">
-                  Buscar o ejecutar comando...
-                </span>
-                <kbd className="pointer-events-none hidden h-5 select-none items-center gap-1 rounded border border-border/50 bg-muted/60 px-1.5 text-[10px] font-mono font-medium text-muted-foreground/70 lg:flex">
-                  ⌘K
-                </kbd>
-              </button>
-            </div>
-
-            {/* Right actions */}
-            <div className="ml-auto flex items-center gap-2">
-              {/* Live Sync Toggle */}
-              {mounted && (
-                <div className="flex items-center gap-2 mr-2">
-                  <span className={cn("text-[10px] font-semibold uppercase tracking-wider hidden lg:inline-block", isLiveSyncEnabled ? "text-green-500" : "text-muted-foreground")}>
-                    {isLiveSyncEnabled ? "Live" : "Paused"}
-                  </span>
-                  <Switch 
-                    checked={isLiveSyncEnabled} 
-                    onCheckedChange={toggleLiveSync}
-                    className="data-[state=checked]:bg-green-500 scale-75 lg:scale-100"
-                  />
-                </div>
-              )}
-
-              {/* Refresh */}
-              {onRefresh && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-8 relative"
-                  disabled={refreshing || (mounted && isLiveSyncEnabled)}
-                  onClick={onRefresh}
-                >
-                  {mounted && isLiveSyncEnabled && (
-                    <span className="absolute top-1.5 right-1.5 flex size-1.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full size-1.5 bg-green-500"></span>
-                    </span>
+              {/* Marca */}
+              <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-border px-[22px]">
+                <Image
+                  src="/favicon.svg"
+                  alt="USB Monitor"
+                  width={24}
+                  height={24}
+                  className="size-6 shrink-0 rounded-[4px]"
+                />
+                <AnimatePresence>
+                  {lateralAbierta && (
+                    <motion.span
+                      initial={{ opacity: 0, width: 0 }}
+                      animate={{ opacity: 1, width: "auto" }}
+                      exit={{ opacity: 0, width: 0 }}
+                      transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                      className="overflow-hidden whitespace-nowrap leading-tight"
+                    >
+                      <span className="block font-display text-[15px] font-bold tracking-tight">
+                        USB Monitor
+                      </span>
+                      <span className="block text-[10.5px] uppercase tracking-[0.14em] text-muted-foreground">
+                        Centro de control
+                      </span>
+                    </motion.span>
                   )}
-                  <motion.span
-                    animate={{ rotate: refreshing ? 360 : 0 }}
-                    transition={{
-                      duration: 0.8,
-                      ease: [0.4, 0, 0.2, 1],
-                      repeat: refreshing ? Infinity : 0,
-                    }}
-                    className="inline-flex"
-                  >
-                    <RefreshCw className="size-3.5" />
-                  </motion.span>
-                </Button>
-              )}
-
-              {/* Notification bell placeholder */}
-              <div data-tour="notifications">
-                <NotificationCenter />
+                </AnimatePresence>
               </div>
 
-              <Tooltip>
-                <TooltipTrigger asChild>
+              {/* Navegación vertical, con aire y filete entre secciones */}
+              <nav
+                className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-4"
+                aria-label="Secciones"
+              >
+                {navItems.map((item, indice) => {
+                  const isActive = item.key === activeKey;
+                  return (
+                    <div key={item.key}>
+                      {indice > 0 && (
+                        <div className="mx-2 my-2 h-px bg-border/80" aria-hidden />
+                      )}
+                      <Link
+                        href={item.href}
+                        prefetch
+                        title={lateralAbierta ? undefined : item.label}
+                        className={cn(
+                          "group relative flex items-center gap-3 rounded-md px-3 py-3 text-[11.5px] font-semibold uppercase tracking-[0.09em] transition-colors",
+                          isActive
+                            ? "bg-primary/[0.06] text-foreground"
+                            : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                        )}
+                      >
+                        {isActive && (
+                          <span className="absolute left-0 top-1/2 h-6 w-[2.5px] -translate-y-1/2 rounded-full bg-[var(--acero)]" />
+                        )}
+                        <span className="relative shrink-0">
+                          <item.icon
+                            className={cn(
+                              "size-5 transition-colors",
+                              isActive
+                                ? "text-[var(--acero)]"
+                                : "text-muted-foreground/70 group-hover:text-foreground/80",
+                            )}
+                          />
+                          {!lateralAbierta && item.badge !== undefined && (
+                            <span className="absolute -right-1.5 -top-1.5 size-2 rounded-full bg-[var(--acero)]" />
+                          )}
+                        </span>
+                        <AnimatePresence>
+                          {lateralAbierta && (
+                            <motion.span
+                              initial={{ opacity: 0, width: 0 }}
+                              animate={{ opacity: 1, width: "auto" }}
+                              exit={{ opacity: 0, width: 0 }}
+                              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                              className="flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap"
+                            >
+                              <span className="flex-1 truncate">{item.label}</span>
+                              {item.badge !== undefined && (
+                                <span className="ml-2 font-mono text-[11px] font-semibold tabular-nums text-[var(--acero)]">
+                                  {item.badge}
+                                </span>
+                              )}
+                            </motion.span>
+                          )}
+                        </AnimatePresence>
+                      </Link>
+                    </div>
+                  );
+                })}
+              </nav>
+
+              {/* Acciones rápidas de la barra */}
+              <div
+                className={cn(
+                  "flex shrink-0 items-center gap-0.5 border-t border-border px-3 py-2.5",
+                  lateralAbierta ? "flex-row" : "flex-col",
+                )}
+              >
+                <button
+                  type="button"
+                  className="flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  onClick={() => {
+                    document.dispatchEvent(
+                      new KeyboardEvent("keydown", { key: "k", metaKey: true }),
+                    );
+                  }}
+                  aria-label="Buscar (Ctrl/⌘ + K)"
+                  data-tour="command-trigger"
+                >
+                  <Search className="size-4" />
+                </button>
+                {onRefresh && mounted && !isLiveSyncEnabled && (
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="size-8"
-                    onClick={() => setShortcutsOpen(true)}
-                    aria-label="Atajos de teclado"
+                    className="size-9"
+                    disabled={refreshing}
+                    onClick={onRefresh}
+                    aria-label="Actualizar"
+                    title="Actualizar (la sincronización en vivo está en pausa)"
                   >
-                    <Keyboard className="size-3.5" />
+                    <RefreshCw className="size-4" />
                   </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">Atajos (Ctrl/⌘ + /)</TooltipContent>
-              </Tooltip>
-
-              {/* User info */}
-              <div className="hidden items-center gap-2.5 rounded-lg border border-border/50 bg-muted/20 px-3 py-1.5 text-sm lg:flex">
-                <div className="flex size-7 items-center justify-center rounded-md bg-primary/10 text-primary text-xs font-bold">
-                  {initials}
+                )}
+                <div data-tour="notifications">
+                  <NotificationCenter />
                 </div>
-                <div className="flex flex-col leading-tight">
-                  <span className="text-xs font-semibold text-foreground">
-                    {user?.name ?? "Usuario"}
-                  </span>
-                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                    {user?.role ?? "Admin"}
-                  </span>
-                </div>
+                <ThemeToggle />
               </div>
 
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div>
-                    <LogoutButton
-                      iconOnly
-                      variant="ghost"
-                      size="icon"
-                      className="size-8 rounded-lg"
-                    />
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">Cerrar sesión</TooltipContent>
-              </Tooltip>
-            </div>
-          </header>
-
-          {/* ── Subtitle bar (optional) ── */}
-          {subtitle && (
-            <div className="flex items-center gap-2 border-b border-border/50 bg-muted/10 px-4 py-1.5 lg:px-6">
-              <p className="text-xs text-muted-foreground">{subtitle}</p>
-              {refreshing && (
-                <span className="inline-flex size-1.5 animate-pulse rounded-full bg-primary" />
-              )}
-            </div>
+              {/* Usuario y estado, al pie de la barra */}
+              <div className="shrink-0 border-t border-border px-[18px] py-4">
+                <div
+                  className={cn(
+                    "flex items-center gap-2.5",
+                    !lateralAbierta && "flex-col gap-2",
+                  )}
+                >
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-[var(--acero)]/70 font-display text-[11px] font-bold text-[var(--acero)]">
+                    {initials}
+                  </span>
+                  <AnimatePresence>
+                    {lateralAbierta && (
+                      <motion.span
+                        initial={{ opacity: 0, width: 0 }}
+                        animate={{ opacity: 1, width: "auto" }}
+                        exit={{ opacity: 0, width: 0 }}
+                        transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                        className="min-w-0 flex-1 overflow-hidden whitespace-nowrap leading-tight"
+                      >
+                        <span className="block max-w-[130px] truncate text-[13px] font-medium text-foreground">
+                          {user?.name ?? "Usuario"}
+                        </span>
+                        <span className="block text-[11px] text-muted-foreground">
+                          {user?.role?.toUpperCase() === "ADMIN"
+                            ? "Administrador"
+                            : "Usuario"}
+                        </span>
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
+                  <LogoutButton
+                    iconOnly
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 shrink-0"
+                  />
+                </div>
+                <p
+                  className={cn(
+                    "mt-3 flex items-center gap-1.5 text-[11px]",
+                    !lateralAbierta && "justify-center",
+                    mounted && isLiveSyncEnabled
+                      ? "text-success"
+                      : "text-muted-foreground",
+                  )}
+                  title={
+                    mounted && isLiveSyncEnabled
+                      ? "Sincronización en vivo"
+                      : "Sincronización en pausa"
+                  }
+                >
+                  <span
+                    className={cn(
+                      "size-1.5 shrink-0 rounded-full",
+                      mounted && isLiveSyncEnabled
+                        ? "dot-pulse bg-success"
+                        : "bg-muted-foreground/50",
+                    )}
+                  />
+                  {lateralAbierta &&
+                    (mounted && isLiveSyncEnabled
+                      ? "Sincronización en vivo"
+                      : "Sincronización en pausa")}
+                </p>
+              </div>
+            </aside>
           )}
 
-          {/* ── Content area ── */}
-          <main className="flex-1 overflow-y-auto scrollbar-thin">
-            <div className="mx-auto w-full max-w-[1400px] px-4 py-6 lg:px-6 lg:py-8">
-              {children}
-            </div>
-          </main>
+          <div className="flex min-w-0 flex-1 flex-col">
+            {esLateral ? (
+              /* ── Barra superior del modo lateral: solo móvil y tableta;
+                   en escritorio manda la barra lateral, sin doble forma ── */
+              <header className="z-30 flex-shrink-0 border-b border-border bg-background/95 lg:hidden">
+                <div className="flex h-12 items-center gap-1 px-4 lg:px-6">
+                  <span className="flex items-center gap-2 lg:hidden">
+                    <Image
+                      src="/favicon.svg"
+                      alt="USB Monitor"
+                      width={22}
+                      height={22}
+                      className="size-[22px] rounded-[4px]"
+                    />
+                    <span className="font-display text-[15px] font-bold tracking-tight">
+                      USB Monitor
+                    </span>
+                  </span>
+                  <div className="ml-auto flex items-center gap-0.5">
+                    <span
+                      className={cn(
+                        "mr-1.5 hidden items-center gap-1.5 text-[11px] sm:flex",
+                        mounted && isLiveSyncEnabled
+                          ? "text-success"
+                          : "text-muted-foreground",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "size-1.5 rounded-full",
+                          mounted && isLiveSyncEnabled
+                            ? "dot-pulse bg-success"
+                            : "bg-muted-foreground/50",
+                        )}
+                      />
+                      {mounted && isLiveSyncEnabled ? "En vivo" : "En pausa"}
+                    </span>
+                    <button
+                      type="button"
+                      className="flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      onClick={() => {
+                        document.dispatchEvent(
+                          new KeyboardEvent("keydown", { key: "k", metaKey: true }),
+                        );
+                      }}
+                      aria-label="Buscar (Ctrl/⌘ + K)"
+                      data-tour="command-trigger"
+                    >
+                      <Search className="size-4" />
+                    </button>
+                    {onRefresh && mounted && !isLiveSyncEnabled && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-8"
+                        disabled={refreshing}
+                        onClick={onRefresh}
+                        aria-label="Actualizar"
+                        title="Actualizar (la sincronización en vivo está en pausa)"
+                      >
+                        <RefreshCw className="size-4" />
+                      </Button>
+                    )}
+                    <div data-tour="notifications">
+                      <NotificationCenter />
+                    </div>
+                    <ThemeToggle />
+                    <span className="flex items-center gap-0.5 lg:hidden">
+                      <span className="mx-1 h-5 w-px bg-border" />
+                      <span className="flex size-7 items-center justify-center rounded-full border border-[var(--acero)]/70 font-display text-[11px] font-bold text-[var(--acero)]">
+                        {initials}
+                      </span>
+                      <LogoutButton
+                        iconOnly
+                        variant="ghost"
+                        size="icon"
+                        className="size-8"
+                      />
+                    </span>
+                  </div>
+                </div>
+                                {/* Navegación en fila fina (móvil y tableta, modo lateral) */}
+                <nav
+                  className="scrollbar-thin flex items-stretch gap-0.5 overflow-x-auto border-t border-border/60 px-2 lg:hidden"
+                  aria-label="Secciones"
+                >
+                  {navItems.map((item) => {
+                    const isActive = item.key === activeKey;
+                    return (
+                      <Link
+                        key={item.key}
+                        href={item.href}
+                        prefetch
+                        className={cn(
+                          "relative flex items-center gap-1.5 whitespace-nowrap px-2.5 py-2.5 text-[11.5px] font-semibold uppercase tracking-[0.09em] transition-colors",
+                          isActive
+                            ? "text-foreground"
+                            : "text-muted-foreground hover:text-foreground",
+                        )}
+                      >
+                        <item.icon
+                          className={cn(
+                            "size-4 shrink-0",
+                            isActive
+                              ? "text-[var(--acero)]"
+                              : "text-muted-foreground/70",
+                          )}
+                        />
+                        {item.label}
+                        {item.badge !== undefined && (
+                          <span className="font-mono text-[10.5px] font-semibold tabular-nums text-[var(--acero)]">
+                            {item.badge}
+                          </span>
+                        )}
+                        {isActive && (
+                          <motion.span
+                            layoutId="nav-movil-lateral"
+                            className="absolute inset-x-2.5 bottom-0 h-[2px] bg-[var(--acero)]"
+                            transition={{ type: "spring", bounce: 0.18, duration: 0.55 }}
+                          />
+                        )}
+                      </Link>
+                    );
+                  })}
+                </nav>
+              </header>
+            ) : (
+              /* ── Cabecera reorganizada: grupos con aire y separadores ── */
+              <header className="z-30 flex-shrink-0 border-b border-border bg-background/95">
+                <div className="flex h-14 w-full items-center gap-3 px-4 lg:px-8">
+                  <Link
+                    href={navItems[0]?.href ?? "/"}
+                    className="flex shrink-0 items-center gap-2.5"
+                  >
+                    <Image
+                      src="/favicon.svg"
+                      alt="USB Monitor"
+                      width={24}
+                      height={24}
+                      className="size-6 rounded-[4px]"
+                    />
+                    <span className="font-display text-base font-bold tracking-tight">
+                      USB Monitor
+                    </span>
+                  </Link>
+
+                  <nav
+                    data-tour="sidebar"
+                    className="ml-6 hidden items-stretch gap-0.5 self-stretch min-[1600px]:flex"
+                    aria-label="Secciones"
+                  >
+                    {navItems.map((item) => {
+                      const isActive = item.key === activeKey;
+                      return (
+                        <Link
+                          key={item.key}
+                          href={item.href}
+                          prefetch
+                          className={cn(
+                            "group relative flex items-center gap-1.5 whitespace-nowrap px-2.5 text-[11.5px] font-semibold uppercase tracking-[0.08em] transition-colors",
+                            isActive
+                              ? "text-foreground"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          <item.icon
+                            className={cn(
+                              "size-4 shrink-0 transition-colors",
+                              isActive
+                                ? "text-[var(--acero)]"
+                                : "text-muted-foreground/70 group-hover:text-foreground/80",
+                            )}
+                          />
+                          {item.label}
+                          {item.badge !== undefined && (
+                            <span className="font-mono text-[10.5px] font-semibold tabular-nums text-[var(--acero)]">
+                              {item.badge}
+                            </span>
+                          )}
+                          {isActive && (
+                            <motion.span
+                              layoutId="nav-underline"
+                              className="absolute inset-x-3 bottom-0 h-[2px] bg-[var(--acero)]"
+                              transition={{ type: "spring", bounce: 0.18, duration: 0.55 }}
+                            />
+                          )}
+                        </Link>
+                      );
+                    })}
+                  </nav>
+
+                  <div className="ml-auto flex shrink-0 items-center">
+                    <span
+                      className={cn(
+                        "hidden items-center gap-1.5 text-[11px] md:flex",
+                        mounted && isLiveSyncEnabled
+                          ? "text-success"
+                          : "text-muted-foreground",
+                      )}
+                      title={mounted && isLiveSyncEnabled ? "En vivo" : "En pausa"}
+                    >
+                      <span
+                        className={cn(
+                          "size-1.5 rounded-full",
+                          mounted && isLiveSyncEnabled
+                            ? "dot-pulse bg-success"
+                            : "bg-muted-foreground/50",
+                        )}
+                      />
+                    </span>
+
+                    <span className="mx-2.5 hidden h-5 w-px bg-border md:block" />
+
+                    <div className="flex items-center gap-0.5">
+                      <button
+                        type="button"
+                        className="flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        onClick={() => {
+                          document.dispatchEvent(
+                            new KeyboardEvent("keydown", { key: "k", metaKey: true }),
+                          );
+                        }}
+                        aria-label="Buscar (Ctrl/⌘ + K)"
+                        data-tour="command-trigger"
+                      >
+                        <Search className="size-4" />
+                      </button>
+                      {onRefresh && mounted && !isLiveSyncEnabled && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-9"
+                          disabled={refreshing}
+                          onClick={onRefresh}
+                          aria-label="Actualizar"
+                          title="Actualizar (la sincronización en vivo está en pausa)"
+                        >
+                          <motion.span
+                            animate={{ rotate: refreshing ? 360 : 0 }}
+                            transition={{
+                              duration: 0.8,
+                              ease: [0.4, 0, 0.2, 1],
+                              repeat: refreshing ? Infinity : 0,
+                            }}
+                            className="inline-flex"
+                          >
+                            <RefreshCw className="size-4" />
+                          </motion.span>
+                        </Button>
+                      )}
+                      <div data-tour="notifications">
+                        <NotificationCenter />
+                      </div>
+                      <ThemeToggle />
+                    </div>
+
+                    <span className="mx-2.5 hidden h-5 w-px bg-border sm:block" />
+
+                    <div className="flex items-center gap-2.5">
+                      <span
+                        className="hidden size-8 items-center justify-center rounded-full border border-[var(--acero)]/70 font-display text-[11px] font-bold text-[var(--acero)] sm:flex"
+                        title={user?.name ?? "Usuario"}
+                      >
+                        {initials}
+                      </span>
+                      <LogoutButton
+                        iconOnly
+                        variant="ghost"
+                        size="icon"
+                        className="size-9"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                                {/* Navegación en fila: en pantallas anchas las secciones
+                    ocupan todo el ancho, con «|» como divisor */}
+                <nav
+                  className="scrollbar-thin flex items-stretch gap-0.5 overflow-x-auto border-t border-border/60 px-2 min-[1600px]:hidden xl:gap-0 xl:overflow-visible"
+                  aria-label="Secciones"
+                >
+                  {navItems.map((item, indice) => {
+                    const isActive = item.key === activeKey;
+                    return (
+                      <Fragment key={item.key}>
+                        {indice > 0 && (
+                          <span
+                            aria-hidden
+                            className="hidden select-none items-center text-[13px] font-light text-muted-foreground/40 xl:flex"
+                          >
+                            |
+                          </span>
+                        )}
+                        <Link
+                          href={item.href}
+                          prefetch
+                          className={cn(
+                            "relative flex items-center gap-1.5 whitespace-nowrap px-2.5 py-2.5 text-[11.5px] font-semibold uppercase tracking-[0.09em] transition-colors xl:flex-1 xl:justify-center",
+                            isActive
+                              ? "text-foreground"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          <item.icon
+                            className={cn(
+                              "size-4 shrink-0",
+                              isActive
+                                ? "text-[var(--acero)]"
+                                : "text-muted-foreground/70",
+                            )}
+                          />
+                          {item.label}
+                          {item.badge !== undefined && (
+                            <span className="font-mono text-[10.5px] font-semibold tabular-nums text-[var(--acero)]">
+                              {item.badge}
+                            </span>
+                          )}
+                          {isActive && (
+                            <motion.span
+                              layoutId="nav-underline-movil"
+                              className="absolute inset-x-2.5 bottom-0 h-[2px] bg-[var(--acero)] xl:inset-x-5"
+                              transition={{ type: "spring", bounce: 0.18, duration: 0.55 }}
+                            />
+                          )}
+                        </Link>
+                      </Fragment>
+                    );
+                  })}
+                </nav>
+              </header>
+            )}
+
+        {/* ═══ CONTENIDO ═══ */}
+        <main className="scrollbar-thin relative flex-1 overflow-y-auto">
+          <div className="relative mx-auto flex min-h-full w-full max-w-[1360px] flex-col px-4 pb-10 pt-8 lg:px-8 lg:pt-10">
+            {children}
+
+            <footer className="mt-14 flex items-center justify-between border-t border-border pt-4 text-[11px] text-muted-foreground/80">
+              <span>USB Monitor</span>
+              {lastUpdateLabel && <span>Sincronizado: {lastUpdateLabel}</span>}
+            </footer>
+          </div>
+        </main>
+          </div>
         </div>
       </div>
       <KeyboardShortcutsDialog

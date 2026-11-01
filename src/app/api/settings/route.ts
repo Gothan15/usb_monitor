@@ -2,13 +2,15 @@ import { NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
 import { PrismaClient } from "@prisma/client";
+import { requireAuth } from "@/lib/auth";
+import { DEFAULT_SETTINGS } from "@/lib/appSettings";
 
 const prisma = new PrismaClient();
 const SETTINGS_PATH = path.join(process.cwd(), "config", "app_settings.json");
 
 export async function GET() {
   try {
-    let settings = {};
+    let settings: Record<string, unknown> = {};
     try {
       const data = await fs.readFile(SETTINGS_PATH, "utf-8");
       settings = JSON.parse(data);
@@ -18,6 +20,7 @@ export async function GET() {
       }
     }
     return NextResponse.json({
+      ...DEFAULT_SETTINGS,
       startup_network_delay: settings.startup_network_delay ?? 15,
       ...settings,
     });
@@ -29,6 +32,10 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    // Escribir ajustes exige sesión de administrador: entre ellos van
+    // los interruptores del desbloqueo por contraseña (fase 5), que no
+    // pueden quedar abiertos a cualquiera en la red.
+    await requireAuth(req, { role: "admin" });
     const body = await req.json();
     let currentSettings: any = {};
     
@@ -45,7 +52,7 @@ export async function POST(req: Request) {
     await fs.writeFile(SETTINGS_PATH, JSON.stringify(newSettings, null, 2), "utf-8");
 
     // Push new setting to active computers if startup_network_delay changed or provided
-    if (body.startup_network_delay !== undefined) {
+    if (body.startup_network_delay !== undefined || body.lockSessionOnInsert !== undefined) {
       const computers = await prisma.computer.findMany({
         where: { isActive: true },
       });
@@ -57,12 +64,28 @@ export async function POST(req: Request) {
         try {
           const url = `http://${computer.ipAddress}:${servicePort}/config`;
           console.log(`Pushing config to ${url}`);
+          // El agente exige credencial en /config (fase 3): se usa la
+          // API key del usuario dueño del equipo, que el agente conoce.
+          const owner = await prisma.user.findFirst({
+            where: { computerId: computer.id },
+            select: { apiKey: true },
+          });
+          const payload: Record<string, unknown> = {};
+          if (body.startup_network_delay !== undefined) {
+            payload.startup_network_delay = Number(body.startup_network_delay);
+          }
+          if (body.lockSessionOnInsert !== undefined) {
+            payload.lock_session_on_insert = Boolean(body.lockSessionOnInsert);
+          }
           await fetch(url, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
+              ...(owner?.apiKey
+                ? { Authorization: `ApiKey ${owner.apiKey}` }
+                : {}),
             },
-            body: JSON.stringify({ startup_network_delay: Number(body.startup_network_delay) }),
+            body: JSON.stringify(payload),
             signal: AbortSignal.timeout(5000), // 5s timeout
           });
         } catch (err: any) {
@@ -76,7 +99,10 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ success: true, settings: newSettings });
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.message === "UNAUTHORIZED" || error?.message === "FORBIDDEN") {
+      return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    }
     console.error("POST /api/settings error:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }

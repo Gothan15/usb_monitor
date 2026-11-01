@@ -46,7 +46,8 @@ def test_encryption():
     print()
 
     # API key de prueba
-    test_api_key = "test-api-key-12345-abcde"
+    # Clave de mentira para la prueba local: sin valor real, no usar otra.
+    test_api_key = "uk_clave-de-prueba-sin-valor"
     print(f"API key original:  {test_api_key}")
     print()
 

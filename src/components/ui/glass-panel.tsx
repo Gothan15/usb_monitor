@@ -2,13 +2,13 @@ import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
-const glassPanelVariants = cva("rounded-xl transition-all duration-200", {
+const glassPanelVariants = cva("rounded-lg border border-border transition-all duration-300", {
   variants: {
     variant: {
-      default: "glass",
-      subtle: "glass-subtle",
-      elevated: "glass-elevated",
-      solid: "bg-card border border-border shadow-sm",
+      default: "bg-card",
+      subtle: "bg-surface-2",
+      elevated: "bg-card shadow-[0_18px_36px_-20px_rgba(74,58,28,0.28)]",
+      solid: "bg-card",
     },
     padding: {
       none: "",

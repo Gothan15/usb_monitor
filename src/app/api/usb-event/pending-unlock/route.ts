@@ -7,7 +7,9 @@ import { logError } from "@/lib/logger";
 
 /**
  * POST /api/usb-event/pending-unlock
- * Crea un registro de desbloqueo pendiente cuando se detecta un USB
+ * El agente registra un dispositivo bloqueado que espera la contraseña
+ * del dueño de la PC (o del admin). No es una aprobación: es el estado
+ * interno del flujo 2FA (ver plan-desbloqueo-por-contrasena).
  */
 export async function POST(req: Request) {
   try {
@@ -28,39 +30,72 @@ export async function POST(req: Request) {
       );
     }
 
-    const { pcName, driveLetter } = await req.json();
+    const { pcName, driveLetter, serialNumber, deviceLabel, whitelisted } =
+      await req.json();
 
-    if (
-      typeof pcName !== "string" ||
-      !pcName.trim() ||
-      typeof driveLetter !== "string" ||
-      !driveLetter.trim()
-    ) {
+    // Detección amplia: un móvil (WPD) no tiene letra de unidad; su
+    // bloqueo se identifica por el serial. Se exige letra O serial.
+    const hasLetter =
+      typeof driveLetter === "string" && driveLetter.trim().length > 0;
+    const hasSerial =
+      typeof serialNumber === "string" && serialNumber.trim().length > 0;
+    if (typeof pcName !== "string" || !pcName.trim() || (!hasLetter && !hasSerial)) {
       return NextResponse.json(
-        { ok: false, error: "pcName y driveLetter requeridos" },
+        { ok: false, error: "pcName y (driveLetter o serialNumber) requeridos" },
         { status: 400 }
       );
     }
 
     const normalizedPcName = pcName.trim();
-    const normalizedDriveLetter = driveLetter.trim();
+    const normalizedDriveLetter = hasLetter ? driveLetter.trim() : null;
 
-    // Crear registro de desbloqueo pendiente (expira en 10 minutos)
-    const expiresAt = addMillisecondsToNow(10 * 60 * 1000);
+    const computer = await db.computer.findUnique({
+      where: { name: normalizedPcName },
+      select: { id: true },
+    });
 
-    const pendingUnlock = await (db as any).pendingUnlock.create({
+    // Un bloqueo nuevo en la misma unidad sustituye al anterior que
+    // siguiera esperando contraseña (p. ej. reinicio del servicio).
+    await db.pendingUnlock.updateMany({
+      where: {
+        pcName: normalizedPcName,
+        ...(normalizedDriveLetter
+          ? { driveLetter: normalizedDriveLetter }
+          : { serialNumber: serialNumber.trim() }),
+        status: "BLOCKED",
+      },
       data: {
+        status: "CLOSED",
+        closedAt: new Date(),
+        closeReason: "REPLACED",
+      },
+    });
+
+    const pendingUnlock = await db.pendingUnlock.create({
+      data: {
+        computerId: computer?.id ?? null,
         pcName: normalizedPcName,
         driveLetter: normalizedDriveLetter,
-        expiresAt,
-        unlocked: false,
+        serialNumber:
+          typeof serialNumber === "string" && serialNumber.trim()
+            ? serialNumber.trim()
+            : null,
+        deviceLabel:
+          typeof deviceLabel === "string" && deviceLabel.trim()
+            ? deviceLabel.trim()
+            : null,
+        whitelisted: whitelisted === true,
+        status: "BLOCKED",
+        // El permiso de uso termina al extraer el dispositivo (fase 2);
+        // esta validez amplia solo caduca bloqueos olvidados.
+        expiresAt: addMillisecondsToNow(24 * 60 * 60 * 1000),
       },
     });
 
     const res = NextResponse.json({
       ok: true,
       id: pendingUnlock.id,
-      message: "Desbloqueo pendiente creado",
+      message: "Dispositivo bloqueado registrado",
     });
     res.headers.set("Cache-Control", "no-store");
     return res;

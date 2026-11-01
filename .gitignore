@@ -61,3 +61,17 @@ USBMonitor/dist_usb_serial_viewer/
 
 seed-data.json
 /scripts
+# SonarQube (salida del escáner, no código)
+.scannerwork/
+
+# Copias de seguridad locales y binarios generados
+*.backup
+*.bk2
+/dist/
+
+# Los .spec de PyInstaller de USBMonitor son código fuente (builds del compañero y del visor)
+!USBMonitor/USBMonitorPrompt.spec
+!USBMonitor/USBSerialViewer.spec
+
+# Artefactos de las pruebas en el sandbox (stubs crean rutas C:/...)
+/C:/

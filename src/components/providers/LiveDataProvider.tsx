@@ -16,6 +16,8 @@ import {
   type SocketUSBEvent,
 } from "@/hooks/useSocketEvents";
 import { useLiveSyncStore } from "@/store/useLiveSyncStore";
+import { emitNotification } from "@/lib/notificationBus";
+import { Usb } from "lucide-react";
 
 /* ── Context types ── */
 
@@ -68,6 +70,8 @@ export function LiveDataProvider({
   const eventCountRef = useRef(0);
   const [liveEventCount, setLiveEventCount] = useState(0);
 
+  const notificadosRef = useRef<Set<string>>(new Set());
+
   const invalidatorRef = useRef<ReturnType<typeof createDebouncedInvalidator> | null>(null);
   if (!invalidatorRef.current) {
     invalidatorRef.current = createDebouncedInvalidator(queryClient, 3000);
@@ -78,6 +82,42 @@ export function LiveDataProvider({
     (event: SocketUSBEvent) => {
       // Append to local live feed
       setLiveEvents((prev) => [event, ...prev].slice(0, MAX_LIVE_EVENTS));
+
+      // Avisos del centro de notificaciones: solo lo que importa
+      // (bloqueos y USB sin autorizar; lo autorizado es rutina).
+      if (event.id && !notificadosRef.current.has(event.id)) {
+        const esBloqueo = event.event.toUpperCase().includes("BLOCK");
+        const esDesbloqueo = event.event.toUpperCase().includes("UNLOCK");
+        if (esBloqueo || esDesbloqueo || event.whitelisted === false) {
+          notificadosRef.current.add(event.id);
+          if (notificadosRef.current.size > 200) {
+            notificadosRef.current = new Set(
+              Array.from(notificadosRef.current).slice(-100),
+            );
+          }
+          const detalle =
+            [event.serialNumber, event.driveLetter ? `Unidad ${event.driveLetter}` : null]
+              .filter(Boolean)
+              .join(" · ") || undefined;
+          if (esDesbloqueo) {
+            emitNotification({
+              title: `USB desbloqueado en ${event.pcName}`,
+              description: detalle,
+              icon: Usb,
+              tone: "success",
+            });
+          } else {
+            emitNotification({
+              title: esBloqueo
+                ? `USB bloqueado en ${event.pcName}`
+                : `USB sin autorizar en ${event.pcName}`,
+              description: detalle,
+              icon: Usb,
+              tone: esBloqueo ? "danger" : "warning",
+            });
+          }
+        }
+      }
       eventCountRef.current += 1;
       setLiveEventCount(eventCountRef.current);
 

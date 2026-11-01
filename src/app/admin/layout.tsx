@@ -3,6 +3,7 @@
 import { useMemo, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import {
+  KeyRound,
   LayoutDashboard,
   MonitorSmartphone,
   Radar,
@@ -28,7 +29,7 @@ import {
 import { formatTime } from "@/components/dashboard/types";
 
 function resolveViewKey(pathname: string | null): ViewKey {
-  const sanitized = pathname?.replace(/^\/+|\/+$/g, "") ?? "";
+  const sanitized = pathname?.replace(/^\/+/, "").replace(/\/+$/, "") ?? "";
   const segments = sanitized.split("/");
   const section = segments[1];
   switch (section) {
@@ -42,6 +43,8 @@ function resolveViewKey(pathname: string | null): ViewKey {
       return "users";
     case "whitelist":
       return "whitelist";
+    case "unlocks":
+      return "unlocks";
     case "network":
       return "network";
     case "settings":
@@ -54,10 +57,10 @@ function resolveViewKey(pathname: string | null): ViewKey {
 function AdminLayoutContent({
   children,
   pathname,
-}: {
+}: Readonly<{
   children: ReactNode;
   pathname: string | null;
-}) {
+}>) {
   const {
     activeKey,
     events,
@@ -119,6 +122,13 @@ function AdminLayoutContent({
         href: viewKeyToHref.whitelist,
       },
       {
+        key: "unlocks",
+        label: "Desbloqueos",
+        description: "Bloqueos en curso, intentos y equipos sin agente",
+        icon: KeyRound,
+        href: viewKeyToHref.unlocks,
+      },
+      {
         key: "network",
         label: "Escáner de red",
         description: "Descubre hosts activos y servicios del agente",
@@ -164,7 +174,7 @@ function AdminLayoutContent({
       {/* Animación suave entre subrutas usando la key del pathname actual */}
       <PageTransition
         transitionKey={pathname ?? "admin-root"}
-        className="space-y-6"
+        className="flex flex-1 flex-col gap-6"
       >
         <ErrorBoundary>
           {errorMsg && (
@@ -179,7 +189,9 @@ function AdminLayoutContent({
   );
 }
 
-export default function AdminLayout({ children }: { children: ReactNode }) {
+export default function AdminLayout({
+  children,
+}: Readonly<{ children: ReactNode }>) {
   const pathname = usePathname();
   const activeKey = resolveViewKey(pathname);
 

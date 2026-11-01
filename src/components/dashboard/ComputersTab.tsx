@@ -2,23 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,21 +15,18 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   AlertTriangle,
-  Cpu,
-  MonitorSmartphone,
+  ArrowDown,
+  ArrowUp,
   Router,
-  Sparkles,
-  Trash2,
-  Usb,
+  Search,
   Wifi,
 } from "lucide-react";
 import { Computer, formatDateTime, formatTime } from "./types";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { DashboardPagination } from "./DashboardPagination";
 import { useTableSort } from "@/hooks/useTableSort";
-import { SortableTableHead } from "./SortableTableHead";
 import { USBDevicesSheet } from "./USBDevicesSheet";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -55,21 +36,54 @@ interface Props {
   onDelete?: (id: string) => Promise<void> | void;
 }
 
-function StatusBadge({ active }: { active: boolean }) {
+const COLUMNAS_ORDEN: { key: keyof Computer; label: string }[] = [
+  { key: "name", label: "Nombre" },
+  { key: "ipAddress", label: "Dirección IP" },
+  { key: "isActive", label: "Estado" },
+  { key: "serviceRunning", label: "Servicio" },
+  { key: "lastSeen", label: "Última conexión" },
+  { key: "createdAt", label: "Registro" },
+];
+
+/** Dato de registro: etiqueta en versalitas y valor debajo. */
+function Dato({
+  etiqueta,
+  children,
+}: {
+  etiqueta: string;
+  children: React.ReactNode;
+}) {
   return (
-    <Badge
-      variant={active ? "success" : "secondary"}
-      className={cn(
-        "shadow-sm",
-        !active && "border border-border/50 bg-muted/40 text-muted-foreground",
-      )}
-    >
-      {active ? "Activo" : "Inactivo"}
-    </Badge>
+    <div>
+      <p className="smallcaps text-muted-foreground">{etiqueta}</p>
+      <div className="mt-1.5">{children}</div>
+    </div>
+  );
+}
+
+/** Estado como palabra precedida de un punto de color. */
+function PalabraEstado({
+  activo,
+  children,
+}: {
+  activo: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <span className="inline-flex items-center gap-2 text-sm text-foreground">
+      <span
+        className={cn(
+          "size-1.5 shrink-0 rounded-full",
+          activo ? "bg-emerald-500" : "bg-muted-foreground/40",
+        )}
+      />
+      {children}
+    </span>
   );
 }
 
 export function ComputersTab({ computers, loading, onDelete }: Props) {
+  const [busqueda, setBusqueda] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -84,9 +98,9 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
   const quickStats = useMemo(() => {
     if (loading) {
       return [
-        { label: "Activos", value: "--", accent: "from-[oklch(0.75_0.12_160/0.25)]" },
-        { label: "Servicios", value: "--", accent: "from-[oklch(0.72_0.05_250/0.25)]" },
-        { label: "Total", value: "--", accent: "from-muted/40" },
+        { label: "Activos", value: "--" },
+        { label: "Servicio OK", value: "--" },
+        { label: "Inventario", value: "--" },
       ];
     }
 
@@ -99,21 +113,9 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
     const total = sortedData.length;
 
     return [
-      {
-        label: "Activos",
-        value: activeCount.toString(),
-        accent: "from-[oklch(0.75_0.12_160/0.25)] via-[oklch(0.80_0.08_160/0.10)]",
-      },
-      {
-        label: "Servicio OK",
-        value: runningCount.toString(),
-        accent: "from-[oklch(0.72_0.05_250/0.25)] via-[oklch(0.78_0.03_250/0.10)]",
-      },
-      {
-        label: "Inventario",
-        value: total.toString(),
-        accent: "from-muted/30 via-muted/10",
-      },
+      { label: "Activos", value: activeCount.toString() },
+      { label: "Servicio OK", value: runningCount.toString() },
+      { label: "Inventario", value: total.toString() },
     ];
   }, [sortedData, loading]);
 
@@ -141,11 +143,25 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
     setPage(1);
   }, []);
 
+  const filtrados = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    if (!q) return sortedData;
+    return sortedData.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        (c.ipAddress ?? "").toLowerCase().includes(q),
+    );
+  }, [sortedData, busqueda]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [busqueda]);
+
   const paginatedComputers = useMemo(() => {
-    if (sortedData.length === 0) return [];
+    if (filtrados.length === 0) return [];
     const start = (page - 1) * pageSize;
-    return sortedData.slice(start, start + pageSize);
-  }, [sortedData, page, pageSize]);
+    return filtrados.slice(start, start + pageSize);
+  }, [filtrados, page, pageSize]);
 
   const handleConfirmDelete = useCallback(async () => {
     if (!onDelete || !pendingDelete) return;
@@ -163,415 +179,213 @@ export function ComputersTab({ computers, loading, onDelete }: Props) {
 
   return (
     <motion.section
-      initial={{ opacity: 0, y: 12 }}
+      initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: "easeOut" }}
       className="w-full"
     >
-      <Card className="relative w-full overflow-hidden rounded-xl border border-border/60 bg-card/80 shadow-xl backdrop-blur-xl">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,oklch(0.82_0.01_250/0.10),transparent_55%),radial-gradient(circle_at_bottom_right,oklch(0.78_0.015_250/0.10),transparent_55%)]" />
-        <CardHeader className="relative z-10 space-y-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-center gap-3">
-              <span className="inline-flex size-12 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary shadow-sm dark:border-primary/30 dark:bg-primary/15 dark:text-primary">
-                <MonitorSmartphone className="size-5" />
-              </span>
-              <div>
-                <CardTitle className="text-2xl font-semibold text-foreground">
-                  Computadoras monitoreadas
-                </CardTitle>
-                <CardDescription className="text-sm text-muted-foreground">
-                  Visibilidad integral de hosts con el agente USB y su servicio.
-                </CardDescription>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-muted-foreground">
-              <span className="inline-flex items-center gap-1 rounded-full border border-border/40 bg-muted/30 px-3 py-1 shadow-sm backdrop-blur-sm">
-                <Wifi className="size-3" />
-                Estado de conectividad
-              </span>
-              <span className="inline-flex items-center gap-1 rounded-full border border-border/40 bg-muted/30 px-3 py-1 shadow-sm backdrop-blur-sm">
-                <Router className="size-3" />
-                Agente USB
-              </span>
-            </div>
+      {/* ── Cabecera plana ── */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-1 flex-col">
+          <h2 className="font-display text-[1.7rem] font-bold leading-tight text-foreground">
+            Registro de agentes
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Inventario de equipos con el agente USB instalado y el estado de
+            su servicio.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-5 pb-1 text-xs text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5">
+            <Wifi className="size-3.5 text-[var(--acero)]" />
+            Estado de conectividad
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <Router className="size-3.5 text-[var(--acero)]" />
+            Agente USB
+          </span>
+        </div>
+      </div>
+
+      {/* ── Tira de cifras ── */}
+      <div className="mt-8 flex flex-wrap gap-x-14 gap-y-4 border-t border-border pt-5">
+        {quickStats.map((stat) => (
+          <div key={stat.label} className="flex items-baseline gap-3">
+            <span className="font-display text-[1.7rem] font-bold leading-none tabular-nums text-foreground">
+              {stat.value}
+            </span>
+            <span className="smallcaps text-muted-foreground">
+              {stat.label}
+            </span>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {quickStats.map((stat) => (
-              <div
-                key={stat.label}
-                className="relative overflow-hidden rounded-xl border border-border/40 bg-card/80 p-4 backdrop-blur-sm"
-              >
-                <div
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="mt-4">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="border-t border-border py-6">
+              <Skeleton className="h-5 w-52 rounded-none bg-muted/40" />
+              <Skeleton className="mt-2.5 h-3 w-28 rounded-none bg-muted/40" />
+            </div>
+          ))}
+        </div>
+      ) : computers.length === 0 ? (
+        <div className="mt-4 flex items-start gap-3 border-t border-border pt-6 text-sm text-muted-foreground">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-[var(--acero)]" />
+          <p>No hay computadoras monitoreadas aún.</p>
+        </div>
+      ) : (
+        <>
+          {/* ── Ordenación y búsqueda ── */}
+          <div className="mt-10 flex flex-wrap items-center gap-x-5 gap-y-2">
+            <div className="relative order-last w-full sm:order-none sm:ml-auto sm:w-auto">
+              <Search className="pointer-events-none absolute left-0 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={busqueda}
+                onChange={(event) => setBusqueda(event.target.value)}
+                placeholder="Buscar por nombre o IP"
+                className="w-full rounded-none border-0 border-b border-border bg-transparent pl-6 shadow-none focus-visible:border-[var(--acero)] focus-visible:ring-0 sm:w-[220px]"
+              />
+            </div>
+            <span className="smallcaps text-muted-foreground/70">
+              Ordenar por
+            </span>
+            {COLUMNAS_ORDEN.map((columna) => {
+              const activo = sortConfig.key === columna.key;
+              return (
+                <button
+                  key={columna.key}
+                  type="button"
+                  onClick={() => requestSort(columna.key)}
                   className={cn(
-                    "pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-br opacity-70",
-                    stat.accent,
+                    "smallcaps inline-flex items-center gap-1 transition-colors",
+                    activo
+                      ? "text-foreground underline decoration-[var(--acero)] decoration-2 underline-offset-4"
+                      : "text-muted-foreground hover:text-foreground",
                   )}
-                />
-                <div className="relative flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                      {stat.label}
+                >
+                  {columna.label}
+                  {activo &&
+                    (sortConfig.direction === "desc" ? (
+                      <ArrowDown className="size-3" />
+                    ) : (
+                      <ArrowUp className="size-3" />
+                    ))}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* ── La flota, como lista de registros ── */}
+          <ul className="mt-4 divide-y divide-border border-t border-border">
+            {paginatedComputers.map((computer) => {
+              const canViewUsb =
+                computer.isActive && computer.serviceRunning;
+              const eliminando = deletingId === computer.id;
+              return (
+                <li
+                  key={computer.id}
+                  className="flex flex-col gap-5 py-6 md:flex-row md:items-center md:gap-8"
+                >
+                  {/* Nombre e IP */}
+                  <div className="min-w-0 md:w-60 md:shrink-0">
+                    <p className="font-display truncate text-xl font-bold leading-snug text-foreground">
+                      {computer.name}
                     </p>
-                    <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
-                      {stat.value}
+                    <p className="mt-1 font-mono text-xs text-muted-foreground">
+                      {computer.ipAddress}
                     </p>
                   </div>
-                  <span className="inline-flex size-8 items-center justify-center rounded-lg bg-muted/50 text-muted-foreground">
-                    {stat.label === "Activos" ? (
-                      <Cpu className="size-4" />
-                    ) : stat.label === "Servicio OK" ? (
-                      <Sparkles className="size-4" />
-                    ) : (
-                      <MonitorSmartphone className="size-4" />
-                    )}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardHeader>
-        <CardContent className="relative z-10 space-y-6">
-          {loading ? (
-            <div className="space-y-3">
-              {[...Array(5)].map((_, i) => (
-                <Skeleton key={i} className="h-12 rounded-xl bg-muted/40" />
-              ))}
-            </div>
-          ) : computers.length === 0 ? (
-            <Alert className="rounded-xl border-[oklch(0.80_0.10_85/0.40)] bg-[oklch(0.95_0.03_85)] text-[oklch(0.45_0.10_85)] shadow-sm dark:border-[oklch(0.65_0.08_85/0.30)] dark:bg-[oklch(0.80_0.10_85/0.10)] dark:text-[oklch(0.90_0.04_85)]">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription>
-                No hay computadoras monitoreadas aún.
-              </AlertDescription>
-            </Alert>
-          ) : (
-            <div className="flex flex-col gap-6">
-              <div className="space-y-4 md:hidden">
-                {paginatedComputers.map((computer) => {
-                  const canViewUsb =
-                    computer.isActive && computer.serviceRunning;
-                  return (
-                    <motion.div
-                      key={computer.id}
-                      whileHover={{ y: -4 }}
-                      transition={{ duration: 0.2 }}
-                      className="rounded-xl border border-border/40 bg-card/80 p-5 shadow-lg backdrop-blur-xl"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-semibold text-foreground">
-                            {computer.name}
-                          </p>
-                          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                            {computer.ipAddress}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <StatusBadge active={computer.isActive} />
-                          <Button
-                            type="button"
-                            size="sm"
-                            disabled={!canViewUsb}
-                            onClick={() => setSelectedComputer(computer)}
-                            aria-label={`Ver USB de ${computer.name}`}
-                            title="Ver USB conectados"
-                            className={cn(
-                              "group relative h-8 gap-1.5 rounded-full px-3 text-xs font-semibold transition-all duration-200",
-                              canViewUsb
-                                ? "border border-primary/20 bg-primary/10 text-primary shadow-sm hover:-translate-y-0.5 hover:border-primary/40 hover:bg-primary/20 hover:shadow-md dark:border-primary/30 dark:bg-primary/15 dark:text-primary"
-                                : "cursor-not-allowed border border-border/30 bg-muted/20 text-muted-foreground/40",
-                            )}
-                          >
-                            <Usb className="h-3.5 w-3.5 transition-transform group-hover:scale-110" />
-                            <span className="hidden lg:inline">Ver USB</span>
-                          </Button>
-                          {onDelete && (
-                            <Button
-                              type="button"
-                              size="sm"
-                              disabled={deletingId === computer.id}
-                              onClick={() => setPendingDelete(computer)}
-                              aria-label={`Eliminar ${computer.name}`}
-                              title="Eliminar equipo"
-                              className={cn(
-                                "group relative h-8 gap-1.5 rounded-full px-3 text-xs font-semibold transition-all duration-200",
-                                deletingId === computer.id
-                                  ? "cursor-wait border border-rose-300/60 bg-rose-500/20 text-rose-50 dark:border-rose-400/40 dark:bg-rose-500/25 dark:text-rose-100"
-                                  : "border border-rose-200/60 bg-rose-500/10 text-rose-700 shadow-sm hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-500/20 hover:shadow-md dark:border-rose-400/40 dark:bg-rose-500/15 dark:text-rose-100",
-                              )}
-                            >
-                              {deletingId === computer.id ? (
-                                <Spinner size={14} />
-                              ) : (
-                                <Trash2 className="h-3.5 w-3.5 transition-transform group-hover:scale-110" />
-                              )}
-                              <span className="hidden sm:inline">Eliminar</span>
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                      <div className="mt-4 grid gap-3 text-xs text-muted-foreground">
-                        <div className="flex items-center justify-between">
-                          <span className="font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">
-                            Servicio
-                          </span>
-                          <Badge
-                            variant={
-                              computer.serviceRunning ? "success" : "secondary"
-                            }
-                            className={cn(
-                              "rounded-full border border-border/50 bg-muted/30 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground",
-                              !computer.serviceRunning &&
-                                "border border-border/50 bg-muted/40 text-muted-foreground",
-                            )}
-                          >
-                            {computer.serviceRunning
-                              ? "200 OK"
-                              : "Sin respuesta"}
-                          </Badge>
-                        </div>
-                        {computer.lastServiceCheck && (
-                          <div className="flex items-center justify-between">
-                            <span className="font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">
-                              Último ping
-                            </span>
-                            <span>{formatTime(computer.lastServiceCheck)}</span>
-                          </div>
-                        )}
-                        <div className="flex items-center justify-between">
-                          <span className="font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">
-                            Última conexión
-                          </span>
-                          <span>
-                            {computer.lastSeen
-                              ? formatDateTime(computer.lastSeen)
-                              : "Nunca"}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">
-                            Alta
-                          </span>
-                          <span>{formatDateTime(computer.createdAt)}</span>
-                        </div>
-                      </div>
-                    </motion.div>
-                  );
-                })}
-              </div>
 
-              <div className="flex flex-col overflow-hidden rounded-xl border border-border/40 bg-card/60 shadow-inner backdrop-blur-sm">
-                <div className="flex-1 overflow-hidden">
-                  <ScrollArea className="hidden max-h-[min(75vh,650px)] w-full pr-3 md:block">
-                <Table className="w-full min-w-[1100px]">
-                  <TableHeader className="sticky top-0 z-10 bg-card/95 backdrop-blur-xl">
-                    <TableRow className="border-border/40">
-                      <SortableTableHead
-                        column="name"
-                        currentSortKey={sortConfig.key}
-                        currentSortDirection={sortConfig.direction}
-                        onSort={requestSort}
-                        className="text-muted-foreground"
-                      >
-                        Nombre
-                      </SortableTableHead>
-                      <SortableTableHead
-                        column="ipAddress"
-                        currentSortKey={sortConfig.key}
-                        currentSortDirection={sortConfig.direction}
-                        onSort={requestSort}
-                        className="text-muted-foreground"
-                      >
-                        Dirección IP
-                      </SortableTableHead>
-                      <SortableTableHead
-                        column="isActive"
-                        currentSortKey={sortConfig.key}
-                        currentSortDirection={sortConfig.direction}
-                        onSort={requestSort}
-                        className="text-muted-foreground"
-                      >
-                        Estado
-                      </SortableTableHead>
-                      <SortableTableHead
-                        column="serviceRunning"
-                        currentSortKey={sortConfig.key}
-                        currentSortDirection={sortConfig.direction}
-                        onSort={requestSort}
-                        className="text-muted-foreground"
-                      >
-                        Servicio
-                      </SortableTableHead>
-                      <SortableTableHead
-                        column="lastSeen"
-                        currentSortKey={sortConfig.key}
-                        currentSortDirection={sortConfig.direction}
-                        onSort={requestSort}
-                        className="text-muted-foreground"
-                      >
-                        Última conexión
-                      </SortableTableHead>
-                      <SortableTableHead
-                        column="createdAt"
-                        currentSortKey={sortConfig.key}
-                        currentSortDirection={sortConfig.direction}
-                        onSort={requestSort}
-                        className="text-muted-foreground"
-                      >
-                        Fecha registro
-                      </SortableTableHead>
-                      <SortableTableHead
-                        column="id"
-                        currentSortKey={sortConfig.key}
-                        currentSortDirection={sortConfig.direction}
-                        onSort={requestSort}
-                        className="text-muted-foreground"
-                      >
-                        USB
-                      </SortableTableHead>
-                      {onDelete && (
-                        <SortableTableHead
-                          column="id"
-                          currentSortKey={sortConfig.key}
-                          currentSortDirection={sortConfig.direction}
-                          onSort={requestSort}
-                          className="text-muted-foreground"
-                          align="right"
-                        >
-                          Acciones
-                        </SortableTableHead>
+                  {/* Estado y servicio, como palabras con punto */}
+                  <div className="flex flex-wrap gap-x-10 gap-y-4 md:w-72 md:shrink-0">
+                    <Dato etiqueta="Estado">
+                      <PalabraEstado activo={computer.isActive}>
+                        {computer.isActive ? "Activo" : "Inactivo"}
+                      </PalabraEstado>
+                    </Dato>
+                    <Dato etiqueta="Servicio">
+                      <PalabraEstado activo={Boolean(computer.serviceRunning)}>
+                        {computer.serviceRunning
+                          ? "200 OK"
+                          : "Sin respuesta"}
+                      </PalabraEstado>
+                      {computer.lastServiceCheck && (
+                        <p className="mt-1 text-[11px] tabular-nums text-muted-foreground">
+                          Ping {formatTime(computer.lastServiceCheck)}
+                        </p>
                       )}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {paginatedComputers.map((computer) => (
-                      <TableRow
-                        key={computer.id}
-                        className="group group transition-colors duration-150"
-                      >
-                        <TableCell className="font-semibold text-foreground">
-                          {computer.name}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {computer.ipAddress}
-                        </TableCell>
-                        <TableCell>
-                          <StatusBadge active={computer.isActive} />
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-col gap-1">
-                            <Badge
-                              variant={
-                                computer.serviceRunning
-                                  ? "success"
-                                  : "secondary"
-                              }
-                              className={cn(
-                                "shadow-sm",
-                                !computer.serviceRunning &&
-                                  "border border-border/50 bg-muted/40 text-muted-foreground",
-                              )}
-                            >
-                              {computer.serviceRunning
-                                ? "200 OK"
-                                : "Sin respuesta"}
-                            </Badge>
-                            {computer.lastServiceCheck && (
-                              <span className="text-[10px] text-muted-foreground">
-                                {formatTime(computer.lastServiceCheck)}
-                              </span>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {computer.lastSeen
-                            ? formatDateTime(computer.lastSeen)
-                            : "Nunca"}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {formatDateTime(computer.createdAt)}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {(() => {
-                            const canViewUsb =
-                              computer.isActive && computer.serviceRunning;
-                            return (
-                              <Button
-                                type="button"
-                                size="sm"
-                                disabled={!canViewUsb}
-                                onClick={() => setSelectedComputer(computer)}
-                                aria-label={`Ver USB de ${computer.name}`}
-                                title="Ver USB conectados"
-                                className={cn(
-                                  "group relative h-8 gap-1.5 rounded-full px-3 text-xs font-semibold transition-all duration-200",
-                                  canViewUsb
-                                    ? "border border-primary/20 bg-primary/10 text-primary shadow-sm hover:-translate-y-0.5 hover:border-primary/40 hover:bg-primary/20 hover:shadow-md dark:border-primary/30 dark:bg-primary/15 dark:text-primary"
-                                    : "cursor-not-allowed border border-border/30 bg-muted/20 text-muted-foreground/40",
-                                )}
-                              >
-                                <Usb className="h-3.5 w-3.5 transition-transform group-hover:scale-110" />
-                                <span className="hidden lg:inline">
-                                  Ver USB
-                                </span>
-                              </Button>
-                            );
-                          })()}
-                        </TableCell>
-                        {onDelete && (
-                          <TableCell className="text-center">
-                            <div className="flex justify-center">
-                              <Button
-                                type="button"
-                                size="sm"
-                                disabled={deletingId === computer.id}
-                                onClick={() => setPendingDelete(computer)}
-                                aria-label={`Eliminar ${computer.name}`}
-                                title="Eliminar equipo"
-                                className={cn(
-                                  "group relative h-8 gap-1.5 rounded-full px-3 text-xs font-semibold transition-all duration-200",
-                                  deletingId === computer.id
-                                    ? "cursor-wait border border-rose-300/60 bg-rose-500/20 text-rose-50 dark:border-rose-400/40 dark:bg-rose-500/25 dark:text-rose-100"
-                                    : "border border-rose-200/60 bg-rose-500/10 text-rose-700 shadow-sm hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-500/20 hover:shadow-md dark:border-rose-400/40 dark:bg-rose-500/15 dark:text-rose-100",
-                                )}
-                              >
-                                {deletingId === computer.id ? (
-                                  <Spinner size={14} />
-                                ) : (
-                                  <Trash2 className="h-3.5 w-3.5 transition-transform group-hover:scale-110" />
-                                )}
-                                <span className="hidden xl:inline">
-                                  Eliminar
-                                </span>
-                              </Button>
-                            </div>
-                          </TableCell>
-                        )}
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-                <ScrollBar orientation="horizontal" />
-              </ScrollArea>
-              </div>
+                    </Dato>
+                  </div>
 
-                <div className="shrink-0 border-t border-border/40 bg-card/50 p-4">
-                  {/* Static / Floating Pagination */}
-                  <DashboardPagination
-                    page={page}
-                    pageSize={pageSize}
-                    totalItems={computers.length}
-                    onPageChange={handlePageChange}
-                    onPageSizeChange={handlePageSizeChange}
-                    label="computadoras"
-                  />
-                </div>
-              </div>
-            </div>
+                  {/* Fechas */}
+                  <div className="flex flex-wrap gap-x-10 gap-y-4 md:flex-1">
+                    <Dato etiqueta="Última conexión">
+                      <span className="text-sm tabular-nums text-foreground">
+                        {computer.lastSeen
+                          ? formatDateTime(computer.lastSeen)
+                          : "Nunca"}
+                      </span>
+                    </Dato>
+                    <Dato etiqueta="Registro">
+                      <span className="text-sm tabular-nums text-foreground">
+                        {formatDateTime(computer.createdAt)}
+                      </span>
+                    </Dato>
+                  </div>
+
+                  {/* Acciones de texto */}
+                  <div className="flex items-center gap-1 md:ml-auto md:shrink-0">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={!canViewUsb}
+                      onClick={() => setSelectedComputer(computer)}
+                      aria-label={`Ver USB de ${computer.name}`}
+                      title="Ver USB conectados"
+                    >
+                      Ver USB
+                    </Button>
+                    {onDelete && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={eliminando}
+                        onClick={() => setPendingDelete(computer)}
+                        aria-label={`Eliminar ${computer.name}`}
+                        title="Eliminar equipo"
+                        className="text-destructive hover:text-destructive"
+                      >
+                        {eliminando ? <Spinner size={14} /> : "Eliminar"}
+                      </Button>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+
+          {busqueda.trim() && filtrados.length === 0 && (
+            <p className="border-t border-border pt-6 text-sm text-muted-foreground">
+              Ningún equipo coincide con «{busqueda.trim()}».
+            </p>
           )}
-        </CardContent>
-      </Card>
+
+          {/* ── Paginación ── */}
+            <DashboardPagination
+              page={page}
+              pageSize={pageSize}
+              totalItems={filtrados.length}
+              onPageChange={handlePageChange}
+              onPageSizeChange={handlePageSizeChange}
+              label="computadoras"
+            />
+
+        </>
+      )}
 
       <AlertDialog
         open={Boolean(pendingDelete)}

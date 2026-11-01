@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { PrismaClient } from "@prisma/client";
 import { resolve, TOKENS } from "@/lib/di/container";
-import { requireAuth } from "@/lib/auth"; // Sólo se usará para GET (consulta), no para POST (ingesta)
+import { requireAuth, requireServiceAuth } from "@/lib/auth"; // requireAuth: GET (consulta). requireServiceAuth: POST si el ajuste requireAgentToken está activo
+import { readAppSettings } from "@/lib/appSettings";
 import { usbEventPayloadSchema } from "@/lib/validators";
 import { getCurrentDate } from "@/lib/time";
 import { normalizeComputerName } from "@/lib/utils";
@@ -11,8 +12,22 @@ const prisma = resolve<PrismaClient>(TOKENS.prisma);
 
 export async function POST(request: NextRequest) {
   try {
-    // Ingesta abierta: NO requiere autenticación (según petición).
-    // Considera en el futuro: firma compartida, lista blanca IP o token simple.
+    // Ingesta de eventos (fase 3 del plan de desbloqueo): si el ajuste
+    // requireAgentToken está activo en el panel, el agente debe
+    // autenticarse (token por equipo o clave de servicio); si está
+    // apagado —periodo de compatibilidad con agentes viejos— la ingesta
+    // sigue abierta, pero queda constancia en el log del servidor.
+    const settings = await readAppSettings();
+    if (settings.requireAgentToken) {
+      try {
+        await requireServiceAuth(request);
+      } catch {
+        return NextResponse.json(
+          { error: "No autorizado" },
+          { status: 401 },
+        );
+      }
+    }
     const body = await request.json();
     const parsed = usbEventPayloadSchema.safeParse(body);
 
@@ -73,6 +88,26 @@ export async function POST(request: NextRequest) {
         isActive: true,
       },
     });
+
+    // Fase 2: al extraerse el dispositivo, el permiso de uso muere.
+    // El agente también llama a /api/usb-event/pending-close; esto es
+    // el respaldo por si ese aviso se pierde.
+    if (event === "DISCONNECTED" && normalizedDrive) {
+      await prisma.pendingUnlock
+        .updateMany({
+          where: {
+            pcName: computerName,
+            driveLetter: normalizedDrive,
+            status: { in: ["BLOCKED", "UNLOCKED"] },
+          },
+          data: {
+            status: "CLOSED",
+            closedAt: occurredAt,
+            closeReason: "REMOVED",
+          },
+        })
+        .catch(() => undefined);
+    }
 
     console.log(
       `Evento USB recibido: ${event} desde ${computerName} (${pc_ip})`,

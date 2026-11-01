@@ -27,6 +27,8 @@ export interface SSHCredentials {
   username: string;
   password?: string;
   port?: number;
+  /** Token por equipo (fase 3): se entrega al agente en la instalación. */
+  agentToken?: string;
 }
 
 export interface SSHOperationResult {
@@ -294,7 +296,7 @@ export async function installServiceViaSSH(
 
     // 2. Ejecutar Install-Service.ps1
     onProgress?.("installing", "Ejecutando instalación del servicio...");
-    const installCmd = `powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${REMOTE_PATH}\\Install-Service.ps1" -Action install -ServerHost ${serverHost} -ServerPort ${serverPort}`;
+    const installCmd = `powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${REMOTE_PATH}\\Install-Service.ps1" -Action install -ServerHost ${serverHost} -ServerPort ${serverPort}${creds.agentToken ? ` -AgentToken ${creds.agentToken}` : ""}`;
     const installResult = await execRemote(client, installCmd, OPERATION_TIMEOUT_MS);
 
     if (installResult.code !== 0) {
@@ -386,7 +388,6 @@ function describeSSHError(error: any): string {
   return `Error SSH: ${msg}`;
 }
 
-// TODO: [FUTURO] Implementar SSE (Server-Sent Events) para streaming de progreso
-// granular en tiempo real. Actualmente se usa un approach de dos llamadas HTTP
-// (fase copy + fase install) con estados intermedios en el frontend.
-// Ver: https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events
+// Progreso en tiempo real: los callbacks onProgress de este módulo se
+// reenvían al cliente como eventos SSE desde /api/remote-install cuando
+// la llamada trae `stream: true` (ver route.ts de remote-install).

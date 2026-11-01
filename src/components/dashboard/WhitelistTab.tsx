@@ -2,16 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+import { Search } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -19,20 +12,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Textarea } from "@/components/ui/textarea";
 import { WhitelistEntry, formatDateTime } from "./types";
-import {
-  CheckCircle2,
-  NotebookPen,
-  ShieldCheck,
-  Trash2,
-  Clock3,
-  Sparkles,
-  UserCheck,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
 import { DashboardPagination } from "./DashboardPagination";
 import { usePagination } from "@/hooks/usePagination";
 import { useTableSort } from "@/hooks/useTableSort";
@@ -52,7 +33,12 @@ interface Props {
   onDelete: (id: string) => Promise<void>;
 }
 
-export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
+export function WhitelistTab({
+  entries,
+  loading,
+  onCreate,
+  onDelete,
+}: Readonly<Props>) {
   const [serialNumber, setSerialNumber] = useState("");
   const [label, setLabel] = useState("");
   const [notes, setNotes] = useState("");
@@ -63,8 +49,21 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
   const { sortedData, sortConfig, requestSort } =
     useTableSort<WhitelistEntry>(entries);
 
+  const [busqueda, setBusqueda] = useState("");
+
+  const filtradas = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    if (!q) return sortedData;
+    return sortedData.filter(
+      (e) =>
+        e.serialNumber.toLowerCase().includes(q) ||
+        (e.label ?? "").toLowerCase().includes(q) ||
+        (e.notes ?? "").toLowerCase().includes(q),
+    );
+  }, [sortedData, busqueda]);
+
   const { page, pageSize, setPage, setPageSize } = usePagination({
-    totalItems: sortedData.length,
+    totalItems: filtradas.length,
   });
 
   const totalEntries = sortedData.length;
@@ -81,40 +80,28 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
       {
         label: "Registrados",
         description: "seriales autorizados",
-        icon: <ShieldCheck className="size-4" />,
         value: numberFormatter.format(totalEntries),
-        accent:
-          "from-[oklch(0.82_0.04_170/0.25)] via-[oklch(0.85_0.03_170/0.12)] to-transparent dark:from-[oklch(0.45_0.04_170/0.18)] dark:via-[oklch(0.40_0.03_170/0.08)]",
       },
       {
         label: "Último alta",
         description: latestCreatedAt
           ? formatDateTime(latestCreatedAt)
           : "Sin registros",
-        icon: <Clock3 className="size-4" />,
         value: latestCreatedAt ? "Activo" : "Pendiente",
-        accent:
-          "from-[oklch(0.80_0.04_230/0.25)] via-[oklch(0.84_0.03_230/0.12)] to-transparent dark:from-[oklch(0.45_0.04_230/0.18)] dark:via-[oklch(0.40_0.03_230/0.08)]",
       },
       {
         label: "Último autor",
         description: latestCreatedBy ?? "Sistema",
-        icon: <UserCheck className="size-4" />,
         value: latestCreatedBy ? "Manual" : "Automático",
-        accent:
-          "from-[oklch(0.78_0.04_280/0.22)] via-[oklch(0.82_0.03_280/0.10)] to-transparent dark:from-[oklch(0.42_0.04_280/0.18)] dark:via-[oklch(0.38_0.03_280/0.08)]",
       },
       {
         label: "Estado",
         description: creating
           ? "Guardando..."
           : deletingId
-          ? "Eliminando..."
-          : "Sin acciones pendientes",
-        icon: <Sparkles className="size-4" />,
+            ? "Eliminando..."
+            : "Sin acciones pendientes",
         value: creating || deletingId ? "En curso" : "Listo",
-        accent:
-          "from-[oklch(0.82_0.04_85/0.25)] via-[oklch(0.85_0.03_85/0.12)] to-transparent dark:from-[oklch(0.48_0.04_85/0.18)] dark:via-[oklch(0.42_0.03_85/0.08)]",
       },
     ],
     [
@@ -124,14 +111,14 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
       latestCreatedBy,
       numberFormatter,
       totalEntries,
-    ]
+    ],
   );
 
   const paginatedEntries = useMemo(() => {
-    if (sortedData.length === 0) return [];
+    if (filtradas.length === 0) return [];
     const start = (page - 1) * pageSize;
-    return sortedData.slice(start, start + pageSize);
-  }, [sortedData, page, pageSize]);
+    return filtradas.slice(start, start + pageSize);
+  }, [filtradas, page, pageSize]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -177,368 +164,329 @@ export function WhitelistTab({ entries, loading, onCreate, onDelete }: Props) {
       transition={{ duration: 0.35, ease: "easeOut" }}
       className="w-full"
     >
-      <Card className="relative w-full overflow-hidden rounded-xl border border-border/60 bg-card/80 shadow-xl backdrop-blur-xl">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_oklch(0.82_0.01_250/0.14),transparent_55%),radial-gradient(circle_at_bottom_right,_oklch(0.78_0.015_250/0.10),transparent_55%)] dark:bg-[radial-gradient(circle_at_top_left,_oklch(0.75_0.01_250/0.12),transparent_45%),radial-gradient(circle_at_bottom_right,_oklch(0.70_0.015_250/0.12),transparent_55%)]" />
-        <CardHeader className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-4">
-            <span className="inline-flex size-12 items-center justify-center rounded-xl border border-border/40 bg-muted/30 text-primary shadow-sm">
-              <ShieldCheck className="size-5" />
-            </span>
-            <div>
-              <CardTitle className="text-2xl font-semibold text-foreground">
-                Whitelist de dispositivos USB
-              </CardTitle>
-              <CardDescription className="text-sm text-muted-foreground">
-                Autoriza memorias seguras, mantén control y elimina desbloqueos
-                manuales repetitivos.
-              </CardDescription>
-            </div>
-          </div>
-          <div className="flex flex-col items-start gap-2 text-xs font-medium text-muted-foreground sm:flex-row sm:items-center">
-            <Badge
-              variant="secondary"
-              className="rounded-full border border-border/40 bg-muted/30 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground shadow-sm backdrop-blur-sm"
-            >
-              {totalEntries} permitido{totalEntries === 1 ? "" : "s"}
-            </Badge>
+      {/* ── Cabecera del registro ── */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-1 flex-col">
+          <p className="smallcaps text-acero">Registro de autorizados</p>
+          <h2 className="font-display mt-2 text-2xl font-bold text-foreground">
+            Lista blanca de dispositivos USB
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Dispositivos conocidos por el agente. Aun estando aquí, cada
+            uso pide la contraseña del dueño de la PC.
+          </p>
+        </div>
+        <div className="flex flex-col items-end gap-3">
+          <p className="text-xs text-muted-foreground">
+            <span className="font-semibold text-foreground tabular-nums">
+              {totalEntries}
+            </span>{" "}
+            permitido{totalEntries === 1 ? "" : "s"}
             {latestCreatedAt && (
-              <span className="inline-flex items-center gap-2 rounded-full border border-border/40 bg-muted/30 px-3 py-1 text-muted-foreground shadow-sm backdrop-blur-sm">
-                <CheckCircle2 className="size-3.5" />
-                Último alta: {formatDateTime(latestCreatedAt)}
-              </span>
+              <> · Último alta: {formatDateTime(latestCreatedAt)}</>
             )}
+          </p>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-0 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={busqueda}
+              onChange={(event) => setBusqueda(event.target.value)}
+              placeholder="Buscar por serial, alias o notas"
+              className="w-[240px] rounded-none border-0 border-b border-border bg-transparent pl-6 shadow-none focus-visible:border-[var(--acero)] focus-visible:ring-0"
+            />
           </div>
-        </CardHeader>
-        <CardContent className="relative z-10 space-y-8">
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {quickStats.map((stat) => (
-              <motion.div
-                key={stat.label}
-                whileHover={{ y: -4 }}
-                transition={{ duration: 0.25 }}
-                className="relative overflow-hidden rounded-xl border border-border/40 bg-card/80 p-4 shadow-lg backdrop-blur-xl"
-              >
-                <div
-                  className={cn(
-                    "pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br opacity-70",
-                    stat.accent
-                  )}
-                />
-                <div className="relative flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                      {stat.label}
-                    </p>
-                    <p className="mt-3 text-2xl font-semibold text-foreground">
-                      {stat.value}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {stat.description}
-                    </p>
-                  </div>
-                  <span className="inline-flex size-9 items-center justify-center rounded-lg border border-border/40 bg-muted/30 text-muted-foreground shadow-sm">
-                    {stat.icon}
-                  </span>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-
-          <form
-            onSubmit={handleSubmit}
-            className="grid gap-4 rounded-xl border border-border/40 bg-card/80 p-5 shadow-xl backdrop-blur-xl sm:grid-cols-2 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]"
-          >
-            <div className="flex flex-col gap-2">
-              <label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                Serial del dispositivo
-              </label>
-              <Input
-                value={serialNumber}
-                onChange={(event) => setSerialNumber(event.target.value)}
-                placeholder="Ej. 1234-ABCD-5678"
-                required
-                className="h-11 rounded-xl border border-border/60 bg-card/90 text-foreground placeholder:text-muted-foreground/60 shadow-sm focus-visible:ring-2 focus-visible:ring-primary/40"
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                Alias / etiqueta
-              </label>
-              <Input
-                value={label}
-                onChange={(event) => setLabel(event.target.value)}
-                placeholder="Departamento, usuario o ubicación"
-                className="h-11 rounded-xl border border-border/60 bg-card/90 text-foreground placeholder:text-muted-foreground/60 shadow-sm focus-visible:ring-2 focus-visible:ring-primary/40"
-              />
-            </div>
-            <div className="flex flex-col gap-2 sm:col-span-2 lg:col-span-1">
-              <label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                Notas (opcional)
-              </label>
-              <Textarea
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-                placeholder="Caducidad, propósito o detalles relevantes"
-                rows={3}
-                className="min-h-[45px] resize-none rounded-xl border border-border/60 bg-card/90 text-foreground placeholder:text-muted-foreground/60 shadow-sm focus-visible:ring-2 focus-visible:ring-primary/40"
-              />
-            </div>
-            <div className="flex items-end justify-end sm:col-span-2 lg:col-span-1">
-              <Button
-                type="submit"
-                disabled={creating || !serialNumber.trim()}
-                className="w-full rounded-2xl border border-primary/20 bg-primary/10 px-6 py-3 text-primary shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:bg-primary/20 sm:w-auto dark:border-primary/30 dark:bg-primary/15 dark:text-primary"
-              >
-                {creating ? (
-                  <div className="mr-2">
-                    <Spinner size={16} />
-                  </div>
-                ) : (
-                  <NotebookPen className="mr-2 size-4" />
-                )}
-                Agregar
-              </Button>
-            </div>
-          </form>
-
-          {formError && (
-            <Alert className="rounded-2xl border-rose-200/60 bg-rose-50/90 text-rose-700 shadow-sm dark:border-rose-300/40 dark:bg-rose-500/10 dark:text-rose-100">
-              <AlertDescription>{formError}</AlertDescription>
-            </Alert>
+          {busqueda.trim() && (
+            <p className="text-xs text-muted-foreground">
+              {filtradas.length} coincidencia{filtradas.length === 1 ? "" : "s"}
+            </p>
           )}
+        </div>
+      </div>
 
-          <div className="flex flex-col overflow-hidden rounded-xl border border-border/40 bg-card/60 shadow-inner backdrop-blur-sm">
-            <div className="space-y-3 md:hidden">
-              {loading ? (
-                <div className="rounded-xl border border-border/40 bg-card/80 p-6 text-center text-muted-foreground shadow-sm">
-                  Cargando whitelist...
-                </div>
-              ) : entries.length === 0 ? (
-                <div className="rounded-xl border border-border/40 bg-card/80 p-6 text-center text-muted-foreground shadow-sm">
-                  No hay dispositivos registrados aún. Agrega el primero usando
-                  el formulario.
-                </div>
-              ) : (
-                paginatedEntries.map((entry) => {
-                  const isDeleting = deletingId === entry.id;
-                  return (
-                    <div
-                      key={entry.id}
-                      className="rounded-xl border border-border/40 bg-card/80 p-5 shadow-lg transition-shadow hover:shadow-xl backdrop-blur-sm"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="font-mono text-sm text-primary">
-                            {entry.serialNumber}
-                          </p>
-                          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground/60">
-                            {formatDateTime(entry.createdAt)}
-                          </p>
-                        </div>
-                        <Badge
-                          variant="secondary"
-                          className="rounded-full border border-border/40 bg-muted/30 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground shadow-sm"
-                        >
-                          {entry.label || "Sin alias"}
-                        </Badge>
-                      </div>
-                      <p className="mt-3 text-sm text-muted-foreground">
-                        {entry.notes || "Sin notas adicionales"}
-                      </p>
-                      <div className="mt-4 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                        <span>
-                          Autor: {entry.createdBy?.username || "Sistema"}
-                        </span>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleDelete(entry.id)}
-                          disabled={isDeleting}
-                          className={cn(
-                            "rounded-full border border-rose-200/60 bg-rose-500/10 px-3 py-1 text-rose-600 shadow-sm transition-colors hover:border-rose-300 hover:bg-rose-500/20 disabled:opacity-70 dark:border-rose-400/30 dark:bg-rose-500/15 dark:text-rose-100",
-                            isDeleting && "opacity-70"
-                          )}
-                        >
-                          {isDeleting ? (
-                            <div className="mr-2">
-                              <Spinner size={14} />
-                            </div>
-                          ) : (
-                            <Trash2 className="mr-2 size-3.5" />
-                          )}
-                          Eliminar
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
+      {/* ── Tira de cifras ── */}
+      <div className="mt-8 flex flex-wrap gap-x-12 gap-y-4 border-t border-border pt-5">
+        {quickStats.map((stat) => (
+          <div key={stat.label}>
+            <div className="flex items-baseline gap-3">
+              <span className="font-display text-[1.55rem] font-bold leading-none tabular-nums text-foreground">
+                {stat.value}
+              </span>
+              <span className="smallcaps text-muted-foreground">
+                {stat.label}
+              </span>
             </div>
-
-            <div className="flex-1 overflow-hidden">
-              <ScrollArea className="hidden max-h-[min(75vh,650px)] w-full pr-3 md:block">
-              <Table className="w-full min-w-[800px]">
-                <TableHeader className="sticky top-0 z-10 bg-card/95 backdrop-blur-xl">
-                  <TableRow className="border-border/40">
-                    <SortableTableHead
-                      column="serialNumber"
-                      currentSortKey={sortConfig.key}
-                      currentSortDirection={sortConfig.direction}
-                      onSort={requestSort}
-                      className="text-muted-foreground"
-                    >
-                      Serial
-                    </SortableTableHead>
-                    <SortableTableHead
-                      column="label"
-                      currentSortKey={sortConfig.key}
-                      currentSortDirection={sortConfig.direction}
-                      onSort={requestSort}
-                      className="text-muted-foreground"
-                    >
-                      Alias
-                    </SortableTableHead>
-                    <SortableTableHead
-                      column="notes"
-                      currentSortKey={sortConfig.key}
-                      currentSortDirection={sortConfig.direction}
-                      onSort={requestSort}
-                      className="text-muted-foreground"
-                    >
-                      Notas
-                    </SortableTableHead>
-                    <SortableTableHead
-                      column="createdAt"
-                      currentSortKey={sortConfig.key}
-                      currentSortDirection={sortConfig.direction}
-                      onSort={requestSort}
-                      className="text-muted-foreground"
-                    >
-                      Creado
-                    </SortableTableHead>
-                    <SortableTableHead
-                      column="createdBy"
-                      currentSortKey={sortConfig.key}
-                      currentSortDirection={sortConfig.direction}
-                      onSort={requestSort}
-                      className="text-muted-foreground"
-                    >
-                      Autor
-                    </SortableTableHead>
-                    <SortableTableHead
-                      column="id"
-                      currentSortKey={sortConfig.key}
-                      currentSortDirection={sortConfig.direction}
-                      onSort={requestSort}
-                      className="text-muted-foreground"
-                      align="right"
-                    >
-                      Acciones
-                    </SortableTableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loading ? (
-                    <TableRow>
-                      <TableCell
-                        colSpan={6}
-                        className="py-6 text-center text-muted-foreground"
-                      >
-                        Cargando whitelist...
-                      </TableCell>
-                    </TableRow>
-                  ) : entries.length === 0 ? (
-                    <TableRow>
-                      <TableCell
-                        colSpan={6}
-                        className="py-6 text-center text-muted-foreground"
-                      >
-                        No hay dispositivos registrados. Agrega uno usando el
-                        formulario.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    paginatedEntries.map((entry) => (
-                      <TableRow
-                        key={entry.id}
-                        className="group transition-colors duration-150"
-                      >
-                        <TableCell className="font-mono text-sm text-primary">
-                          {entry.serialNumber}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {entry.label ? (
-                            <Badge
-                              variant="secondary"
-                              className="rounded-full border border-border/40 bg-muted/30 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground shadow-sm"
-                            >
-                              {entry.label}
-                            </Badge>
-                          ) : (
-                            <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground/50">
-                              —
-                            </span>
-                          )}
-                        </TableCell>
-                        <TableCell className="max-w-[280px] text-sm text-muted-foreground">
-                          {entry.notes || (
-                            <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground/50">
-                              Sin notas
-                            </span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
-                          {formatDateTime(entry.createdAt)}
-                        </TableCell>
-                        <TableCell className="text-xs font-medium text-muted-foreground">
-                          {entry.createdBy?.username || "Sistema"}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleDelete(entry.id)}
-                            disabled={deletingId === entry.id}
-                            className={cn(
-                              "rounded-full border border-rose-200/60 bg-rose-500/10 px-4 py-2 text-rose-600 shadow-sm transition-all hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-500/20 disabled:opacity-70 dark:border-rose-400/30 dark:bg-rose-500/15 dark:text-rose-100",
-                              deletingId === entry.id && "opacity-70"
-                            )}
-                          >
-                            {deletingId === entry.id ? (
-                              <div className="mr-2">
-                                <Spinner size={16} />
-                              </div>
-                            ) : (
-                              <Trash2 className="mr-2 size-4" />
-                            )}
-                            Eliminar
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-              <ScrollBar orientation="horizontal" />
-            </ScrollArea>
-            </div>
-
-            <div className="shrink-0 border-t border-border/40 bg-card/50 p-4">
-              {/* Floating Pagination */}
-              {entries.length > 0 && !loading && (
-                <DashboardPagination
-                  page={page}
-                  pageSize={pageSize}
-                  totalItems={entries.length}
-                  onPageChange={setPage}
-                  onPageSizeChange={setPageSize}
-                  label="seriales"
-                />
-              )}
-            </div>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              {stat.description}
+            </p>
           </div>
-        </CardContent>
-      </Card>
+        ))}
+      </div>
+
+      {/* ── Alta nueva: una línea de asiento ── */}
+      <form
+        onSubmit={handleSubmit}
+        className="mt-10 border-t border-border pt-6"
+      >
+        <div className="grid items-end gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+          <div className="flex flex-col gap-2">
+            <label className="smallcaps text-muted-foreground">
+              Serial del dispositivo
+            </label>
+            <Input
+              value={serialNumber}
+              onChange={(event) => setSerialNumber(event.target.value)}
+              placeholder="Ej. 1234-ABCD-5678"
+              required
+              className="h-11"
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <label className="smallcaps text-muted-foreground">
+              Alias / etiqueta
+            </label>
+            <Input
+              value={label}
+              onChange={(event) => setLabel(event.target.value)}
+              placeholder="Departamento, usuario o ubicación"
+              className="h-11"
+            />
+          </div>
+          <div className="flex flex-col gap-2 sm:col-span-2 lg:col-span-1">
+            <label className="smallcaps text-muted-foreground">
+              Notas (opcional)
+            </label>
+            <Textarea
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              placeholder="Caducidad, propósito o detalles relevantes"
+              rows={1}
+              className="min-h-11 resize-none"
+            />
+          </div>
+          <div className="flex justify-end sm:col-span-2 lg:col-span-1">
+            <Button type="submit" disabled={creating || !serialNumber.trim()}>
+              {creating && (
+                <span className="mr-2 inline-flex">
+                  <Spinner size={16} />
+                </span>
+              )}
+              Agregar
+            </Button>
+          </div>
+        </div>
+      </form>
+
+      {formError && (
+        <p
+          role="alert"
+          className="mt-6 border-y border-destructive/40 py-3 text-sm text-destructive"
+        >
+          {formError}
+        </p>
+      )}
+
+      {/* ── Asientos del registro ── */}
+      <div className="mt-10 border-t border-border">
+        {/* Móvil: asientos en filas */}
+        <div className="divide-y divide-border md:hidden">
+          {loading ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              Cargando whitelist...
+            </p>
+          ) : entries.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              No hay dispositivos registrados aún. Agrega el primero usando el
+              formulario.
+            </p>
+          ) : (
+            paginatedEntries.map((entry) => {
+              const isDeleting = deletingId === entry.id;
+              return (
+                <article key={entry.id} className="py-5">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <p className="font-mono text-sm text-foreground">
+                      {entry.serialNumber}
+                    </p>
+                    <p className="text-xs text-muted-foreground tabular-nums">
+                      {formatDateTime(entry.createdAt)}
+                    </p>
+                  </div>
+                  <p className="font-display mt-2 text-base font-bold text-foreground">
+                    {entry.label || "Sin alias"}
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {entry.notes || "Sin notas adicionales"}
+                  </p>
+                  <div className="mt-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                    <span>
+                      Autor: {entry.createdBy?.username || "Sistema"}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleDelete(entry.id)}
+                      disabled={isDeleting}
+                      className="text-destructive hover:text-destructive"
+                    >
+                      {isDeleting && (
+                        <span className="mr-2 inline-flex">
+                          <Spinner size={14} />
+                        </span>
+                      )}
+                      Eliminar
+                    </Button>
+                  </div>
+                </article>
+              );
+            })
+          )}
+        </div>
+
+        {/* Escritorio: tabla libro mayor */}
+        <div className="hidden overflow-x-auto md:block">
+          <Table className="w-full min-w-[800px]">
+            <TableHeader>
+              <TableRow>
+                <SortableTableHead
+                  column="serialNumber"
+                  currentSortKey={sortConfig.key}
+                  currentSortDirection={sortConfig.direction}
+                  onSort={requestSort}
+                  className="text-muted-foreground"
+                >
+                  Serial
+                </SortableTableHead>
+                <SortableTableHead
+                  column="label"
+                  currentSortKey={sortConfig.key}
+                  currentSortDirection={sortConfig.direction}
+                  onSort={requestSort}
+                  className="text-muted-foreground"
+                >
+                  Alias
+                </SortableTableHead>
+                <SortableTableHead
+                  column="notes"
+                  currentSortKey={sortConfig.key}
+                  currentSortDirection={sortConfig.direction}
+                  onSort={requestSort}
+                  className="text-muted-foreground"
+                >
+                  Notas
+                </SortableTableHead>
+                <SortableTableHead
+                  column="createdAt"
+                  currentSortKey={sortConfig.key}
+                  currentSortDirection={sortConfig.direction}
+                  onSort={requestSort}
+                  className="text-muted-foreground"
+                >
+                  Creado
+                </SortableTableHead>
+                <SortableTableHead
+                  column="createdBy"
+                  currentSortKey={sortConfig.key}
+                  currentSortDirection={sortConfig.direction}
+                  onSort={requestSort}
+                  className="text-muted-foreground"
+                >
+                  Autor
+                </SortableTableHead>
+                <SortableTableHead
+                  column="id"
+                  currentSortKey={sortConfig.key}
+                  currentSortDirection={sortConfig.direction}
+                  onSort={requestSort}
+                  className="text-muted-foreground"
+                  align="right"
+                >
+                  Acciones
+                </SortableTableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={6}
+                    className="py-6 text-center text-muted-foreground"
+                  >
+                    Cargando whitelist...
+                  </TableCell>
+                </TableRow>
+              ) : entries.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={6}
+                    className="py-6 text-center text-muted-foreground"
+                  >
+                    No hay dispositivos registrados. Agrega uno usando el
+                    formulario.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                paginatedEntries.map((entry) => (
+                  <TableRow key={entry.id}>
+                    <TableCell className="font-mono text-sm">
+                      {entry.serialNumber}
+                    </TableCell>
+                    <TableCell>
+                      {entry.label ? (
+                        <span className="font-display text-[15px] font-bold text-foreground">
+                          {entry.label}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground/60">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="max-w-[280px] text-sm text-muted-foreground">
+                      {entry.notes || (
+                        <span className="text-muted-foreground/60">
+                          Sin notas
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground tabular-nums">
+                      {formatDateTime(entry.createdAt)}
+                    </TableCell>
+                    <TableCell className="text-xs font-medium text-muted-foreground">
+                      {entry.createdBy?.username || "Sistema"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleDelete(entry.id)}
+                        disabled={deletingId === entry.id}
+                        className="text-destructive hover:text-destructive"
+                      >
+                        {deletingId === entry.id && (
+                          <span className="mr-2 inline-flex">
+                            <Spinner size={16} />
+                          </span>
+                        )}
+                        Eliminar
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+
+        {entries.length > 0 && !loading && (
+            <DashboardPagination
+              page={page}
+              pageSize={pageSize}
+              totalItems={entries.length}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+              label="seriales"
+            />
+
+        )}
+      </div>
     </motion.section>
   );
 }

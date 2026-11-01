@@ -18,6 +18,10 @@ Variables de entorno opcionales:
     USB_MONITOR_SERVER_HOST  -> host del backend (por defecto 172.20.10.12)
     USB_MONITOR_SERVER_PORT  -> puerto del backend (por defecto 3000)
     USB_MONITOR_ENDPOINT     -> ruta del endpoint (por defecto /api/usb-event)
+    USB_MONITOR_AGENT_TOKEN  -> token por equipo (Fase 3); si está definido,
+                                el agente se autentica ante el servidor con
+                                "Authorization: AgentToken <token>" en vez de
+                                la API key de USB_MONITOR_API_KEY
     USB_MONITOR_LOG_PATH     -> ruta del archivo de log
 
 """
@@ -25,20 +29,26 @@ from __future__ import annotations
 
 import ctypes
 import getpass
+import hmac
+import html
 import json
 import logging
+import logging.handlers
 import os
 import re
+import shutil
 import socket
-import subprocess
+import subprocess  #nosec B404
 import sys
 import tempfile
 import threading
 import time
+import uuid
 from concurrent.futures import Future
+from datetime import datetime, timezone
 from queue import Queue, Full
 from contextlib import redirect_stderr, redirect_stdout
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from urllib.parse import urlparse, parse_qs, quote
@@ -57,9 +67,7 @@ try:  # pragma: no cover - pywintypes siempre se instala con pywin32
 except ImportError:  # pragma: no cover
     pywintypes = None  # type: ignore
 
-import tkinter as tk
-from tkinter import messagebox, simpledialog, ttk
-from tkinter.scrolledtext import ScrolledText
+# Fase 6: tkinter vive ahora en usb_monitor_admin.py (la GUI de gestión).
 
 import base64
 
@@ -75,34 +83,34 @@ except ImportError as e:
     PBKDF2HMAC = None  # type: ignore
     hashes = None  # type: ignore
 
-psycopg = None  # type: ignore
-psycopg2 = None  # type: ignore
-RealDictCursor = None  # type: ignore
+# Importar argon2-cffi para la verificación local de emergencia (Fase 4)
+try:
+    from argon2 import PasswordHasher as _Argon2PasswordHasher
+    from argon2.exceptions import (
+        InvalidHashError as _Argon2InvalidHash,
+        VerifyMismatchError as _Argon2VerifyMismatch,
+    )
 
-try:  # pragma: no cover - dependencias opcionales
-    import psycopg
-    from psycopg.rows import dict_row
+    ARGON2_AVAILABLE = True
+except ImportError:
+    _Argon2PasswordHasher = None  # type: ignore
+    _Argon2InvalidHash = None  # type: ignore
+    _Argon2VerifyMismatch = None  # type: ignore
+    ARGON2_AVAILABLE = False
 
-    DATABASE_DRIVER = "psycopg"
-except ImportError:  # pragma: no cover
-    try:
-        import psycopg2
-        from psycopg2.extras import RealDictCursor
-
-        DATABASE_DRIVER = "psycopg2"
-    except ImportError:  # pragma: no cover
-        DATABASE_DRIVER = None
+# Fase 6: el agente ya no se conecta a PostgreSQL en directo
+# (psycopg/psycopg2 y el cliente de BD se retiraron con el configurador
+# que listaba usuarios; la autenticación es por token de equipo o API key).
 
 
-DEFAULT_HOST = "172.20.10.12"
+DEFAULT_HOST = "localhost"  # Fase 5: antes la IP del hotspot; el instalador remoto escribe el host real en cada equipo
 DEFAULT_PORT = 3000
 DEFAULT_ENDPOINT = "/api/usb-event"
 PROGRAM_DATA_DIR = Path(os.environ.get("ProgramData", "C:/ProgramData")) / "USBMonitor"
 LOG_FILE_NAME = "usb_monitor_service.log"
 LEGACY_LOG_FILE_NAME = "usb_monitor.log"
 SERVICE_API_VERSION = "1.0.0"
-DATABASE_URL_ENV_VAR = "USB_MONITOR_DATABASE_URL"
-DEFAULT_DATABASE_URL = "postgresql://usb_app:usbapp123@localhost:5432/monitor_usb?schema=public"
+SYSTEM32_DIR = Path(os.environ.get("SystemRoot", "C:/Windows")) / "System32"
 
 # Cache para evitar registrar advertencias duplicadas al descartar discos no USB
 DISCARDED_DISK_CACHE: Set[str] = set()
@@ -117,7 +125,7 @@ DEFAULT_IPV4_FALLBACK = "127.0.0.1"
 
 _resolved_ip_cache: Dict[str, Any] = {"value": DEFAULT_IPV4_FALLBACK, "expires_at": 0.0}
 _whitelist_cache: Dict[str, Tuple[float, bool, Optional[Dict[str, Any]]]] = {}
-_unlock_backoff: Dict[str, Tuple[float, bool, Optional[str]]] = {}
+_unlock_backoff: Dict[str, float] = {}  # pc_name -> instante hasta el que no se repite la consulta (último resultado vacío)
 
 NetworkTask = Tuple[Callable[..., Any], Tuple[Any, ...], Dict[str, Any], Optional[Future]]
 NETWORK_QUEUE: "Queue[NetworkTask]" = Queue(maxsize=512)
@@ -167,6 +175,311 @@ def submit_network_task(
     return future
 
 
+# ---------------------------------------------------------------------------
+# Cola persistente (store-and-forward, Fase 4)
+#
+# La NETWORK_QUEUE de arriba es en memoria y sigue sirviendo para las
+# operaciones con respuesta (whitelist, registro de pendientes, polling
+# de desbloqueos). Pero los envíos "dispara y olvida" (eventos USB,
+# avisos de cierre por retirada, intentos sin red y eventos del propio
+# servicio) no pueden perderse si no hay red: se escriben primero en
+# queue_store.jsonl (una línea JSON por registro) y un hilo vaciador los
+# entrega en orden, con backoff, borrando del archivo solo lo que el
+# servidor confirmó. Al arrancar, el hilo recoge lo que hubiera quedado.
+# ---------------------------------------------------------------------------
+
+_queue_store_lock = threading.Lock()
+_queue_wake_event = threading.Event()
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def enqueue_persistent(kind: str, payload: Dict[str, Any]) -> bool:
+    """Añade un registro a la cola persistente. True si quedó en disco."""
+    record = {
+        "id": uuid.uuid4().hex,
+        "kind": kind,
+        "enqueuedAt": _utc_now_iso(),
+        "payload": payload,
+    }
+    try:
+        with _queue_store_lock:
+            QUEUE_STORE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            with open(QUEUE_STORE_FILE, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except Exception as exc:
+        LOGGER.error("    [Cola] ✗ No se pudo persistir el registro %s: %s", kind, exc)
+        return False
+    _ensure_queue_flusher_started()
+    _queue_wake_event.set()
+    return True
+
+
+def _read_queue_records() -> List[Dict[str, Any]]:
+    """Lee la cola persistente en orden. Líneas corruptas se descartan."""
+    try:
+        if not QUEUE_STORE_FILE.exists():
+            return []
+        records: List[Dict[str, Any]] = []
+        for line in QUEUE_STORE_FILE.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                LOGGER.warning("    [Cola] Línea corrupta en %s; se descarta", QUEUE_STORE_FILE)
+                continue
+            if isinstance(record, dict) and record.get("id"):
+                records.append(record)
+        return records
+    except Exception as exc:
+        LOGGER.warning("    [Cola] No se pudo leer %s: %s", QUEUE_STORE_FILE, exc)
+        return []
+
+
+def _pop_queue_record(record_id: str) -> None:
+    """Retira un registro ya confirmado de la cola persistente."""
+    with _queue_store_lock:
+        remaining = [r for r in _read_queue_records() if r.get("id") != record_id]
+        try:
+            QUEUE_STORE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            with open(QUEUE_STORE_FILE, "w", encoding="utf-8") as fh:
+                for record in remaining:
+                    fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+        except Exception as exc:
+            LOGGER.error("    [Cola] ✗ No se pudo reescribir %s: %s", QUEUE_STORE_FILE, exc)
+
+
+def _post_json_strict(endpoint: str, payload: Dict[str, Any], timeout: int = 10) -> None:
+    """POST JSON al servidor; lanza excepción si no se confirma el envío."""
+    url = build_url(endpoint)
+    headers = {"Content-Type": "application/json"}
+    headers.update(get_auth_headers())
+    verify = get_requests_verify()
+    response = requests.post(url, json=payload, headers=headers, timeout=timeout, verify=verify)
+    response.raise_for_status()
+
+
+def _deliver_queue_record(record: Dict[str, Any]) -> None:
+    """Entrega un registro de la cola. Lanza excepción si el envío falla."""
+    kind = record.get("kind")
+    payload = record.get("payload") or {}
+    if kind == "event":
+        endpoint = os.environ.get("USB_MONITOR_ENDPOINT", DEFAULT_ENDPOINT)
+        _post_json_strict(endpoint, payload)
+        LOGGER.info("    [Cola] ✓ Evento entregado: %s", payload.get("event"))
+    elif kind == "pending_close":
+        _post_json_strict("/api/usb-event/pending-close", payload)
+        LOGGER.info(
+            "    [Cola] ✓ Cierre por retirada entregado para %s en %s",
+            payload.get("pcName"),
+            payload.get("driveLetter"),
+        )
+    elif kind == "offline_attempts":
+        _post_json_strict("/api/agent/offline-attempts", payload)
+        LOGGER.info(
+            "    [Cola] ✓ Intentos sin red entregados (%d)",
+            len(payload.get("attempts") or []),
+        )
+    else:
+        # Kind desconocido (¿versión futura?): se descarta para no atascar
+        # la cola para siempre, pero queda constancia en el log.
+        LOGGER.warning("    [Cola] Registro de tipo desconocido %r; se descarta", kind)
+
+
+def _queue_flusher_loop() -> None:
+    """Vacía la cola persistente en orden, con backoff entre reintentos."""
+    backoff = QUEUE_RETRY_MIN_SECONDS
+    while True:
+        records = _read_queue_records()
+        if not records:
+            _queue_wake_event.wait(timeout=30)
+            _queue_wake_event.clear()
+            continue
+        head = records[0]
+        try:
+            _deliver_queue_record(head)
+        except Exception as exc:
+            LOGGER.debug(
+                "    [Cola] Sin entrega por ahora (%s); reintento en %.0f s con %d en espera",
+                exc,
+                backoff,
+                len(records),
+            )
+            _queue_wake_event.wait(timeout=backoff)
+            _queue_wake_event.clear()
+            backoff = min(backoff * 2, QUEUE_RETRY_MAX_SECONDS)
+            continue
+        _pop_queue_record(str(head.get("id")))
+        backoff = QUEUE_RETRY_MIN_SECONDS
+
+
+_queue_flusher_lock = threading.Lock()
+_queue_flusher_started = False
+
+
+def _ensure_queue_flusher_started() -> None:
+    """Arranca el hilo vaciador (una sola vez, de forma perezosa).
+
+    No se arranca al importar el módulo porque las constantes de rutas
+    de la Fase 4 se definen más abajo en el archivo; para cuando algo
+    se encola, el módulo ya está cargado por completo.
+    """
+    global _queue_flusher_started
+    if _queue_flusher_started:
+        return
+    with _queue_flusher_lock:
+        if _queue_flusher_started:
+            return
+        thread = threading.Thread(
+            target=_queue_flusher_loop,
+            name="usb-monitor-queue-flusher",
+            daemon=True,
+        )
+        thread.start()
+        _queue_flusher_started = True
+
+
+# ---------------------------------------------------------------------------
+# Marca de ejecución del servicio (método 3: evidencia de huecos)
+#
+# Al arrancar se escribe service_state.json con running=true y latidos
+# periódicos con la última hora conocida. Al parar de forma ordenada
+# (SvcStop) se anota la parada. Si al arrancar la marca dice que el
+# servicio seguía "running", la parada anterior fue un cierre no limpio
+# (proceso matado, corte de luz...): ese hueco se sube como evento.
+# ---------------------------------------------------------------------------
+
+
+def _load_service_state_marker() -> Dict[str, Any]:
+    try:
+        if not SERVICE_STATE_FILE.exists():
+            return {}
+        data = json.loads(SERVICE_STATE_FILE.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception as exc:
+        LOGGER.warning("    [Servicio] No se pudo leer la marca de ejecución: %s", exc)
+        return {}
+
+
+def _save_service_state_marker(data: Dict[str, Any]) -> None:
+    try:
+        SERVICE_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        SERVICE_STATE_FILE.write_text(
+            json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+    except Exception as exc:
+        LOGGER.warning("    [Servicio] No se pudo escribir la marca de ejecución: %s", exc)
+
+
+_INTERACTIVE_USER_CACHE: Dict[str, Any] = {"value": None, "at": 0.0}
+
+
+def get_interactive_user() -> str:
+    """El usuario con la sesión interactiva abierta (Fase 3).
+
+    El servicio corre como LocalSystem (sesión 0): getpass.getuser()
+    devuelve la cuenta del servicio, no la persona que está usando la
+    PC, y ese dato erróneo era el «pc_user» de todos los eventos. Se
+    lee Win32_ComputerSystem.UserName (con caché de 60 s) y solo si no
+    hay sesión o falla la consulta se cae al comportamiento anterior.
+    """
+    now = time.time()
+    cached = _INTERACTIVE_USER_CACHE.get("value")
+    if cached and now - float(_INTERACTIVE_USER_CACHE.get("at") or 0) < 60:
+        return str(cached)
+    user = ""
+    try:
+        conn = wmi.WMI()
+        for cs in conn.Win32_ComputerSystem():
+            name = getattr(cs, "UserName", None)
+            if name:
+                user = str(name).split("\\")[-1].strip()
+                break
+    except Exception:
+        user = ""
+    if not user:
+        try:
+            user = getpass.getuser()
+        except Exception:
+            user = ""
+    if user:
+        _INTERACTIVE_USER_CACHE.update({"value": user, "at": now})
+    return user
+
+
+def _service_event_payload(event_label: str) -> Dict[str, Any]:
+    """Payload de evento con la misma forma que build_payload produce."""
+    return {
+        "pc_name": HOSTNAME,
+        "pc_ip": resolve_ip(),
+        "pc_user": sanitize_required_string(
+            get_interactive_user(), max_length=120, fallback="UNKNOWN_USER"
+        ),
+        "drive_letter": None,
+        "readonly_status": None,
+        "event": event_label,
+    }
+
+
+def _note_service_start() -> None:
+    """Registra el arranque del servicio y detecta cierres no limpios."""
+    previous = _load_service_state_marker()
+    if previous.get("running"):
+        last_known = (
+            previous.get("lastHeartbeat")
+            or previous.get("startedAt")
+            or "hora desconocida"
+        )
+        LOGGER.warning(
+            "    [Servicio] ⚠ La parada anterior NO fue limpia (última señal: %s); "
+            "el hueco queda registrado como evidencia",
+            last_known,
+        )
+        enqueue_persistent(
+            "event",
+            _service_event_payload(
+                "SERVICE_STOP | cierre no limpio detectado al arrancar "
+                f"(última señal conocida: {last_known})"
+            ),
+        )
+    now_iso = _utc_now_iso()
+    _save_service_state_marker(
+        {
+            "running": True,
+            "cleanShutdown": False,
+            "startedAt": now_iso,
+            "lastHeartbeat": now_iso,
+        }
+    )
+    enqueue_persistent("event", _service_event_payload("SERVICE_START"))
+    LOGGER.info("    [Servicio] Arranque registrado en la cola persistente")
+
+
+def _note_service_stop() -> None:
+    """Registra la parada ordenada: se escribe en la cola en disco de
+    forma síncrona, así sobrevive aunque no haya red ni tiempo de enviar."""
+    enqueue_persistent("event", _service_event_payload("SERVICE_STOP"))
+    marker = _load_service_state_marker()
+    marker.update(
+        {"running": False, "cleanShutdown": True, "stoppedAt": _utc_now_iso()}
+    )
+    _save_service_state_marker(marker)
+    LOGGER.info("    [Servicio] Parada registrada en la cola persistente")
+
+
+def _touch_service_heartbeat() -> None:
+    """Actualiza la última hora conocida del servicio en ejecución."""
+    marker = _load_service_state_marker()
+    if not marker.get("running"):
+        return
+    marker["lastHeartbeat"] = _utc_now_iso()
+    _save_service_state_marker(marker)
+
+
 def get_app_directory() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
@@ -186,24 +499,45 @@ def get_default_log_path() -> Path:
 
 
 DEFAULT_LISTEN_PORT = 5001  # Puerto donde el servicio escuchará peticiones
-SIGNAL_FILE = (PROGRAM_DATA_DIR / "browser_signal.json").resolve()
+# Registro local de dispositivos bloqueados pendientes de contraseña (Fase 1).
+# Lo escribe este servicio y lo lee el proceso compañero (usb_prompt.py) para
+# saber cuándo mostrar la ventana de contraseña.
+PENDING_LOCAL_FILE = (PROGRAM_DATA_DIR / "pending_local.json").resolve()
+# Proceso compañero que pide la contraseña en la sesión del usuario
+# (el servicio corre en sesión 0 y no puede mostrar ventanas).
+COMPANION_IMAGE_NAME = "USBMonitorPrompt.exe"
+COMPANION_TASK_NAME = "USBMonitorPrompt"
+COMPANION_WATCHDOG_INTERVAL = 15.0  # segundos entre comprobaciones del compañero
+# Fase 2: métodos de bloqueo por unidad. Primero se intenta deshabilitar
+# el dispositivo PnP (bloqueo fuerte); si no se puede, se cae al solo
+# lectura de diskpart de siempre. El método aplicado se registra por
+# unidad para revertir exactamente lo que se hizo.
+BLOCK_METHOD_PNP = "PNP"
+BLOCK_METHOD_READONLY = "READONLY"
+# El permiso de una unidad desbloqueada con contraseña vive hasta que se
+# extrae (lo limpia el evento de retirada, EventType=3). Este TTL es solo
+# un respaldo de limpieza por si un evento de retirada se perdiera.
+UNLOCK_PERMISSION_TTL = 3600.0
+# Fase 4: sin red, fail-closed con emergencia local y store-and-forward.
+# Cola persistente en disco (JSONL): todo lo que se encola sobrevive a la
+# caída de red y a reinicios del servicio; un hilo la vacía en orden.
+QUEUE_STORE_FILE = (PROGRAM_DATA_DIR / "queue_store.jsonl").resolve()
+QUEUE_RETRY_MIN_SECONDS = 5.0
+QUEUE_RETRY_MAX_SECONDS = 60.0
+# Caché en disco de la whitelist: sin red solo sirve para seguir marcando
+# conocido/desconocido; nunca abre el bloqueo ni exime de la contraseña.
+WHITELIST_DISK_CACHE_FILE = (PROGRAM_DATA_DIR / "whitelist_cache.json").resolve()
+# Hash del dueño cacheado (cifrado) para la emergencia sin red, y estado
+# del contador de intentos de esa emergencia (persistido, con bloqueo).
+OWNER_HASH_FILE = (PROGRAM_DATA_DIR / "owner_hash.json").resolve()
+OWNER_HASH_REFRESH_SECONDS = 600.0
+EMERGENCY_STATE_FILE = (PROGRAM_DATA_DIR / "emergency_state.json").resolve()
+EMERGENCY_MAX_FAILURES = 5
+EMERGENCY_LOCK_SECONDS = 900.0  # 15 minutos
+# Marca de ejecución del servicio (método 3): permite detectar al
+# arrancar si la parada anterior fue limpia o un cierre a la fuerza.
+SERVICE_STATE_FILE = (PROGRAM_DATA_DIR / "service_state.json").resolve()
 HOSTNAME_RAW = (socket.gethostname() or "").strip() or "UNKNOWN_HOST"
-
-# Plan de telemetría (próxima iteración):
-#   - Registrar latencia de `unlock_usb` midiendo `time.perf_counter()` y enviar a `/api/metrics`:
-#     ```python
-#     def push_metric(name: str, value: float) -> None:
-#         submit_network_task(
-#             requests.post,
-#             build_url("/api/metrics"),
-#             expect_result=False,
-#             json={"name": name, "value": value},
-#             headers=get_auth_headers(),
-#             timeout=5,
-#         )
-#     ```
-#   - Incluir contador de consultas whitelist/pendientes en `send_event` para comparar contra el tamaño
-#     de la caché y ajustar `WHITELIST_POSITIVE_TTL` durante despliegues futuros.
 
 CONTROL_CHARS_REGEX = re.compile(r"[\x00-\x1F\x7F]")
 VALID_IPV4_REGEX = re.compile(r"^(?:\d{1,3}\.){3}\d{1,3}$")
@@ -233,8 +567,8 @@ def get_machine_identifier() -> bytes:
                     return uuid.encode('utf-8')
         finally:
             pythoncom.CoUninitialize()
-    except Exception:
-        pass
+    except Exception as exc:
+        LOGGER.debug("No se pudo obtener UUID via WMI: %s", exc)
     
     # Fallback: usar el nombre del host y el nombre del usuario
     fallback = f"{socket.gethostname()}-{os.environ.get('COMPUTERNAME', 'UNKNOWN')}"
@@ -287,8 +621,10 @@ def decrypt_value(encrypted_value: str) -> str:
         return encrypted_value
     
     if not CRYPTOGRAPHY_AVAILABLE:
-        LOGGER.warning("Cryptography no disponible, no se puede desencriptar el valor")
-        return encrypted_value
+        # Fail-closed (Fase 0): un valor ENC: que no se puede descifrar se
+        # trata como ausente, nunca como si fuera la credencial.
+        LOGGER.error("Cryptography no disponible: el valor cifrado se descarta")
+        return ""
     
     try:
         # Remover el prefijo ENC:
@@ -298,122 +634,19 @@ def decrypt_value(encrypted_value: str) -> str:
         decrypted = fernet.decrypt(encrypted_data.encode('utf-8'))
         return decrypted.decode('utf-8')
     except Exception as exc:
-        LOGGER.error("Error al desencriptar valor: %s", exc)
-        # Si falla la desencriptación, retornar el valor original
-        return encrypted_value
-
-
-class DatabaseConfig:
-    """Almacena parámetros de conexión a la base de datos."""
-
-    def __init__(
-        self,
-        user: str,
-        password: str,
-        host: str,
-        port: int,
-        database: str,
-        options: Optional[str],
-    ):
-        self.user = user
-        self.password = password
-        self.host = host
-        self.port = port
-        self.database = database
-        self.options = options
-
-
-class DatabaseClient:
-    """Envoltura mínima sobre psycopg/psycopg2 para listar usuarios."""
-
-    def __init__(self, config: DatabaseConfig):
-        self.config = config
-        self.conn: Any = None
-
-    def connect(self) -> None:
-        if DATABASE_DRIVER is None:
-            raise RuntimeError(
-                "No se encontró un driver de PostgreSQL. Instala psycopg[binary] o psycopg2-binary."
-            )
-
-        connect_args: Dict[str, Any] = {
-            "dbname": self.config.database,
-            "user": self.config.user,
-            "password": self.config.password,
-            "host": self.config.host,
-            "port": self.config.port,
-        }
-        if self.config.options:
-            connect_args["options"] = self.config.options
-
-        if DATABASE_DRIVER == "psycopg":
-            if psycopg is None:
-                raise RuntimeError("psycopg no está disponible.")
-            self.conn = psycopg.connect(row_factory=dict_row, **connect_args)  # type: ignore[arg-type]
-        elif DATABASE_DRIVER == "psycopg2":
-            if psycopg2 is None:
-                raise RuntimeError("psycopg2 no está disponible.")
-            self.conn = psycopg2.connect(**connect_args)  # type: ignore[attr-defined]
-        else:
-            raise RuntimeError("Driver de base de datos desconocido.")
-
-    def fetch_users(self) -> List[Dict[str, Any]]:
-        if self.conn is None:
-            raise RuntimeError("Database connection not established.")
-
-        query = (
-            'SELECT "User"."id", "User"."username", "User"."apiKey", "User"."role", '
-            '"User"."createdAt", c."name" AS computer_name, c."ipAddress" AS ip_address, '
-            'c."isActive" AS is_active '
-            'FROM "User" LEFT JOIN "computers" c ON c."id" = "User"."computerId" '
-            'ORDER BY "User"."createdAt" ASC'
-        )
-
-        rows: List[Dict[str, Any]]
-        if DATABASE_DRIVER == "psycopg":
-            with self.conn.cursor() as cur:  # type: ignore[call-arg]
-                cur.execute(query)
-                fetched = cur.fetchall()
-        elif DATABASE_DRIVER == "psycopg2":
-            if RealDictCursor is None:
-                raise RuntimeError("psycopg2 no soporta RealDictCursor en este entorno.")
-            with self.conn.cursor(cursor_factory=RealDictCursor) as cur:  # type: ignore[attr-defined]
-                cur.execute(query)
-                fetched = cur.fetchall()
-        else:
-            raise RuntimeError("No hay driver de base de datos disponible.")
-
-        rows = []
-        for record in fetched:
-            row_dict = dict(record)
-            rows.append(
-                {
-                    "id": row_dict.get("id"),
-                    "username": row_dict.get("username"),
-                    "apiKey": row_dict.get("apiKey"),
-                    "role": row_dict.get("role"),
-                    "createdAt": row_dict.get("createdAt"),
-                    "computer": row_dict.get("computer_name"),
-                    "ipAddress": row_dict.get("ip_address"),
-                    "isActive": row_dict.get("is_active"),
-                }
-            )
-        return rows
-
-    def close(self) -> None:
-        if self.conn is not None:
-            try:
-                self.conn.close()
-            finally:
-                self.conn = None
+        # Fail-closed (Fase 0): antes se devolvía el texto cifrado como si
+        # fuera la credencial; ahora se descarta y se avisa en el registro.
+        LOGGER.error("Error al desencriptar valor (se descarta): %s", exc)
+        return ""
 
 
 def run_setx(api_key: str) -> None:
     env_name = "USB_MONITOR_API_KEY"
     # Encriptar la API key antes de guardarla
     encrypted_key = encrypt_value(api_key)
+    setx_path = resolve_executable("setx.exe")
     completed = subprocess.run(
-        ["setx", env_name, encrypted_key, "/M"],
+        [setx_path, env_name, encrypted_key, "/M"],  #nosec B603
         capture_output=True,
         text=True,
         encoding='cp850',  # Codificación de consola de Windows en español
@@ -425,338 +658,6 @@ def run_setx(api_key: str) -> None:
         LOGGER.debug("setx stderr: %s", completed.stderr.strip())
 
 
-def parse_database_url(url: str) -> DatabaseConfig:
-    parsed = urlparse(url)
-    if parsed.scheme not in ("postgresql", "postgres"):
-        raise ValueError("DATABASE_URL debe usar el esquema postgresql://")
-    if not parsed.path:
-        raise ValueError("DATABASE_URL no incluye el nombre de la base de datos.")
-    database = parsed.path.lstrip("/")
-    if not database:
-        raise ValueError("DATABASE_URL no incluye el nombre de la base de datos.")
-
-    user = parsed.username or ""
-    password = parsed.password or ""
-    host = parsed.hostname or "localhost"
-    port = parsed.port or 5432
-    params = parse_qs(parsed.query)
-    schema = params.get("schema", [None])[0]
-    options = f"-c search_path={schema}" if schema else None
-    return DatabaseConfig(
-        user=user,
-        password=password,
-        host=host,
-        port=port,
-        database=database,
-        options=options,
-    )
-
-
-class ApiKeyConfiguratorDialog(tk.Toplevel):
-    """Ventana secundaria para seleccionar y aplicar una API key."""
-
-    def __init__(
-        self,
-        parent: tk.Misc,
-        db_client: DatabaseClient,
-        *,
-        on_log: Optional[Callable[[str], None]] = None,
-    ):
-        super().__init__(parent)
-        self.parent = parent
-        self.db_client = db_client
-        self.on_log = on_log
-        self.users: Dict[str, Dict[str, Any]] = {}
-
-        self.title("USB Monitor - Configurar API Key")
-        self.geometry("940x520")
-        self.resizable(True, True)
-        self.transient(parent)
-
-        self._build_widgets()
-        self.protocol("WM_DELETE_WINDOW", self._on_close)
-        self._populate_users()
-        self._emit_log("Configurador de API key abierto.")
-        self.grab_set()
-        self.focus_set()
-
-    def _build_widgets(self) -> None:
-        header = ttk.Label(self, text="Selecciona un usuario para usar su API key.")
-        header.pack(pady=(10, 5))
-
-        columns_frame = ttk.Frame(self)
-        columns_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=5)
-
-        self.tree = ttk.Treeview(columns_frame, columns=(
-            "username",
-            "role",
-            "api_key",
-            "computer",
-            "ip_address",
-            "status",
-            "created_at",
-        ), show="headings", height=16)
-        self.tree.heading("username", text="Usuario")
-        self.tree.heading("role", text="Rol")
-        self.tree.heading("api_key", text="API key")
-        self.tree.heading("computer", text="Computadora")
-        self.tree.heading("ip_address", text="IP")
-        self.tree.heading("status", text="Estado")
-        self.tree.heading("created_at", text="Creado")
-
-        self.tree.column("username", width=140, anchor=tk.W)
-        self.tree.column("role", width=80, anchor=tk.CENTER)
-        self.tree.column("api_key", width=260, anchor=tk.W)
-        self.tree.column("computer", width=140, anchor=tk.W)
-        self.tree.column("ip_address", width=110, anchor=tk.CENTER)
-        self.tree.column("status", width=90, anchor=tk.CENTER)
-        self.tree.column("created_at", width=160, anchor=tk.CENTER)
-        self.tree.pack(fill=tk.BOTH, expand=True, side=tk.LEFT)
-
-        scrollbar = ttk.Scrollbar(columns_frame, orient=tk.VERTICAL, command=self.tree.yview)
-        scrollbar.pack(fill=tk.Y, side=tk.RIGHT)
-        self.tree.configure(yscrollcommand=scrollbar.set)
-
-        buttons_frame = ttk.Frame(self)
-        buttons_frame.pack(fill=tk.X, padx=12, pady=10)
-
-        self.refresh_button = ttk.Button(buttons_frame, text="Refrescar", command=self._handle_refresh)
-        self.refresh_button.pack(side=tk.LEFT)
-
-        self.apply_button = ttk.Button(
-            buttons_frame,
-            text="Usar API key seleccionada",
-            command=self._handle_apply,
-        )
-        self.apply_button.pack(side=tk.RIGHT)
-
-        # Bloque de entrada manual correctamente indentado
-        manual_frame = ttk.Frame(self)
-        manual_frame.pack(fill=tk.X, padx=12, pady=(0, 12))
-
-        manual_label = ttk.Label(manual_frame, text="Pegar API key manualmente:")
-        manual_label.pack(anchor=tk.W)
-
-        self.manual_api_key = tk.StringVar()
-        manual_entry = ttk.Entry(manual_frame, textvariable=self.manual_api_key, width=60)
-        manual_entry.pack(side=tk.LEFT, padx=(0, 8))
-
-        manual_button = ttk.Button(
-            manual_frame,
-            text="Usar API key pegada",
-            command=self._handle_apply_manual,
-        )
-        manual_button.pack(side=tk.LEFT)
-
-        self.status_var = tk.StringVar(value="Listo.")
-        status_label = ttk.Label(self, textvariable=self.status_var, anchor=tk.W)
-        status_label.pack(fill=tk.X, padx=12, pady=(0, 12))
-
-    def _handle_refresh(self) -> None:
-        self._set_status("Actualizando usuarios...")
-        self.after(50, self._populate_users)
-
-    def _handle_apply(self) -> None:
-        selection = self.tree.selection()
-        if not selection:
-            messagebox.showinfo("Selección requerida", "Selecciona un usuario primero.", parent=self)
-            return
-
-        item_id = selection[0]
-        record = self.users.get(item_id)
-        if not record:
-            messagebox.showerror("Error", "No se pudo recuperar la información del usuario.", parent=self)
-            return
-
-        api_key = record.get("apiKey")
-        username = record.get("username", "")
-        if not api_key:
-            messagebox.showerror("Error", "El usuario seleccionado no tiene API key disponible.", parent=self)
-            return
-
-        confirm = messagebox.askyesno(
-            "Confirmar",
-            f"Se configurará la API key del usuario '{username}'.\n\n¿Continuar?",
-            parent=self,
-        )
-        if not confirm:
-            return
-
-        try:
-            run_setx(str(api_key))
-        except subprocess.CalledProcessError as exc:
-            messagebox.showerror(
-                "Error",
-                "Falló la ejecución de setx. Asegúrate de contar con permisos de administrador.\n\n"
-                f"Código de salida: {exc.returncode}\nSalida: {exc.stderr}",
-                parent=self,
-            )
-            self._set_status("Error al configurar la API key.")
-            return
-        except Exception as exc:  # pragma: no cover - errores inesperados
-            messagebox.showerror("Error", f"No se pudo configurar la API key.\n\nDetalles: {exc}", parent=self)
-            self._set_status("Error al configurar la API key.")
-            return
-
-        self._set_status(f"API key configurada para {username}. Reinicia el servicio para aplicar cambios.")
-        messagebox.showinfo(
-            "Éxito",
-            "API key configurada correctamente. Reinicia el servicio USBMonitorService para aplicar cambios.",
-            parent=self,
-        )
-        self._emit_log(f"API key configurada para {username}.")
-
-    def _handle_apply_manual(self) -> None:
-        api_key = self.manual_api_key.get().strip()
-
-        if not api_key:
-            messagebox.showerror(
-                "API key vacía",
-                "Debes pegar una API key válida.",
-                parent=self,
-            )
-            return
-
-        confirm = messagebox.askyesno(
-            "Confirmar",
-            "Se configurará la API key pegada manualmente.\n\n¿Continuar?",
-            parent=self,
-        )
-        if not confirm:
-            return
-
-        try:
-            run_setx(api_key)
-        except Exception as exc:
-            messagebox.showerror(
-                "Error",
-                f"No se pudo configurar la API key.\n\nDetalles: {exc}",
-                parent=self,
-            )
-            self._set_status("Error al configurar la API key manual.")
-            return
-
-        self._set_status("API key configurada manualmente. Reinicia el servicio para aplicar cambios.")
-        messagebox.showinfo(
-            "Éxito",
-            "API key configurada correctamente. Reinicia el servicio USBMonitorService para aplicar cambios.",
-            parent=self,
-        )
-        self._emit_log("API key manual aplicada correctamente.")
-
-    def _populate_users(self) -> None:
-        try:
-            records = self.db_client.fetch_users()
-        except Exception as exc:  # pragma: no cover - depende de la base de datos
-            self._set_status(f"Error al cargar usuarios: {exc}")
-            messagebox.showerror("Error", f"No se pudieron cargar los usuarios.\n\nDetalles: {exc}", parent=self)
-            return
-
-        self.tree.delete(*self.tree.get_children())
-        self.users.clear()
-
-        for record in records:
-            computer = record.get("computer") or "Sin asignar"
-            ip_address = record.get("ipAddress") or "-"
-            is_active = record.get("isActive")
-            status = "Activa" if is_active else ("Inactiva" if is_active is not None else "-")
-            created_at = self._format_timestamp(record.get("createdAt"))
-            item_values = (
-                record.get("username", ""),
-                record.get("role", ""),
-                "••••••••" if record.get("apiKey") else "",
-                computer,
-                ip_address,
-                status,
-                created_at,
-            )
-            item_id = self.tree.insert("", tk.END, values=item_values)
-            self.users[item_id] = record
-
-        self._set_status(f"Usuarios cargados: {len(records)}")
-
-    def _format_timestamp(self, value: Any) -> str:
-        if value is None:
-            return "-"
-        return str(value)
-
-    def _set_status(self, message: str) -> None:
-        self.status_var.set(message)
-
-    def _emit_log(self, text: str) -> None:
-        if self.on_log:
-            try:
-                self.on_log(text)
-            except Exception:
-                LOGGER.debug("No se pudo reenviar mensaje al log de la GUI principal: %s", text, exc_info=True)
-
-    def _on_close(self) -> None:
-        try:
-            self.db_client.close()
-        finally:
-            self._emit_log("Configurador de API key cerrado.")
-            self.destroy()
-
-
-def launch_api_key_configurator(
-    parent: tk.Misc,
-    *,
-    on_log: Optional[Callable[[str], None]] = None,
-) -> None:
-    if not is_user_admin():
-        messagebox.showerror(
-            "Permisos requeridos",
-            "Ejecuta esta herramienta como administrador para escribir variables de entorno de sistema.",
-            parent=parent,
-        )
-        if on_log:
-            on_log("No se pudo abrir el configurador de API key: se requieren privilegios de administrador.")
-        return
-
-    db_url = os.environ.get(DATABASE_URL_ENV_VAR, DEFAULT_DATABASE_URL)
-    if not db_url:
-        messagebox.showerror(
-            "Configuración inválida",
-            "No se encontró una cadena de conexión válida en USB_MONITOR_DATABASE_URL.",
-            parent=parent,
-        )
-        if on_log:
-            on_log("No se pudo abrir el configurador de API key: DATABASE_URL ausente.")
-        return
-
-    try:
-        config = parse_database_url(db_url)
-    except Exception as exc:
-        messagebox.showerror(
-            "Configuración inválida",
-            f"No se pudo interpretar la cadena de conexión.\n\nDetalles: {exc}",
-            parent=parent,
-        )
-        LOGGER.error("No se pudo interpretar DATABASE_URL: %s", exc)
-        if on_log:
-            on_log("No se pudo abrir el configurador de API key: cadena de conexión inválida.")
-        return
-
-    client = DatabaseClient(config)
-    try:
-        client.connect()
-    except Exception as exc:
-        client.close()
-        messagebox.showerror(
-            "Conexión fallida",
-            "No se pudo conectar a la base de datos.\n\nRevisa USB_MONITOR_DATABASE_URL y que la base de datos esté en ejecución.\n\n"
-            f"Detalles: {exc}",
-            parent=parent,
-        )
-        LOGGER.error("No se pudo conectar a la base de datos: %s", exc)
-        if on_log:
-            on_log("No se pudo abrir el configurador de API key: error de conexión.")
-        return
-
-    dialog = ApiKeyConfiguratorDialog(parent, client, on_log=on_log)
-    dialog.wait_visibility()
-
-
 def _sanitize_string(value: Optional[str], max_length: int) -> Optional[str]:
     if not isinstance(value, str):
         return None
@@ -764,6 +665,13 @@ def _sanitize_string(value: Optional[str], max_length: int) -> Optional[str]:
     if not sanitized:
         return None
     return sanitized[:max_length]
+
+
+def escape_wmi_query_value(value: str, max_length: int = 256) -> Optional[str]:
+    sanitized = _sanitize_string(value, max_length)
+    if not sanitized:
+        return None
+    return sanitized.replace("'", "''")
 
 
 def sanitize_required_string(
@@ -789,6 +697,16 @@ def sanitize_drive_letter(value: Optional[str]) -> Optional[str]:
     return None
 
 
+def resolve_executable(executable: str) -> str:
+    resolved = shutil.which(executable)
+    if resolved:
+        return resolved
+    candidate = SYSTEM32_DIR / executable
+    if candidate.exists():
+        return str(candidate)
+    raise FileNotFoundError(f"No se encontró el ejecutable: {executable}")
+
+
 def normalize_serial_candidate(serial: Optional[str]) -> Optional[str]:
     if not isinstance(serial, str):
         return None
@@ -796,6 +714,10 @@ def normalize_serial_candidate(serial: Optional[str]) -> Optional[str]:
     if not stripped:
         return None
     collapsed = re.sub(r"\s+", "", stripped)
+    # Los centinelas se comprueban también ANTES de quitar caracteres:
+    # «N/A» perdía la barra al sanear y sobrevivía como «NA» (Fase 7).
+    if collapsed.upper() in SERIAL_SENTINELS:
+        return None
     sanitized = SERIAL_ALLOWED_CHARS_REGEX.sub("", collapsed.upper())
     if not sanitized:
         return None
@@ -810,10 +732,16 @@ def extract_serial_from_device_id(device_id: Optional[str]) -> Optional[str]:
     if not isinstance(device_id, str):
         return None
     tail = device_id.split("\\")[-1]
-    for token in reversed(re.split(r"[&/_]", tail)):
-        candidate = normalize_serial_candidate(token)
-        if candidate:
-            return candidate
+    candidates = [
+        candidate
+        for token in re.split(r"[&/_]", tail)
+        if (candidate := normalize_serial_candidate(token))
+    ]
+    if candidates:
+        # El identificador de instancia suele ser «<serial>&0»: el último
+        # trozo («0») es un contador, no el serial. Se elige el candidato
+        # MÁS LARGO, que es el serial real (Fase 7).
+        return max(candidates, key=len)
     return normalize_serial_candidate(tail)
 
 
@@ -868,14 +796,14 @@ def get_listen_port() -> int:
 def build_url(endpoint: str) -> str:
     host = get_server_host()
     port = get_server_port()
-    scheme_env = os.environ.get("USB_MONITOR_SERVER_SCHEME", "https")
+    scheme_env = os.environ.get("USB_MONITOR_SERVER_SCHEME", "http")
     scheme = (scheme_env or "").lower().strip()
     if scheme not in ("http", "https"):
         LOGGER.warning(
-            "USB_MONITOR_SERVER_SCHEME inválido ('%s'), usando HTTPS por defecto",
+            "USB_MONITOR_SERVER_SCHEME inválido ('%s'), usando HTTP por defecto",
             scheme_env,
         )
-        scheme = "https"
+        scheme = "http"
     return f"{scheme}://{host}:{port}{endpoint}"
 
 
@@ -890,7 +818,7 @@ def get_requests_verify() -> any:
       - En cualquier otro caso, retorna True.
     """
     # Si el esquema es HTTP, la verificación SSL no aplica
-    scheme = (os.environ.get("USB_MONITOR_SERVER_SCHEME", "https") or "").lower().strip()
+    scheme = (os.environ.get("USB_MONITOR_SERVER_SCHEME", "http") or "").lower().strip()
     if scheme == "http":
         return True
 
@@ -903,15 +831,35 @@ def get_requests_verify() -> any:
     return verify_env != "false"
 
 
-def get_auth_headers() -> Dict[str, str]:
-    headers: Dict[str, str] = {}
+def get_agent_token() -> Optional[str]:
+    """Token por equipo (Fase 3), de USB_MONITOR_AGENT_TOKEN.
+
+    Lo deja el instalador (Install-Service.ps1 -AgentToken) como variable
+    de máquina; el servidor solo guarda su hash SHA-256. Se acepta el
+    valor en claro o cifrado con el mismo esquema ENC: del resto de la
+    configuración. None si el equipo aún no tiene token (instalaciones
+    anteriores a la Fase 3, que siguen con la API key).
+    """
+    raw = os.environ.get("USB_MONITOR_AGENT_TOKEN")
+    if not raw:
+        return None
+    token = decrypt_value(raw.strip()).strip()
+    return token or None
+
+
+def get_configured_api_key() -> Optional[str]:
+    """API key configurada del agente (USB_MONITOR_API_KEY), ya descifrada.
+
+    Es la credencial que el agente usa hoy para hablar con el servidor.
+    Se tolera que el valor almacenado ya incluya el prefijo "ApiKey".
+    """
     api_key_raw = os.environ.get("USB_MONITOR_API_KEY")
     if not api_key_raw:
-        return headers
+        return None
 
     api_key_encrypted = api_key_raw.strip()
     if not api_key_encrypted:
-        return headers
+        return None
 
     # Desencriptar la API key
     api_key = decrypt_value(api_key_encrypted)
@@ -920,6 +868,22 @@ def get_auth_headers() -> Dict[str, str]:
     if api_key.lower().startswith("apikey "):
         api_key = api_key.split(" ", 1)[1].strip()
 
+    return api_key or None
+
+
+def get_auth_headers() -> Dict[str, str]:
+    headers: Dict[str, str] = {}
+
+    # Fase 3: con token por equipo, esa es la credencial (el servidor
+    # puede llegar a exigirla para la ingesta de eventos). Sin token se
+    # mantiene la API key de siempre, por compatibilidad con agentes e
+    # instalaciones anteriores.
+    token = get_agent_token()
+    if token:
+        headers["Authorization"] = f"AgentToken {token}"
+        return headers
+
+    api_key = get_configured_api_key()
     if api_key:
         headers["Authorization"] = f"ApiKey {api_key}"
     return headers
@@ -957,7 +921,9 @@ def get_logger() -> logging.Logger:
         pending_warning: Optional[str] = None
 
         try:
-            handler: logging.Handler = logging.FileHandler(log_file, encoding="utf-8")
+            handler: logging.Handler = logging.handlers.RotatingFileHandler(
+                log_file, maxBytes=5_000_000, backupCount=5, encoding="utf-8"
+            )
         except OSError as exc:
             fallback_paths = [
                 (PROGRAM_DATA_DIR / get_log_file_name()).resolve(),
@@ -970,7 +936,9 @@ def get_logger() -> logging.Logger:
                     continue
                 try:
                     candidate.parent.mkdir(parents=True, exist_ok=True)
-                    handler = logging.FileHandler(candidate, encoding="utf-8")
+                    handler = logging.handlers.RotatingFileHandler(
+                        candidate, maxBytes=5_000_000, backupCount=5, encoding="utf-8"
+                    )
                     pending_warning = (
                         "No se pudo crear el log en %s (%s). Se usará %s."
                         % (log_file, exc, candidate)
@@ -1025,16 +993,18 @@ def ensure_admin_or_exit() -> None:
         "Cierra y vuelve a abrirlo con privilegios elevados."
     )
     LOGGER.critical(message)
-    root: Optional[tk.Tk] = None
+    # Fase 6: tkinter se importa solo aquí, para este aviso; el servicio
+    # ya no depende de tkinter en su arranque.
     try:
+        import tkinter as tk
+        from tkinter import messagebox
+
         root = tk.Tk()
         root.withdraw()
         messagebox.showerror("USB Monitor Service", message, parent=root)
-    except Exception:
-        pass
-    finally:
-        if root is not None:
-            root.destroy()
+        root.destroy()
+    except Exception as exc:
+        LOGGER.debug("No se pudo mostrar el mensaje de permisos: %s", exc)
     print(message, file=sys.stderr)
     sys.exit(5)
 
@@ -1136,7 +1106,7 @@ def build_payload(
         "pc_name": HOSTNAME,
         "pc_ip": resolve_ip(),
         "pc_user": sanitize_required_string(
-            getpass.getuser(), max_length=120, fallback="UNKNOWN_USER"
+            get_interactive_user(), max_length=120, fallback="UNKNOWN_USER"
         ),
         "drive_letter": drive_letter_clean,
         "readonly_status": readonly_clean,
@@ -1167,8 +1137,16 @@ def _send_event_request(payload: Dict[str, Any]) -> None:
 
 
 def send_event(payload: Dict[str, Any]) -> None:
-    """Encola el envío para no bloquear el hilo principal del servicio."""
-    submit_network_task(_send_event_request, payload)
+    """Encola el envío para no bloquear el hilo principal del servicio.
+
+    Fase 4: el evento pasa por la cola persistente (store-and-forward):
+    queda en disco antes de intentarse y solo se borra cuando el
+    servidor lo confirma, así ya no se pierde si no hay red. Si la
+    escritura en disco fallara, se cae al envío en memoria de siempre
+    para no quedarnos sin registrar nada.
+    """
+    if not enqueue_persistent("event", payload):
+        submit_network_task(_send_event_request, payload)
 
 
 def resolve_drive_letter(event: Any, conn: wmi.WMI) -> Optional[str]:
@@ -1190,9 +1168,13 @@ def resolve_drive_letter(event: Any, conn: wmi.WMI) -> Optional[str]:
         return None
 
     try:
-        normalized = candidate.replace("\\", "\\\\")
+        escaped_candidate = escape_wmi_query_value(candidate, 260)
+        if not escaped_candidate:
+            LOGGER.debug("Candidate vacío tras sanitizar: %s", candidate)
+            return None
+        normalized = escaped_candidate.replace("\\", "\\\\")
         volumes = conn.query(
-            f"SELECT DriveLetter FROM Win32_Volume WHERE DeviceID='{normalized}'"
+            "SELECT DriveLetter FROM Win32_Volume WHERE DeviceID='{}'".format(normalized)  #nosec B608
         )
         for volume in volumes:
             drive_letter = getattr(volume, "DriveLetter", None)
@@ -1209,8 +1191,12 @@ def resolve_drive_letter(event: Any, conn: wmi.WMI) -> Optional[str]:
 
 def resolve_disk_number(drive_letter: str, conn: wmi.WMI) -> Optional[str]:
     LOGGER.debug("Resolviendo número de disco para la unidad %s", drive_letter)
+    safe_letter = sanitize_drive_letter(drive_letter)
+    if not safe_letter:
+        LOGGER.debug("Letra de unidad inválida para resolver disco: %s", drive_letter)
+        return None
     try:
-        logical = conn.Win32_LogicalDisk(DeviceID=f"{drive_letter}:")
+        logical = conn.Win32_LogicalDisk(DeviceID=f"{safe_letter}")
         if not logical:
             LOGGER.debug("No se encontró Win32_LogicalDisk para %s", drive_letter)
             return None
@@ -1228,18 +1214,22 @@ def resolve_disk_number(drive_letter: str, conn: wmi.WMI) -> Optional[str]:
                     )
                     return resolved
         # Fallback manual join via Win32_LogicalDiskToPartition
+        escaped_letter = escape_wmi_query_value(safe_letter, 3)
+        if not escaped_letter:
+            LOGGER.debug("Letra de unidad vacía tras sanitizar: %s", drive_letter)
+            return None
         rels = conn.query(
-            "SELECT * FROM Win32_LogicalDiskToPartition WHERE Antecedent LIKE '%{}%'".format(
-                drive_letter
-            )
+            "SELECT * FROM Win32_LogicalDiskToPartition WHERE Antecedent LIKE '%{}%'".format(escaped_letter)  #nosec B608
         )
         for rel in rels:
             antecedent = getattr(rel, "Antecedent", "")
             disk_part = antecedent.split("\\")[-1]
+            escaped_disk_part = escape_wmi_query_value(disk_part, 256)
+            if not escaped_disk_part:
+                LOGGER.debug("Disk part vacío tras sanitizar: %s", disk_part)
+                continue
             disk_info = conn.query(
-                "SELECT * FROM Win32_DiskDrive WHERE DeviceID LIKE '%{}%'".format(
-                    disk_part
-                )
+                "SELECT * FROM Win32_DiskDrive WHERE DeviceID LIKE '%{}%'".format(escaped_disk_part)  #nosec B608
             )
             for disk in disk_info:
                 index = getattr(disk, "Index", None)
@@ -1270,8 +1260,9 @@ def run_diskpart(commands: str) -> subprocess.CompletedProcess[str]:
     try:
         LOGGER.info("Ejecutando diskpart con script temporal %s", script_path)
         LOGGER.debug("Contenido de script diskpart:\n%s", script_content.strip())
+        diskpart_path = resolve_executable("diskpart.exe")
         result = subprocess.run(
-            ["diskpart", "/s", script_path],
+            [diskpart_path, "/s", script_path],  #nosec B603
             text=True,
             capture_output=True,
             check=False,
@@ -1330,7 +1321,46 @@ def resolve_disk_number_with_fallback(
     return disk_number
 
 
-def set_disk_readonly(drive_letter: str, conn: wmi.WMI) -> Tuple[bool, str]:
+def _disk_readonly_state(drive_letter: str, conn: wmi.WMI) -> Optional[bool]:
+    """Lee el atributo REAL de solo lectura del disco (Fase 2).
+
+    diskpart devuelve código 0 aunque la operación falle, así que el
+    éxito no se puede fiar a su salida de «set/clear»: se vuelve a
+    consultar con «attributes disk» y se interpreta la línea del estado
+    (inglés o español). Devuelve True/False, o None si no se pudo
+    determinar (en ese caso manda el criterio anterior).
+    """
+    letter = drive_letter.rstrip(":").upper()
+    if len(letter) != 1 or not letter.isalpha():
+        return None
+    disk_number = resolve_disk_number_with_fallback(letter, conn)
+    if not disk_number:
+        return None
+    try:
+        result = run_diskpart(f"select disk {disk_number}\nattributes disk\nexit\n")
+    except Exception as exc:
+        LOGGER.debug("No se pudo verificar el atributo del disco %s: %s", disk_number, exc)
+        return None
+    for line in (result.stdout or "").splitlines():
+        low = line.lower()
+        if "read-only" in low or "solo lectura" in low:
+            value = low.split(":", 1)[-1].strip()
+            if value.startswith(("yes", "sí", "si")):
+                return True
+            if value.startswith("no"):
+                return False
+    return None
+
+
+def _set_disk_readonly_flag(
+    drive_letter: str, conn: wmi.WMI, enable: bool
+) -> Tuple[bool, str]:
+    """Aplica o quita el atributo de solo lectura del disco (Fase 5).
+
+    set_disk_readonly y clear_disk_readonly eran la misma función dos
+    veces (~60 líneas gemelas); ahora son envoltorios de esta. Incluye
+    la verificación real del atributo tras diskpart (Fase 2).
+    """
     letter = drive_letter.rstrip(":").upper()
     if len(letter) != 1 or not letter.isalpha():
         msg = f"Letra de unidad inválida ({drive_letter})"
@@ -1343,7 +1373,8 @@ def set_disk_readonly(drive_letter: str, conn: wmi.WMI) -> Tuple[bool, str]:
         LOGGER.warning("%s", msg)
         return False, msg
 
-    script = f"select disk {disk_number}\nattributes disk set readonly\nexit\n"
+    verb = "set" if enable else "clear"
+    script = f"select disk {disk_number}\nattributes disk {verb} readonly\nexit\n"
 
     try:
         result = run_diskpart(script)
@@ -1354,99 +1385,134 @@ def set_disk_readonly(drive_letter: str, conn: wmi.WMI) -> Tuple[bool, str]:
             and "error" not in stdout_lower
             and "error" not in stderr_lower
         ):
-            msg = f"readonly aplicado al disco {disk_number} (unidad {drive_letter})"
-            LOGGER.info(
-                "Disco %s (unidad %s) establecido en modo solo lectura. Salida: %s",
-                disk_number,
-                drive_letter,
-                result.stdout.strip(),
-            )
+            # Verificación real: diskpart puede devolver 0 sin aplicar.
+            estado = _disk_readonly_state(drive_letter, conn)
+            if enable and estado is False:
+                msg = f"diskpart dijo OK pero el disco {disk_number} NO quedó en solo lectura (unidad {drive_letter})"
+                LOGGER.error("%s", msg)
+                return False, msg
+            if not enable and estado is True:
+                msg = f"diskpart dijo OK pero el disco {disk_number} SIGUE en solo lectura (unidad {drive_letter})"
+                LOGGER.error("%s", msg)
+                return False, msg
+            if enable:
+                msg = f"readonly aplicado al disco {disk_number} (unidad {drive_letter})"
+                LOGGER.info(
+                    "Disco %s (unidad %s) establecido en modo solo lectura. Salida: %s",
+                    disk_number,
+                    drive_letter,
+                    result.stdout.strip(),
+                )
+            else:
+                msg = f"readonly removido del disco {disk_number} (unidad {drive_letter})"
+                LOGGER.info(
+                    "Disco %s (unidad %s) desbloqueado. Salida: %s",
+                    disk_number,
+                    drive_letter,
+                    result.stdout.strip(),
+                )
             return True, msg
 
         LOGGER.error(
-            "diskpart devolvió código %s al bloquear disco %s (unidad %s). Stdout: %s | Stderr: %s",
+            "diskpart devolvió código %s al %s disco %s (unidad %s). Stdout: %s | Stderr: %s",
             result.returncode,
+            "bloquear" if enable else "desbloquear",
             disk_number,
             drive_letter,
             result.stdout.strip(),
             result.stderr.strip(),
         )
         msg = (
-            f"Fallo al aplicar readonly en disco {disk_number} para unidad {drive_letter}"
+            f"Fallo al {'aplicar' if enable else 'remover'} readonly en disco {disk_number} para unidad {drive_letter}"
         )
         return False, msg
     except FileNotFoundError:
         msg = "diskpart no está disponible en el sistema"
-        LOGGER.error("%s. No se puede bloquear escritura.", msg)
+        LOGGER.error("%s. No se puede %s.", msg, "bloquear escritura" if enable else "desbloquear")
         return False, msg
     except subprocess.TimeoutExpired:
-        msg = f"diskpart tardó demasiado en proteger la unidad {drive_letter}"
+        msg = f"diskpart tardó demasiado en {'proteger' if enable else 'desbloquear'} la unidad {drive_letter}"
         LOGGER.error("%s. Operación cancelada.", msg)
         return False, msg
     except Exception as exc:
-        msg = f"Error inesperado al establecer unidad {drive_letter} solo lectura: {exc}"
+        msg = f"Error inesperado al {'establecer unidad' if enable else 'desbloquear unidad'} {drive_letter}: {exc}"
         LOGGER.error("%s", msg)
         return False, msg
+
+
+def set_disk_readonly(drive_letter: str, conn: wmi.WMI) -> Tuple[bool, str]:
+    """Establece el atributo de solo lectura del disco de la unidad USB."""
+    return _set_disk_readonly_flag(drive_letter, conn, True)
 
 
 def clear_disk_readonly(drive_letter: str, conn: wmi.WMI) -> Tuple[bool, str]:
     """Remueve el atributo de solo lectura del disco que contiene la unidad USB."""
-    letter = drive_letter.rstrip(":").upper()
-    if len(letter) != 1 or not letter.isalpha():
-        msg = f"Letra de unidad inválida ({drive_letter})"
-        LOGGER.warning("%s", msg)
-        return False, msg
+    return _set_disk_readonly_flag(drive_letter, conn, False)
 
-    disk_number = resolve_disk_number_with_fallback(letter, conn)
-    if not disk_number:
-        msg = f"No se pudo resolver el disco asociado a la unidad {drive_letter}"
-        LOGGER.warning("%s", msg)
-        return False, msg
 
-    script = f"select disk {disk_number}\nattributes disk clear readonly\nexit\n"
+def _drive_key(drive_letter: Optional[str]) -> str:
+    """Normaliza una letra de unidad a su clave corta ('E' para 'E:')."""
+    if not drive_letter:
+        return ""
+    return str(drive_letter).rstrip(":").strip().upper()
 
+
+def _run_pnputil(action: str, instance_id: str) -> Tuple[bool, str]:
+    """Ejecuta pnputil /<action>-device sobre una instancia PnP.
+
+    Se usa pnputil (y no el cmdlet Disable-PnpDevice de PowerShell)
+    porque encaja con el patrón del resto del archivo para herramientas
+    del sistema: ejecutable resuelto con resolve_executable() y
+    argumentos en lista, sin cadenas de comando que citar.
+    """
+    instance_id = (instance_id or "").strip()
+    if not instance_id:
+        return False, "InstanceId PnP vacío"
     try:
-        result = run_diskpart(script)
-        stdout_lower = result.stdout.lower()
-        stderr_lower = result.stderr.lower()
-
-        if (
-            result.returncode == 0
-            and "error" not in stdout_lower
-            and "error" not in stderr_lower
-        ):
-            msg = f"readonly removido del disco {disk_number} (unidad {drive_letter})"
-            LOGGER.info(
-                "Disco %s (unidad %s) desbloqueado. Salida: %s",
-                disk_number,
-                drive_letter,
-                result.stdout.strip(),
-            )
-            return True, msg
-
-        LOGGER.error(
-            "diskpart devolvió código %s al desbloquear disco %s (unidad %s). Stdout: %s | Stderr: %s",
-            result.returncode,
-            disk_number,
-            drive_letter,
-            result.stdout.strip(),
-            result.stderr.strip(),
-        )
-        msg = f"Fallo al remover readonly en disco {disk_number} para unidad {drive_letter}"
-        return False, msg
-
+        pnputil_path = resolve_executable("pnputil.exe")
     except FileNotFoundError:
-        msg = "diskpart no está disponible en el sistema"
-        LOGGER.error("%s. No se puede desbloquear.", msg)
+        msg = "pnputil no está disponible en el sistema"
+        LOGGER.error("%s", msg)
         return False, msg
+    try:
+        result = subprocess.run(
+            [pnputil_path, f"/{action}-device", instance_id],  # nosec B603
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+            encoding="cp850",  # Codificación de consola de Windows
+        )
     except subprocess.TimeoutExpired:
-        msg = f"diskpart tardó demasiado en desbloquear la unidad {drive_letter}"
+        msg = f"pnputil tardó demasiado al {action} el dispositivo {instance_id}"
         LOGGER.error("%s. Operación cancelada.", msg)
         return False, msg
     except Exception as exc:
-        msg = f"Error inesperado al desbloquear unidad {drive_letter}: {exc}"
+        msg = f"Error inesperado ejecutando pnputil ({action}): {exc}"
         LOGGER.error("%s", msg)
         return False, msg
+
+    output = _merge_process_output(result.stdout, result.stderr)
+    if result.returncode == 0:
+        msg = f"pnputil /{action}-device OK para {instance_id}"
+        LOGGER.info("%s. Salida: %s", msg, output)
+        return True, msg
+    msg = (
+        f"pnputil /{action}-device falló (código {result.returncode}) "
+        f"para {instance_id}: {output}"
+    )
+    LOGGER.error("%s", msg)
+    return False, msg
+
+
+def disable_pnp_device(instance_id: str) -> Tuple[bool, str]:
+    """Deshabilita un dispositivo PnP (bloqueo fuerte de la Fase 2)."""
+    return _run_pnputil("disable", instance_id)
+
+
+def enable_pnp_device(instance_id: str) -> Tuple[bool, str]:
+    """Rehabilita un dispositivo PnP previamente deshabilitado."""
+    return _run_pnputil("enable", instance_id)
 
 
 def protect_usb_media(
@@ -1468,59 +1534,449 @@ def protect_usb_media(
     return drive_letter, success, detail
 
 
-def schedule_shutdown(delay_seconds: int = 3) -> None:
-    """Programa el apagado del equipo."""
+def is_lock_session_on_insert_enabled() -> bool:
+    """Ajuste local `lock_session_on_insert` (Fase 5): bloquear la sesión.
+
+    Lo empuja el panel vía POST /config y se persiste en la variable de
+    máquina USB_MONITOR_LOCK_SESSION_ON_INSERT, con el mismo patrón
+    cifrado que USB_MONITOR_STARTUP_DELAY. Por defecto, desactivado.
+    """
+    raw = os.environ.get("USB_MONITOR_LOCK_SESSION_ON_INSERT")
+    if not raw:
+        return False
+    value = decrypt_value(raw.strip()).strip().lower()
+    return value in ("true", "1", "yes", "si")
+
+
+def lock_session_on_insert_if_enabled() -> None:
+    """Bloquea la sesión de Windows si el ajuste opcional está activo.
+
+    Se invoca una sola vez por bloqueo nuevo aplicado (desde
+    apply_block). Es un endurecimiento opcional: por defecto no se
+    bloquea la sesión, solo el dispositivo.
+    """
+    if not is_lock_session_on_insert_enabled():
+        return
     try:
+        ctypes.windll.user32.LockWorkStation()
+        LOGGER.info(
+            "    🔒 Sesión de Windows bloqueada (ajuste lock_session_on_insert activo)"
+        )
+    except Exception as exc:
+        LOGGER.warning("    ⚠ No se pudo bloquear la sesión de Windows: %s", exc)
+
+
+def apply_block(
+    drive_letter: Optional[str],
+    conn: wmi.WMI,
+    pnp_device_id: Optional[str] = None,
+) -> Tuple[Optional[str], bool, str, str]:
+    """Bloquea una unidad (Fase 2): primero PnP, diskpart de respaldo.
+
+    Devuelve (letra, ok, detalle, método), donde método es
+    BLOCK_METHOD_PNP o BLOCK_METHOD_READONLY según lo que realmente
+    se aplicó, para poder revertir lo correcto al desbloquear.
+    """
+    if pnp_device_id:
+        pnp_ok, pnp_msg = disable_pnp_device(pnp_device_id)
+        if pnp_ok:
+            LOGGER.info("    ✓ Dispositivo deshabilitado por PnP | %s", pnp_msg)
+            lock_session_on_insert_if_enabled()
+            return drive_letter, True, pnp_msg, BLOCK_METHOD_PNP
         LOGGER.warning(
-            "  ⚠  Dispositivo no autorizado. Apagado programado en %s segundos.",
-            delay_seconds,
+            "    ⚠ No se pudo deshabilitar por PnP (%s); "
+            "se aplica el respaldo de solo lectura con diskpart",
+            pnp_msg,
         )
-        subprocess.Popen(
-            ["shutdown", "/s", "/t", str(max(delay_seconds, 0))],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-    except Exception as exc:
-        LOGGER.error("  ✗ No se pudo programar el apagado automático: %s", exc)
-
-
-def create_browser_signal(pc_name: str, drive_letter: str) -> None:
-    """Crea el archivo de señal para que el agente muestre el login."""
-    try:
+    else:
         LOGGER.debug(
-            "    → Creando archivo de señal para %s en unidad %s", pc_name, drive_letter
+            "    Sin PNPDeviceID para %s; se aplica solo lectura directamente",
+            drive_letter,
         )
-        SIGNAL_FILE.parent.mkdir(parents=True, exist_ok=True)
-        
-        signal_data = {
-            "pc_name": pc_name,
-            "drive_letter": drive_letter,
-            "timestamp": time.time(),
-            "processed": False,
-        }
-        
-        with open(SIGNAL_FILE, "w", encoding="utf-8") as f:
-            json.dump(signal_data, f, indent=2)
-        
-        LOGGER.info("    ✓ Archivo de señal creado: %s", SIGNAL_FILE)
+    letter_used, success, detail = protect_usb_media(drive_letter, conn)
+    if success:
+        lock_session_on_insert_if_enabled()
+    return letter_used, success, detail, BLOCK_METHOD_READONLY
+
+
+def _load_local_pendings() -> List[Dict[str, Any]]:
+    """Lee el registro local de pendientes (pending_local.json). Tolerante a fallos."""
+    try:
+        if not PENDING_LOCAL_FILE.exists():
+            return []
+        data = json.loads(PENDING_LOCAL_FILE.read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
     except Exception as exc:
-        LOGGER.error("    ✗ Error al crear archivo de señal: %s", exc)
+        LOGGER.warning("    [Pendiente] No se pudo leer %s: %s", PENDING_LOCAL_FILE, exc)
+        return []
 
 
-def _create_pending_unlock_request(pc_name: str, drive_letter: str) -> bool:
-    # Legacy deshabilitado: se usa solo whitelist. No-op.
-    LOGGER.debug(
-        "    [Legacy OFF] pending-unlock omitido para PC=%s | Unidad=%s",
+def _save_local_pendings(pendings: List[Dict[str, Any]]) -> bool:
+    """Guarda el registro local de pendientes en pending_local.json."""
+    try:
+        PENDING_LOCAL_FILE.parent.mkdir(parents=True, exist_ok=True)
+        PENDING_LOCAL_FILE.write_text(
+            json.dumps(pendings, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        return True
+    except Exception as exc:
+        LOGGER.error("    [Pendiente] No se pudo escribir %s: %s", PENDING_LOCAL_FILE, exc)
+        return False
+
+
+def _pending_key_of(entry: Dict[str, Any]) -> str:
+    """Clave de un pendiente local: su letra, o SER:<serial> si no tiene
+    letra (móviles WPD, detección amplia)."""
+    letter = str(entry.get("driveLetter") or "").upper()
+    if letter:
+        return letter
+    serial = str(entry.get("serialNumber") or "").upper()
+    return f"SER:{serial}" if serial else ""
+
+
+def _wpd_pending_key(serial: Optional[str]) -> str:
+    """Clave local del pendiente de un móvil (sin letra) por su serial."""
+    return f"SER:{str(serial or '').upper()}"
+
+
+def _register_local_pending(entry: Dict[str, Any]) -> None:
+    """Añade (o sustituye si sigue BLOCKED) un pendiente en el registro local."""
+    pendings = _load_local_pendings()
+    key = _pending_key_of(entry)
+    pendings = [
+        p
+        for p in pendings
+        if not (_pending_key_of(p) == key and p.get("status") == "BLOCKED")
+    ]
+    pendings.append(entry)
+    _save_local_pendings(pendings)
+
+
+def _mark_local_pending_unlocked(pending_key: str) -> None:
+    """Marca como UNLOCKED el pendiente local de una clave (si existe).
+
+    La clave es la letra de la unidad («E:») o SER:<serial> para un
+    móvil sin letra (detección amplia).
+    """
+    pendings = _load_local_pendings()
+    drive = pending_key.upper()
+    changed = False
+    for pending in pendings:
+        if _pending_key_of(pending) == drive and pending.get("status") == "BLOCKED":
+            pending["status"] = "UNLOCKED"
+            changed = True
+    if changed:
+        _save_local_pendings(pendings)
+
+
+def _mark_local_pending_closed(pending_key: str) -> None:
+    """Marca como CLOSED los pendientes locales de una unidad (Fase 2).
+
+    Se llama al detectar la extracción física: tanto si seguía BLOCKED
+    como si estaba UNLOCKED, el registro de esta inserción se cierra
+    (el permiso muere al extraer). El compañero solo reacciona a
+    BLOCKED/UNLOCKED, así que CLOSED simplemente lo ignora.
+    """
+    pendings = _load_local_pendings()
+    drive = pending_key.upper()
+    changed = False
+    for pending in pendings:
+        if _pending_key_of(pending) == drive and pending.get("status") in (
+            "BLOCKED",
+            "UNLOCKED",
+        ):
+            pending["status"] = "CLOSED"
+            pending["closedAt"] = time.time()
+            changed = True
+    if changed:
+        _save_local_pendings(pendings)
+
+
+def _get_local_block_info(pending_key: str) -> Dict[str, Any]:
+    """Devuelve el pendiente local vigente (BLOCKED/UNLOCKED) de una unidad.
+
+    Sirve para recuperar el método de bloqueo (blockMethod) y la
+    instancia PnP (pnpDeviceId) registrados al bloquear, por si el
+    estado en memoria del servicio ya no los tuviera.
+    """
+    drive = (pending_key or "").upper()
+    info: Dict[str, Any] = {}
+    for pending in _load_local_pendings():
+        if _pending_key_of(pending) == drive and pending.get(
+            "status"
+        ) in ("BLOCKED", "UNLOCKED"):
+            info = pending  # el último es el más reciente
+    return info
+
+
+def _create_pending_unlock_request(
+    pc_name: str,
+    drive_letter: Optional[str],
+    serial_number: Optional[str] = None,
+    device_label: Optional[str] = None,
+    whitelisted: bool = False,
+) -> Tuple[bool, Optional[str]]:
+    """POST /api/usb-event/pending-unlock: registra el bloqueo en el servidor.
+
+    Devuelve (ok, id_del_pendiente_en_el_servidor).
+    """
+    url = build_url("/api/usb-event/pending-unlock")
+    headers = {"Content-Type": "application/json"}
+    headers.update(get_auth_headers())
+    payload = {
+        "pcName": pc_name,
+        "driveLetter": drive_letter,
+        "serialNumber": serial_number,
+        "deviceLabel": device_label,
+        "whitelisted": bool(whitelisted),
+    }
+    verify = get_requests_verify()
+    response = requests.post(url, json=payload, headers=headers, timeout=8, verify=verify)
+    response.raise_for_status()
+    data = response.json()
+    if not data.get("ok"):
+        LOGGER.warning("    [Pendiente] El servidor no confirmó el registro: %s", data)
+        return False, None
+    return True, data.get("id")
+
+
+def enumerate_wpd_devices(conn: wmi.WMI) -> Optional[List[Dict[str, Any]]]:
+    """Móviles conectados por USB en modo transferencia (WPD/MTP).
+
+    Un teléfono no es un disco para Windows: aparece como dispositivo
+    portátil (PNPClass «WPD»), sin letra. Se filtran los enumerados por
+    USB (un WPD por Bluetooth no extrae datos por el puerto). Devuelve
+    None si la consulta falla, para distinguir «sin móviles» de
+    «no se pudo mirar» (el vigilante no debe cerrar bloqueos por un
+    error de consulta).
+    """
+    try:
+        rows = conn.query(
+            "SELECT DeviceID, Name FROM Win32_PnPEntity WHERE PNPClass = 'WPD'"
+        )
+    except Exception as exc:
+        LOGGER.debug("Consulta de dispositivos WPD falló: %s", exc)
+        return None
+    devices: List[Dict[str, Any]] = []
+    for row in rows or []:
+        device_id = str(getattr(row, "DeviceID", "") or "")
+        if not device_id.upper().startswith("USB\\"):
+            continue
+        name = str(getattr(row, "Name", "") or "").strip() or "Dispositivo móvil"
+        serial_raw = device_id.rsplit("\\", 1)[-1]
+        serial = normalize_serial_candidate(serial_raw)
+        devices.append(
+            {"deviceId": device_id, "name": name, "serialNumber": serial}
+        )
+    return devices
+
+
+def create_pending_unlock(
+    pc_name: str,
+    drive_letter: Optional[str],
+    serial_number: Optional[str] = None,
+    device_label: Optional[str] = None,
+    whitelisted: bool = False,
+    block_method: Optional[str] = None,
+    pnp_device_id: Optional[str] = None,
+    device_kind: Optional[str] = None,
+) -> bool:
+    """Registra un dispositivo bloqueado pendiente de contraseña (Fase 1).
+
+    block_method y pnp_device_id (Fase 2) solo se guardan en el registro
+    local: el contrato con el servidor no cambia.
+
+    Lo crea en el servidor y lo guarda también en el registro local
+    (pending_local.json), del que el proceso compañero lee para mostrar
+    la ventana de contraseña. Si el servidor no responde, el pendiente
+    local queda con id null: el bloqueo se mantiene, y
+    reconcile_local_pendings() lo registra en el servidor en cuanto hay
+    conexión (Fase 1 del plan de arreglos); hasta entonces la contraseña
+    online no puede verificar.
+    """
+    server_id: Optional[str] = None
+    registered = False
+
+    future = submit_network_task(
+        _create_pending_unlock_request,
         pc_name,
         drive_letter,
+        serial_number,
+        device_label,
+        whitelisted,
+        expect_result=True,
     )
-    return False
+    if future is not None:
+        try:
+            registered, server_id = future.result(timeout=10)
+        except Exception as exc:
+            LOGGER.error(
+                "    [Pendiente] Error al registrar el bloqueo en el servidor (cola): %s",
+                exc,
+            )
+    else:
+        try:
+            registered, server_id = _create_pending_unlock_request(
+                pc_name, drive_letter, serial_number, device_label, whitelisted
+            )
+        except Exception as exc:
+            LOGGER.error(
+                "    [Pendiente] Error al registrar el bloqueo en el servidor: %s", exc
+            )
+
+    _register_local_pending(
+        {
+            "id": server_id,
+            "pcName": pc_name,
+            "driveLetter": drive_letter,
+            "serialNumber": serial_number,
+            "deviceLabel": device_label,
+            "whitelisted": bool(whitelisted),
+            "status": "BLOCKED",
+            "createdAt": time.time(),
+            # Fase 2: cómo se bloqueó esta unidad y su instancia PnP,
+            # para revertir lo correcto al desbloquear o al extraerla.
+            "blockMethod": block_method,
+            "pnpDeviceId": pnp_device_id,
+            # Detección amplia: «WPD» para móviles sin letra.
+            "deviceKind": device_kind,
+        }
+    )
+
+    if registered:
+        LOGGER.info(
+            "    [Pendiente] ✓ Bloqueo registrado en el servidor (id=%s) para %s en %s",
+            server_id,
+            pc_name,
+            drive_letter,
+        )
+    else:
+        LOGGER.warning(
+            "    [Pendiente] ⚠ Bloqueo guardado solo en local para %s en %s: "
+            "sin pendiente en el servidor, la contraseña online no podrá verificar por ahora",
+            pc_name,
+            drive_letter,
+        )
+    return registered
 
 
-def create_pending_unlock(pc_name: str, drive_letter: str) -> bool:
-    # Legacy deshabilitado: no se crean pending unlocks.
-    LOGGER.debug("    [Legacy OFF] create_pending_unlock omitido")
-    return False
+def reconcile_local_pendings() -> int:
+    """Re-registra en el servidor los bloqueos creados sin red (Fase 1).
+
+    Un bloqueo creado cuando el servidor no respondía queda en
+    pending_local.json con «id» null; sin pendiente en el servidor,
+    /api/usb-auth responde 401 NO_PENDING y la contraseña en línea no
+    puede verificar NUNCA, ni cuando la red vuelve. Esta función recorre
+    el registro local y registra cada BLOCKED sin id, guardando el id
+    devuelto. Devuelve cuántos se registraron.
+
+    Solo se consideran los BLOCKED: el vigilante de extracción cierra
+    (CLOSED) los de las unidades extraídas, así que un BLOCKED en el
+    registro es una unidad que sigue insertada — no se resucitan
+    bloqueos de dispositivos ausentes. Al arrancar, el Boot Sweep ya
+    sustituye los BLOCKED de las unidades presentes por pendientes
+    nuevos, así que basta con llamar a esto desde el bucle de
+    autorizaciones: cubre tanto el arranque sin red (en cuanto la red
+    vuelve) como la caída de red con el servicio en marcha.
+    """
+    pendings = _load_local_pendings()
+    candidates = [
+        p
+        for p in pendings
+        if p.get("status") == "BLOCKED" and not p.get("id")
+    ]
+    if not candidates:
+        return 0
+
+    registered = 0
+    for entry in candidates:
+        try:
+            ok, server_id = _create_pending_unlock_request(
+                str(entry.get("pcName") or HOSTNAME),
+                entry.get("driveLetter") or None,
+                entry.get("serialNumber"),
+                entry.get("deviceLabel"),
+                bool(entry.get("whitelisted")),
+            )
+        except Exception as exc:
+            LOGGER.warning(
+                "    [Pendiente] Reconciliación sin éxito para %s (se reintentará): %s",
+                entry.get("driveLetter"),
+                exc,
+            )
+            continue
+        if ok and server_id:
+            entry["id"] = server_id
+            registered += 1
+            LOGGER.info(
+                "    [Pendiente] ✓ Bloqueo creado sin red registrado al fin en el servidor (id=%s) para %s",
+                server_id,
+                entry.get("driveLetter"),
+            )
+    if registered:
+        _save_local_pendings(pendings)
+    return registered
+
+
+def _send_pending_close_request(
+    pc_name: str,
+    drive_letter: str,
+    serial_number: Optional[str] = None,
+) -> None:
+    """POST /api/usb-event/pending-close: la unidad se extrajo (Fase 2).
+
+    Avisa al servidor para que cierre el registro del bloqueo: el
+    permiso de una unidad desbloqueada muere al extraerla, y un bloqueo
+    sin extraer no debe quedar abierto para siempre.
+    """
+    url = build_url("/api/usb-event/pending-close")
+    headers = {"Content-Type": "application/json"}
+    headers.update(get_auth_headers())
+    payload = {
+        "pcName": pc_name,
+        "driveLetter": drive_letter,
+        "serialNumber": serial_number,
+    }
+    try:
+        verify = get_requests_verify()
+        response = requests.post(
+            url, json=payload, headers=headers, timeout=8, verify=verify
+        )
+        response.raise_for_status()
+        LOGGER.info(
+            "    [Retirada] ✓ Cierre de pendiente notificado al servidor para %s en %s",
+            pc_name,
+            drive_letter,
+        )
+    except Exception as exc:
+        LOGGER.error(
+            "    [Retirada] ✗ Error al notificar el cierre del pendiente de %s: %s",
+            drive_letter,
+            exc,
+        )
+
+
+def notify_pending_close(
+    pc_name: str,
+    drive_letter: str,
+    serial_number: Optional[str] = None,
+) -> None:
+    """Encola el aviso de cierre por retirada para no bloquear el bucle.
+
+    Fase 4: pasa por la cola persistente, igual que los eventos: si la
+    retirada ocurre sin red, el cierre llega al servidor al reconectar
+    en vez de perderse. Si la escritura en disco fallara, se cae al
+    envío en memoria de siempre.
+    """
+    payload = {
+        "pcName": pc_name,
+        "driveLetter": drive_letter,
+        "serialNumber": serial_number,
+    }
+    if not enqueue_persistent("pending_close", payload):
+        submit_network_task(
+            _send_pending_close_request, pc_name, drive_letter, serial_number
+        )
 
 
 def _check_whitelist_remote(normalized_serial: str) -> Tuple[bool, Optional[Dict[str, Any]]]:
@@ -1553,6 +2009,61 @@ def _check_whitelist_remote(normalized_serial: str) -> Tuple[bool, Optional[Dict
     return allowed, entry
 
 
+_whitelist_disk_lock = threading.Lock()
+
+
+def _load_whitelist_disk_cache() -> Dict[str, Dict[str, Any]]:
+    """Lee la caché en disco de la whitelist (Fase 4). Tolerante a fallos."""
+    try:
+        if not WHITELIST_DISK_CACHE_FILE.exists():
+            return {}
+        data = json.loads(WHITELIST_DISK_CACHE_FILE.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception as exc:
+        LOGGER.warning("    [Whitelist] No se pudo leer la caché en disco: %s", exc)
+        return {}
+
+
+def _save_whitelist_disk_cache_entry(serial: str, known: bool) -> None:
+    """Guarda en disco el último resultado conocido de un serial."""
+    try:
+        with _whitelist_disk_lock:
+            cache = _load_whitelist_disk_cache()
+            cache[serial] = {"known": bool(known), "checkedAt": time.time()}
+            WHITELIST_DISK_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            WHITELIST_DISK_CACHE_FILE.write_text(
+                json.dumps(cache, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+    except Exception as exc:
+        LOGGER.warning("    [Whitelist] No se pudo guardar la caché en disco: %s", exc)
+
+
+def _whitelist_disk_fallback(serial: str) -> Tuple[bool, Optional[Dict[str, Any]]]:
+    """Sin respuesta del servidor: último resultado guardado en disco.
+
+    OJO: la caché solo decide cómo se MARCA el dispositivo (conocido o
+    desconocido) en el evento y en el registro local. El bloqueo y la
+    contraseña se aplican igual: sin red nada se usa sin contraseña.
+    Sin caché para ese serial, se marca desconocido.
+    """
+    entry = _load_whitelist_disk_cache().get(serial)
+    if entry is not None:
+        known = bool(entry.get("known"))
+        LOGGER.warning(
+            "    [Whitelist] ⚠ Sin servidor: se usa la caché en disco para %s "
+            "(conocido=%s, de %s); el bloqueo y la contraseña se aplican igual",
+            serial,
+            known,
+            entry.get("checkedAt"),
+        )
+        return known, None
+    LOGGER.warning(
+        "    [Whitelist] ⚠ Sin servidor y sin caché en disco para %s: se marca desconocido",
+        serial,
+    )
+    return False, None
+
+
 def check_whitelist(serial_number: Optional[str]) -> Tuple[bool, Optional[Dict[str, Any]]]:
     """Consulta el backend para verificar si el serial está autorizado con caché y backoff."""
     normalized_serial = normalize_serial_candidate(serial_number)
@@ -1581,31 +2092,55 @@ def check_whitelist(serial_number: Optional[str]) -> Tuple[bool, Optional[Dict[s
                 "    [Whitelist] ✗ Error al obtener whitelist (cola): %s",
                 exc,
             )
-            return False, None
+            return _whitelist_disk_fallback(normalized_serial)
     else:
         try:
             allowed, entry = _check_whitelist_remote(normalized_serial)
         except Exception as exc:  # pragma: no cover - redundante
             LOGGER.error("    [Whitelist] ✗ Error al consultar whitelist directamente: %s", exc)
-            return False, None
+            return _whitelist_disk_fallback(normalized_serial)
 
     ttl = WHITELIST_POSITIVE_TTL if allowed else WHITELIST_NEGATIVE_TTL
     _whitelist_cache[normalized_serial] = (now + ttl, allowed, entry)
+    # Fase 4: el resultado confirmado por el servidor queda en disco
+    # para poder seguir marcando conocido/desconocido sin red.
+    _save_whitelist_disk_cache_entry(normalized_serial, allowed)
     return allowed, entry
 
 
-def _check_unlock_status_remote(pc_name: str) -> Tuple[bool, Optional[str]]:
-    # Legacy deshabilitado: no se consulta estado de desbloqueo.
-    LOGGER.debug("    [Legacy OFF] check_unlock_status omitido para PC=%s", pc_name)
-    return False, None
+def _check_unlock_status_remote(pc_name: str) -> List[Dict[str, Any]]:
+    """GET /api/usb-unlock/status?check=true: pendientes recién desbloqueados.
+
+    Con check=true el servidor marca cada pendiente UNLOCKED como ya
+    entregado (executedAt), así que cada uno se devuelve una sola vez.
+    """
+    url = build_url("/api/usb-unlock/status")
+    headers = get_auth_headers()
+    verify = get_requests_verify()
+    response = requests.get(
+        url,
+        params={"pcName": pc_name, "check": "true"},
+        headers=headers,
+        timeout=8,
+        verify=verify,
+    )
+    response.raise_for_status()
+    data = response.json()
+    pendings = data.get("pendings") or []
+    return [p for p in pendings if isinstance(p, dict)]
 
 
-def check_unlock_status(pc_name: str) -> Tuple[bool, Optional[str]]:
-    """Verifica si el backend ha autorizado el desbloqueo aplicando backoff en respuestas negativas."""
+def check_unlock_status(pc_name: str) -> List[Dict[str, Any]]:
+    """Consulta al servidor los dispositivos ya desbloqueados con contraseña.
+
+    Devuelve la lista de pendientes (cada uno con al menos driveLetter y
+    serialNumber) que hay que liberar. Aplica un pequeño backoff cuando
+    la respuesta viene vacía o hay un error, para no saturar.
+    """
     now = time.time()
-    cached = _unlock_backoff.get(pc_name)
-    if cached and cached[0] > now:
-        return cached[1], cached[2]
+    next_allowed = _unlock_backoff.get(pc_name)
+    if next_allowed and next_allowed > now:
+        return []
 
     future = submit_network_task(
         _check_unlock_status_remote,
@@ -1613,28 +2148,385 @@ def check_unlock_status(pc_name: str) -> Tuple[bool, Optional[str]]:
         expect_result=True,
     )
 
-    unlocked: bool
-    drive_letter: Optional[str]
+    pendings: List[Dict[str, Any]]
     if future is not None:
         try:
-            unlocked, drive_letter = future.result(timeout=10)
+            pendings = future.result(timeout=10)
         except Exception as exc:
             LOGGER.debug("    [Desbloqueo] Error al obtener estado (cola): %s", exc)
-            _unlock_backoff[pc_name] = (now + UNLOCK_NEGATIVE_BACKOFF, False, None)
-            return False, None
+            _unlock_backoff[pc_name] = now + UNLOCK_NEGATIVE_BACKOFF
+            return []
     else:
         try:
-            unlocked, drive_letter = _check_unlock_status_remote(pc_name)
+            pendings = _check_unlock_status_remote(pc_name)
         except Exception as exc:
             LOGGER.debug("    [Desbloqueo] Error al verificar desbloqueo directamente: %s", exc)
-            _unlock_backoff[pc_name] = (now + UNLOCK_NEGATIVE_BACKOFF, False, None)
-            return False, None
+            _unlock_backoff[pc_name] = now + UNLOCK_NEGATIVE_BACKOFF
+            return []
 
-    if unlocked:
+    if pendings:
         _unlock_backoff.pop(pc_name, None)
     else:
-        _unlock_backoff[pc_name] = (now + UNLOCK_NEGATIVE_BACKOFF, False, None)
-    return unlocked, drive_letter
+        _unlock_backoff[pc_name] = now + UNLOCK_NEGATIVE_BACKOFF
+    return pendings
+
+
+# ---------------------------------------------------------------------------
+# Emergencia sin red (Fase 4): hash del dueño cacheado y verificación local
+#
+# El agente descarga de GET /api/agent/owner-hash el hash argon2 del
+# usuario dueño del equipo y lo guarda CIFRADO con la clave de máquina
+# (el mismo Fernet de encrypt_value). Sin red, la página local
+# :5001/desbloquear verifica la contraseña contra ese hash, con un
+# contador de intentos persistido. Fail-closed: sin hash cacheado, sin
+# argon2-cffi o con el contador bloqueado, NO se desbloquea nada.
+# ---------------------------------------------------------------------------
+
+
+def _save_owner_hash_cache(username: str, password_hash: str) -> None:
+    data = {
+        "username": username,
+        "passwordHash": encrypt_value(password_hash),
+        "fetchedAt": time.time(),
+    }
+    try:
+        OWNER_HASH_FILE.parent.mkdir(parents=True, exist_ok=True)
+        OWNER_HASH_FILE.write_text(
+            json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        LOGGER.info(
+            "    [Emergencia] ✓ Hash del dueño (%s) refrescado y guardado cifrado",
+            username,
+        )
+    except Exception as exc:
+        LOGGER.error("    [Emergencia] ✗ No se pudo guardar el hash del dueño: %s", exc)
+
+
+def _delete_owner_hash_cache() -> None:
+    try:
+        if OWNER_HASH_FILE.exists():
+            OWNER_HASH_FILE.unlink()
+            LOGGER.info("    [Emergencia] Caché del hash del dueño eliminada")
+    except Exception as exc:
+        LOGGER.warning("    [Emergencia] No se pudo eliminar la caché del dueño: %s", exc)
+
+
+def refresh_owner_hash_cache() -> None:
+    """GET /api/agent/owner-hash: refresca la caché del hash del dueño.
+
+    - 200: guarda usuario + hash cifrados con la clave de máquina.
+    - 403: el panel desactivó la emergencia sin red: se borra la caché
+      y la página local queda deshabilitada.
+    - Error de red u otro estado: se conserva la caché anterior.
+    """
+    url = build_url("/api/agent/owner-hash")
+    headers = get_auth_headers()
+    verify = get_requests_verify()
+    try:
+        response = requests.get(
+            url,
+            params={"pcName": HOSTNAME},
+            headers=headers,
+            timeout=8,
+            verify=verify,
+        )
+    except Exception as exc:
+        LOGGER.debug("    [Emergencia] Sin contacto para refrescar el hash: %s", exc)
+        return
+
+    if response.status_code == 403:
+        LOGGER.warning(
+            "    [Emergencia] El panel desactivó la emergencia sin red (403): "
+            "se borra la caché del hash del dueño"
+        )
+        _delete_owner_hash_cache()
+        return
+    if response.status_code != 200:
+        LOGGER.debug(
+            "    [Emergencia] owner-hash respondió %s; se conserva la caché anterior",
+            response.status_code,
+        )
+        return
+    try:
+        data = response.json()
+        username = str(data.get("username") or "").strip()
+        password_hash = str(data.get("passwordHash") or "")
+        if not username or not password_hash:
+            LOGGER.warning("    [Emergencia] owner-hash sin datos útiles: %s", data)
+            return
+        _save_owner_hash_cache(username, password_hash)
+    except Exception as exc:
+        LOGGER.warning("    [Emergencia] Respuesta de owner-hash ilegible: %s", exc)
+
+
+def _owner_hash_refresh_loop(service: "USBMonitorService") -> None:
+    """Refresca el hash del dueño al arrancar y cada ~10 minutos."""
+    while not service.stopped:
+        refresh_owner_hash_cache()
+        deadline = time.time() + OWNER_HASH_REFRESH_SECONDS
+        while not service.stopped and time.time() < deadline:
+            time.sleep(5)
+
+
+def _load_owner_hash_cache() -> Optional[Dict[str, Any]]:
+    """Lee la caché del dueño y descifra el hash. None si no hay caché."""
+    try:
+        if not OWNER_HASH_FILE.exists():
+            return None
+        data = json.loads(OWNER_HASH_FILE.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return None
+        username = str(data.get("username") or "").strip()
+        stored = str(data.get("passwordHash") or "")
+        if not username or not stored:
+            return None
+        return {"username": username, "passwordHash": decrypt_value(stored)}
+    except Exception as exc:
+        LOGGER.warning("    [Emergencia] No se pudo leer la caché del dueño: %s", exc)
+        return None
+
+
+def _extract_argon2_phc(stored_hash: str) -> Optional[str]:
+    """Extrae la parte PHC ($argon2id$...) del hash guardado por el panel.
+
+    El panel almacena la cadena con su propio prefijo (algo como
+    "argon2id$$argon2id$v=19$m=...$sal$hash"): argon2-cffi solo entiende
+    la parte PHC estándar, que empieza en "$argon2id$".
+    """
+    for marker in ("$argon2id$", "$argon2i$", "$argon2d$"):
+        idx = stored_hash.find(marker)
+        if idx >= 0:
+            return stored_hash[idx:].strip()
+    return None
+
+
+def _load_emergency_state() -> Dict[str, Any]:
+    try:
+        if not EMERGENCY_STATE_FILE.exists():
+            return {"failures": 0, "lockedUntil": 0.0}
+        data = json.loads(EMERGENCY_STATE_FILE.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return {"failures": 0, "lockedUntil": 0.0}
+        return {
+            "failures": int(data.get("failures") or 0),
+            "lockedUntil": float(data.get("lockedUntil") or 0.0),
+        }
+    except Exception as exc:
+        LOGGER.warning("    [Emergencia] No se pudo leer el estado de intentos: %s", exc)
+        return {"failures": 0, "lockedUntil": 0.0}
+
+
+def _save_emergency_state(state: Dict[str, Any]) -> None:
+    try:
+        EMERGENCY_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        EMERGENCY_STATE_FILE.write_text(
+            json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+    except Exception as exc:
+        LOGGER.error("    [Emergencia] ✗ No se pudo guardar el estado de intentos: %s", exc)
+
+
+def _emergency_locked_remaining() -> float:
+    """Segundos de bloqueo de la emergencia que quedan (0 si no hay)."""
+    locked_until = float(_load_emergency_state().get("lockedUntil") or 0.0)
+    return max(0.0, locked_until - time.time())
+
+
+def _enqueue_offline_attempt(
+    username_tried: str,
+    result: str,
+    drive_letter: Optional[str],
+    serial_number: Optional[str],
+) -> None:
+    """Encola un intento sin red para subirlo al volver la conexión."""
+    attempt = {
+        "usernameTried": username_tried,
+        "result": result,
+        "driveLetter": drive_letter,
+        "serialNumber": serial_number,
+        "createdAt": _utc_now_iso(),
+    }
+    enqueue_persistent(
+        "offline_attempts",
+        {"pcName": HOSTNAME, "attempts": [attempt]},
+    )
+
+
+def _emergency_register_failure(
+    username_tried: str,
+    drive_letter: Optional[str],
+    serial_number: Optional[str],
+) -> None:
+    """Suma un fallo al contador persistido, encola OFFLINE_FAIL y, al
+    llegar al máximo, bloquea la emergencia 15 minutos (persistido)."""
+    state = _load_emergency_state()
+    state["failures"] = int(state.get("failures") or 0) + 1
+    if state["failures"] >= EMERGENCY_MAX_FAILURES:
+        state["lockedUntil"] = time.time() + EMERGENCY_LOCK_SECONDS
+        state["failures"] = 0
+        LOGGER.warning(
+            "    [Emergencia] ⛔ %d fallos: la emergencia sin red queda "
+            "bloqueada %d minutos",
+            EMERGENCY_MAX_FAILURES,
+            int(EMERGENCY_LOCK_SECONDS // 60),
+        )
+    _save_emergency_state(state)
+    _enqueue_offline_attempt(
+        username_tried, "OFFLINE_FAIL", drive_letter, serial_number
+    )
+
+
+def _emergency_register_success(
+    username_tried: str,
+    drive_letter: Optional[str],
+    serial_number: Optional[str],
+) -> None:
+    """Contraseña correcta sin red: contador a cero y OFFLINE_OK encolado."""
+    _save_emergency_state({"failures": 0, "lockedUntil": 0.0})
+    _enqueue_offline_attempt(
+        username_tried, "OFFLINE_OK", drive_letter, serial_number
+    )
+
+
+def _check_emergency_credentials(
+    username: str,
+    password: str,
+    drive_letter: str,
+) -> Tuple[str, Optional[str]]:
+    """Verifica usuario+contraseña contra el hash cacheado del dueño.
+
+    Devuelve (estado, serial_del_bloqueo):
+      - "ok": la contraseña es la del dueño cacheado.
+      - "fail": usuario o contraseña incorrectos (ya contado y encolado).
+      - "locked": la emergencia está bloqueada por exceso de fallos.
+      - "unavailable": sin hash cacheado o sin argon2-cffi (fail-closed).
+      - "invalid": la unidad indicada no está entre los bloqueos locales.
+    """
+    if _emergency_locked_remaining() > 0:
+        return "locked", None
+
+    cache = _load_owner_hash_cache()
+    if cache is None or not ARGON2_AVAILABLE:
+        return "unavailable", None
+
+    pending = None
+    for entry in _load_local_pendings():
+        if (
+            str(entry.get("driveLetter") or "").upper() == drive_letter.upper()
+            and entry.get("status") == "BLOCKED"
+        ):
+            pending = entry  # el último es el más reciente
+    if pending is None:
+        return "invalid", None
+    serial = pending.get("serialNumber")
+
+    if username.strip().casefold() != str(cache["username"]).casefold():
+        LOGGER.warning(
+            "    [Emergencia] ✗ Usuario %r no es el dueño cacheado (%s)",
+            username,
+            cache["username"],
+        )
+        _emergency_register_failure(username, drive_letter, serial)
+        return "fail", serial
+
+    phc = _extract_argon2_phc(str(cache["passwordHash"]))
+    if phc is None:
+        LOGGER.error(
+            "    [Emergencia] ✗ El hash cacheado no contiene una parte PHC reconocible"
+        )
+        return "unavailable", serial
+
+    try:
+        _Argon2PasswordHasher().verify(phc, password)
+    except _Argon2VerifyMismatch:
+        LOGGER.warning("    [Emergencia] ✗ Contraseña incorrecta en la página local")
+        _emergency_register_failure(username, drive_letter, serial)
+        return "fail", serial
+    except _Argon2InvalidHash:
+        LOGGER.error("    [Emergencia] ✗ Hash PHC inválido en la caché del dueño")
+        return "unavailable", serial
+    except Exception as exc:
+        LOGGER.error("    [Emergencia] ✗ Error verificando la contraseña: %s", exc)
+        return "unavailable", serial
+
+    LOGGER.info(
+        "    [Emergencia] ✓ Contraseña del dueño verificada en local para %s",
+        drive_letter,
+    )
+    return "ok", serial
+
+
+def _is_companion_running() -> bool:
+    """Comprueba si el proceso compañero está en ejecución (Fase 4).
+
+    Detecta los DOS modos de instalación: el .exe compilado
+    (USBMonitorPrompt.exe, por nombre de imagen) y el script
+    (pythonw/python con usb_prompt.py en la línea de comandos, vía
+    Win32_Process). Antes solo se buscaba el .exe y, con el compañero
+    como script, el watchdog lo creía caído cada 15 s y relanzaba la
+    tarea en bucle.
+    """
+    try:
+        tasklist_path = resolve_executable("tasklist.exe")
+        result = subprocess.run(  # nosec B603 - ejecutable del sistema y argumentos fijos
+            [tasklist_path, "/FI", f"IMAGENAME eq {COMPANION_IMAGE_NAME}", "/NH"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if COMPANION_IMAGE_NAME.lower() in (result.stdout or "").lower():
+            return True
+    except Exception:
+        pass
+    try:
+        conn = wmi.WMI()
+        for proc in conn.Win32_Process():
+            name = (getattr(proc, "Name", "") or "").lower()
+            if name in ("pythonw.exe", "python.exe"):
+                cmd = (getattr(proc, "CommandLine", "") or "").lower()
+                if "usb_prompt.py" in cmd:
+                    return True
+    except Exception:
+        pass
+    return False
+
+
+def _ensure_companion_running() -> None:
+    """Watchdog del proceso compañero (Fase 1).
+
+    Si el compañero no está en ejecución y existe su tarea programada,
+    la lanza con schtasks /run. Cualquier fallo se registra y se ignora:
+    este watchdog nunca debe tumbar el servicio. (La detección cubre el
+    .exe y el script: ver _is_companion_running.)
+    """
+    try:
+        if _is_companion_running():
+            return
+        schtasks_path = resolve_executable("schtasks.exe")
+        query = subprocess.run(  # nosec B603
+            [schtasks_path, "/query", "/tn", COMPANION_TASK_NAME],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if query.returncode != 0:
+            LOGGER.debug(
+                "  [Compañero] La tarea programada %s no existe; no se relanza",
+                COMPANION_TASK_NAME,
+            )
+            return
+        subprocess.run(  # nosec B603
+            [schtasks_path, "/run", "/tn", COMPANION_TASK_NAME],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        LOGGER.info(
+            "  [Compañero] No estaba en ejecución: lanzada la tarea %s",
+            COMPANION_TASK_NAME,
+        )
+    except Exception as exc:
+        LOGGER.warning("  [Compañero] Error en el watchdog del compañero: %s", exc)
 
 
 def unlock_usb(drive_letter: str, conn: wmi.WMI) -> bool:
@@ -1663,7 +2555,57 @@ def _shorten(value: Optional[str], *, limit: int = 120) -> str:
     return value[: limit - 3] + "..."
 
 
-def _classify_disk_as_usb(disk: Any) -> Tuple[bool, List[str], Dict[str, Any]]:
+# ── Detección amplia (Parte A): carcasas de disco con puente UAS ─────────
+# Muchas carcasas USB 3.x de discos duros/SSD no se presentan como
+# USBSTOR sino como un disco SCSI genérico (SCSI\DISK&VEN_...), sin la
+# palabra USB en ningún campo, y el clasificador las descartaba. Pero un
+# disco SATA INTERNO también se anuncia como SCSI\DISK: para no tocar
+# jamás un disco interno, un disco SCSI solo cuenta como USB si su
+# PADRE en el árbol PnP (o un ancestro cercano) es un dispositivo USB
+# (el puente de la carcasa). Ante cualquier error de consulta, NO se
+# clasifica (fallar hacia el interno es innegociable).
+
+_UAS_VERDICT_CACHE: Dict[str, bool] = {}
+
+
+def _pnp_parent_id(conn: wmi.WMI, instance_id: str) -> Optional[str]:
+    """Padre PnP de un dispositivo (DEVPKEY_Device_Parent), o None."""
+    try:
+        escaped = instance_id.replace("\\", "\\\\").replace("'", "\\'")
+        rows = conn.query(
+            "SELECT PropertyData FROM Win32_PnPDeviceProperty "
+            f"WHERE InstanceId = '{escaped}' AND KeyName = 'DEVPKEY_Device_Parent'"
+        )
+        for row in rows:
+            data = getattr(row, "PropertyData", None)
+            if data:
+                return str(data)
+    except Exception as exc:
+        LOGGER.debug("No se pudo consultar el padre PnP de %s: %s", instance_id, exc)
+    return None
+
+
+def _scsi_disk_has_usb_parent(conn: wmi.WMI, pnp_device_id: str) -> bool:
+    """True si el disco SCSI cuelga de un puente USB (carcasa UAS)."""
+    key = pnp_device_id or ""
+    if key in _UAS_VERDICT_CACHE:
+        return _UAS_VERDICT_CACHE[key]
+    verdict = False
+    current = key
+    for _ in range(3):  # disco → puente → (a veces) hub/controlador
+        parent = _pnp_parent_id(conn, current)
+        if not parent:
+            break
+        parent_upper = parent.upper()
+        if parent_upper.startswith("USB\\") or "USBSTOR" in parent_upper:
+            verdict = True
+            break
+        current = parent
+    _UAS_VERDICT_CACHE[key] = verdict
+    return verdict
+
+
+def _classify_disk_as_usb(disk: Any, conn: Optional[wmi.WMI] = None) -> Tuple[bool, List[str], Dict[str, Any]]:
     interface_type_raw = getattr(disk, "InterfaceType", None)
     interface_type = str(interface_type_raw).strip() if interface_type_raw else ""
     interface_type_upper = interface_type.upper()
@@ -1705,6 +2647,15 @@ def _classify_disk_as_usb(disk: Any) -> Tuple[bool, List[str], Dict[str, Any]]:
     if "\\USB" in device_id_upper or device_id_upper.startswith("USB"):
         reasons.append("DeviceID contiene USB")
 
+    # Parte A (detección amplia): disco SCSI cuyo padre PnP es el puente
+    # USB de una carcasa (UAS). Sin conexión WMI o sin prueba, no entra.
+    if (
+        conn is not None
+        and pnp_device_id_upper.startswith("SCSI\\DISK")
+        and _scsi_disk_has_usb_parent(conn, pnp_device_id)
+    ):
+        reasons.append("SCSI con padre USB (carcasa UAS)")
+
     is_usb = bool(reasons)
 
     metadata = {
@@ -1728,7 +2679,7 @@ def get_connected_usb_drives(conn: wmi.WMI) -> list:
         if disk_index is None:
             continue
 
-        is_usb, reasons, metadata = _classify_disk_as_usb(disk)
+        is_usb, reasons, metadata = _classify_disk_as_usb(disk, conn)
         disk_identifier = f"{disk_index}:{metadata.get('deviceId') or metadata.get('pnpDeviceId') or 'UNKNOWN'}"
 
         if not is_usb:
@@ -1826,6 +2777,10 @@ def get_connected_usb_drives(conn: wmi.WMI) -> list:
                         "interfaceType": metadata.get("interfaceType"),
                         "busType": metadata.get("busType"),
                         "mediaType": metadata.get("mediaType"),
+                        # Fase 2: la instancia PnP viaja con la unidad para
+                        # poder deshabilitarla/rehabilitarla al bloquear
+                        # y desbloquear (bucle WMI y Boot Sweep).
+                        "pnpDeviceId": metadata.get("pnpDeviceId"),
                         "detectionReasons": reasons,
                     }
                 )
@@ -1883,7 +2838,19 @@ def send_connected_drives_status(pc_name: str, conn: wmi.WMI, drives: Optional[l
 
 
 class UnlockHTTPHandler(BaseHTTPRequestHandler):
-    """Handler HTTP para health-checks y notificaciones de desbloqueo."""
+    """Handler HTTP local (:5001): health-check, configuración y
+    página de emergencia sin red.
+
+    Fase 3: ya NO existe ningún endpoint de desbloqueo remoto aquí — el
+    desbloqueo en línea solo ocurre por el polling autenticado al
+    servidor central. Lo único que modifica estado es POST /config, y
+    exige la credencial del equipo (AgentToken o la API key
+    configurada).
+
+    Fase 4: GET/POST /desbloquear es la página LOCAL de emergencia: sin
+    red, verifica la contraseña del dueño contra su hash cacheado
+    (cifrado) con contador de intentos persistido; nunca llama al panel.
+    """
 
     service_instance = None  # Referencia al servicio para acceder a pending_usbs y wmi
 
@@ -1892,9 +2859,13 @@ class UnlockHTTPHandler(BaseHTTPRequestHandler):
         LOGGER.info("%s - %s", self.address_string(), format % args)
 
     def _apply_cors_headers(self) -> None:
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        # Fase 0: sin CORS. El panel habla con el agente de servidor a
+        # servidor; ningún navegador necesita leer localhost:5001, y con
+        # «Access-Control-Allow-Origin: *» cualquier web visitada podía
+        # leer /health y /service-status (hostname, bloqueos, PID…).
+        # Se conserva el método (y sus llamadas) para no tocar los
+        # respondedores; simplemente ya no emite cabeceras CORS.
+        return None
 
     def _send_json_response(self, status_code: int, payload: Dict[str, Any]) -> None:
         body = json.dumps(payload).encode("utf-8")
@@ -1907,6 +2878,262 @@ class UnlockHTTPHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
         except BrokenPipeError:
             LOGGER.debug("Cliente cerró la conexión antes de finalizar la respuesta")
+
+    def _send_html_response(self, status_code: int, html_text: str) -> None:
+        body = html_text.encode("utf-8")
+        self.send_response(status_code)
+        self._apply_cors_headers()
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        try:
+            self.wfile.write(body)
+        except BrokenPipeError:
+            LOGGER.debug("Cliente cerró la conexión antes de finalizar la respuesta")
+
+    # -- Página local de emergencia sin red (Fase 4): GET/POST /desbloquear --
+
+    def _emergency_page(self, message: str = "", *, is_error: bool = False) -> str:
+        """HTML de la página local de emergencia (estética «Herencia»)."""
+        blocked = [
+            p
+            for p in _load_local_pendings()
+            if p.get("status") == "BLOCKED"
+        ]
+        cache = _load_owner_hash_cache()
+        locked_remaining = _emergency_locked_remaining()
+
+        if cache is None or not ARGON2_AVAILABLE:
+            notice = (
+                "<p class='aviso'>La emergencia sin red no está disponible en "
+                "este equipo (todavía no se ha guardado el hash del dueño o "
+                "el panel la ha desactivado). Los dispositivos siguen "
+                "bloqueados hasta que vuelva la conexión.</p>"
+            )
+            form = ""
+        elif locked_remaining > 0:
+            minutes = int(locked_remaining // 60) + 1
+            notice = (
+                f"<p class='aviso'>Demasiados intentos fallidos: la "
+                f"emergencia está bloqueada unos {minutes} minutos más.</p>"
+            )
+            form = ""
+        elif not blocked:
+            notice = (
+                "<p class='aviso'>Ahora mismo no hay ningún dispositivo "
+                "bloqueado en este equipo.</p>"
+            )
+            form = ""
+        else:
+            notice = (
+                "<p>Sin conexión con el servidor, el dueño de esta PC "
+                "puede desbloquear su dispositivo con su contraseña. "
+                "Máximo 5 intentos.</p>"
+            )
+            options = "".join(
+                "<option value='{drive}'>{drive} — {label} (serial {serial})</option>".format(
+                    drive=html.escape(str(p.get("driveLetter") or ""), quote=True),
+                    label=html.escape(str(p.get("deviceLabel") or "Dispositivo USB")),
+                    serial=html.escape(str(p.get("serialNumber") or "sin serial")),
+                )
+                for p in blocked
+            )
+            form = (
+                "<form method='POST' action='/desbloquear'>"
+                "<label>Unidad bloqueada"
+                f"<select name='driveLetter'>{options}</select></label>"
+                "<label>Usuario"
+                "<input name='username' autocomplete='username' required></label>"
+                "<label>Contraseña"
+                "<input name='password' type='password' "
+                "autocomplete='current-password' required></label>"
+                "<button type='submit'>Desbloquear</button>"
+                "</form>"
+            )
+
+        message_html = ""
+        if message:
+            cls = "error" if is_error else "ok"
+            message_html = f"<p class='{cls}'>{html.escape(message)}</p>"
+
+        return (
+            "<!DOCTYPE html><html lang='es'><head><meta charset='utf-8'>"
+            "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+            "<title>USB bloqueado — emergencia sin red</title><style>"
+            "*{box-sizing:border-box}"
+            "body{font-family:'Segoe UI',system-ui,sans-serif;margin:0;"
+            "min-height:100vh;background:#EDF0F4;color:#1B2330;display:flex;"
+            "align-items:center;justify-content:center;padding:28px 16px}"
+            ".tarjeta{width:100%;max-width:430px;background:#F7F9FB;"
+            "border:1px solid #C2CEDC;outline:1px solid #5F7CA6;"
+            "outline-offset:5px;padding:36px 32px;"
+            "box-shadow:0 18px 44px rgba(34,29,21,.14);"
+            "animation:aparecer .55s ease both}"
+            "@keyframes aparecer{from{opacity:0;transform:translateY(10px)}"
+            "to{opacity:1;transform:translateY(0)}}"
+            "h1{font-family:Georgia,'Times New Roman',serif;font-size:25px;"
+            "margin:0;font-weight:700;color:#1B2330;text-align:center}"
+            ".filete{width:64px;height:2px;background:#5F7CA6;"
+            "margin:12px auto 18px}"
+            "p{color:#5B6B7F;line-height:1.6;font-size:15px}"
+            "label{display:block;margin:16px 0 6px;font-weight:600;"
+            "font-size:12px;letter-spacing:.12em;text-transform:uppercase;"
+            "color:#5B6B7F}"
+            "input,select{width:100%;padding:12px 13px;background:#F7F9FB;"
+            "border:1px solid #C2CEDC;border-radius:4px;color:#1B2330;"
+            "font-family:inherit;font-size:15px;outline:none;"
+            "transition:border-color .2s ease,box-shadow .2s ease}"
+            "input:focus,select:focus{border-color:#5F7CA6;"
+            "box-shadow:0 0 0 3px rgba(165,129,79,.18)}"
+            "button{margin-top:22px;width:100%;padding:13px 18px;"
+            "border:none;border-radius:4px;font-family:inherit;"
+            "font-size:13px;font-weight:700;letter-spacing:.18em;"
+            "text-transform:uppercase;color:#EDF0F4;cursor:pointer;"
+            "background:#486581;transition:background .2s ease,"
+            "transform .2s ease}"
+            "button:hover{background:#57748F;transform:translateY(-1px)}"
+            ".aviso{background:rgba(166,106,31,.10);"
+            "border:1px solid #68809B;border-radius:4px;"
+            "padding:12px 14px;color:#1B2330}"
+            ".error{background:rgba(140,59,46,.10);"
+            "border:1px solid #8C3B2E;border-radius:4px;"
+            "padding:12px 14px;color:#1B2330}"
+            ".ok{background:rgba(62,107,79,.10);"
+            "border:1px solid #3E6B4F;border-radius:4px;"
+            "padding:12px 14px;color:#1B2330}"
+            "@media (max-width:480px){.tarjeta{padding:26px 20px}"
+            "body{padding:16px 10px}}"
+            "@media (prefers-reduced-motion:reduce){"
+            ".tarjeta{animation:none}button,input,select{transition:none}}"
+            "</style></head><body>"
+            "<main class='tarjeta'>"
+            "<h1>Dispositivo USB bloqueado</h1><div class='filete'></div>"
+            + message_html
+            + notice
+            + form
+            + "</main></body></html>"
+        )
+
+    def _handle_emergency_get(self) -> None:
+        self._send_html_response(200, self._emergency_page())
+
+    def _handle_emergency_post(self) -> None:
+        """Verifica la contraseña contra el hash cacheado del dueño."""
+        try:
+            content_length = int(self.headers.get("Content-Length", "0") or "0")
+        except ValueError:
+            content_length = 0
+        raw = self.rfile.read(content_length) if content_length > 0 else b""
+        form = parse_qs(raw.decode("utf-8", errors="replace"))
+        username = (form.get("username") or [""])[0].strip()
+        password = (form.get("password") or [""])[0]
+        drive_letter = (form.get("driveLetter") or [""])[0].strip().upper()
+        if drive_letter and not drive_letter.endswith(":"):
+            drive_letter += ":"
+
+        if not username or not password or not drive_letter:
+            self._send_html_response(
+                400,
+                self._emergency_page(
+                    "Faltan datos: usuario, contraseña y unidad son obligatorios.",
+                    is_error=True,
+                ),
+            )
+            return
+
+        status, serial = _check_emergency_credentials(username, password, drive_letter)
+
+        if status == "locked":
+            self._send_html_response(
+                403,
+                self._emergency_page(
+                    "La emergencia está bloqueada por exceso de intentos "
+                    "fallidos. Espera 15 minutos.",
+                    is_error=True,
+                ),
+            )
+            return
+        if status == "unavailable":
+            self._send_html_response(
+                403,
+                self._emergency_page(
+                    "La emergencia sin red no está disponible en este equipo.",
+                    is_error=True,
+                ),
+            )
+            return
+        if status == "invalid":
+            self._send_html_response(
+                400,
+                self._emergency_page(
+                    "Esa unidad no está entre los dispositivos bloqueados.",
+                    is_error=True,
+                ),
+            )
+            return
+        if status == "fail":
+            self._send_html_response(
+                401,
+                self._emergency_page(
+                    "No autorizado: el usuario o la contraseña no son los "
+                    "del dueño de esta PC.",
+                    is_error=True,
+                ),
+            )
+            return
+
+        # Contraseña correcta (el contador se resetea y el OFFLINE_OK se
+        # encola dentro de _emergency_register_success, tras el intento
+        # de liberación).
+        service = self.service_instance
+        released = False
+        if service is not None:
+            try:
+                released = bool(
+                    service.release_blocked_drive(
+                        drive_letter, service.wmi_connection
+                    )
+                )
+            except Exception as exc:
+                LOGGER.error(
+                    "    [Emergencia] ✗ Error al liberar %s tras verificar: %s",
+                    drive_letter,
+                    exc,
+                )
+            if released:
+                key = _drive_key(drive_letter)
+                for variant in (drive_letter, key, f"{key}:" if key else ""):
+                    if variant:
+                        service.pending_usbs.pop(variant, None)
+                _mark_local_pending_unlocked(drive_letter)
+        else:
+            LOGGER.error(
+                "    [Emergencia] Sin referencia al servicio: no se puede liberar %s",
+                drive_letter,
+            )
+        _emergency_register_success(username, drive_letter, serial)
+
+        if released:
+            LOGGER.info(
+                "    [Emergencia] ✓ Unidad %s desbloqueada sin red por su dueño",
+                drive_letter,
+            )
+            self._send_html_response(
+                200,
+                self._emergency_page(
+                    f"Dispositivo {drive_letter} desbloqueado. El intento "
+                    "quedará registrado en el panel cuando vuelva la red."
+                ),
+            )
+        else:
+            self._send_html_response(
+                500,
+                self._emergency_page(
+                    "La contraseña era correcta, pero no se pudo liberar el "
+                    "dispositivo. El intento ha quedado registrado.",
+                    is_error=True,
+                ),
+            )
 
     def _status_snapshot(self, *, extended: bool) -> Dict[str, Any]:
         now = time.time()
@@ -1967,9 +3194,63 @@ class UnlockHTTPHandler(BaseHTTPRequestHandler):
             self._send_json_response(200, body)
             return
 
+        if parsed.path == "/desbloquear":
+            # Fase 4: página local de emergencia sin red (formulario).
+            self._handle_emergency_get()
+            return
+
         self._send_json_response(404, {"status": "not_found"})
 
+    def _is_authorized_local_request(self) -> bool:
+        """Autenticación de los endpoints locales que modifican estado (Fase 3).
+
+        Se acepta cualquiera de las dos credenciales del propio equipo:
+          (a) Authorization: AgentToken <token por equipo>, o
+          (b) Authorization: ApiKey <API key configurada del agente>,
+              que es la que el panel usa para empujar los ajustes.
+        """
+        header = (self.headers.get("Authorization") or "").strip()
+        if not header:
+            return False
+
+        token = get_agent_token()
+        if token and hmac.compare_digest(header, f"AgentToken {token}"):
+            return True
+
+        api_key = get_configured_api_key()
+        if api_key and hmac.compare_digest(header, f"ApiKey {api_key}"):
+            return True
+
+        return False
+
+    def _persist_machine_env(self, name: str, encrypted_value: str) -> bool:
+        """Guarda una variable de máquina con setx /M (patrón del agente)."""
+        try:
+            setx_path = resolve_executable("setx.exe")
+            subprocess.run(
+                [setx_path, name, encrypted_value, "/M"],  #nosec B603
+                capture_output=True,
+                text=True,
+                encoding='cp850',
+                check=True,
+            )
+            return True
+        except subprocess.CalledProcessError as exc:
+            LOGGER.error("Error al guardar configuración (%s): %s", name, exc)
+            return False
+
     def _handle_config_post(self) -> None:
+        # Fase 3: /config modifica el estado del equipo; sin una
+        # credencial válida del propio equipo no se toca nada.
+        if not self._is_authorized_local_request():
+            LOGGER.warning(
+                "POST /config rechazado (401): credencial local inválida "
+                "o ausente, origen %s",
+                self.address_string(),
+            )
+            self._send_json_response(401, {"ok": False, "error": "No autorizado"})
+            return
+
         try:
             content_length = int(self.headers.get("Content-Length", "0") or "0")
         except ValueError:
@@ -1984,27 +3265,61 @@ class UnlockHTTPHandler(BaseHTTPRequestHandler):
             self._send_json_response(400, {"ok": False, "error": "JSON inválido"})
             return
 
+        if not isinstance(data, dict):
+            self._send_json_response(400, {"ok": False, "error": "JSON inválido"})
+            return
+
+        applied: List[str] = []
+
         delay = data.get("startup_network_delay")
         if delay is not None:
             try:
                 delay_int = int(delay)
-                encrypted_delay = encrypt_value(str(delay_int))
-                completed = subprocess.run(
-                    ["setx", "USB_MONITOR_STARTUP_DELAY", encrypted_delay, "/M"],
-                    capture_output=True,
-                    text=True,
-                    encoding='cp850',
-                    check=True,
-                )
-                LOGGER.info("Configuración actualizada: startup_network_delay = %d", delay_int)
-                self._send_json_response(200, {"ok": True, "message": "Configuración actualizada"})
-            except ValueError:
+            except (TypeError, ValueError):
                 self._send_json_response(400, {"ok": False, "error": "startup_network_delay debe ser entero"})
-            except subprocess.CalledProcessError as exc:
-                LOGGER.error("Error al guardar configuración: %s", exc)
+                return
+            if not self._persist_machine_env(
+                "USB_MONITOR_STARTUP_DELAY", encrypt_value(str(delay_int))
+            ):
                 self._send_json_response(500, {"ok": False, "error": "Error al guardar configuración en el sistema"})
-        else:
-            self._send_json_response(400, {"ok": False, "error": "Falta startup_network_delay"})
+                return
+            LOGGER.info("Configuración actualizada: startup_network_delay = %d", delay_int)
+            applied.append("startup_network_delay")
+
+        lock_session = data.get("lock_session_on_insert")
+        if lock_session is not None:
+            if not isinstance(lock_session, bool):
+                self._send_json_response(400, {"ok": False, "error": "lock_session_on_insert debe ser booleano"})
+                return
+            value = "true" if lock_session else "false"
+            encrypted_value = encrypt_value(value)
+            if not self._persist_machine_env(
+                "USB_MONITOR_LOCK_SESSION_ON_INSERT", encrypted_value
+            ):
+                self._send_json_response(500, {"ok": False, "error": "Error al guardar configuración en el sistema"})
+                return
+            # setx /M solo afecta a procesos nuevos: se actualiza también
+            # el entorno del proceso para que el ajuste rija sin reiniciar
+            # el servicio. La variable de máquina cubre los próximos
+            # arranques.
+            os.environ["USB_MONITOR_LOCK_SESSION_ON_INSERT"] = encrypted_value
+            LOGGER.info("Configuración actualizada: lock_session_on_insert = %s", value)
+            applied.append("lock_session_on_insert")
+
+        if not applied:
+            self._send_json_response(
+                400,
+                {
+                    "ok": False,
+                    "error": "Nada que actualizar: se esperaba startup_network_delay y/o lock_session_on_insert",
+                },
+            )
+            return
+
+        self._send_json_response(
+            200,
+            {"ok": True, "message": "Configuración actualizada", "applied": applied},
+        )
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
@@ -2013,114 +3328,17 @@ class UnlockHTTPHandler(BaseHTTPRequestHandler):
             self._handle_config_post()
             return
 
-        if parsed.path != "/unlock":
-            self._send_json_response(404, {"ok": False, "error": "Ruta no encontrada"})
+        if parsed.path == "/desbloquear":
+            # Fase 4: verificación local de emergencia contra el hash
+            # cacheado del dueño (nunca contra el panel: es sin red).
+            self._handle_emergency_post()
             return
 
-        try:
-            content_length = int(self.headers.get("Content-Length", "0") or "0")
-        except ValueError:
-            content_length = 0
-
-        body = self.rfile.read(content_length)
-
-        try:
-            data = json.loads(body.decode("utf-8") or "{}")
-        except json.JSONDecodeError:
-            LOGGER.error("Body de petición no es JSON válido")
-            self._send_json_response(400, {"ok": False, "error": "JSON inválido"})
-            return
-
-        raw_pc = data.get("pcName")
-        pc_name = sanitize_optional_string(raw_pc, 120)
-        if pc_name is None:
-            pc_name = ""
-        pc_name = pc_name.upper()
-
-        raw_drive = data.get("driveLetter")
-        drive_letter = sanitize_drive_letter(raw_drive) if isinstance(raw_drive, str) else None
-        if drive_letter is None and isinstance(raw_drive, str):
-            candidate = raw_drive.strip().upper()
-            if len(candidate) == 1 and candidate.isalpha():
-                drive_letter = f"{candidate}:"
-
-        if not pc_name or not drive_letter:
-            self._send_json_response(
-                400,
-                {
-                    "ok": False,
-                    "error": "pcName y driveLetter son obligatorios",
-                },
-            )
-            return
-
-        if pc_name != HOSTNAME:
-            LOGGER.warning(
-                "Recibida petición de desbloqueo para PC '%s' pero este es '%s'",
-                pc_name,
-                HOSTNAME,
-            )
-            self._send_json_response(
-                400,
-                {
-                    "ok": False,
-                    "error": f"Esta petición es para {pc_name}, pero esta PC es {HOSTNAME}",
-                },
-            )
-            return
-
-        service = self.service_instance
-        if service is None or drive_letter not in service.pending_usbs:
-            LOGGER.warning(
-                "Recibida petición de desbloqueo para %s pero no está en pendientes",
-                drive_letter,
-            )
-            self._send_json_response(
-                404,
-                {
-                    "ok": False,
-                    "error": f"USB {drive_letter} no encontrado en pendientes",
-                },
-            )
-            return
-
-        LOGGER.info(
-            "Recibida notificación HTTP para desbloquear %s en %s",
-            drive_letter,
-            pc_name,
-        )
-
-        pythoncom.CoInitialize()
-        try:
-            success = unlock_usb(drive_letter, service.wmi_connection)
-        finally:
-            pythoncom.CoUninitialize()
-
-        if success:
-            service.pending_usbs.pop(drive_letter, None)
-
-            try:
-                if SIGNAL_FILE.exists():
-                    SIGNAL_FILE.unlink()
-                    LOGGER.info("Archivo de señal limpiado")
-            except Exception as exc:
-                LOGGER.warning("Error al limpiar archivo de señal: %s", exc)
-
-            self._send_json_response(
-                200,
-                {
-                    "ok": True,
-                    "message": f"USB {drive_letter} desbloqueado exitosamente",
-                },
-            )
-            LOGGER.info("USB %s desbloqueado via HTTP exitosamente", drive_letter)
-            return
-
-        LOGGER.error("Fallo al desbloquear USB %s via HTTP", drive_letter)
-        self._send_json_response(
-            500,
-            {"ok": False, "error": f"Fallo al desbloquear USB {drive_letter}"},
-        )
+        # Fase 3: el endpoint /unlock local quedó ELIMINADO. Ningún
+        # desbloqueo puede dispararse desde el HTTP local: el desbloqueo
+        # solo ocurre por el polling autenticado al servidor central
+        # (monitor_unlock_authorization -> release_blocked_drive).
+        self._send_json_response(404, {"ok": False, "error": "Ruta no encontrada"})
 
 
 class USBMonitorService(win32serviceutil.ServiceFramework):
@@ -2135,6 +3353,20 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
         self.stop_event = win32event.CreateEvent(None, 0, 0, None)
         self.stopped = False
         self.pending_usbs: Dict[str, str] = {}  # {drive_letter: pc_name}
+        # Fase 2: cómo se bloqueó cada unidad (método aplicado e
+        # instancia PnP), indexado por letra corta ("E").
+        self.block_state: Dict[str, Dict[str, Any]] = {}
+        # Detección amplia: móviles WPD vigilados, por DeviceID PnP.
+        self.wpd_state: Dict[str, Dict[str, Any]] = {}
+        # Fase 2: unidades ya desbloqueadas con contraseña en esta
+        # inserción. El permiso vive hasta que se extraigan (lo limpia
+        # el evento de retirada, EventType=3); este registro evita que
+        # el rebote de inserción al reactivar un dispositivo PnP lo
+        # vuelva a bloquear.
+        self.unlocked_active: Dict[str, Dict[str, Any]] = {}
+        # Fase 2 (arreglos): liberaciones que fallaron tras la contraseña
+        # y esperan reintento: {letra_corta: {pending, attempts, next_at}}.
+        self.release_retries: Dict[str, Dict[str, Any]] = {}
         self.wmi_connection = None  # Referencia a la conexión WMI
         self.http_server = None  # Servidor HTTP
         self.http_thread = None  # Thread del servidor HTTP
@@ -2142,6 +3374,13 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
         self.listening_port: Optional[int] = None
 
     def SvcStop(self) -> None:
+        # Fase 4 / método 3: la parada ordenada queda registrada en la
+        # cola persistente (escritura síncrona en disco: sobrevive aunque
+        # no haya red ni tiempo de enviarla; saldrá al próximo arranque).
+        try:
+            _note_service_stop()
+        except Exception as exc:  # nunca debe impedir la parada
+            LOGGER.warning("No se pudo registrar la parada del servicio: %s", exc)
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
         win32event.SetEvent(self.stop_event)
         self.stopped = True
@@ -2164,8 +3403,118 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
         self.started_at = time.time()
         self.main()
 
+    def _block_and_register(
+        self,
+        *,
+        event: Any,
+        drive_letter: Optional[str],
+        serial_number: Optional[str],
+        whitelisted: bool,
+        model: Optional[str],
+        pnp_device_id: Optional[str],
+        conn: wmi.WMI,
+        hostname: str,
+        modo: str,
+    ) -> None:
+        """Bloquea una unidad recién detectada y registra el bloqueo (Fase 5).
+
+        Este era el flujo copiado TRES veces (Boot Sweep, rama de lista
+        blanca y rama de no autorizado): aplicar el bloqueo → enviar el
+        evento → crear el registro de bloqueo y el estado local. Ahora
+        la lógica vive una sola vez; «modo» ("arranque" | "autorizado" |
+        "no_autorizado") solo elige los mensajes de registro de cada
+        contexto, que se conservan tal cual.
+        """
+        if modo == "autorizado":
+            LOGGER.info(
+                "  [4/5] Dispositivo AUTORIZADO en whitelist; la contraseña (2FA) sigue siendo necesaria"
+            )
+        elif modo == "no_autorizado":
+            LOGGER.info("  [Paso 1/3] Aplicando bloqueo (PnP o solo lectura)...")
+
+        # 1. Bloquear (Fase 2: PnP primero, diskpart de respaldo)
+        letter_used, readonly_ok, readonly_msg, block_method = apply_block(
+            drive_letter,
+            conn,
+            pnp_device_id,
+        )
+        if readonly_ok:
+            if modo == "autorizado":
+                LOGGER.info("  [4/5] ✓ Bloqueo aplicado a %s (método %s)", letter_used, block_method)
+            elif modo == "no_autorizado":
+                LOGGER.info("  [Paso 1/3] ✓ Bloqueo aplicado exitosamente a %s (método %s)", letter_used, block_method)
+        else:
+            if modo == "autorizado":
+                LOGGER.error("  [4/5] ✗ Fallo al bloquear la unidad: %s", readonly_msg)
+            elif modo == "no_autorizado":
+                LOGGER.error("  [Paso 1/3] ✗ Fallo al bloquear la unidad: %s", readonly_msg)
+
+        # 2. Enviar el evento al backend
+        if modo == "autorizado":
+            LOGGER.info("  [5/5] Enviando evento autorizado al backend")
+        elif modo == "no_autorizado":
+            LOGGER.info("  [Paso 2/3] Notificando al backend del evento...")
+        payload = build_payload(
+            event,
+            letter_used,
+            readonly_msg,
+            serial_number,
+            whitelisted,
+        )
+        send_event(payload)
+        if modo == "no_autorizado":
+            LOGGER.info("  [Paso 2/3] ✓ Evento enviado al backend")
+
+        # Sin apagado (Fase 0): la PC NO se apaga; el dispositivo queda
+        # bloqueado hasta desbloquearlo con la contraseña.
+        if modo == "arranque":
+            LOGGER.info(
+                "Boot Sweep: la PC NO se apaga; la unidad %s queda bloqueada pendiente de contraseña",
+                drive_letter,
+            )
+        elif modo == "no_autorizado":
+            LOGGER.info(
+                "  [Paso 3/3] La PC NO se apaga; el dispositivo queda bloqueado pendiente de contraseña"
+            )
+
+        # 3. Crear el registro de bloqueo (del que lee el compañero)
+        if letter_used:
+            if modo == "no_autorizado":
+                LOGGER.info("  [Paso 3/3] Creando registro de desbloqueo pendiente...")
+            create_pending_unlock(
+                hostname,
+                letter_used,
+                serial_number=serial_number,
+                device_label=model,
+                whitelisted=whitelisted,
+                block_method=block_method,
+                pnp_device_id=pnp_device_id,
+            )
+            self.pending_usbs[letter_used] = hostname
+            self.block_state[_drive_key(letter_used)] = {
+                "method": block_method,
+                "pnpDeviceId": pnp_device_id,
+                "serialNumber": serial_number,
+            }
+            if modo == "autorizado":
+                LOGGER.info(
+                    "  [5/5] ✓ Unidad %s bloqueada, pendiente de contraseña (whitelist)",
+                    letter_used,
+                )
+            elif modo == "no_autorizado":
+                LOGGER.info("  [Paso 3/3] ✓ Unidad %s añadida a pendientes de desbloqueo", letter_used)
+        elif modo == "no_autorizado":
+            LOGGER.error("  [Paso 3/3] ✗ No se pudo determinar letra de unidad para pending unlock")
+
+
     def main(self) -> None:
         LOGGER.info("Inicializando bucle principal del servicio")
+        # Fase 4 / método 3: registrar el arranque en la cola
+        # persistente (y el hueco si la parada anterior no fue limpia).
+        try:
+            _note_service_start()
+        except Exception as exc:  # nunca debe impedir el arranque
+            LOGGER.warning("No se pudo registrar el arranque del servicio: %s", exc)
         try:
             pythoncom.CoInitialize()
         except pythoncom.com_error as exc:
@@ -2182,6 +3531,21 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                 EventType=2,  # 2 => Device arrival
             )
             LOGGER.info("Watcher WMI inicializado para Win32_VolumeChangeEvent")
+            # Fase 2: watcher de retiradas (EventType=3). Si falla, el
+            # servicio sigue sin cierre por extracción (degradado, no caído).
+            removal_watcher = None
+            try:
+                removal_watcher = c.watch_for(
+                    notification_type="Creation",
+                    wmi_class="Win32_VolumeChangeEvent",
+                    EventType=3,  # 3 => Device removal
+                )
+                LOGGER.info("Watcher WMI de retiradas inicializado (EventType=3)")
+            except Exception as removal_exc:
+                LOGGER.warning(
+                    "No se pudo inicializar el watcher de retiradas: %s",
+                    removal_exc,
+                )
         except Exception as exc:
             LOGGER.error("No se pudo inicializar WMI: %s", exc)
             pythoncom.CoUninitialize()
@@ -2209,6 +3573,24 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
             daemon=True
         )
         connected_monitor_thread.start()
+
+        # Detección amplia: vigilancia de móviles (WPD/MTP).
+        wpd_thread = threading.Thread(
+            target=self.monitor_wpd_devices,
+            daemon=True
+        )
+        wpd_thread.start()
+        LOGGER.info("Thread de vigilancia de móviles (WPD) iniciado")
+
+        # Fase 4: refresco del hash del dueño para la emergencia sin
+        # red (al arrancar y cada ~10 minutos).
+        owner_hash_thread = threading.Thread(
+            target=_owner_hash_refresh_loop,
+            args=(self,),
+            daemon=True
+        )
+        owner_hash_thread.start()
+        LOGGER.info("Thread de refresco del hash de emergencia iniciado")
         LOGGER.info(
             "Thread de monitoreo de unidades conectadas iniciado (id=%s)",
             connected_monitor_thread.ident,
@@ -2255,35 +3637,32 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                         whitelisted, whitelist_entry = check_whitelist(serial_number)
                         
                     if whitelisted:
-                        LOGGER.info("Boot Sweep: Unidad %s AUTORIZADA en whitelist", drive_letter)
+                        LOGGER.info(
+                            "Boot Sweep: Unidad %s AUTORIZADA en whitelist; "
+                            "la contraseña (2FA) sigue siendo necesaria para usarla",
+                            drive_letter,
+                        )
                     else:
                         LOGGER.warning("Boot Sweep: PROTOCOLO DE SEGURIDAD - Unidad %s NO AUTORIZADA", drive_letter)
-                        
-                        # 1. Protect USB
-                        letter_used, readonly_ok, readonly_msg = protect_usb_media(drive_letter, c)
-                        
-                        # 2. Send Event
-                        event = MockEvent()
-                        setattr(event, "DriveName", drive_letter)
-                        
-                        payload = build_payload(
-                            event,
-                            letter_used,
-                            readonly_msg,
-                            serial_number,
-                            False,
-                        )
-                        send_event(payload)
-                        
-                        # 3. Schedule Shutdown
-                        schedule_shutdown()
-                        
-                        # 4. Pending unlock
-                        if letter_used:
-                            create_browser_signal(hostname, letter_used)
-                            create_pending_unlock(hostname, letter_used)
-                            self.pending_usbs[letter_used] = hostname
-                            
+
+                    # La contraseña es 2FA siempre: se bloquea y se crea
+                    # el registro esté o no el dispositivo en la whitelist
+                    # (flujo único en _block_and_register, Fase 5).
+                    event = MockEvent()
+                    setattr(event, "DriveName", drive_letter)
+                    self._block_and_register(
+                        event=event,
+                        drive_letter=drive_letter,
+                        serial_number=serial_number,
+                        whitelisted=whitelisted,
+                        model=drive.get("model"),
+                        pnp_device_id=drive.get("pnpDeviceId"),
+                        conn=c,
+                        hostname=hostname,
+                        modo="arranque",
+                    )
+
+
                 except Exception as drive_exc:
                     LOGGER.error("Boot Sweep: Error al verificar unidad %s: %s", drive.get("driveLetter", "desconocida"), drive_exc)
                     
@@ -2294,6 +3673,12 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
             rc = win32event.WaitForSingleObject(self.stop_event, 500)
             if rc == win32event.WAIT_OBJECT_0:
                 break
+
+            # Fase 2: drenar primero las retiradas (EventType=3) ya
+            # encoladas: al extraer una unidad se cierra su registro y
+            # muere cualquier permiso vigente sobre ella.
+            if removal_watcher is not None:
+                self._drain_removal_events(removal_watcher, hostname)
 
             try:
                 event = watcher(timeout_ms=2000)
@@ -2307,6 +3692,7 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                     whitelist_entry: Optional[Dict[str, Any]] = None
                     whitelisted = False
 
+                    drive_info: Optional[Dict[str, Any]] = None
                     if drive_letter:
                         LOGGER.info("  [2/5] Iniciando obtención de número de serie...")
                         for attempt in range(5):
@@ -2350,6 +3736,22 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                     elif serial_number:
                         LOGGER.info("  [2/5] ✓ Serial obtenido: %s", serial_number)
 
+                    # Fase 2: si esta misma inserción ya se desbloqueó con
+                    # contraseña, este evento es el rebote de reactivar el
+                    # dispositivo PnP al desbloquear. El permiso sigue
+                    # vigente hasta que se extraiga la unidad (lo cierra
+                    # el EventType=3), así que NO se vuelve a bloquear.
+                    if drive_letter and self._permission_still_active(
+                        drive_letter, serial_number
+                    ):
+                        LOGGER.info(
+                            "  [3/5] La unidad %s ya está desbloqueada en esta inserción "
+                            "(permiso vigente hasta extraerla); no se vuelve a bloquear",
+                            drive_letter,
+                        )
+                        LOGGER.info("═══ EVENTO COMPLETADO: UNIDAD YA DESBLOQUEADA ═══\n")
+                        continue
+
                     if serial_number:
                         LOGGER.info("  [3/5] Verificando whitelist para serial: %s", serial_number)
                         LOGGER.debug("Raw Serial: [%s], Normalized Serial: [%s]", raw_serial_found, serial_number)
@@ -2360,82 +3762,37 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                             LOGGER.warning("  [3/5] ✗ NO AUTORIZADO - Serial no en whitelist")
 
                     if whitelisted:
-                        LOGGER.info("  [4/5] Dispositivo está en whitelist, OMITIENDO BLOQUEO")
-                        label = (
-                            whitelist_entry.get("label")
-                            if isinstance(whitelist_entry, dict)
-                            else None
+                        self._block_and_register(
+                            event=event,
+                            drive_letter=drive_letter,
+                            serial_number=serial_number,
+                            whitelisted=True,
+                            model=drive_info.get("model") if drive_info else None,
+                            pnp_device_id=drive_info.get("pnpDeviceId") if drive_info else None,
+                            conn=c,
+                            hostname=hostname,
+                            modo="autorizado",
                         )
-                        notes = (
-                            whitelist_entry.get("notes")
-                            if isinstance(whitelist_entry, dict)
-                            else None
-                        )
-                        readonly_msg = "Whitelisted: acceso directo"
-                        if label:
-                            readonly_msg = f"{readonly_msg} ({label})"
-                        if notes:
-                            readonly_msg = f"{readonly_msg} - {notes}"
-                        payload = build_payload(
-                            event,
-                            drive_letter,
-                            readonly_msg,
-                            serial_number,
-                            True,
-                        )
-                        LOGGER.info("  [5/5] Enviando evento autorizado al backend")
-                        send_event(payload)
-                        if drive_letter:
-                            normalized_letter = drive_letter.rstrip(":").upper()
-                            self.pending_usbs.pop(drive_letter, None)
-                            self.pending_usbs.pop(normalized_letter, None)
-                            self.pending_usbs.pop(f"{normalized_letter}:", None)
-                        LOGGER.info("═══ EVENTO COMPLETADO: USB AUTORIZADO ═══\n")
+                        LOGGER.info("═══ EVENTO COMPLETADO: USB AUTORIZADO EN WHITELIST, PENDIENTE DE CONTRASEÑA ═══\n")
                         continue
+
 
                     # --- Proceso para dispositivos no autorizados ---
                     LOGGER.warning("═══ PROTOCOLO DE SEGURIDAD: DISPOSITIVO NO AUTORIZADO ═══")
                     LOGGER.warning("  Dispositivo: %s | Serial: %s", drive_letter or "desconocido", serial_number or "sin serial")
-                    
-                    # 1. Proteger USB con readonly
-                    LOGGER.info("  [Paso 1/4] Aplicando modo SOLO LECTURA...")
-                    letter_used, readonly_ok, readonly_msg = protect_usb_media(
-                        drive_letter, c
+                    self._block_and_register(
+                        event=event,
+                        drive_letter=drive_letter,
+                        serial_number=serial_number,
+                        whitelisted=False,
+                        model=drive_info.get("model") if drive_info else None,
+                        pnp_device_id=drive_info.get("pnpDeviceId") if drive_info else None,
+                        conn=c,
+                        hostname=hostname,
+                        modo="no_autorizado",
                     )
-                    if readonly_ok:
-                        LOGGER.info("  [Paso 1/4] ✓ Modo solo lectura aplicado exitosamente a %s", letter_used)
-                    else:
-                        LOGGER.error("  [Paso 1/4] ✗ Fallo al aplicar modo solo lectura: %s", readonly_msg)
-
-                    # 2. Enviar evento al backend
-                    LOGGER.info("  [Paso 2/4] Notificando al backend del evento...")
-                    payload = build_payload(
-                        event,
-                        letter_used,
-                        readonly_msg,
-                        serial_number,
-                        False,
-                    )
-                    send_event(payload)
-                    LOGGER.info("  [Paso 2/4] ✓ Evento enviado al backend")
-
-                    # 3. Programar apagado del equipo
-                    LOGGER.warning("  [Paso 3/4] Programando APAGADO del sistema...")
-                    schedule_shutdown()
-                    LOGGER.warning("  [Paso 3/4] ✓ Apagado programado en 3 segundos")
-
-                    # 4. Crear señal para el agente local (si aplica)
-                    if letter_used:
-                        LOGGER.info("  [Paso 4/4] Creando registro de desbloqueo pendiente...")
-                        create_browser_signal(hostname, letter_used)
-                        create_pending_unlock(hostname, letter_used)
-                        self.pending_usbs[letter_used] = hostname
-                        LOGGER.info("  [Paso 4/4] ✓ Unidad %s añadida a pendientes de desbloqueo", letter_used)
-                    else:
-                        LOGGER.error("  [Paso 4/4] ✗ No se pudo determinar letra de unidad para pending unlock")
-                    
                     LOGGER.warning("═══ PROTOCOLO DE SEGURIDAD COMPLETADO ═══\n")
-                    
+
             except wmi.x_wmi_timed_out:
                 continue
             except Exception as exc:
@@ -2457,7 +3814,9 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
             UnlockHTTPHandler.service_instance = self
             
             # Crear el servidor HTTP
-            self.http_server = HTTPServer(("0.0.0.0", listen_port), UnlockHTTPHandler)
+            listen_host = os.environ.get("USB_MONITOR_LISTEN_HOST", "127.0.0.1")
+            # Fase 3: multihilo — una petición lenta ya no bloquea /health ni la página de emergencia.
+            self.http_server = ThreadingHTTPServer((listen_host, listen_port), UnlockHTTPHandler)
             
             # Iniciar en un thread separado
             self.http_thread = threading.Thread(
@@ -2474,6 +3833,418 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
             LOGGER.error("Error al iniciar servidor HTTP: %s", exc)
             LOGGER.warning("El servicio continuará usando solo polling")
 
+    def _permission_still_active(
+        self,
+        drive_letter: Optional[str],
+        serial_number: Optional[str],
+    ) -> bool:
+        """¿Esta unidad ya se desbloqueó con contraseña en esta inserción?
+
+        El permiso dura hasta que la unidad se extrae (lo limpia el
+        evento de retirada). Si el serial no coincide, es otro
+        dispositivo que reutilizó la letra y no hereda el permiso.
+        """
+        key = _drive_key(drive_letter)
+        if not key:
+            return False
+        entry = self.unlocked_active.get(key)
+        if not entry:
+            return False
+        if time.time() - float(entry.get("unlockedAt") or 0) > UNLOCK_PERMISSION_TTL:
+            self.unlocked_active.pop(key, None)
+            return False
+        entry_serial = entry.get("serialNumber")
+        if (
+            entry_serial
+            and serial_number
+            and str(entry_serial).upper() != str(serial_number).upper()
+        ):
+            return False
+        return True
+
+    def release_blocked_drive(
+        self,
+        drive_letter: str,
+        conn: wmi.WMI,
+        server_pending: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Revierte el bloqueo de una unidad según el método aplicado (Fase 2).
+
+        PNP -> Enable-PnpDevice vía pnputil; READONLY -> unlock_usb de
+        siempre. Si el método se desconoce (p. ej. el servicio se
+        reinició y solo queda el registro local, o ni eso), se intenta
+        rehabilitar por PnP si hay instancia guardada y después el
+        desbloqueo por solo lectura.
+        """
+        key = _drive_key(drive_letter)
+        state = self.block_state.get(key) or {}
+        local = _get_local_block_info(drive_letter)
+        method = state.get("method") or local.get("blockMethod")
+        pnp_id = state.get("pnpDeviceId") or local.get("pnpDeviceId")
+        serial = (
+            (server_pending or {}).get("serialNumber")
+            or state.get("serialNumber")
+            or local.get("serialNumber")
+        )
+        LOGGER.info(
+            "  → Liberando unidad %s (método registrado: %s)",
+            drive_letter,
+            method or "desconocido",
+        )
+
+        success: bool
+        if method == BLOCK_METHOD_PNP:
+            success = False
+            if pnp_id:
+                success, _pnp_msg = enable_pnp_device(pnp_id)
+            else:
+                LOGGER.error(
+                    "  ✗ La unidad %s se bloqueó por PnP pero no hay InstanceId guardado",
+                    drive_letter,
+                )
+            if not success:
+                LOGGER.warning(
+                    "  ⚠ No se pudo reactivar %s por PnP; último recurso: quitar solo lectura",
+                    drive_letter,
+                )
+                success = unlock_usb(drive_letter, conn)
+        elif method == BLOCK_METHOD_READONLY:
+            success = unlock_usb(drive_letter, conn)
+        else:
+            pnp_ok = False
+            if pnp_id:
+                pnp_ok, _pnp_msg = enable_pnp_device(pnp_id)
+            readonly_ok = unlock_usb(drive_letter, conn)
+            success = pnp_ok or readonly_ok
+
+        if success:
+            # El bloqueo ya no existe; el permiso queda vigente hasta
+            # que la unidad se extraiga (evento EventType=3).
+            self.block_state.pop(key, None)
+            if key:
+                self.unlocked_active[key] = {
+                    "serialNumber": serial,
+                    "unlockedAt": time.time(),
+                }
+        return success
+
+    def _drain_removal_events(self, removal_watcher: Any, pc_name: str) -> None:
+        """Procesa los eventos de retirada (EventType=3) ya encolados."""
+        while True:
+            try:
+                removal_event = removal_watcher(timeout_ms=250)
+            except wmi.x_wmi_timed_out:
+                return
+            except Exception as exc:
+                LOGGER.debug("  [Retirada] Error consultando retiradas: %s", exc)
+                return
+            if removal_event is None:
+                return
+            try:
+                self.handle_volume_removal(removal_event, pc_name)
+            except Exception as exc:
+                LOGGER.error("  [Retirada] Error procesando una retirada: %s", exc)
+
+    def handle_volume_removal(self, event: Any, pc_name: str) -> None:
+        """Procesa la extracción física de una unidad (EventType=3, Fase 2).
+
+        Si la unidad estaba bajo control (bloqueada o ya desbloqueada),
+        se limpia su estado local, sus entradas en pending_local.json
+        pasan a CLOSED y se avisa al servidor (pending-close): el
+        permiso muere al extraer, y reinsertar generará un bloqueo
+        nuevo por el flujo normal de inserción.
+        """
+        drive_letter = resolve_drive_letter(event, self.wmi_connection)
+        if not drive_letter:
+            LOGGER.debug(
+                "  [Retirada] Evento de retirada sin letra resoluble; se ignora"
+            )
+            return
+        key = _drive_key(drive_letter)
+        state = self.block_state.get(key) or {}
+        local = _get_local_block_info(drive_letter)
+        was_pending = any(
+            variant in self.pending_usbs
+            for variant in (drive_letter, key, f"{key}:" if key else "")
+        )
+        was_unlocked = key in self.unlocked_active
+        if not was_pending and not state and not local and not was_unlocked:
+            LOGGER.debug(
+                "  [Retirada] La unidad %s no estaba bajo control; se ignora",
+                drive_letter,
+            )
+            return
+
+        serial = (
+            state.get("serialNumber")
+            or local.get("serialNumber")
+            or (self.unlocked_active.get(key) or {}).get("serialNumber")
+        )
+        method = state.get("method") or local.get("blockMethod")
+        pnp_id = state.get("pnpDeviceId") or local.get("pnpDeviceId")
+
+        LOGGER.info(
+            "═══ RETIRADA DETECTADA: unidad %s (serial %s) ═══",
+            drive_letter,
+            serial or "desconocido",
+        )
+        if was_unlocked:
+            LOGGER.info(
+                "  [Retirada] Estaba desbloqueada: el permiso muere al extraerla; "
+                "si se vuelve a conectar, se bloqueará y pedirá la contraseña de nuevo"
+            )
+
+        # Si seguía bloqueada por PnP, se intenta reactivar el
+        # dispositivo aunque ya no esté presente: así una futura
+        # inserción se enumera con normalidad y pasa por el flujo
+        # estándar en vez de aparecer directamente deshabilitada.
+        if method == BLOCK_METHOD_PNP and pnp_id and not was_unlocked:
+            ok, _msg = enable_pnp_device(pnp_id)
+            if ok:
+                LOGGER.info(
+                    "  [Retirada] Dispositivo PnP reactivado tras la retirada de %s",
+                    drive_letter,
+                )
+            else:
+                LOGGER.warning(
+                    "  [Retirada] No se pudo reactivar el dispositivo PnP de %s tras su retirada",
+                    drive_letter,
+                )
+
+        for variant in (drive_letter, key, f"{key}:" if key else ""):
+            if variant:
+                self.pending_usbs.pop(variant, None)
+        self.block_state.pop(key, None)
+        self.unlocked_active.pop(key, None)
+        _mark_local_pending_closed(drive_letter)
+        notify_pending_close(pc_name, drive_letter, serial)
+        LOGGER.info(
+            "  [Retirada] ✓ Estado local limpiado y cierre notificado para %s",
+            drive_letter,
+        )
+
+    # ── Fase 2 (arreglos): liberación fiable tras la contraseña ──────────
+    # El servidor entrega cada desbloqueo una sola vez (check=true); si
+    # liberar la unidad falla en esta PC, antes el dispositivo quedaba
+    # bloqueado para siempre y nadie se enteraba. Ahora se reintenta con
+    # esperas crecientes y, si se agotan, queda constancia en el panel.
+
+    RELEASE_RETRY_DELAYS = (10.0, 30.0, 60.0, 60.0)
+
+    def _after_release_success(self, drive_letter: str) -> None:
+        """Cierre común tras liberar una unidad (camino directo y reintentos)."""
+        normalized_letter = drive_letter.rstrip(":").upper()
+        self.pending_usbs.pop(drive_letter, None)
+        self.pending_usbs.pop(normalized_letter, None)
+        self.pending_usbs.pop(f"{normalized_letter}:", None)
+        self.release_retries.pop(normalized_letter, None)
+        _mark_local_pending_unlocked(drive_letter)
+        LOGGER.info(
+            "  ✓ USB %s desbloqueado tras verificar la contraseña",
+            drive_letter,
+        )
+
+    def _schedule_release_retry(self, drive_letter: str, pending: Dict[str, Any], attempts: int = 1) -> None:
+        """Programa (o reprograma) el reintento de una liberación fallida."""
+        key = drive_letter.rstrip(":").upper()
+        # Detección amplia: la clave de un móvil es SER:<serial>.
+        label = (
+            drive_letter
+            if not drive_letter.startswith("SER:")
+            else f"el móvil {(pending or {}).get('serialNumber') or ''}"
+        )
+        if attempts > len(self.RELEASE_RETRY_DELAYS):
+            # Agotados: el dispositivo sigue bloqueado (fail-closed), pero
+            # ya no en silencio: el evento queda en el panel.
+            serial = pending.get("serialNumber") if isinstance(pending, dict) else None
+            payload = _service_event_payload(
+                f"UNLOCK_RELEASE_FAILED | {label} no se pudo liberar tras {attempts} intentos"
+            )
+            if serial:
+                payload["serial_number"] = serial
+            try:
+                enqueue_persistent("event", payload)
+            except Exception as exc:
+                LOGGER.error("No se pudo encolar UNLOCK_RELEASE_FAILED: %s", exc)
+            LOGGER.error(
+                "  ✗ Liberación de %s abandonada tras %d intentos; evento UNLOCK_RELEASE_FAILED encolado",
+                label,
+                attempts,
+            )
+            self.release_retries.pop(key, None)
+            return
+        delay = self.RELEASE_RETRY_DELAYS[attempts - 1]
+        self.release_retries[key] = {
+            "pending": pending,
+            "attempts": attempts,
+            "next_at": time.time() + delay,
+        }
+        LOGGER.warning(
+            "  ⏳ Liberación de %s falló (intento %d); se reintenta en %.0f s",
+            label,
+            attempts,
+            delay,
+        )
+
+    def _process_release_retries(self, conn: wmi.WMI) -> None:
+        """Ejecuta los reintentos de liberación que ya vencieron."""
+        if not self.release_retries:
+            return
+        now = time.time()
+        for key in list(self.release_retries.keys()):
+            entry = self.release_retries.get(key)
+            if not entry or entry["next_at"] > now:
+                continue
+            pending_entry = entry["pending"]
+            if not (pending_entry or {}).get("driveLetter"):
+                # Detección amplia: reintento de un móvil WPD.
+                LOGGER.info(
+                    "  ↻ Reintentando liberar el móvil %s (intento %d)",
+                    (pending_entry or {}).get("serialNumber"),
+                    entry["attempts"] + 1,
+                )
+                if self._release_wpd_pending(pending_entry):
+                    self._after_wpd_release_success(pending_entry)
+                else:
+                    self._schedule_release_retry(
+                        key, pending_entry, entry["attempts"] + 1
+                    )
+                continue
+            drive_letter = f"{key}:"
+            LOGGER.info(
+                "  ↻ Reintentando liberar %s (intento %d)",
+                drive_letter,
+                entry["attempts"] + 1,
+            )
+            if self.release_blocked_drive(drive_letter, conn, entry["pending"]):
+                self._after_release_success(drive_letter)
+            else:
+                self._schedule_release_retry(
+                    drive_letter, entry["pending"], entry["attempts"] + 1
+                )
+
+    # ── Detección amplia: móviles WPD ────────────────────────────────────
+
+    def _handle_wpd_arrival(self, device: Dict[str, Any]) -> None:
+        """Un móvil apareció: se deshabilita por PnP y se registra el
+        bloqueo, con el mismo flujo 2FA que un disco (contraseña del
+        dueño o del admin; fuera de la whitelist, sin contraseña)."""
+        device_id = device["deviceId"]
+        name = device["name"]
+        serial = device.get("serialNumber")
+        LOGGER.info("  [WPD] Dispositivo móvil detectado: %s", name)
+        blocked_ok, _msg = disable_pnp_device(device_id)
+        method = BLOCK_METHOD_PNP if blocked_ok else "NONE"
+        whitelisted = False
+        if serial:
+            whitelisted, _label = check_whitelist(serial)
+        self.wpd_state[device_id] = {
+            "deviceId": device_id,
+            "name": name,
+            "serialNumber": serial,
+            "method": method,
+            "unlocked": False,
+        }
+        readonly_msg = (
+            "Bloqueo PnP aplicado (dispositivo deshabilitado)"
+            if blocked_ok
+            else "SIN BLOQUEO EFECTIVO (la deshabilitación PnP falló)"
+        )
+        payload = build_payload(name, name, readonly_msg, serial, whitelisted)
+        send_event(payload)
+        create_pending_unlock(
+            HOSTNAME,
+            None,
+            serial_number=serial,
+            device_label=name,
+            whitelisted=whitelisted,
+            block_method=method,
+            pnp_device_id=device_id,
+            device_kind="WPD",
+        )
+
+    def _handle_wpd_removal(self, device_id: str) -> None:
+        """El móvil se desenchufó: el permiso muere al extraer, igual
+        que con los discos; se cierra el registro en local y servidor."""
+        state = self.wpd_state.pop(device_id, None)
+        if not state:
+            return
+        serial = state.get("serialNumber")
+        LOGGER.info("  [WPD] Dispositivo móvil retirado: %s", state.get("name"))
+        if serial:
+            _mark_local_pending_closed(_wpd_pending_key(serial))
+            submit_network_task(
+                _send_pending_close_request, HOSTNAME, None, serial
+            )
+
+    def _release_wpd_pending(self, pending: Optional[Dict[str, Any]]) -> bool:
+        """Rehabilita el dispositivo PnP de un móvil ya desbloqueado."""
+        serial = (pending or {}).get("serialNumber")
+        device_id: Optional[str] = None
+        for state in self.wpd_state.values():
+            if serial and state.get("serialNumber") == serial:
+                device_id = state.get("deviceId")
+                break
+        if not device_id and serial:
+            local = _get_local_block_info(_wpd_pending_key(serial))
+            device_id = local.get("pnpDeviceId")
+        if not device_id:
+            LOGGER.error(
+                "  ✗ No se localiza el dispositivo WPD del pendiente %s",
+                (pending or {}).get("id"),
+            )
+            return False
+        ok, _msg = enable_pnp_device(device_id)
+        if ok:
+            for state in self.wpd_state.values():
+                if state.get("deviceId") == device_id:
+                    state["unlocked"] = True
+        return ok
+
+    def _after_wpd_release_success(self, pending: Optional[Dict[str, Any]]) -> None:
+        """Cierre tras liberar un móvil: registro local y reintentos."""
+        serial = (pending or {}).get("serialNumber")
+        if serial:
+            self.release_retries.pop(_wpd_pending_key(serial), None)
+            _mark_local_pending_unlocked(_wpd_pending_key(serial))
+        LOGGER.info("  ✓ Móvil %s desbloqueado tras verificar la contraseña", serial)
+
+    def monitor_wpd_devices(self) -> None:
+        """Vigila los móviles (WPD): sondeo cada ~5 s con diff de
+        apariciones y retiradas (no generan Win32_VolumeChangeEvent)."""
+        LOGGER.info("Thread de vigilancia de dispositivos móviles (WPD) INICIADO")
+        pythoncom.CoInitialize()
+        conn: Optional[wmi.WMI] = None
+        try:
+            while not self.stopped:
+                if conn is None:
+                    try:
+                        conn = wmi.WMI()
+                    except Exception as exc:
+                        LOGGER.error("  ✗ WPD: sin conexión WMI: %s", exc)
+                        time.sleep(10)
+                        continue
+                try:
+                    devices = enumerate_wpd_devices(conn)
+                    if devices is not None:
+                        current_ids = {d["deviceId"] for d in devices}
+                        for device in devices:
+                            if device["deviceId"] not in self.wpd_state:
+                                self._handle_wpd_arrival(device)
+                        for device_id in list(self.wpd_state.keys()):
+                            if device_id not in current_ids:
+                                self._handle_wpd_removal(device_id)
+                except Exception as exc:
+                    LOGGER.error("  ✗ Error en la vigilancia WPD: %s", exc)
+                    conn = None
+                for _ in range(5):
+                    if self.stopped:
+                        break
+                    time.sleep(1)
+        finally:
+            pythoncom.CoUninitialize()
+            LOGGER.info("Thread de vigilancia de dispositivos móviles (WPD) FINALIZADO")
+
     def monitor_unlock_authorization(self, conn: wmi.WMI) -> None:
         """Monitorea periódicamente si hay USBs autorizados para desbloquear."""
         LOGGER.info("╔════════════════════════════════════════════════════════════╗")
@@ -2484,59 +4255,70 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
         pythoncom.CoInitialize()
         
         try:
-            pending_logged_empty = False
+            last_watchdog_check = 0.0
             while not self.stopped:
                 try:
                     time.sleep(3)  # Verificar cada 3 segundos
-                    
-                    if not self.pending_usbs:
-                        if not pending_logged_empty:
-                            LOGGER.debug("  ℹ  Sin USBs pendientes en este momento")
-                            pending_logged_empty = True
-                        continue
-                    else:
-                        if pending_logged_empty:
-                            LOGGER.info("  ℹ  Nuevos USBs pendientes detectados")
-                        pending_logged_empty = False
-                        LOGGER.debug(
-                            "  ℹ  Pendientes actuales: %s",
-                            list(self.pending_usbs.keys()),
-                        )
-                    
-                    # Verificar estado de desbloqueo en el backend
+
+                    # Watchdog del proceso compañero (~cada 15 s): si no
+                    # está en ejecución, se relanza su tarea programada.
+                    now = time.time()
+                    if now - last_watchdog_check >= COMPANION_WATCHDOG_INTERVAL:
+                        last_watchdog_check = now
+                        _ensure_companion_running()
+
+                    # Fase 1 (arreglos): antes de preguntar por
+                    # desbloqueos, registrar los bloqueos que se crearon
+                    # sin red y quedaron solo en local (id null). Sin
+                    # esto, un USB conectado sin conexión no podría
+                    # desbloquearse con contraseña ni al volver la red.
+                    reconcile_local_pendings()
+                    self._process_release_retries(conn)
+
+                    # Polling real (Fase 1): el servidor devuelve los
+                    # pendientes que acaban de desbloquearse con
+                    # contraseña; con check=true cada uno llega una vez.
                     pc_name = HOSTNAME
-                    LOGGER.debug("  [Consulta] Verificando autorización en backend para: %s", pc_name)
-                    unlocked, drive_letter = check_unlock_status(pc_name)
-                    
-                    if unlocked and drive_letter and drive_letter in self.pending_usbs:
-                        # Desbloquear la unidad
-                        LOGGER.info("  ✓ AUTORIZACIÓN RECIBIDA para %s", drive_letter)
-                        LOGGER.info("    → Procediendo a desbloquear unidad...")
-                        
-                        success = unlock_usb(drive_letter, conn)
-                        
-                        if success:
-                            # Remover de la lista de pendientes
-                            self.pending_usbs.pop(drive_letter, None)
-                            
-                            # Limpiar archivo de señal
-                            try:
-                                if SIGNAL_FILE.exists():
-                                    SIGNAL_FILE.unlink()
-                                    LOGGER.info("    → Archivo de señal limpiado")
-                            except Exception as e:
-                                LOGGER.warning("    ⚠  Error al limpiar archivo de señal: %s", e)
-                            
+                    pendings = check_unlock_status(pc_name)
+
+                    for pending in pendings:
+                        drive_letter = pending.get("driveLetter")
+                        if not drive_letter:
+                            # Detección amplia: sin letra = móvil WPD;
+                            # se libera reactivando su dispositivo PnP.
                             LOGGER.info(
-                                "  ✓ USB %s desbloqueado exitosamente tras autorización",
-                                drive_letter
+                                "  ✓ CONTRASEÑA ACEPTADA para el móvil %s (pendiente %s): desbloqueando...",
+                                pending.get("serialNumber"),
+                                pending.get("id"),
                             )
+                            if self._release_wpd_pending(pending):
+                                self._after_wpd_release_success(pending)
+                            else:
+                                self._schedule_release_retry(
+                                    _wpd_pending_key(pending.get("serialNumber")),
+                                    pending,
+                                )
+                            continue
+                        LOGGER.info(
+                            "  ✓ CONTRASEÑA ACEPTADA para %s (pendiente %s): desbloqueando...",
+                            drive_letter,
+                            pending.get("id"),
+                        )
+                        # Fase 2: revertir según el método con el que
+                        # se bloqueó (PnP o solo lectura), no siempre
+                        # por diskpart.
+                        success = self.release_blocked_drive(
+                            drive_letter, conn, pending
+                        )
+
+                        if success:
+                            self._after_release_success(drive_letter)
                         else:
-                            LOGGER.error(
-                                "  ✗ Fallo al desbloquear USB %s tras autorización",
-                                drive_letter
-                            )
-                    
+                            # Fase 2 (arreglos): el fallo ya no es
+                            # final — reintento con esperas crecientes
+                            # y aviso al panel si se agotan los intentos.
+                            self._schedule_release_retry(drive_letter, pending)
+
                 except Exception as exc:
                     LOGGER.error("  ✗ Error en monitoreo de autorizaciones: %s", exc)
                     time.sleep(5)
@@ -2607,6 +4389,13 @@ class USBMonitorService(win32serviceutil.ServiceFramework):
                         exc,
                     )
                     conn = None
+
+                # Método 3: latido de la marca de ejecución (última
+                # hora conocida si el servicio muere sin parar limpio).
+                try:
+                    _touch_service_heartbeat()
+                except Exception:
+                    pass
 
                 time.sleep(20)
         finally:
@@ -2785,7 +4574,7 @@ def _execute_service_command(command: str, timeout: int = 45) -> Tuple[bool, str
             encoding='cp850',  # Codificación de consola de Windows
             env=env,
             timeout=timeout,
-        )
+        )  #nosec B603
     except subprocess.CalledProcessError as exc:
         LOGGER.error(
             "Comando '%s' devolvió código %s. Stdout: %s | Stderr: %s",
@@ -2802,8 +4591,8 @@ def _execute_service_command(command: str, timeout: int = 45) -> Tuple[bool, str
         LOGGER.error("Timeout ejecutando comando '%s' tras %ss", command, timeout)
         try:
             exc.process.kill()
-        except Exception:
-            pass
+        except Exception as kill_exc:
+            LOGGER.debug("No se pudo terminar el proceso tras timeout: %s", kill_exc)
         stdout, stderr = exc.process.communicate()
         message = _merge_process_output(stdout, stderr)
 
@@ -2847,75 +4636,6 @@ def _execute_service_command(command: str, timeout: int = 45) -> Tuple[bool, str
     LOGGER.info("Comando '%s' ejecutado correctamente", command)
     return True, message
 
-
-def _set_service_autostart() -> Tuple[bool, str]:
-    try:
-        scm_handle = win32service.OpenSCManager(
-            None,
-            None,
-            win32service.SC_MANAGER_CONNECT,
-        )
-    except pywintypes.error as exc:
-        LOGGER.error("No se pudo abrir el Service Control Manager: %s", exc)
-        return False, _format_win_error(exc)
-    except Exception as exc:  # pragma: no cover - acceso dependiente del sistema
-        LOGGER.error("Error inesperado abriendo el Service Control Manager: %s", exc)
-        return False, str(exc)
-
-    service_handle = None
-    try:
-        desired_access = win32service.SERVICE_CHANGE_CONFIG | win32service.SERVICE_QUERY_CONFIG
-        service_handle = win32service.OpenService(
-            scm_handle,
-            USBMonitorService._svc_name_,
-            desired_access,
-        )
-    except pywintypes.error as exc:
-        win_err = getattr(exc, "winerror", None)
-        if win_err == getattr(winerror, "ERROR_SERVICE_DOES_NOT_EXIST", 1060):
-            LOGGER.warning("No se puede configurar arranque: servicio no instalado")
-            win32service.CloseServiceHandle(scm_handle)
-            return False, "El servicio no está instalado todavía."
-        LOGGER.error("Error al abrir el servicio para cambiar configuración: %s", exc)
-        win32service.CloseServiceHandle(scm_handle)
-        return False, _format_win_error(exc)
-    except Exception as exc:  # pragma: no cover
-        LOGGER.error("Error inesperado al abrir el servicio: %s", exc)
-        win32service.CloseServiceHandle(scm_handle)
-        return False, str(exc)
-
-    try:
-        current_config = win32service.QueryServiceConfig(service_handle)
-        current_start_type = current_config[1] if len(current_config) > 1 else None
-        if current_start_type == win32service.SERVICE_AUTO_START:
-            LOGGER.info("El servicio ya está configurado para inicio automático")
-            return True, "El servicio ya está configurado para iniciar automáticamente."
-
-        win32service.ChangeServiceConfig(
-            service_handle,
-            win32service.SERVICE_NO_CHANGE,
-            win32service.SERVICE_AUTO_START,
-            win32service.SERVICE_NO_CHANGE,
-            None,
-            None,
-            0,
-            None,
-            None,
-            None,
-            None,
-        )
-        LOGGER.info("Servicio configurado para inicio automático")
-        return True, "Servicio configurado para iniciar automáticamente al encender el equipo."
-    except pywintypes.error as exc:
-        LOGGER.error("No se pudo cambiar el tipo de inicio del servicio: %s", exc)
-        return False, _format_win_error(exc)
-    except Exception as exc:  # pragma: no cover
-        LOGGER.error("Error inesperado al cambiar tipo de inicio: %s", exc)
-        return False, str(exc)
-    finally:
-        if service_handle is not None:
-            win32service.CloseServiceHandle(service_handle)
-        win32service.CloseServiceHandle(scm_handle)
 
 
 def _get_service_autostart_status() -> Tuple[bool, Optional[int]]:
@@ -3034,8 +4754,9 @@ def _set_server_host(new_host: str) -> Tuple[bool, str]:
         return False, "El valor ingresado es demasiado largo."
 
     try:
+        setx_path = resolve_executable("setx.exe")
         completed = subprocess.run(
-            ["setx", "USB_MONITOR_SERVER_HOST", value, "/M"],
+            [setx_path, "USB_MONITOR_SERVER_HOST", value, "/M"],  #nosec B603
             capture_output=True,
             text=True,
             encoding='cp850',  # Codificación de consola de Windows en español
@@ -3067,11 +4788,12 @@ def _set_server_host(new_host: str) -> Tuple[bool, str]:
 
 def _toggle_server_scheme() -> Tuple[bool, str]:
     """Alterna USB_MONITOR_SERVER_SCHEME entre http y https y persiste con setx."""
-    current = (os.environ.get("USB_MONITOR_SERVER_SCHEME", "https") or "").lower().strip()
+    current = (os.environ.get("USB_MONITOR_SERVER_SCHEME", "http") or "").lower().strip()
     new_value = "http" if current == "https" else "https"
     try:
+        setx_path = resolve_executable("setx.exe")
         completed = subprocess.run(
-            ["setx", "USB_MONITOR_SERVER_SCHEME", new_value, "/M"],
+            [setx_path, "USB_MONITOR_SERVER_SCHEME", new_value, "/M"],  #nosec B603
             capture_output=True,
             text=True,
             encoding='cp850',
@@ -3106,8 +4828,9 @@ def _toggle_ssl_verify() -> Tuple[bool, str]:
     current = (os.environ.get("USB_MONITOR_SSL_VERIFY", "true") or "").lower().strip()
     new_value = "false" if current == "true" else "true"
     try:
+        setx_path = resolve_executable("setx.exe")
         completed = subprocess.run(
-            ["setx", "USB_MONITOR_SSL_VERIFY", new_value, "/M"],
+            [setx_path, "USB_MONITOR_SSL_VERIFY", new_value, "/M"],  #nosec B603
             capture_output=True,
             text=True,
             encoding='cp850',
@@ -3139,286 +4862,6 @@ def _toggle_ssl_verify() -> Tuple[bool, str]:
     return True, output_message
 
 
-def run_gui() -> None:
-    root = tk.Tk()
-    root.title("USB Monitor Service")
-    root.resizable(False, False)
-
-    icon_path = get_app_directory() / "usb_monitor_service.ico"
-    if icon_path.exists():
-        try:
-            root.iconbitmap(default=str(icon_path))
-        except Exception:
-            pass
-
-    root.columnconfigure(0, weight=1)
-    root.rowconfigure(0, weight=1)
-
-    container = ttk.Frame(root, padding=16)
-    container.grid(row=0, column=0, sticky="nsew")
-    container.columnconfigure(0, weight=1)
-    container.columnconfigure(1, weight=1)
-    container.rowconfigure(3, weight=1)
-
-    status_var = tk.StringVar()
-    status_label = ttk.Label(container, textvariable=status_var, font=("Segoe UI", 11, "bold"))
-    status_label.grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 2))
-
-    # Variable para mostrar el estado del inicio automático
-    autostart_status_var = tk.StringVar()
-    autostart_status_label = ttk.Label(
-        container,
-        textvariable=autostart_status_var,
-        font=("Segoe UI", 9),
-        foreground="#666666",
-    )
-    autostart_status_label.grid(row=1, column=0, columnspan=2, sticky="w")
-
-    # Estado de esquema y SSL verify junto a "Inicio automático"
-    scheme_status_var = tk.StringVar()
-    ssl_status_var = tk.StringVar()
-
-    scheme_ssl_frame = ttk.Frame(container)
-    scheme_ssl_frame.grid(row=2, column=0, columnspan=2, sticky="w", pady=(2, 6))
-
-    scheme_status_label = ttk.Label(
-        scheme_ssl_frame,
-        textvariable=scheme_status_var,
-        font=("Segoe UI", 9),
-        foreground="#666666",
-        wraplength=360,
-    )
-    scheme_status_label.pack(anchor="w")
-
-    ssl_status_label = ttk.Label(
-        scheme_ssl_frame,
-        textvariable=ssl_status_var,
-        font=("Segoe UI", 9),
-        foreground="#666666",
-        wraplength=360,
-    )
-    ssl_status_label.pack(anchor="w")
-
-    info_label = ttk.Label(
-        container,
-        text="Ejecuta esta herramienta como administrador para instalar o controlar el servicio.",
-        wraplength=360,
-        foreground="#444444",
-    )
-    info_label.grid(row=3, column=0, columnspan=2, pady=(6, 10), sticky="w")
-
-    log_box = ScrolledText(container, height=8, width=52, state="disabled", wrap="word")
-    log_box.grid(row=3, column=0, columnspan=2, pady=(0, 12), sticky="nsew")
-
-    command_buttons: list[ttk.Button] = []
-
-    def append_log(text: str) -> None:
-        timestamp = time.strftime("%H:%M:%S")
-        log_box.configure(state="normal")
-        log_box.insert("end", f"[{timestamp}] {text}\n")
-        log_box.see("end")
-        log_box.configure(state="disabled")
-        LOGGER.info("GUI: %s", text)
-
-    def set_buttons_state(state: str) -> None:
-        for btn in command_buttons:
-            btn.configure(state=state)
-
-    def update_status() -> None:
-        state, description = _query_service_state()
-        status_var.set(f"Estado del servicio: {description}")
-        if state == win32service.SERVICE_RUNNING:
-            status_label.configure(foreground="#0A7F2E")
-        elif state == win32service.SERVICE_STOPPED:
-            status_label.configure(foreground="#B22222")
-        elif state is None:
-            status_label.configure(foreground="#B22222")
-        else:
-            status_label.configure(foreground="#BB8400")
-        
-        # Actualizar estado del inicio automático
-        success, start_type = _get_service_autostart_status()
-        if success and start_type is not None:
-            if start_type == win32service.SERVICE_AUTO_START:
-                autostart_status_var.set("Inicio automático: ✓ Activado")
-            elif start_type == win32service.SERVICE_DEMAND_START:
-                autostart_status_var.set("Inicio automático: ✗ Desactivado (Manual)")
-            else:
-                autostart_status_var.set(f"Inicio automático: Tipo {start_type}")
-        else:
-            autostart_status_var.set("Inicio automático: Estado desconocido")
-
-        # Actualizar esquema y verificación SSL
-        scheme = os.environ.get("USB_MONITOR_SERVER_SCHEME", "https").lower()
-        scheme_status_var.set(f"Esquema del backend: {scheme.upper()}")
-        cert_path = os.environ.get("USB_MONITOR_SSL_CERT", "").strip()
-        verify_env = os.environ.get("USB_MONITOR_SSL_VERIFY", "true").lower()
-        if cert_path and Path(cert_path).exists():
-            ssl_status_var.set(f"Verificación SSL: CA personalizada ({cert_path})")
-        else:
-            ssl_status_var.set("Verificación SSL: Activada" if verify_env != "false" else "Verificación SSL: Desactivada")
-
-    def finish_command(success: bool, message: str) -> None:
-        set_buttons_state("normal")
-        append_log(message)
-        update_status()
-        if not success:
-            messagebox.showerror("USB Monitor Service", message, parent=root)
-            LOGGER.error("GUI: comando finalizado con error - %s", message)
-        else:
-            LOGGER.info("GUI: comando finalizado correctamente - %s", message)
-
-    def run_command_async(command: str) -> None:
-        def worker() -> None:
-            success, message = _execute_service_command(command)
-            root.after(0, lambda: finish_command(success, message))
-
-        append_log(f"Ejecutando '{command}'...")
-        LOGGER.info("GUI: se solicitó ejecución del comando '%s'", command)
-        set_buttons_state("disabled")
-        threading.Thread(target=worker, daemon=True).start()
-
-    def configure_autostart_async() -> None:
-        def worker() -> None:
-            success, message = _toggle_service_autostart()
-            root.after(0, lambda: finish_command(success, message))
-
-        append_log("Alternando configuración de inicio automático...")
-        LOGGER.info("GUI: se solicitó alternar inicio automático")
-        set_buttons_state("disabled")
-        threading.Thread(target=worker, daemon=True).start()
-
-    def configure_server_host() -> None:
-        current_host = os.environ.get("USB_MONITOR_SERVER_HOST", get_server_host())
-        prompt = "Ingresa la nueva dirección IP o hostname del servidor backend:"
-        new_host = simpledialog.askstring(
-            "Configurar IP del servidor",
-            prompt,
-            initialvalue=current_host,
-            parent=root,
-        )
-        if new_host is None:
-            return
-
-        value = new_host.strip()
-        if not value:
-            messagebox.showerror(
-                "Valor inválido",
-                "Debes ingresar una IP o hostname válido.",
-                parent=root,
-            )
-            return
-
-        def worker() -> None:
-            success, message = _set_server_host(value)
-            root.after(0, lambda: finish_command(success, message))
-
-        append_log(f"Actualizando IP del servidor a '{value}'...")
-        LOGGER.info("GUI: se solicitó actualizar USB_MONITOR_SERVER_HOST a %s", value)
-        set_buttons_state("disabled")
-        threading.Thread(target=worker, daemon=True).start()
-
-    def configure_server_scheme_async() -> None:
-        def worker() -> None:
-            success, message = _toggle_server_scheme()
-            root.after(0, lambda: finish_command(success, message))
-
-        append_log("Alternando esquema HTTP/HTTPS...")
-        LOGGER.info("GUI: se solicitó alternar USB_MONITOR_SERVER_SCHEME")
-        set_buttons_state("disabled")
-        threading.Thread(target=worker, daemon=True).start()
-
-    def configure_ssl_verify_async() -> None:
-        def worker() -> None:
-            success, message = _toggle_ssl_verify()
-            root.after(0, lambda: finish_command(success, message))
-
-        append_log("Alternando verificación SSL...")
-        LOGGER.info("GUI: se solicitó alternar USB_MONITOR_SSL_VERIFY")
-        set_buttons_state("disabled")
-        threading.Thread(target=worker, daemon=True).start()
-
-    def open_api_key_configurator_dialog() -> None:
-        append_log("Abriendo configurador de API key...")
-        try:
-            launch_api_key_configurator(root, on_log=append_log)
-        except Exception as exc:  # pragma: no cover - errores inesperados de GUI
-            LOGGER.error("GUI: error al abrir configurador de API key: %s", exc, exc_info=True)
-            messagebox.showerror(
-                "USB Monitor Service",
-                f"No se pudo abrir el configurador de API key.\n\nDetalles: {exc}",
-                parent=root,
-            )
-
-    commands = [
-        ("Instalar servicio", "install"),
-        ("Iniciar servicio", "start"),
-        ("Detener servicio", "stop"),
-        ("Desinstalar servicio", "remove"),
-    ]
-
-    for idx, (label, command) in enumerate(commands):
-        row = 4 + idx // 2
-        column = idx % 2
-        btn = ttk.Button(container, text=label, command=lambda c=command: run_command_async(c))
-        btn.grid(row=row, column=column, padx=4, pady=4, sticky="ew")
-        command_buttons.append(btn)
-
-    autostart_button = ttk.Button(
-        container,
-        text="Alternar inicio automático",
-        command=configure_autostart_async,
-    )
-    autostart_button.grid(row=6, column=0, columnspan=2, padx=4, pady=(8, 0), sticky="ew")
-    command_buttons.append(autostart_button)
-
-    server_host_button = ttk.Button(
-        container,
-        text="Configurar IP del servidor",
-        command=configure_server_host,
-    )
-    server_host_button.grid(row=7, column=0, columnspan=2, padx=4, pady=(8, 0), sticky="ew")
-    command_buttons.append(server_host_button)
-
-    api_key_button = ttk.Button(
-        container,
-        text="Configurar API key del backend",
-        command=open_api_key_configurator_dialog,
-    )
-    api_key_button.grid(row=8, column=0, columnspan=2, padx=4, pady=(8, 0), sticky="ew")
-    command_buttons.append(api_key_button)
-
-    scheme_button = ttk.Button(
-        container,
-        text="Alternar HTTP/HTTPS",
-        command=configure_server_scheme_async,
-    )
-    scheme_button.grid(row=12, column=0, columnspan=2, padx=4, pady=(8, 0), sticky="ew")
-    command_buttons.append(scheme_button)
-
-    ssl_button = ttk.Button(
-        container,
-        text="Alternar verificación SSL",
-        command=configure_ssl_verify_async,
-    )
-    ssl_button.grid(row=13, column=0, columnspan=2, padx=4, pady=(8, 0), sticky="ew")
-    command_buttons.append(ssl_button)
-
-    refresh_button = ttk.Button(container, text="Actualizar estado", command=update_status)
-    refresh_button.grid(row=9, column=0, columnspan=2, pady=(8, 0), sticky="ew")
-
-    append_log("Interfaz iniciada.")
-    update_status()
-
-    def periodic_status_refresh() -> None:
-        update_status()
-        root.after(5000, periodic_status_refresh)
-
-    root.after(5000, periodic_status_refresh)
-
-    root.mainloop()
-
-
 if __name__ == "__main__":
     ensure_admin_or_exit()
 
@@ -3439,6 +4882,10 @@ if __name__ == "__main__":
 
     def _launch_gui() -> None:
         try:
+            # Fase 6: la GUI vive en usb_monitor_admin.py; se importa
+            # solo al pedirla (el servicio no carga tkinter al arrancar).
+            from usb_monitor_admin import run_gui
+
             run_gui()
         except Exception as exc:  # pragma: no cover - gui solo en Windows con Tk
             LOGGER.error("Error al iniciar la interfaz gráfica: %s", exc)

@@ -28,6 +28,7 @@ export type ViewKey =
   | "computers"
   | "users"
   | "whitelist"
+  | "unlocks"
   | "network"
   | "settings";
 
@@ -38,6 +39,7 @@ export const viewKeyToHref: Record<ViewKey, string> = {
   computers: "/admin/computers",
   users: "/admin/users",
   whitelist: "/admin/whitelist",
+  unlocks: "/admin/unlocks",
   network: "/admin/network",
   settings: "/admin/settings",
 };

@@ -5,7 +5,8 @@ param(
     [string]$Action = "install",
     [string]$ServerHost = "172.20.10.12",
     [int]$ServerPort = 3000,
-    [string]$LogPath = "C:\ProgramData\USBMonitor"
+    [string]$LogPath = "C:\ProgramData\USBMonitor",
+    [string]$AgentToken = ""
 )
 
 # Colores para la consola
@@ -37,6 +38,92 @@ function Initialize-LogDirectory {
         Write-Status "Directorio creado" "OK"
     } else {
         Write-Status "Directorio de logs ya existe" "OK"
+    }
+}
+
+function Set-ServiceRecovery {
+    # Recuperación automática del servicio (Fase 0): si el servicio se
+    # cae, Windows lo reinicia al minuto, hasta 3 veces, y el contador
+    # de fallos se reinicia cada 24 horas. Tolerante a fallos: un error
+    # aquí NO debe abortar la instalación.
+    try {
+        & sc.exe failure USBMonitorService "reset=" "86400" "actions=" "restart/60000/restart/60000/restart/60000" | Out-Null
+        if ($?) {
+            Write-Status "Recuperación automática del servicio configurada (reinicio al minuto)" "OK"
+        } else {
+            Write-Status "No se pudo configurar la recuperación automática del servicio" "INFO"
+        }
+    } catch {
+        Write-Status "No se pudo configurar la recuperación automática: $_" "INFO"
+    }
+}
+
+function Set-AgentToken {
+    # Token por equipo (Fase 3): si la instalación remota pasa
+    # -AgentToken, queda en la variable de MÁQUINA
+    # USB_MONITOR_AGENT_TOKEN y el agente se autentica ante el servidor
+    # con "Authorization: AgentToken <token>" (el servidor solo guarda
+    # su hash). Sin parámetro no se toca nada: las instalaciones
+    # anteriores siguen autenticándose con su API key.
+    # Tolerante a fallos: un error aquí NO debe abortar la instalación.
+    if (-not $AgentToken) {
+        Write-Status "Sin -AgentToken: el agente seguirá autenticándose con su API key" "INFO"
+        return
+    }
+    try {
+        [Environment]::SetEnvironmentVariable("USB_MONITOR_AGENT_TOKEN", $AgentToken, "Machine")
+        Write-Status "Variable de entorno: USB_MONITOR_AGENT_TOKEN = (configurado)" "OK"
+    } catch {
+        Write-Status "No se pudo guardar USB_MONITOR_AGENT_TOKEN: $_" "INFO"
+    }
+}
+
+function Install-Companion {
+    # Proceso compañero (Fase 1): pide la contraseña en la sesión del
+    # usuario (el servicio, en sesión 0, no puede mostrar ventanas).
+    # Se registra una tarea programada "USBMonitorPrompt" al iniciar
+    # sesión con el ejecutable del compañero junto al servicio; si el
+    # .exe no existe, se usa pythonw/python sobre usb_prompt.py. Si
+    # schtasks falla, se deja una clave Run de HKLM como respaldo.
+    # Tolerante a fallos: un error aquí NO debe abortar la instalación.
+    $exeDir = Split-Path -Parent $PSCommandPath
+    $promptExe = Join-Path $exeDir "USBMonitorPrompt.exe"
+    $promptScript = Join-Path $exeDir "usb_prompt.py"
+
+    $promptCommand = $null
+    if (Test-Path $promptExe) {
+        $promptCommand = "`"$promptExe`""
+    } elseif (Test-Path $promptScript) {
+        $pythonw = Get-Command pythonw.exe -ErrorAction SilentlyContinue
+        if (-not $pythonw) { $pythonw = Get-Command python.exe -ErrorAction SilentlyContinue }
+        if ($pythonw) {
+            $promptCommand = "`"$($pythonw.Source)`" `"$promptScript`""
+        }
+    }
+
+    if (-not $promptCommand) {
+        Write-Status "Compañero (USBMonitorPrompt) no encontrado junto al instalador; se omite su registro" "INFO"
+        return
+    }
+
+    $taskOk = $false
+    try {
+        & schtasks.exe /create /tn "USBMonitorPrompt" /sc onlogon /tr $promptCommand /f | Out-Null
+        $taskOk = $?
+    } catch {
+        $taskOk = $false
+    }
+
+    if ($taskOk) {
+        Write-Status "Compañero registrado: tarea programada USBMonitorPrompt (al iniciar sesión)" "OK"
+    } else {
+        Write-Status "schtasks falló; registrando el compañero en la clave Run de HKLM como respaldo" "INFO"
+        try {
+            New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -Name "USBMonitorPrompt" -Value $promptCommand -PropertyType String -Force | Out-Null
+            Write-Status "Compañero registrado en HKLM Run" "OK"
+        } catch {
+            Write-Status "No se pudo registrar el compañero: $_" "INFO"
+        }
     }
 }
 
@@ -93,7 +180,14 @@ function Install-Service {
         Write-Status "Error al instalar el servicio" "ERROR"
         exit 1
     }
-    
+
+    # Recuperación automática del servicio (Fase 0), token por equipo
+    # (Fase 3, solo si viene -AgentToken) y registro del proceso
+    # compañero que pide la contraseña (Fase 1)
+    Set-ServiceRecovery
+    Set-AgentToken
+    Install-Companion
+
     # Iniciar servicio
     Write-Host "`n[>] Iniciando servicio..." -ForegroundColor $Yellow
     & $servicePath start
@@ -271,6 +365,8 @@ Opciones:
   -ServerHost   - Host del servidor backend (defecto: 172.20.10.12)
   -ServerPort   - Puerto del servidor backend (defecto: 3000)
   -LogPath      - Ruta para los logs (defecto: C:\ProgramData\USBMonitor)
+  -AgentToken   - Token por equipo para autenticar al agente ante el
+                  servidor (opcional; sin él se usa la API key de siempre)
 
 Ejemplos:
   .\Install-Service.ps1 -Action install

@@ -10,6 +10,18 @@ const compat = new FlatCompat({
 });
 
 const eslintConfig = [
+  {
+    // Artefactos generados y binarios: fuera del lint (sin esto,
+    // `eslint .` tras un build reportaba miles de errores de .next).
+    ignores: [
+      ".next/**",
+      "out/**",
+      "dist/**",
+      "coverage/**",
+      "node_modules/**",
+      "next-env.d.ts",
+    ],
+  },
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
     rules: {
