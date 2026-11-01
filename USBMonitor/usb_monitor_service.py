@@ -772,11 +772,106 @@ HOSTNAME = sanitize_required_string(
 )
 
 
+
+# ── Configuración en archivo (server.json) ─────────────────────────
+# El agente puede leer su configuración de un archivo server.json en
+# vez de variables de entorno del sistema. Orden de búsqueda:
+#   1. server.json junto al ejecutable (o al script, en desarrollo)
+#   2. server.json en C:\\ProgramData\\USBMonitor
+#   3. variables de entorno USB_MONITOR_* (compatibilidad)
+# Claves: serverHost, serverPort, serverScheme, agentToken, apiKey.
+# Lo escriben el compilador (Build-All.ps1 -ElegirServidor) y la
+# ventana de gestión; agentToken/apiKey aceptan el mismo cifrado ENC:
+# que las variables de entorno.
+_SERVER_CONFIG_CACHE: Dict[str, Any] = {"path": None, "mtime": None, "data": {}}
+
+
+def _server_config_paths() -> List[Path]:
+    paths: List[Path] = []
+    try:
+        paths.append(get_app_directory() / "server.json")
+    except Exception:
+        pass
+    try:
+        candidate = PROGRAM_DATA_DIR / "server.json"
+        if candidate not in paths:
+            paths.append(candidate)
+    except Exception:
+        pass
+    return paths
+
+
+def load_server_config() -> Dict[str, Any]:
+    """Contenido del primer server.json encontrado ({} si no hay)."""
+    for path in _server_config_paths():
+        try:
+            if not path.is_file():
+                continue
+            mtime = path.stat().st_mtime
+            if (
+                _SERVER_CONFIG_CACHE["path"] == str(path)
+                and _SERVER_CONFIG_CACHE["mtime"] == mtime
+            ):
+                return _SERVER_CONFIG_CACHE["data"]
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                data = {}
+            _SERVER_CONFIG_CACHE.update(path=str(path), mtime=mtime, data=data)
+            return data
+        except Exception as exc:
+            LOGGER.warning("server.json ilegible en %s: %s", path, exc)
+    return {}
+
+
+def _config_str(key: str) -> Optional[str]:
+    value = load_server_config().get(key)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def save_server_config(updates: Dict[str, Any]) -> bool:
+    """Escribe/actualiza server.json junto al ejecutable."""
+    try:
+        target = get_app_directory() / "server.json"
+        data: Dict[str, Any] = {}
+        if target.is_file():
+            try:
+                parsed = json.loads(target.read_text(encoding="utf-8"))
+                if isinstance(parsed, dict):
+                    data = parsed
+            except Exception:
+                data = {}
+        else:
+            # Si la config vigente viene de ProgramData, parte de ella.
+            data = dict(load_server_config())
+        data.update(updates)
+        target.write_text(
+            json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        _SERVER_CONFIG_CACHE.update(path=None, mtime=None, data={})
+        return True
+    except Exception as exc:
+        LOGGER.warning("No se pudo escribir server.json: %s", exc)
+        return False
+
+
 def get_server_host() -> str:
-    return os.environ.get("USB_MONITOR_SERVER_HOST", DEFAULT_HOST)
+    return _config_str("serverHost") or os.environ.get(
+        "USB_MONITOR_SERVER_HOST", DEFAULT_HOST
+    )
 
 
 def get_server_port() -> int:
+    raw_file = load_server_config().get("serverPort")
+    if raw_file is not None:
+        try:
+            return int(raw_file)
+        except (TypeError, ValueError):
+            LOGGER.warning(
+                "serverPort inválido en server.json (%r), usando el entorno/defecto",
+                raw_file,
+            )
     try:
         return int(os.environ.get("USB_MONITOR_SERVER_PORT", str(DEFAULT_PORT)))
     except ValueError:
@@ -802,7 +897,9 @@ def get_listen_port() -> int:
 def build_url(endpoint: str) -> str:
     host = get_server_host()
     port = get_server_port()
-    scheme_env = os.environ.get("USB_MONITOR_SERVER_SCHEME", "http")
+    scheme_env = _config_str("serverScheme") or os.environ.get(
+        "USB_MONITOR_SERVER_SCHEME", "http"
+    )
     scheme = (scheme_env or "").lower().strip()
     if scheme not in ("http", "https"):
         LOGGER.warning(
@@ -824,7 +921,11 @@ def get_requests_verify() -> any:
       - En cualquier otro caso, retorna True.
     """
     # Si el esquema es HTTP, la verificación SSL no aplica
-    scheme = (os.environ.get("USB_MONITOR_SERVER_SCHEME", "http") or "").lower().strip()
+    scheme = (
+        _config_str("serverScheme")
+        or os.environ.get("USB_MONITOR_SERVER_SCHEME", "http")
+        or ""
+    ).lower().strip()
     if scheme == "http":
         return True
 
@@ -846,7 +947,7 @@ def get_agent_token() -> Optional[str]:
     configuración. None si el equipo aún no tiene token (instalaciones
     anteriores a la Fase 3, que siguen con la API key).
     """
-    raw = os.environ.get("USB_MONITOR_AGENT_TOKEN")
+    raw = _config_str("agentToken") or os.environ.get("USB_MONITOR_AGENT_TOKEN")
     if not raw:
         return None
     token = decrypt_value(raw.strip()).strip()
@@ -859,7 +960,7 @@ def get_configured_api_key() -> Optional[str]:
     Es la credencial que el agente usa hoy para hablar con el servidor.
     Se tolera que el valor almacenado ya incluya el prefijo "ApiKey".
     """
-    api_key_raw = os.environ.get("USB_MONITOR_API_KEY")
+    api_key_raw = _config_str("apiKey") or os.environ.get("USB_MONITOR_API_KEY")
     if not api_key_raw:
         return None
 
@@ -5176,6 +5277,8 @@ def _set_server_host(new_host: str) -> Tuple[bool, str]:
         return False, str(exc)
 
     os.environ["USB_MONITOR_SERVER_HOST"] = value
+    # El archivo manda sobre el entorno: persiste también en server.json.
+    save_server_config({"serverHost": value})
     output_message = _merge_process_output(completed.stdout, completed.stderr)
     if output_message:
         output_message += "\n"
@@ -5213,6 +5316,7 @@ def _toggle_server_scheme() -> Tuple[bool, str]:
         return False, str(exc)
 
     os.environ["USB_MONITOR_SERVER_SCHEME"] = new_value
+    save_server_config({"serverScheme": new_value})
     output_message = _merge_process_output(completed.stdout, completed.stderr)
     if output_message:
         output_message += "\n"
