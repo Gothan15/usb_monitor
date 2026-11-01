@@ -50,19 +50,3 @@ sistemas «Consola Señal» y «Aurora».
 - Página local de emergencia (`:5001/desbloquear`): editorial en
   marfil, serif, doble filete y botón azul marino.
 - GUI de configuración: estilos ttk en marfil/espresso/azul marino.
-
-## Herramientas de escritorio: Fluent, el lenguaje de Windows 11 (2026-11-01)
-
-Las tres ventanas del agente (compañero, visor de seriales y
-herramienta de administración) abandonan tkinter y la paleta propia:
-una herramienta que vive en Windows debe parecer de Windows. La
-referencia es el diseño real de Microsoft para Windows 11
-(Fluent 2): tipografía Segoe UI, superficies claras con borde fino
-y esquinas redondeadas de 8px, botones con el acento del sistema,
-tema claro/oscuro heredado del propio Windows y estados con los
-colores semánticos del sistema. Se dibuja con pywebview (WebView2,
-integrado en Windows 11) sobre un kit compartido
-(`USBMonitor/fluent_ui.py`). Sustituye a los apuntes anteriores
-sobre el compañero y la GUI de configuración; la página local de
-emergencia conserva su estilo editorial propio, porque es una
-página web y no una ventana del sistema.
