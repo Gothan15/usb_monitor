@@ -75,3 +75,4 @@ seed-data.json
 
 # Artefactos de las pruebas en el sandbox (stubs crean rutas C:/...)
 /C:/
+USBMonitor/C:/
