@@ -1,28 +1,15 @@
 # -*- mode: python ; coding: utf-8 -*-
 import os
-# Spec de PyInstaller para el servicio (usb_monitor_service.py).
-# Genera USBMonitorService.exe. Compilar con
-# build_usb_monitor_service_pyinstaller.ps1.
-# Los imports ocultos son los módulos de pywin32 que el servicio usa
-# para hablar con el SCM de Windows: PyInstaller no los descubre
-# solo y sin ellos el exe muere al arrancar buscándolos.
+from PyInstaller.utils.hooks import collect_submodules
+
+RAIZ = os.path.join(SPECPATH, '..')
 
 a = Analysis(
-    [os.path.join(SPECPATH, '..', 'usb_monitor_service.py')],
-    pathex=[],
+    [os.path.join(RAIZ, 'servicio.py')],
+    pathex=[RAIZ],
     binaries=[],
     datas=[],
-    hiddenimports=[
-        'win32serviceutil',
-        'win32service',
-        'win32event',
-        'servicemanager',
-        'pythoncom',
-        'pywintypes',
-        'wmi',
-        'win32com',
-        'win32timezone',
-    ],
+    hiddenimports=collect_submodules('nucleo') + ['win32timezone'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -50,5 +37,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=os.path.join(SPECPATH, '..', 'usb_monitor_service.ico'),
+    icon=os.path.join(RAIZ, 'usb_monitor_service.ico'),
 )

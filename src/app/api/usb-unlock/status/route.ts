@@ -47,7 +47,7 @@ export async function GET(req: Request) {
       );
     }
 
-    const pendings = await db.pendingUnlock.findMany({
+    const candidates = await db.pendingUnlock.findMany({
       where: {
         pcName: normalizedPcName,
         status: "UNLOCKED",
@@ -62,11 +62,23 @@ export async function GET(req: Request) {
       },
     });
 
-    if (checkInterval && pendings.length > 0) {
-      await db.pendingUnlock.updateMany({
-        where: { id: { in: pendings.map((p) => p.id) } },
-        data: { executedAt: getCurrentDate() },
-      });
+    // Reclamo atómico por fila: cada desbloqueo se entrega UNA sola
+    // vez aunque dos sondeos coincidan en el tiempo. El UPDATE lleva
+    // la condición executedAt: null, así que de cada fila solo gana
+    // un llamante (antes leer y marcar eran dos pasos separados y
+    // dos agentes podían recibir —y ejecutar— el mismo desbloqueo).
+    let pendings = candidates;
+    if (checkInterval && candidates.length > 0) {
+      pendings = [];
+      for (const candidate of candidates) {
+        const claim = await db.pendingUnlock.updateMany({
+          where: { id: candidate.id, executedAt: null },
+          data: { executedAt: getCurrentDate() },
+        });
+        if (claim.count === 1) {
+          pendings.push(candidate);
+        }
+      }
     }
 
     const res = NextResponse.json({
