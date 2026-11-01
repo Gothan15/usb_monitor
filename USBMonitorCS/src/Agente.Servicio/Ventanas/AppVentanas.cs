@@ -45,7 +45,7 @@ public static class AppVentanas
         try
         {
             RegistroVentanas.Info($"Compañero iniciado, pid {Environment.ProcessId}.");
-            EjecutarVentana(() => new CompaneroWindow());
+            EjecutarVentana(() => ConIcono(new CompaneroWindow(), "usb_prompt.ico"));
             RegistroVentanas.Info("Compañero terminado.");
         }
         catch (Exception ex)
@@ -64,19 +64,38 @@ public static class AppVentanas
     public static void EjecutarToolbox()
     {
         RegistroVentanas.Configurar("agente.log");
-        EjecutarVentana(() => new ToolboxWindow());
+        EjecutarVentana(() => ConIcono(new ToolboxWindow(), "usb_monitor_service.ico"));
     }
 
     public static void EjecutarAsistente()
     {
         RegistroVentanas.Configurar("agente.log");
-        EjecutarVentana(() => new AsistenteWindow());
+        EjecutarVentana(() => ConIcono(new AsistenteWindow(), "usb_monitor_service.ico"));
     }
 
     public static void EjecutarVisor()
     {
         RegistroVentanas.Configurar("visor.log");
-        EjecutarVentana(() => new VisorWindow());
+        EjecutarVentana(() => ConIcono(new VisorWindow(), "usb_monitor_service.ico"));
+    }
+
+    /// <summary>
+    /// Pone a la ventana el icono del proyecto (recurso WPF enlazado
+    /// desde USBMonitor\). Si el recurso faltara, la ventana abre
+    /// igual con el icono por defecto: el icono nunca es un bloqueo.
+    /// </summary>
+    private static Window ConIcono(Window ventana, string recurso)
+    {
+        try
+        {
+            ventana.Icon = System.Windows.Media.Imaging.BitmapFrame.Create(
+                new Uri($"pack://application:,,,/{recurso}", UriKind.Absolute));
+        }
+        catch
+        {
+            // Sin efecto: se queda el icono por defecto de WPF.
+        }
+        return ventana;
     }
 
     private static void EjecutarVentana(Func<Window> crearVentana)
