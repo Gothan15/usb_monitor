@@ -8,11 +8,15 @@
 #   .\Build-All.ps1                     - los tres programas
 #   .\Build-All.ps1 -Solo Servicio      - solo ese (o varios)
 #   .\Build-All.ps1 -Clean              - borra dist/build antes
+#   .\Build-All.ps1 -ElegirServidor     - abre una ventana para elegir
+#                                         la IP del servidor; queda en
+#                                         server.json junto a los exe
 
 param(
     [ValidateSet("Servicio", "Companero", "Visor")]
     [string[]]$Solo = @(),
     [switch]$Clean,
+    [switch]$ElegirServidor,
     [string]$Python = "python"
 )
 
@@ -28,6 +32,20 @@ $Programs = @(
     @{ Key = "Companero"; Spec = "USBMonitorPrompt.spec";  Dist = "dist_usb_prompt";         Work = "build_usb_prompt";          Exe = "USBMonitorPrompt.exe" },
     @{ Key = "Visor";     Spec = "USBSerialViewer.spec";   Dist = "dist_usb_serial_viewer";  Work = "build_usb_serial_viewer";   Exe = "USBSerialViewer.exe" }
 )
+
+# Elegir el servidor con una ventana: escribe server.json en la raiz
+# de USBMonitor y abajo se copia junto a los exe del servicio y del
+# companero. El agente lo lee antes que las variables de entorno.
+$serverJson = Join-Path $root "server.json"
+if ($ElegirServidor) {
+    $picker = Join-Path $buildRoot "elegir_servidor.py"
+    Write-Host "`n===== Servidor del agente =====" -ForegroundColor Cyan
+    & $Python $picker | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[X] Seleccion cancelada: no se compila nada." -ForegroundColor Red
+        exit 1
+    }
+}
 
 $selected = $Programs | Where-Object { $Solo.Count -eq 0 -or $Solo -contains $_.Key }
 
@@ -45,6 +63,10 @@ foreach ($p in $selected) {
     $exePath = Join-Path $distPath $p.Exe
     if ($LASTEXITCODE -eq 0 -and (Test-Path $exePath)) {
         Write-Host "[OK] $($p.Exe) -> $distPath" -ForegroundColor Green
+        if (($p.Key -eq "Servicio" -or $p.Key -eq "Companero") -and (Test-Path $serverJson)) {
+            Copy-Item $serverJson -Destination (Join-Path $distPath "server.json") -Force
+            Write-Host "    server.json copiado junto al exe" -ForegroundColor DarkGray
+        }
     } else {
         Write-Host "[X] La compilacion de $($p.Key) fallo" -ForegroundColor Red
         $failed += $p.Key

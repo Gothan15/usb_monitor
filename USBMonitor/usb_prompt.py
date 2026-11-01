@@ -41,6 +41,7 @@ from logging.handlers import RotatingFileHandler
 import os
 import queue
 import socket
+import sys
 import threading
 import webbrowser
 from pathlib import Path
@@ -191,11 +192,54 @@ def aplicar_estilos_herencia(root: tk.Misc) -> None:
         LOGGER.debug("No se pudieron aplicar los estilos Herencia", exc_info=True)
 
 
+
+# ── Configuración en archivo (server.json) ─────────────────────────
+# Igual que el servicio: server.json junto al ejecutable (o en
+# C:\\ProgramData\\USBMonitor) manda sobre las variables de entorno.
+# Lo escribe el compilador (Build-All.ps1 -ElegirServidor).
+def _load_server_config() -> Dict[str, Any]:
+    try:
+        if getattr(sys, "frozen", False):
+            base = Path(sys.executable).resolve().parent
+        else:
+            base = Path(__file__).resolve().parent
+    except Exception:
+        base = None
+    candidates = []
+    if base is not None:
+        candidates.append(base / "server.json")
+    candidates.append(PROGRAM_DATA_DIR / "server.json")
+    for path in candidates:
+        try:
+            if path.is_file():
+                data = json.loads(path.read_text(encoding="utf-8"))
+                return data if isinstance(data, dict) else {}
+        except Exception:
+            continue
+    return {}
+
+
+_SERVER_CONFIG: Dict[str, Any] = _load_server_config()
+
+
+def _cfg(key: str) -> str:
+    value = _SERVER_CONFIG.get(key)
+    return value.strip() if isinstance(value, str) else ""
+
+
 def get_server_host() -> str:
-    return os.environ.get("USB_MONITOR_SERVER_HOST", DEFAULT_HOST)
+    return _cfg("serverHost") or os.environ.get(
+        "USB_MONITOR_SERVER_HOST", DEFAULT_HOST
+    )
 
 
 def get_server_port() -> int:
+    raw_file = _SERVER_CONFIG.get("serverPort")
+    if raw_file is not None:
+        try:
+            return int(raw_file)
+        except (TypeError, ValueError):
+            pass
     try:
         return int(os.environ.get("USB_MONITOR_SERVER_PORT", str(DEFAULT_PORT)))
     except ValueError:
@@ -204,7 +248,10 @@ def get_server_port() -> int:
 
 def build_url(endpoint: str) -> str:
     """Réplica de build_url del servicio (esquema http/https por entorno)."""
-    scheme = (os.environ.get("USB_MONITOR_SERVER_SCHEME", "http") or "").lower().strip()
+    scheme = (
+        _cfg("serverScheme")
+        or (os.environ.get("USB_MONITOR_SERVER_SCHEME", "http") or "")
+    ).lower().strip()
     if scheme not in ("http", "https"):
         scheme = "https"
     return f"{scheme}://{get_server_host()}:{get_server_port()}{endpoint}"
@@ -212,7 +259,10 @@ def build_url(endpoint: str) -> str:
 
 def get_requests_verify() -> Any:
     """Réplica simplificada de la verificación TLS del servicio."""
-    scheme = (os.environ.get("USB_MONITOR_SERVER_SCHEME", "http") or "").lower().strip()
+    scheme = (
+        _cfg("serverScheme")
+        or (os.environ.get("USB_MONITOR_SERVER_SCHEME", "http") or "")
+    ).lower().strip()
     if scheme == "http":
         return True
     cert_path = os.environ.get("USB_MONITOR_SSL_CERT", "").strip()
