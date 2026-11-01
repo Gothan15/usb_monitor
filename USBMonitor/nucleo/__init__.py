@@ -10,4 +10,5 @@ Módulos:
   dispositivos detección y clasificación (WMI)
   bloqueo      motor de bloqueo en capas, verificado, con vigía
   emergencia   desbloqueo local sin red con el hash del dueño
+  depuracion   latido de depuración cada segundo en latido.log
 """

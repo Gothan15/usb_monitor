@@ -8,6 +8,7 @@ import next from "next";
 import nextPackage from "next/package.json" with { type: "json" };
 import { Server } from "socket.io";
 import { withContainer } from "@/lib/di/container";
+import { iniciarLatidoDepuracionAgente } from "@/lib/agentDebug";
 import { logError, logInfo, logWarn } from "@/lib/logger";
 import { setupSocket } from "@/lib/socket";
 
@@ -204,6 +205,10 @@ async function createCustomServer() {
     process.exit(1);
   }
 }
+
+// Latido de depuración agente↔servidor: solo imprime si
+// USB_MONITOR_DEBUG=1; sin el modo activo no sale nada nuevo.
+iniciarLatidoDepuracionAgente();
 
 // Start the server
 createCustomServer();

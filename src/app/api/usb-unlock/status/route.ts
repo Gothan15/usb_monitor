@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentDate } from "@/lib/time";
 import { requireServiceAuth } from "@/lib/auth";
 import { hit } from "@/lib/rateLimit";
+import { registrarContactoAgente } from "@/lib/agentDebug";
 import { logError } from "@/lib/logger";
 
 /**
@@ -17,6 +18,9 @@ import { logError } from "@/lib/logger";
  * contraseña se verifica automáticamente en /api/usb-auth.
  */
 export async function GET(req: Request) {
+  // Se lee antes del try solo para registrar el contacto también
+  // cuando la autenticación falla (401).
+  const pcNameQuery = new URL(req.url).searchParams.get("pcName");
   try {
     const auth = await requireServiceAuth(req);
     const { searchParams } = new URL(req.url);
@@ -81,6 +85,7 @@ export async function GET(req: Request) {
       }
     }
 
+    registrarContactoAgente(normalizedPcName, "/api/usb-unlock/status", 200);
     const res = NextResponse.json({
       ok: true,
       unlocked: pendings.length > 0,
@@ -90,11 +95,13 @@ export async function GET(req: Request) {
     res.headers.set("Cache-Control", "no-store");
     return res;
   } catch (error: any) {
-    if (error?.message === "UNAUTHORIZED")
+    if (error?.message === "UNAUTHORIZED") {
+      registrarContactoAgente(pcNameQuery, "/api/usb-unlock/status", 401);
       return NextResponse.json(
         { ok: false, error: "No autorizado" },
         { status: 401 }
       );
+    }
     logError("Error en usb-unlock status", error);
     return NextResponse.json(
       { ok: false, error: error.message },

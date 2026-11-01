@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { addMillisecondsToNow } from "@/lib/time";
 import { requireServiceAuth } from "@/lib/auth";
 import { hit } from "@/lib/rateLimit";
+import { registrarContactoAgente } from "@/lib/agentDebug";
 import { logError } from "@/lib/logger";
 
 /**
@@ -92,6 +93,11 @@ export async function POST(req: Request) {
       },
     });
 
+    registrarContactoAgente(
+      normalizedPcName,
+      "/api/usb-event/pending-unlock",
+      200
+    );
     const res = NextResponse.json({
       ok: true,
       id: pendingUnlock.id,
@@ -101,6 +107,7 @@ export async function POST(req: Request) {
     return res;
   } catch (error: any) {
     if (error?.message === "UNAUTHORIZED") {
+      registrarContactoAgente(null, "/api/usb-event/pending-unlock", 401);
       return NextResponse.json(
         { ok: false, error: "No autorizado" },
         { status: 401 }

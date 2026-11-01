@@ -17,6 +17,7 @@ Reglas (las del panel, que es quien decide):
 from __future__ import annotations
 
 import json
+import os
 import sys
 import threading
 import time
@@ -77,6 +78,7 @@ class VentanaCompanero:
         self._pendientes: List[Dict] = []
         self._construir()
         self._vigilar_archivo()
+        self.raiz.after(1000, self._latido_debug)
 
     def _construir(self) -> None:
         tk = self.tk
@@ -128,6 +130,35 @@ class VentanaCompanero:
         self._mensaje.pack(anchor="w", pady=(10, 0))
         self.raiz.bind("<Return>", lambda _e: self._enviar())
         self._selector.trace_add("write", lambda *_: self._al_elegir())
+
+    # ── latido de depuración (1/s, a DEBUG en companero.log) ────
+    def _latido_debug(self) -> None:
+        """Una línea por segundo para saber si el compañero seguía
+        vivo y qué veía. Un fallo del tick jamás tumba la ventana."""
+        try:
+            try:
+                antiguedad = time.time() - ARCHIVO_PENDIENTES.stat().st_mtime
+                texto_archivo = f"pending_local.json de hace {antiguedad:.0f} s"
+            except FileNotFoundError:
+                texto_archivo = "pending_local.json: sin archivo"
+            except OSError as exc:
+                texto_archivo = f"pending_local.json ilegible: {exc}"
+            LOG.debug(
+                "latido: pendientes=%s, %s, ventana %s",
+                len(self._pendientes),
+                texto_archivo,
+                "visible" if self.raiz.winfo_ismapped() else "retirada",
+            )
+        except Exception as exc:
+            try:
+                LOG.debug("latido del compañero falló: %s", exc)
+            except Exception:
+                pass
+        finally:
+            try:
+                self.raiz.after(1000, self._latido_debug)
+            except Exception:
+                pass
 
     # ── ciclo de vida ─────────────────────────────────────────────
     def _vigilar_archivo(self) -> None:
@@ -255,15 +286,23 @@ class VentanaCompanero:
 
 
 def main() -> None:
-    # Una sola instancia: si ya hay compañero, este sale en silencio.
+    # Una sola instancia: si ya hay compañero, este sale — pero ya
+    # no en silencio: cada arranque y cada salida quedan en el log.
     import socket
 
+    LOG.info("Compañero iniciado, pid %s", os.getpid())
     candado = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         candado.bind(("127.0.0.1", 50137))
     except OSError:
+        LOG.warning("Ya hay un compañero en marcha: este proceso sale")
         return
-    VentanaCompanero().ejecutar()
+    try:
+        VentanaCompanero().ejecutar()
+    except Exception:
+        LOG.exception("EL COMPAÑERO SE CERRÓ POR UN ERROR")
+    finally:
+        LOG.info("Compañero terminado")
 
 
 if __name__ == "__main__":

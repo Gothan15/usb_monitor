@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireServiceAuth } from "@/lib/auth";
+import { registrarContactoAgente } from "@/lib/agentDebug";
 import { logError } from "@/lib/logger";
 
 /**
@@ -82,11 +83,14 @@ export async function POST(req: Request) {
       }
     }
 
+    registrarContactoAgente(pcName, "/api/agent/offline-attempts", 200);
     const res = NextResponse.json({ ok: true, recorded });
     res.headers.set("Cache-Control", "no-store");
     return res;
   } catch (error: any) {
     if (error?.message === "UNAUTHORIZED") {
+      // El body aún no se había leído: la PC no se conoce.
+      registrarContactoAgente(null, "/api/agent/offline-attempts", 401);
       return NextResponse.json(
         { ok: false, error: "No autorizado" },
         { status: 401 }

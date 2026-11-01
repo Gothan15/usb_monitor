@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireServiceAuth } from "@/lib/auth";
 import { readAppSettings } from "@/lib/appSettings";
+import { registrarContactoAgente } from "@/lib/agentDebug";
 import { logError } from "@/lib/logger";
 
 /**
@@ -13,6 +14,9 @@ import { logError } from "@/lib/logger";
  * para verificar localmente, con contador de intentos.
  */
 export async function GET(req: Request) {
+  // Se lee antes del try solo para poder registrar el contacto
+  // también cuando la autenticación falla (401).
+  const pcNameQuery = new URL(req.url).searchParams.get("pcName");
   try {
     const serviceAuth = await requireServiceAuth(req);
 
@@ -64,6 +68,7 @@ export async function GET(req: Request) {
       );
     }
 
+    registrarContactoAgente(computer.name, "/api/agent/owner-hash", 200);
     const res = NextResponse.json({
       ok: true,
       pcName: computer.name,
@@ -74,6 +79,7 @@ export async function GET(req: Request) {
     return res;
   } catch (error: any) {
     if (error?.message === "UNAUTHORIZED") {
+      registrarContactoAgente(pcNameQuery, "/api/agent/owner-hash", 401);
       return NextResponse.json(
         { ok: false, error: "No autorizado" },
         { status: 401 }
