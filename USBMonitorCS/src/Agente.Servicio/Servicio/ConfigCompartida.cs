@@ -32,6 +32,19 @@ public sealed class ConfigCompartida
         set { lock (_lock) _shutdownOnNonWhitelisted = value; }
     }
 
+    private int _shutdownCountdownSeconds = 60;
+
+    /// <summary>
+    /// Segundos de cuenta atrás antes del apagado. Se acota al
+    /// guardar (10–600): ni un apagado sin margen ni una cuenta de
+    /// horas, venga el valor de donde venga.
+    /// </summary>
+    public int ShutdownCountdownSeconds
+    {
+        get { lock (_lock) return _shutdownCountdownSeconds; }
+        set { lock (_lock) _shutdownCountdownSeconds = Math.Clamp(value, 10, 600); }
+    }
+
     /// <summary>Espera de red al arrancar el servicio, en segundos.</summary>
     public int StartupNetworkDelay
     {
@@ -50,6 +63,10 @@ public sealed class ConfigCompartida
             // tal cual viene.
             _lockSessionOnInsert = remota.LockSessionOnInsert;
             _shutdownOnNonWhitelisted = remota.ShutdownOnNonWhitelisted;
+            // La cuenta atrás es anulable: un panel sin el campo
+            // (versión anterior) no pisa el valor vigente.
+            if (remota.ShutdownCountdownSeconds is { } segundos)
+                ShutdownCountdownSeconds = segundos;
         }
     }
 }

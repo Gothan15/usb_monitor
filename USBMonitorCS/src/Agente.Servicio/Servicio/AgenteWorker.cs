@@ -446,8 +446,8 @@ public sealed class AgenteWorker : BackgroundService
     //    el ajuste se desactiva en el panel o si el servicio se
     //    detiene. Windows además permite abortarla a mano con
     //    «shutdown /a» durante la cuenta.
-    private const int SegundosCuentaAtrasApagado = 60;
-
+    // La cuenta atrás la define el panel (shutdownCountdownSeconds,
+    // 60 por defecto, acotada a 10–600 en ConfigCompartida).
     private readonly object _lockApagado = new();
     private readonly HashSet<string> _apagadoCausantes = new();
     private readonly HashSet<string> _clavesDelArranque = new();
@@ -461,6 +461,7 @@ public sealed class AgenteWorker : BackgroundService
         if (disp.Tipo is not (TipoDispositivo.Disco or TipoDispositivo.Telefono or TipoDispositivo.Optico))
             return;
         if (!_compartida.ShutdownOnNonWhitelisted) return;
+        var segundos = _compartida.ShutdownCountdownSeconds;
         var armado = false;
         lock (_lockApagado)
         {
@@ -469,9 +470,9 @@ public sealed class AgenteWorker : BackgroundService
             if (_apagadoEnCurso) return;
             var mensaje =
                 $"USBMonitor: dispositivo no autorizado ({disp.Nombre}). " +
-                $"El equipo se apagara en {SegundosCuentaAtrasApagado} segundos.";
+                $"El equipo se apagara en {segundos} segundos.";
             if (EjecutarShutdownExe("/s", "/t",
-                    SegundosCuentaAtrasApagado.ToString(), "/c", mensaje))
+                    segundos.ToString(), "/c", mensaje))
             {
                 _apagadoEnCurso = true;
                 armado = true;
@@ -481,7 +482,7 @@ public sealed class AgenteWorker : BackgroundService
         {
             _cliente.Evento(EvApagadoArmado, disp.Letra, disp.Serial);
             Log.Advertencia(
-                $"Apagado ARMADO ({SegundosCuentaAtrasApagado} s) por dispositivo " +
+                $"Apagado ARMADO ({segundos} s) por dispositivo " +
                 $"fuera de la lista blanca: {disp.Nombre} ({disp.Serial})");
         }
         else

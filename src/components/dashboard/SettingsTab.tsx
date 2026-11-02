@@ -34,6 +34,7 @@ interface UnlockSettings {
   requireAgentToken: boolean;
   lockSessionOnInsert: boolean;
   shutdownOnNonWhitelisted: boolean;
+  shutdownCountdownSeconds: number;
   silenceThresholdMinutes: number;
 }
 
@@ -55,6 +56,7 @@ export function SettingsTab() {
     requireAgentToken: false,
     lockSessionOnInsert: false,
     shutdownOnNonWhitelisted: false,
+    shutdownCountdownSeconds: 60,
     silenceThresholdMinutes: 5,
   });
 
@@ -80,6 +82,7 @@ export function SettingsTab() {
           requireAgentToken: data.requireAgentToken ?? false,
           lockSessionOnInsert: data.lockSessionOnInsert ?? false,
           shutdownOnNonWhitelisted: data.shutdownOnNonWhitelisted ?? false,
+          shutdownCountdownSeconds: data.shutdownCountdownSeconds ?? 60,
           silenceThresholdMinutes: data.silenceThresholdMinutes ?? 5,
         };
         setUnlock(unlockCargado);
@@ -294,8 +297,8 @@ export function SettingsTab() {
                 <Label>Apagar el equipo si el dispositivo no está en la lista blanca</Label>
                 <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
                   Al insertar un dispositivo fuera de la lista blanca, el
-                  equipo cliente inicia una cuenta atrás de 60 segundos y
-                  se apaga. Se cancela si el dispositivo se extrae o se
+                  equipo cliente inicia una cuenta atrás y se apaga,
+                  con el tiempo que definas abajo. Se cancela si el dispositivo se extrae o se
                   desbloquea a tiempo, y no se aplica a lo que ya estaba
                   conectado al arrancar el servicio. Desactivado por
                   defecto.
@@ -305,6 +308,29 @@ export function SettingsTab() {
                 checked={unlock.shutdownOnNonWhitelisted}
                 onCheckedChange={(v) => setUnlock({ ...unlock, shutdownOnNonWhitelisted: v })}
               />
+            </div>
+            <div className="py-5 pl-0">
+              <div className="max-w-xl">
+                <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                  Tiempo antes de apagar (segundos)
+                </Label>
+                <Input
+                  type="number"
+                  min={10}
+                  max={600}
+                  value={unlock.shutdownCountdownSeconds}
+                  disabled={!unlock.shutdownOnNonWhitelisted}
+                  onChange={(event) =>
+                    setUnlock({ ...unlock, shutdownCountdownSeconds: Number(event.target.value) || 60 })
+                  }
+                  className="mt-2 w-28"
+                />
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Cuenta atrás visible en el equipo cliente antes de
+                  apagarse: entre 10 y 600 segundos. Extraer o
+                  desbloquear el dispositivo la cancela.
+                </p>
+              </div>
             </div>
             <div className="py-5">
               <div className="max-w-xl">

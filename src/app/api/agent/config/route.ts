@@ -35,11 +35,19 @@ export async function GET(req: Request) {
     }
 
     registrarContactoAgente(null, "/api/agent/config", 200);
+    // La cuenta atrás se sirve siempre acotada: ni un valor
+    // editado a mano en el JSON puede armar un apagado inmediato
+    // ni uno de horas.
+    const shutdownCountdownSeconds = Math.min(
+      600,
+      Math.max(10, Number(settings.shutdownCountdownSeconds) || 60),
+    );
     const res = NextResponse.json({
       ok: true,
       startupNetworkDelay,
       lockSessionOnInsert: settings.lockSessionOnInsert,
       shutdownOnNonWhitelisted: settings.shutdownOnNonWhitelisted,
+      shutdownCountdownSeconds,
     });
     res.headers.set("Cache-Control", "no-store");
     return res;

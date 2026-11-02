@@ -21,6 +21,8 @@ export interface AppSettings {
    * NO está en la lista blanca (cuenta atrás cancelable del agente).
    */
   shutdownOnNonWhitelisted: boolean;
+  /** Segundos de cuenta atrás antes del apagado (10–600). */
+  shutdownCountdownSeconds: number;
   /** Fase 5 (método 3): minutos sin señales para marcar un equipo. */
   silenceThresholdMinutes: number;
   [key: string]: unknown;
@@ -32,6 +34,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   offlineEmergencyEnabled: true,
   lockSessionOnInsert: false,
   shutdownOnNonWhitelisted: false,
+  shutdownCountdownSeconds: 60,
   silenceThresholdMinutes: 5,
 };
 
