@@ -34,6 +34,7 @@ public sealed class ToolboxWindow : Window
     private readonly TextBlock _textoEstado;
     private readonly TextBlock _textoServicio;
     private readonly TextBlock _textoResumen;
+    private readonly TextBlock _textoDueno;
     private readonly List<Button> _botonesServicio = new();
     private readonly Button _botonProbar;
     private readonly TextBox _host;
@@ -46,6 +47,11 @@ public sealed class ToolboxWindow : Window
     private bool _refrescandoRegistro;
     private bool _operandoServicio;
     private bool _probando;
+
+    // Dueño asignado del equipo según el panel (caché de 30 s).
+    private DuenoEquipoRespuesta? _duenoCache;
+    private int _duenoCacheEstado;
+    private DateTime _duenoCacheCuando = DateTime.MinValue;
 
     public ToolboxWindow()
     {
@@ -88,6 +94,11 @@ public sealed class ToolboxWindow : Window
         _textoResumen.Foreground = Tema.TintaAtenuada;
         _textoResumen.Margin = new Thickness(16, 5, 0, 0);
         estado.Children.Add(_textoResumen);
+        _textoDueno = Tema.TextoDatos("dueño asignado: …", 12);
+        _textoDueno.Foreground = Tema.TintaAtenuada;
+        _textoDueno.Margin = new Thickness(16, 3, 0, 0);
+        _textoDueno.TextWrapping = TextWrapping.Wrap;
+        estado.Children.Add(_textoDueno);
         raiz.Children.Add(Tema.Tarjeta(estado, new Thickness(0, 4, 0, 12), new Thickness(14, 11, 14, 11)));
 
         raiz.Children.Add(ConstruirSeccionServicio(out _textoServicio));
@@ -324,6 +335,10 @@ public sealed class ToolboxWindow : Window
             _textoResumen.Text =
                 $"servidor {foto.UrlBase} · bloqueados ahora: {foto.Bloqueados} · " +
                 $"nodos por restaurar: {foto.NodosPorRestaurar}";
+            _textoDueno.Text = foto.Dueno;
+            _textoDueno.Foreground = foto.Dueno.Contains("SIN ASIGNAR")
+                ? Tema.Ambar
+                : Tema.TintaAtenuada;
 
             string palabraServicio = foto.Servicio switch
             {
@@ -411,7 +426,52 @@ public sealed class ToolboxWindow : Window
             ? "Conexión sin comprobar"
             : salud.UltimaLlamada.Ok ? "Conectado" : "Sin conexión";
 
-        return new EstadoFoto(servicio, _config.UrlBase, bloqueados, nodos, conexion);
+        return new EstadoFoto(servicio, _config.UrlBase, bloqueados, nodos, conexion, TextoDueno());
+    }
+
+    /// <summary>
+    /// Línea del dueño asignado: se pregunta al panel como mucho
+    /// cada 30 s y se cachea. Es la respuesta a «¿de quién es la
+    /// contraseña que vale en esta PC?»: sin dueño asignado, un
+    /// usuario normal NO puede desbloquear aunque su contraseña
+    /// sea correcta, y eso hay que verlo aquí sin abrir el panel.
+    /// </summary>
+    private string TextoDueno()
+    {
+        if (DateTime.Now - _duenoCacheCuando > TimeSpan.FromSeconds(30))
+        {
+            try
+            {
+                var resultado = _cliente.DuenoEquipoAsync().GetAwaiter().GetResult();
+                _duenoCache = resultado.Datos;
+                _duenoCacheEstado = resultado.EstadoHttp;
+                _duenoCacheCuando = DateTime.Now;
+            }
+            catch
+            {
+                // Se conserva la última foto buena.
+            }
+        }
+
+        if (_duenoCache is { } datos)
+        {
+            if (datos.UnlockMode == "ADMIN_ONLY")
+            {
+                return "dueño asignado: da igual — esta PC está en modo «solo administradores»";
+            }
+            if (!string.IsNullOrWhiteSpace(datos.OwnerUsername))
+            {
+                return $"dueño asignado: {datos.OwnerUsername} " +
+                    "(su contraseña desbloquea esta PC; también la de un administrador)";
+            }
+            return "dueño asignado: SIN ASIGNAR — solo un administrador puede " +
+                "desbloquear en esta PC; asigna un usuario a este equipo en " +
+                "el panel (Usuarios → su equipo)";
+        }
+
+        return _duenoCacheEstado == 0
+            ? "dueño asignado: sin conexión para comprobarlo"
+            : $"dueño asignado: sin comprobar (el panel respondió {_duenoCacheEstado})";
     }
 
     private sealed record EstadoFoto(
@@ -419,7 +479,8 @@ public sealed class ToolboxWindow : Window
         string UrlBase,
         int Bloqueados,
         int NodosPorRestaurar,
-        string Conexion);
+        string Conexion,
+        string Dueno);
 
     // ── Servicio e instalación ──────────────────────────────────
 
@@ -435,6 +496,13 @@ public sealed class ToolboxWindow : Window
         try
         {
             await Task.Run(() => ControlarServicio(accion));
+            // Al arrancar el servicio desde esta sesión, el
+            // compañero se abre también aquí y ahora: no se espera
+            // a la tarea programada ni al vigía del servicio.
+            if (accion is "start" or "restart")
+            {
+                LanzarModo("prompt");
+            }
         }
         catch (Exception ex)
         {

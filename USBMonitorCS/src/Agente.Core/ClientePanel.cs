@@ -488,6 +488,27 @@ public sealed class ClientePanel : IDisposable
         return datos is { Ok: true } ? datos : null;
     }
 
+    /// <summary>
+    /// Identidad pública del equipo (GET /api/agent/owner): dueño
+    /// asignado y modo de desbloqueo, sin ninguna credencial. La
+    /// usan la caja de herramientas y el compañero para decir de
+    /// quién es la contraseña que vale en esta PC, o avisar de que
+    /// no hay dueño asignado. Nunca lanza.
+    /// </summary>
+    public async Task<ResultadoDueno> DuenoEquipoAsync()
+    {
+        var ruta = "/api/agent/owner" + Consulta(("pcName", Configuracion.NombrePc));
+        var respuesta = await PeticionAsync("GET", ruta).ConfigureAwait(false);
+        if (respuesta is null)
+        {
+            return new ResultadoDueno(0, null);
+        }
+        var datos = IntentarJson<DuenoEquipoRespuesta>(respuesta);
+        return new ResultadoDueno(
+            respuesta.Estado,
+            datos is { Ok: true } ? datos : null);
+    }
+
     public async Task<bool> SubirIntentosOfflineAsync(List<IntentoOffline> intentos)
     {
         if (intentos.Count == 0)

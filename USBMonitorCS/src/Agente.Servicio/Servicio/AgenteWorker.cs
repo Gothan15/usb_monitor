@@ -60,6 +60,10 @@ public sealed class AgenteWorker : BackgroundService
     private bool? _companeroCacheValor;
     private DateTime _companeroCacheMarca = DateTime.MinValue;
 
+    // Relanzamiento del compañero en la sesión del usuario.
+    private int _chequeosSinCompanero;
+    private DateTime _ultimoLanzamientoCompanero = DateTime.MinValue;
+
     private DateTime _inicio = DateTime.UtcNow;
     private DateTime _ultimoHash = DateTime.MinValue;
     private DateTime _ultimaConfig = DateTime.MinValue;
@@ -387,6 +391,7 @@ public sealed class AgenteWorker : BackgroundService
                     await RegistrarEnPanelAsync(reg.Dispositivo, reg.EnWhitelist.Value)
                         .ConfigureAwait(false);
                 }
+                VigilarCompanero();
             }
             catch (Exception exc)
             {
@@ -394,6 +399,30 @@ public sealed class AgenteWorker : BackgroundService
             }
             if (!await EsperarAsync(5000, ct).ConfigureAwait(false)) return;
         }
+    }
+
+    /// <summary>
+    /// El compañero tiene que estar SIEMPRE vivo en la sesión del
+    /// usuario: si no está (la tarea de inicio de sesión no lo
+    /// lanzó en esta sesión, se cerró la ventana o murió), el
+    /// servicio lo relanza él mismo en la sesión de consola activa.
+    /// Dos chequeos seguidos sin compañero (~10 s) y un intento
+    /// cada 30 s como máximo; si WMI no sabe, no se actúa a ciegas.
+    /// </summary>
+    private void VigilarCompanero()
+    {
+        var enMarcha = CompaneroEnMarcha();
+        if (enMarcha is null) return;
+        if (enMarcha.Value)
+        {
+            _chequeosSinCompanero = 0;
+            return;
+        }
+        _chequeosSinCompanero++;
+        if (_chequeosSinCompanero < 2) return;
+        if (DateTime.UtcNow - _ultimoLanzamientoCompanero < TimeSpan.FromSeconds(30)) return;
+        _ultimoLanzamientoCompanero = DateTime.UtcNow;
+        LanzadorCompanero.IntentarLanzar();
     }
 
     private async Task BucleSondeoAsync(CancellationToken ct)
