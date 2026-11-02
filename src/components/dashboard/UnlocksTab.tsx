@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLiveData } from "@/components/providers/LiveDataProvider";
 import { RefreshCw } from "lucide-react";
 
 /**
@@ -135,9 +136,43 @@ export function UnlocksTab() {
 
   useEffect(() => {
     load();
-    const id = setInterval(load, 30_000);
+    // Red de seguridad, no el mecanismo: el silencio de un
+    // equipo se mide con el reloj y puede vencer sin que llegue
+    // ningún evento. El refresco normal lo manda el empuje de
+    // abajo.
+    const id = setInterval(load, 60_000);
     return () => clearInterval(id);
   }, [load]);
+
+  // Empuje por socket: cada evento USB y cada cambio de
+  // desbloqueo (bloqueo nuevo, intento, cierre, entrega al
+  // agente) recarga la lista, agrupando ráfagas a 600 ms.
+  const { liveEventCount, unlockVersion, connectionStatus } = useLiveData();
+  const senalRef = useRef({ eventos: -1, desbloqueos: -1 });
+  useEffect(() => {
+    const previa = senalRef.current;
+    const cambio =
+      (previa.eventos !== -1 && previa.eventos !== liveEventCount) ||
+      (previa.desbloqueos !== -1 &&
+        previa.desbloqueos !== unlockVersion);
+    senalRef.current = { eventos: liveEventCount, desbloqueos: unlockVersion };
+    if (!cambio) return;
+    const id = setTimeout(() => {
+      void load();
+    }, 600);
+    return () => clearTimeout(id);
+  }, [liveEventCount, unlockVersion, load]);
+
+  // Al reconectar el socket puede haberse perdido algún aviso:
+  // una recarga de reconciliación y seguimos.
+  const conectadoRef = useRef(false);
+  useEffect(() => {
+    if (connectionStatus !== "connected") return;
+    if (conectadoRef.current) {
+      void load();
+    }
+    conectadoRef.current = true;
+  }, [connectionStatus, load]);
 
   const silentComputers = useMemo(
     () => data?.silence.computers.filter((c) => c.silent) ?? [],
@@ -145,7 +180,7 @@ export function UnlocksTab() {
   );
 
   return (
-    <div className="animate-view-in space-y-12 p-6">
+    <div data-tour="unlocks-main" className="animate-view-in space-y-12 p-6">
       {/* ── Cabecera de la auditoría ── */}
       <div className="flex items-end justify-between gap-4">
         <div className="flex flex-1 flex-col">

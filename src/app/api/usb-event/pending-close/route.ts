@@ -4,6 +4,7 @@ import { requireServiceAuth } from "@/lib/auth";
 import { hit } from "@/lib/rateLimit";
 import { registrarContactoAgente } from "@/lib/agentDebug";
 import { logError } from "@/lib/logger";
+import { broadcastUnlockChange } from "@/lib/socket";
 
 /**
  * POST /api/usb-event/pending-close
@@ -63,6 +64,7 @@ export async function POST(req: Request) {
       },
     });
 
+    if (result.count > 0) broadcastUnlockChange();
     registrarContactoAgente(
       typeof pcName === "string" ? pcName.trim() : null,
       "/api/usb-event/pending-close",

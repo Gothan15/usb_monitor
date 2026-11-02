@@ -7,6 +7,7 @@ import {
 } from "@/lib/auth";
 import { getCurrentDate } from "@/lib/time";
 import { readAppSettings } from "@/lib/appSettings";
+import { broadcastUnlockChange } from "@/lib/socket";
 
 const MAX_FAILED_ATTEMPTS = Number(
   process.env.USB_MONITOR_MAX_FAILED_ATTEMPTS || 5
@@ -41,6 +42,7 @@ async function recordAttempt(data: {
         origin: data.origin ?? "ONLINE",
       },
     });
+    broadcastUnlockChange();
   } catch (error) {
     // La auditoría nunca debe tumbar la verificación.
     console.error("No se pudo registrar el intento de desbloqueo:", error);

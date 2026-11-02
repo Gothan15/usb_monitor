@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { requireServiceAuth } from "@/lib/auth";
 import { registrarContactoAgente } from "@/lib/agentDebug";
 import { logError } from "@/lib/logger";
+import { broadcastUnlockChange } from "@/lib/socket";
 
 /**
  * POST /api/agent/offline-attempts
@@ -83,6 +84,7 @@ export async function POST(req: Request) {
       }
     }
 
+    if (recorded > 0) broadcastUnlockChange();
     registrarContactoAgente(pcName, "/api/agent/offline-attempts", 200);
     const res = NextResponse.json({ ok: true, recorded });
     res.headers.set("Cache-Control", "no-store");

@@ -7,6 +7,7 @@ import {
   serializeWhitelistEntry,
   requireAdminUser,
 } from "./_helpers";
+import { broadcastWhitelistChange } from "@/lib/socket";
 
 function unauthorized() {
   return NextResponse.json(
@@ -99,6 +100,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    broadcastWhitelistChange();
     return NextResponse.json(
       {
         ok: true,
@@ -158,6 +160,7 @@ export async function DELETE(req: NextRequest) {
       await (db as any).uSBWhitelist.deleteMany({
         where: { id: { in: found } },
       });
+      broadcastWhitelistChange();
     }
     return NextResponse.json({
       ok: true,

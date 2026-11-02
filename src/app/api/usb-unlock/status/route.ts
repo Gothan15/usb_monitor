@@ -5,6 +5,7 @@ import { requireServiceAuth } from "@/lib/auth";
 import { hit } from "@/lib/rateLimit";
 import { registrarContactoAgente } from "@/lib/agentDebug";
 import { logError } from "@/lib/logger";
+import { broadcastUnlockChange } from "@/lib/socket";
 
 /**
  * GET /api/usb-unlock/status?pcName=XXX&check=true
@@ -85,6 +86,10 @@ export async function GET(req: Request) {
       }
     }
 
+    // Solo se avisa cuando una entrega se reclamó de verdad:
+    // esta ruta se sondea cada pocos segundos y avisar en cada
+    // sondeo recrearía el problema que se está quitando.
+    if (pendings.length > 0) broadcastUnlockChange();
     registrarContactoAgente(normalizedPcName, "/api/usb-unlock/status", 200);
     const res = NextResponse.json({
       ok: true,
