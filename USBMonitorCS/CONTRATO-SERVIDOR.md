@@ -27,6 +27,7 @@ por detrás del agente actual ni del panel.
 | GET `/api/whitelist/check?serial` | ¿Dispositivo conocido? | `{allowed, entry}`; con caché local de 60 s y caché persistente para sin conexión (marca, no autoriza). |
 | GET `/api/agent/config` | Ajustes al arrancar y cada 10 min | `{startupNetworkDelay, lockSessionOnInsert}` en camelCase. |
 | GET `/api/agent/owner-hash?pcName` | Hash Argon2 del dueño para la emergencia sin red | Solo si `offlineEmergencyEnabled` está activo en el panel; si no, no hay emergencia. Se renueva cada 10 min. |
+| GET `/api/agent/owner?pcName` | Identidad pública del equipo: dueño asignado y modo | `{ownerUsername (null si no hay dueño asignado), unlockMode, passwordUnlockEnabled}`. SIN ninguna credencial: lo muestran la toolbox y el compañero para decir de quién es la contraseña que vale en la PC. |
 | POST `/api/agent/offline-attempts` | Subir la auditoría de intentos sin red al volver la conexión | `{pcName, attempts:[{usernameTried, result, driveLetter, serialNumber, createdAt}]}`. |
 | GET `/api/agent/ping?pcName` | Prueba de conexión y señal de vida | `{ok, serverTime, pc}`; renueva `lastSeen` del equipo. Lo usa el botón «Probar conexión». |
 

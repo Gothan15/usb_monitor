@@ -87,6 +87,27 @@ public sealed class HashDuenoRespuesta
     [JsonPropertyName("passwordHash")] public string? PasswordHash { get; set; }
 }
 
+/// <summary>
+/// Respuesta de GET /api/agent/owner: identidad pública del equipo
+/// (sin ninguna credencial). OwnerUsername viene null cuando la PC
+/// no tiene usuario dueño asignado en el panel.
+/// </summary>
+public sealed class DuenoEquipoRespuesta
+{
+    [JsonPropertyName("ok")] public bool Ok { get; set; }
+    [JsonPropertyName("pcName")] public string? PcName { get; set; }
+    [JsonPropertyName("ownerUsername")] public string? OwnerUsername { get; set; }
+    [JsonPropertyName("unlockMode")] public string? UnlockMode { get; set; }
+    [JsonPropertyName("passwordUnlockEnabled")] public bool PasswordUnlockEnabled { get; set; }
+}
+
+/// <summary>
+/// Resultado de consultar el dueño del equipo: EstadoHttp 0 = sin
+/// respuesta del panel; Datos null cuando el panel no devolvió la
+/// identidad (401, 404 = equipo aún no registrado, etc.).
+/// </summary>
+public sealed record ResultadoDueno(int EstadoHttp, DuenoEquipoRespuesta? Datos);
+
 /// <summary>Respuesta cruda de POST /api/usb-auth.</summary>
 internal sealed class RespuestaAuth
 {

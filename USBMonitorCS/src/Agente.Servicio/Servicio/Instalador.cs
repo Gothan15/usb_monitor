@@ -117,8 +117,14 @@ public static class Instalador
         }
     }
 
+    private static readonly Registrador LogInstalador = Registro.Obtener("instalador");
+
     private static void Ejecutar(string programa, params string[] argumentos)
     {
+        // Los comandos auxiliares (sc.exe, schtasks.exe) nunca tumban
+        // la instalación, pero su resultado SÍ queda en el registro:
+        // un `schtasks /Run` fallido era invisible y dejaba al equipo
+        // sin compañero hasta el siguiente inicio de sesión.
         try
         {
             var psi = new ProcessStartInfo(programa)
@@ -130,11 +136,33 @@ public static class Instalador
             };
             foreach (var argumento in argumentos) psi.ArgumentList.Add(argumento);
             using var proceso = Process.Start(psi);
-            proceso?.WaitForExit(30000);
+            if (proceso is null)
+            {
+                LogInstalador.Advertencia($"{programa}: no se pudo iniciar el proceso.");
+                return;
+            }
+            string salida = proceso.StandardOutput.ReadToEnd();
+            string errores = proceso.StandardError.ReadToEnd();
+            if (!proceso.WaitForExit(30000))
+            {
+                LogInstalador.Advertencia($"{programa} {string.Join(" ", argumentos)}: sin salida en 30 s.");
+                return;
+            }
+            string detalle = string.Join(" ", argumentos);
+            if (proceso.ExitCode != 0)
+            {
+                string texto = (errores + " " + salida).Trim();
+                LogInstalador.Advertencia(
+                    $"{programa} {detalle} -> código {proceso.ExitCode}: {texto}");
+            }
+            else
+            {
+                LogInstalador.Debug($"{programa} {detalle} -> OK");
+            }
         }
-        catch (Exception)
+        catch (Exception exc)
         {
-            // Como en el Python: sc.exe/schtasks no tumban la instalación.
+            LogInstalador.Advertencia($"{programa}: {exc.Message}");
         }
     }
 

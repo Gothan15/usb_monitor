@@ -130,4 +130,43 @@ public class ClientePanelTests
         Assert.Contains("credencial rechazada", pasos[3].Detalle);
         oido.Stop();
     }
+
+    [Fact]
+    public async Task DuenoEquipo_ConDuenoAsignado()
+    {
+        var manejador = new ManejadorFalso(_ => ManejadorFalso.Json(200,
+            """{"ok":true,"pcName":"PC","ownerUsername":"gothan","unlockMode":"OWNER_OR_ADMIN","passwordUnlockEnabled":true}"""));
+        var (config, datos) = Fabrica.ConfiguracionEnPuerto(9);
+        using var cliente = new ClientePanel(config, manejador, datos);
+
+        var resultado = await cliente.DuenoEquipoAsync();
+
+        Assert.Equal(200, resultado.EstadoHttp);
+        Assert.NotNull(resultado.Datos);
+        Assert.Equal("gothan", resultado.Datos!.OwnerUsername);
+        Assert.Equal("OWNER_OR_ADMIN", resultado.Datos.UnlockMode);
+        Assert.True(resultado.Datos.PasswordUnlockEnabled);
+        Assert.StartsWith("/api/agent/owner?pcName=", manejador.Rutas[^1]);
+    }
+
+    [Fact]
+    public async Task DuenoEquipo_SinAsignar_NoEsErrorYEquipoInexistente_Si()
+    {
+        var manejador = new ManejadorFalso(_ => ManejadorFalso.Json(200,
+            """{"ok":true,"pcName":"PC","ownerUsername":null,"unlockMode":"OWNER_OR_ADMIN","passwordUnlockEnabled":true}"""));
+        var (config, datos) = Fabrica.ConfiguracionEnPuerto(9);
+        using var cliente = new ClientePanel(config, manejador, datos);
+
+        var sinDueno = await cliente.DuenoEquipoAsync();
+        Assert.Equal(200, sinDueno.EstadoHttp);
+        Assert.NotNull(sinDueno.Datos);
+        Assert.Null(sinDueno.Datos!.OwnerUsername);
+
+        var manejador404 = new ManejadorFalso(_ =>
+            ManejadorFalso.Json(404, """{"ok":false,"error":"Equipo no encontrado"}"""));
+        using var cliente404 = new ClientePanel(config, manejador404, datos);
+        var noExiste = await cliente404.DuenoEquipoAsync();
+        Assert.Equal(404, noExiste.EstadoHttp);
+        Assert.Null(noExiste.Datos);
+    }
 }

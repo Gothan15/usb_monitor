@@ -31,6 +31,7 @@ public sealed class CompaneroWindow : Window
     private readonly PasswordBox _contrasena;
     private readonly Button _boton;
     private readonly TextBlock _mensaje;
+    private readonly TextBlock _textoDueno;
 
     private List<BloqueoLocal> _bloqueos = new();
     private string _firmaArchivo = string.Empty;
@@ -38,6 +39,10 @@ public sealed class CompaneroWindow : Window
     private bool _leyendo;
     private bool _enviando;
     private bool _cerrando;
+
+    private DuenoEquipoRespuesta? _duenoInfo;
+    private DateTime _duenoConsultado = DateTime.MinValue;
+    private bool _consultandoDueno;
 
     public CompaneroWindow()
     {
@@ -59,6 +64,18 @@ public sealed class CompaneroWindow : Window
         _detalle.Foreground = Tema.TintaAtenuada;
         _detalle.Margin = new Thickness(0, 0, 0, 10);
         contenido.Children.Add(_detalle);
+
+        // De quién es la contraseña que vale en esta PC (o el aviso
+        // de que no hay dueño asignado): lo rellena ConsultarDueno.
+        _textoDueno = new TextBlock
+        {
+            FontFamily = Tema.FuenteTexto,
+            FontSize = 12.5,
+            Foreground = Tema.TintaAtenuada,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 10)
+        };
+        contenido.Children.Add(_textoDueno);
 
         _selector = Tema.Selector();
         _selector.Margin = new Thickness(0, 0, 0, 10);
@@ -131,6 +148,7 @@ public sealed class CompaneroWindow : Window
         {
             RegistroVentanas.Info("Ventana del compañero cargada.");
             await RevisarArchivoAsync();
+            await ConsultarDuenoAsync();
             _temporizador.Start();
             _latido.Start();
         };
@@ -143,6 +161,103 @@ public sealed class CompaneroWindow : Window
             _cliente.Dispose();
             RegistroVentanas.Info("Ventana del compañero cerrada.");
         };
+    }
+
+    /// <summary>
+    /// Cerrar la ventana con la X NO termina el compañero: se
+    /// oculta y el proceso sigue vigilando pending_local.json.
+    /// Antes la X mataba el proceso y la PC se quedaba sin ventana
+    /// de desbloqueo hasta que alguien lo relanzara a mano (en los
+    /// registros: 150 s sin compañero tras cerrar la ventana). El
+    /// proceso termina al cerrar la sesión de Windows o si el
+    /// servicio deja de necesitarlo; el servicio, además, relanza
+    /// el compañero si alguna vez no está.
+    /// </summary>
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        e.Cancel = true;
+        Hide();
+        RegistroVentanas.Info(
+            "Ventana del compañero oculta con la X; el compañero sigue en marcha.");
+        base.OnClosing(e);
+    }
+
+    /// <summary>
+    /// Pregunta al panel quién es el dueño asignado de esta PC
+    /// (con caché de 30 s) y pinta la línea informativa. Es solo
+    /// orientación para quien está frente a la PC: la autorización
+    /// la sigue decidiendo el servidor al enviar la contraseña.
+    /// </summary>
+    private async Task ConsultarDuenoAsync()
+    {
+        if (_consultandoDueno ||
+            DateTime.Now - _duenoConsultado < TimeSpan.FromSeconds(30))
+        {
+            return;
+        }
+        _consultandoDueno = true;
+        _duenoConsultado = DateTime.Now;
+        try
+        {
+            var resultado = await _cliente.DuenoEquipoAsync();
+            if (resultado.Datos is { } datos)
+            {
+                _duenoInfo = datos;
+                ActualizarTextoDueno();
+            }
+        }
+        catch (Exception ex)
+        {
+            RegistroVentanas.Error("No se pudo consultar el dueño del equipo.", ex);
+        }
+        finally
+        {
+            _consultandoDueno = false;
+        }
+    }
+
+    private void ActualizarTextoDueno()
+    {
+        if (_duenoInfo is null)
+        {
+            _textoDueno.Text = string.Empty;
+            return;
+        }
+
+        if (!_duenoInfo.PasswordUnlockEnabled)
+        {
+            _textoDueno.Text =
+                "El desbloqueo por contraseña está desactivado en el panel.";
+            _textoDueno.Foreground = Tema.Ambar;
+            return;
+        }
+
+        if (_duenoInfo.UnlockMode == "ADMIN_ONLY")
+        {
+            _textoDueno.Text =
+                "Modo de esta PC: solo un administrador puede desbloquear.";
+            _textoDueno.Foreground = Tema.TintaAtenuada;
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_duenoInfo.OwnerUsername))
+        {
+            _textoDueno.Text =
+                $"Dueño de esta PC: {_duenoInfo.OwnerUsername}. " +
+                "Su contraseña vale aquí; también la de un administrador.";
+            _textoDueno.Foreground = Tema.TintaAtenuada;
+            if (string.IsNullOrWhiteSpace(_usuario.Text))
+            {
+                _usuario.Text = _duenoInfo.OwnerUsername;
+            }
+            return;
+        }
+
+        _textoDueno.Text =
+            "Esta PC no tiene usuario dueño asignado en el panel: " +
+            "solo un administrador puede desbloquearla. Asigna un " +
+            "usuario a este equipo en el panel (Usuarios).";
+        _textoDueno.Foreground = Tema.Ambar;
     }
 
     private async Task RevisarArchivoAsync()
@@ -171,6 +286,7 @@ public sealed class CompaneroWindow : Window
 
             _bloqueos = nuevos;
             RefrescarVentana();
+            _ = ConsultarDuenoAsync();
         }
         catch (JsonException ex)
         {
