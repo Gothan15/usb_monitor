@@ -56,10 +56,14 @@ public class CifradoTests
     public void Fachada_EnEstaPlataforma_IdaYVuelta()
     {
         var cifrado = CifradoValores.Cifrar("valor-de-server-json");
-        if (OperatingSystem.IsWindows())
-            Assert.StartsWith("DPAPI:", cifrado);
-        else
-            Assert.StartsWith("ENC:", cifrado);
+        // Escritura SIEMPRE con Fernet («ENC:») en cualquier
+        // plataforma: decisión de la prueba real del 2026-11-02
+        // (DPAPI quedó solo como lectura de valores antiguos).
+        // Esta prueba pedía «DPAPI:» en Windows hasta que la
+        // corrida de GitHub Actions del 2026-11-02 —la primera en
+        // una Windows de verdad— destapó que pedía lo contrario de
+        // lo que el código hace a propósito.
+        Assert.StartsWith("ENC:", cifrado);
         Assert.Equal("valor-de-server-json", CifradoValores.Descifrar(cifrado));
     }
 
