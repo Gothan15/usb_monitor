@@ -52,6 +52,14 @@ interface PhaseResult {
   phase?: string;
 }
 
+interface RequisitoWinRM {
+  id: string;
+  etiqueta: string;
+  ok: boolean;
+  detalle: string;
+  consejo?: string;
+}
+
 export function RemoteInstallDialog({
   open,
   onOpenChange,
@@ -77,6 +85,11 @@ export function RemoteInstallDialog({
   const [installMessage, setInstallMessage] = useState("");
   const [errorDetail, setErrorDetail] = useState("");
 
+  // Comprobación previa de requisitos WinRM
+  const [checkRunning, setCheckRunning] = useState(false);
+  const [checks, setChecks] = useState<RequisitoWinRM[] | null>(null);
+  const [checkMessage, setCheckMessage] = useState("");
+
   const resetState = useCallback(() => {
     setStep("credentials");
     setUsername("");
@@ -87,6 +100,9 @@ export function RemoteInstallDialog({
     setCopyMessage("");
     setInstallMessage("");
     setErrorDetail("");
+    setCheckRunning(false);
+    setChecks(null);
+    setCheckMessage("");
   }, []);
 
   const handleOpenChange = useCallback(
@@ -189,6 +205,51 @@ export function RemoteInstallDialog({
       }
     );
   };
+
+  const handleCheckRequirements = useCallback(async () => {
+    setCheckRunning(true);
+    setChecks(null);
+    setCheckMessage("");
+    try {
+      const csrfToken = getCsrfTokenFromDocument();
+      if (!csrfToken) {
+        setCheckMessage(
+          "Sesión sin token de seguridad. Inicia sesión nuevamente.",
+        );
+        return;
+      }
+      const res = await fetch("/api/remote-install", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": csrfToken,
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          ip: targetIp,
+          username: username.trim(),
+          password,
+          phase: "check",
+          port,
+          protocol: "winrm",
+          stream: false,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (data && Array.isArray(data.checks)) {
+        setChecks(data.checks as RequisitoWinRM[]);
+        setCheckMessage(data.message || "");
+      } else {
+        setCheckMessage(
+          data?.error || data?.message || `Error HTTP ${res.status}`,
+        );
+      }
+    } catch (err: any) {
+      setCheckMessage(err?.message || "Error de conexión");
+    } finally {
+      setCheckRunning(false);
+    }
+  }, [targetIp, username, password, port]);
 
   const handleStartCopy = useCallback(async () => {
     setStep("copy");
@@ -351,12 +412,24 @@ export function RemoteInstallDialog({
                       <TooltipTrigger type="button" tabIndex={-1} className="pr-2">
                         <Info className="size-3.5 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
-                      <TooltipContent className="max-w-[320px] text-xs space-y-2">
+                      <TooltipContent className="max-w-[340px] text-xs space-y-2">
                         <p>
-                          For non-domain environments: Run &apos;Enable-PSRemoting -Force&apos; on the target as Administrator.
+                          En el equipo destino, una sola vez y como
+                          administrador local (red sin dominio), ejecuta:
+                        </p>
+                        <p className="font-mono text-[11px] leading-relaxed">
+                          Enable-PSRemoting -SkipNetworkProfileCheck -Force
+                          <br />
+                          winrm set winrm/config/service/Auth
+                          &apos;@{"{"}Basic=&quot;true&quot;;Negotiate=&quot;true&quot;{"}"}&apos;
+                          <br />
+                          winrm set winrm/config/service
+                          &apos;@{"{"}AllowUnencrypted=&quot;true&quot;{"}"}&apos;
                         </p>
                         <p>
-                          For corporate environments: Enable via GPO at Computer Configuration &gt; Policies &gt; Administrative Templates &gt; Windows Components &gt; Windows Remote Management (WinRM) &gt; WinRM Service &gt; Allow remote server management through WinRM.
+                          La cuenta debe ser administradora local CON
+                          contraseña. Usa «Comprobar requisitos» para
+                          verificarlo todo antes de instalar.
                         </p>
                       </TooltipContent>
                     </Tooltip>
@@ -410,7 +483,7 @@ export function RemoteInstallDialog({
                 htmlFor="ssh-port"
                 className="text-xs text-muted-foreground"
               >
-                Puerto SSH
+                Puerto {protocol.toUpperCase()}
               </Label>
               <Input
                 id="ssh-port"
@@ -426,6 +499,63 @@ export function RemoteInstallDialog({
                 className="w-24"
               />
             </div>
+
+            {/* Comprobación previa (solo WinRM): la receta del
+                destino se verifica en vivo antes de copiar nada. */}
+            {protocol === "winrm" && (
+              <div className="space-y-2 border-t border-border/60 pt-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCheckRequirements}
+                  disabled={!isCredentialsValid || checkRunning}
+                  className="w-full"
+                >
+                  {checkRunning ? (
+                    <Spinner size={14} />
+                  ) : (
+                    <CheckCircle2 className="mr-2 size-3.5" />
+                  )}
+                  {checkRunning
+                    ? "Comprobando requisitos…"
+                    : "Comprobar requisitos en el destino"}
+                </Button>
+                {checkMessage && (
+                  <p className="text-xs text-muted-foreground">
+                    {checkMessage}
+                  </p>
+                )}
+                {checks && (
+                  <ul className="space-y-1.5">
+                    {checks.map((check) => (
+                      <li key={check.id} className="text-xs">
+                        <span className="flex items-start gap-1.5">
+                          {check.ok ? (
+                            <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-emerald-600" />
+                          ) : (
+                            <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-rose-600" />
+                          )}
+                          <span>
+                            <span className="font-medium text-foreground">
+                              {check.etiqueta}
+                            </span>
+                            <span className="block text-muted-foreground">
+                              {check.detalle}
+                            </span>
+                            {!check.ok && check.consejo && (
+                              <span className="mt-0.5 block font-mono text-[11px] text-muted-foreground">
+                                {check.consejo}
+                              </span>
+                            )}
+                          </span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </div>
         )}
 
