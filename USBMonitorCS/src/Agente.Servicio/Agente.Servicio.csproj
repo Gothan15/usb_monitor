@@ -1,6 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk.Worker">
 
   <PropertyGroup>
+    <!-- Sin consola: aplicación de ventanas. El SDK Worker dejaba
+         el ejecutable como aplicación de consola y al abrir la
+         caja de herramientas, el asistente o el compañero quedaba
+         una ventana de consola detrás (el agente Python no la
+         mostraba). Como servicio da igual el subsistema, y los
+         modos de consola ya vuelcan todo a agente.log. -->
+    <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
