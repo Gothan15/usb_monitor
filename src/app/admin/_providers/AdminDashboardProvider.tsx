@@ -149,10 +149,16 @@ export function AdminDashboardProvider({
     void checkRole();
   }, [router]);
 
+  // Las cuatro consultas se piden al abrir el panel, en paralelo,
+  // aunque su pestaña no esté activa: son peticiones baratas en red
+  // local y así cambiar de pestaña no espera datos la primera vez.
+  // El refresco periódico sí sigue limitado a la pestaña activa
+  // (refetchInterval con «needs»), y «loading» también: la precarga
+  // en segundo plano no bloquea la pestaña que se está viendo.
   const eventsQuery = useQuery<USBEvent[]>({
     queryKey: ["events"],
     queryFn: () => fetchJson<USBEvent[]>("/api/usb-event"),
-    enabled: !checkingRole && needs.events,
+    enabled: !checkingRole,
     staleTime: 30_000,
     refetchInterval: needs.events && isLiveSyncEnabled ? 60_000 : false,
   });
@@ -160,7 +166,7 @@ export function AdminDashboardProvider({
   const computersQuery = useQuery<Computer[]>({
     queryKey: ["computers"],
     queryFn: () => fetchJson<Computer[]>("/api/computers"),
-    enabled: !checkingRole && needs.computers,
+    enabled: !checkingRole,
     staleTime: 30_000,
     refetchInterval: needs.computers && isLiveSyncEnabled ? 60_000 : false,
   });
@@ -179,7 +185,7 @@ export function AdminDashboardProvider({
       }
       return [];
     },
-    enabled: !checkingRole && needs.whitelist,
+    enabled: !checkingRole,
     staleTime: 30_000,
     refetchInterval: needs.whitelist && isLiveSyncEnabled ? 120_000 : false,
   });
@@ -199,7 +205,7 @@ export function AdminDashboardProvider({
       }
       return 0;
     },
-    enabled: !checkingRole && needs.users,
+    enabled: !checkingRole,
     staleTime: 60_000,
     refetchInterval: needs.users && isLiveSyncEnabled ? 120_000 : false,
   });

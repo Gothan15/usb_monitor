@@ -1,7 +1,7 @@
 "use client";
 
 import { type ReactNode } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 
 interface PageTransitionProps {
   /** Used as React key to trigger animation on route change */
@@ -10,15 +10,14 @@ interface PageTransitionProps {
   className?: string;
 }
 
-const variants = {
-  initial: { opacity: 0, y: 18, filter: "blur(6px)" },
-  animate: { opacity: 1, y: 0, filter: "blur(0px)" },
-  exit: { opacity: 0, y: -10, filter: "blur(6px)" },
-};
-
 /**
- * Wraps page content with a smooth fade+slide+blur transition.
- * Use `transitionKey` (usually the pathname) to trigger on navigation.
+ * Wraps page content with a short enter animation on route change.
+ *
+ * Solo hay animación de entrada: la versión anterior usaba
+ * AnimatePresence en modo «wait» con salida y entrada de 0,38 s
+ * cada una, así que cada cambio de pestaña pagaba ~0,76 s de
+ * animación en serie antes de ver el contenido nuevo. Sin salida,
+ * el contenido nuevo aparece al momento y se asienta en 0,2 s.
  */
 export function PageTransition({
   transitionKey,
@@ -26,18 +25,14 @@ export function PageTransition({
   className,
 }: PageTransitionProps) {
   return (
-    <AnimatePresence mode="wait">
-      <motion.div
-        key={transitionKey}
-        variants={variants}
-        initial="initial"
-        animate="animate"
-        exit="exit"
-        transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
-        className={className}
-      >
-        {children}
-      </motion.div>
-    </AnimatePresence>
+    <motion.div
+      key={transitionKey}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+      className={className}
+    >
+      {children}
+    </motion.div>
   );
 }
