@@ -10,6 +10,7 @@ import {
   sanitizeUsername,
   serializeUser,
 } from "./_helpers";
+import { broadcastUserChange } from "@/lib/socket";
 
 function unauthorized() {
   return NextResponse.json(
@@ -158,6 +159,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    broadcastUserChange();
     return NextResponse.json({
       ok: true,
       item: serializeUser(user),
@@ -211,6 +213,7 @@ export async function DELETE(req: NextRequest) {
     const found = existing.map((u) => u.id);
     if (found.length) {
       await db.user.deleteMany({ where: { id: { in: found } } });
+      broadcastUserChange();
     }
     return NextResponse.json({
       ok: true,

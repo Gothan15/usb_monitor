@@ -28,6 +28,8 @@ interface LiveDataContextValue {
   liveEvents: SocketUSBEvent[];
   /** Count of events received since page load */
   liveEventCount: number;
+  /** Bumps on every unlock-related change pushed by the server */
+  unlockVersion: number;
   /** Clear the live events buffer */
   clearLiveEvents: () => void;
 }
@@ -69,12 +71,16 @@ export function LiveDataProvider({
   const [liveEvents, setLiveEvents] = useState<SocketUSBEvent[]>([]);
   const eventCountRef = useRef(0);
   const [liveEventCount, setLiveEventCount] = useState(0);
+  const [unlockVersion, setUnlockVersion] = useState(0);
 
   const notificadosRef = useRef<Set<string>>(new Set());
 
   const invalidatorRef = useRef<ReturnType<typeof createDebouncedInvalidator> | null>(null);
   if (!invalidatorRef.current) {
-    invalidatorRef.current = createDebouncedInvalidator(queryClient, 3000);
+    // 400 ms: agrupa ráfagas sin que la tabla se sienta lenta.
+    // Con 3000 ms el panel parecía ir «a saltos» aunque el aviso
+    // por socket hubiera llegado al instante.
+    invalidatorRef.current = createDebouncedInvalidator(queryClient, 400);
   }
   const debouncedInvalidate = invalidatorRef.current;
 
@@ -147,11 +153,18 @@ export function LiveDataProvider({
     }
   }, [debouncedInvalidate]);
 
+  const onUnlockChange = useCallback(() => {
+    // La pestaña Desbloqueos no vive en React Query: consume
+    // este contador y recarga cuando sube.
+    setUnlockVersion((v) => v + 1);
+  }, []);
+
   const { status } = useSocketEvents({
     onUSBEvent,
     onComputerStatus,
     onWhitelistChange,
     onUserChange,
+    onUnlockChange,
     enabled,
   });
 
@@ -166,9 +179,10 @@ export function LiveDataProvider({
       connectionStatus: status,
       liveEvents,
       liveEventCount,
+      unlockVersion,
       clearLiveEvents,
     }),
-    [status, liveEvents, liveEventCount, clearLiveEvents],
+    [status, liveEvents, liveEventCount, unlockVersion, clearLiveEvents],
   );
 
   return (

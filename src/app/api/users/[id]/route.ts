@@ -9,6 +9,7 @@ import {
   sanitizeUsername,
   serializeUser,
 } from "../_helpers";
+import { broadcastUserChange } from "@/lib/socket";
 
 function unauthorized() {
   return NextResponse.json(
@@ -151,6 +152,7 @@ export async function PATCH(
       },
     });
 
+    broadcastUserChange();
     return NextResponse.json({
       ok: true,
       item: serializeUser(user),
@@ -192,6 +194,7 @@ export async function DELETE(
 
   try {
     await db.user.delete({ where: { id: userId } });
+    broadcastUserChange();
     return NextResponse.json({ ok: true });
   } catch (error: any) {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {

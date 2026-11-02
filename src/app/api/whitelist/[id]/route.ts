@@ -6,6 +6,7 @@ import {
   sanitizeText,
   serializeWhitelistEntry,
 } from "../_helpers";
+import { broadcastWhitelistChange } from "@/lib/socket";
 
 function unauthorized() {
   return NextResponse.json(
@@ -37,6 +38,7 @@ export async function DELETE(
       include: { createdBy: { select: { id: true, username: true } } },
     });
 
+    broadcastWhitelistChange();
     return NextResponse.json({
       ok: true,
       item: serializeWhitelistEntry(deleted),
@@ -104,6 +106,7 @@ export async function PATCH(
       include: { createdBy: { select: { id: true, username: true } } },
     });
 
+    broadcastWhitelistChange();
     return NextResponse.json({
       ok: true,
       item: serializeWhitelistEntry(updated),

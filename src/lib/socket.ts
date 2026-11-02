@@ -61,6 +61,20 @@ export function broadcastWhitelistChange(): void {
   ioActual()?.emit("whitelist:change");
 }
 
+export function broadcastUserChange(): void {
+  ioActual()?.emit("user:change");
+}
+
+/**
+ * Aviso de que algo cambió en el mundo de los desbloqueos: un
+ * bloqueo nuevo, un intento de contraseña, un cierre o una
+ * entrega al agente. La pestaña Desbloqueos se refresca con
+ * este empuje en vez de sondear.
+ */
+export function broadcastUnlockChange(): void {
+  ioActual()?.emit("unlock:change");
+}
+
 /* ── Setup ── */
 
 export const setupSocket = (io: Server) => {
