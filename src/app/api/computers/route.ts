@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth";
 import { logError } from "@/lib/logger";
+import { readAppSettings } from "@/lib/appSettings";
+import { getCurrentDate } from "@/lib/time";
 
 export async function GET(req: Request) {
   try {
@@ -10,7 +12,31 @@ export async function GET(req: Request) {
       orderBy: { lastSeen: "desc" },
     });
 
-    return NextResponse.json(computers);
+    // UNA sola verdad para «¿está activo el servicio en esta PC?»:
+    // el agente ES el servicio, así que el servicio está activo si
+    // el agente ha dado señal hace poco (latido cada 30 s; umbral =
+    // el del método 3, silenceThresholdMinutes, mín. 2 min).
+    // Antes convivían dos datos: isActive (lo alimenta el latido,
+    // funcionaba) y serviceRunning (solo lo escribían el escáner,
+    // la instalación remota y una sonda a http://<ip>:5001/health
+    // que nunca puede responder: el agente escucha solo en
+    // 127.0.0.1 y su ruta es /estado, no /health). Resultado: la
+    // pestaña Equipos enseñaba «Servicio: Sin respuesta» en PCs
+    // con el servicio en marcha, y el botón de ver USB salía
+    // deshabilitado. Aquí ambos campos se derivan de la señal.
+    const settings = await readAppSettings();
+    const umbralMs =
+      Math.max(2, settings.silenceThresholdMinutes || 5) * 60_000;
+    const ahora = getCurrentDate().getTime();
+
+    const conEstadoReal = computers.map((computer) => {
+      const activo =
+        computer.lastSeen != null &&
+        ahora - new Date(computer.lastSeen).getTime() <= umbralMs;
+      return { ...computer, isActive: activo, serviceRunning: activo };
+    });
+
+    return NextResponse.json(conEstadoReal);
   } catch (error) {
     if ((error as any)?.message === "UNAUTHORIZED")
       return NextResponse.json({ error: "No autorizado" }, { status: 401 });

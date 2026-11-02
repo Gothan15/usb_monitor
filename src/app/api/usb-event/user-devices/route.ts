@@ -135,7 +135,17 @@ export async function GET(req: Request) {
     return NextResponse.json({
       ok: true,
       events,
-      computer: user.computer,
+      // El «Equipo activo» de la vista del usuario sale de la
+      // misma señal: la marca guardada no se apaga sola cuando el
+      // agente muere, así que se deriva de lastSeen como en
+      // GET /api/computers.
+      computer: {
+        ...user.computer,
+        isActive:
+          user.computer.lastSeen != null &&
+          new Date(user.computer.lastSeen).getTime() >=
+            senalReciente.getTime(),
+      },
       connectedUSBs: connectedUSBs.map(serializeConnection),
       usbHistory: usbHistory.map(serializeConnection),
       warnings,
