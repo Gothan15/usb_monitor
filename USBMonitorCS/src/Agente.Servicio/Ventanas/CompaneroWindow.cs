@@ -14,9 +14,11 @@ namespace USBMonitor.Agente.Servicio.Ventanas;
 /// Ventana del compañero: pide la contraseña del dueño o de un
 /// administrador para un dispositivo bloqueado.
 ///
-/// No detecta dispositivos: lee cada dos segundos el archivo local
-/// que escribe el servicio. La validación la hace el servidor a
-/// través de ClientePanel; esta ventana solo presenta el resultado.
+/// No detecta dispositivos: sigue el archivo local que escribe el
+/// servicio (pending_local.json) con un vigilante de archivos y un
+/// sondeo de respaldo de 1 s, para aparecer en cuanto hay un
+/// bloqueo. La validación la hace el servidor a través de
+/// ClientePanel; esta ventana solo presenta el resultado.
 /// </summary>
 public sealed class CompaneroWindow : Window
 {
@@ -134,7 +136,7 @@ public sealed class CompaneroWindow : Window
 
         _temporizador = new DispatcherTimer
         {
-            Interval = TimeSpan.FromSeconds(2)
+            Interval = TimeSpan.FromSeconds(1)
         };
         _temporizador.Tick += async (_, _) => await RevisarArchivoAsync();
 
@@ -149,6 +151,7 @@ public sealed class CompaneroWindow : Window
             RegistroVentanas.Info("Ventana del compañero cargada.");
             await RevisarArchivoAsync();
             await ConsultarDuenoAsync();
+            IniciarVigilanteArchivo();
             _temporizador.Start();
             _latido.Start();
         };
@@ -158,9 +161,49 @@ public sealed class CompaneroWindow : Window
             _cerrando = true;
             _temporizador.Stop();
             _latido.Stop();
+            _vigilante?.Dispose();
             _cliente.Dispose();
             RegistroVentanas.Info("Ventana del compañero cerrada.");
         };
+    }
+
+    private FileSystemWatcher? _vigilante;
+
+    /// <summary>
+    /// Vigilante de pending_local.json: el servicio lo escribe en
+    /// cuanto bloquea un dispositivo (temporal + renombrado), y la
+    /// ventana tiene que salir en ese instante, no en el siguiente
+    /// sondeo. Cualquier toque al archivo o a su temporal dispara
+    /// una relectura; RevisarArchivoAsync compara la firma y sale
+    /// enseguida si nada cambió de verdad. Si el vigilante no puede
+    /// crearse, queda el sondeo de 1 s.
+    /// </summary>
+    private void IniciarVigilanteArchivo()
+    {
+        try
+        {
+            _vigilante = new FileSystemWatcher(Registro.DirectorioDatos)
+            {
+                Filter = "pending_local.json*",
+                NotifyFilter = NotifyFilters.LastWrite |
+                               NotifyFilters.FileName |
+                               NotifyFilters.Size,
+                EnableRaisingEvents = true,
+            };
+            _vigilante.Changed += AlCambiarArchivo;
+            _vigilante.Created += AlCambiarArchivo;
+            _vigilante.Renamed += AlCambiarArchivo;
+        }
+        catch (Exception ex)
+        {
+            RegistroVentanas.Error(
+                "Sin vigilante de pending_local.json; queda el sondeo.", ex);
+        }
+    }
+
+    private void AlCambiarArchivo(object sender, FileSystemEventArgs e)
+    {
+        _ = Dispatcher.InvokeAsync(async () => await RevisarArchivoAsync());
     }
 
     /// <summary>
