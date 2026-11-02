@@ -5,19 +5,8 @@ import { getCurrentDate } from "@/lib/time";
 import { hit } from "@/lib/rateLimit";
 import { logError } from "@/lib/logger";
 import { probeWinRM } from "@/lib/winrmService";
-
-async function tryHealth(ip: string) {
-  try {
-    const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), 1500);
-    const res = await fetch(`http://${ip}:5001/health`, {
-      signal: controller.signal,
-    });
-    clearTimeout(t);
-    if (res.ok) return await res.json();
-  } catch {}
-  return null;
-}
+import { checkServiceHealth } from "@/lib/serviceNotifier";
+import { getAllLocalNetworks } from "@/lib/networkScanner";
 
 export async function POST(req: NextRequest) {
   try {
@@ -37,7 +26,18 @@ export async function POST(req: NextRequest) {
     if (!rl.allowed) {
       return NextResponse.json({ error: "Rate limit" }, { status: 429 });
     }
-    const health = await tryHealth(normalizedIp);
+    // Sonda real al agente: /estado (la ruta actual; /health era
+    // del agente viejo) vía checkServiceHealth. El agente escucha
+    // SOLO en 127.0.0.1, así que para las IPs del propio panel se
+    // sonda por loopback; para el resto de PCs la sonda no puede
+    // llegar (por diseño) y el estado verdadero es la señal del
+    // agente en el panel, no esta sonda.
+    const ipsPropias = new Set(
+      getAllLocalNetworks().map((n) => n.address),
+    );
+    const ipSonda = ipsPropias.has(normalizedIp) ? "127.0.0.1" : normalizedIp;
+    const resultado = await checkServiceHealth(ipSonda);
+    const health = resultado.available ? resultado : null;
     const serviceInstalled = !!health;
     const serviceRunning = !!health;
     // Estado WinRM real sin credenciales: sonda WS-Man Identify
@@ -57,33 +57,35 @@ export async function POST(req: NextRequest) {
       serviceRunning: null,
     };
     const checkedAt = getCurrentDate();
+    // OJO: una sonda del panel NO es señal del agente. Antes esta
+    // ruta escribía lastSeen = ahora e isActive = true al
+    // comprobar, y la pestaña Equipos enseñaba «última conexión:
+    // ahora» en PCs cuyo agente llevaba días caído. lastSeen solo
+    // lo mueve el propio agente (ping y eventos); aquí se guarda
+    // únicamente el resultado de la comprobación.
     await db.computer.upsert({
       where: { name: normalizedIp },
       update: {
         ipAddress: normalizedIp,
-        lastSeen: checkedAt,
-        isActive: true,
         serviceInstalled,
         serviceRunning,
         lastServiceCheck: checkedAt,
-        agentVersion: health?.version ?? undefined,
+        agentVersion: health?.serviceVersion ?? undefined,
       },
       create: {
         name: normalizedIp,
         ipAddress: normalizedIp,
-        lastSeen: checkedAt,
-        isActive: true,
         serviceInstalled,
         serviceRunning,
         lastServiceCheck: checkedAt,
-        agentVersion: health?.version ?? null,
+        agentVersion: health?.serviceVersion ?? null,
       },
     });
     const res = NextResponse.json({
       ip: normalizedIp,
       serviceInstalled,
       serviceRunning,
-      agentVersion: health?.version || null,
+      agentVersion: health?.serviceVersion || null,
       winrm,
       health,
     });

@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/dialog";
 import { getCsrfTokenFromDocument } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { Computer, formatDateTime, formatTime } from "./types";
+import { Computer, formatDateTime } from "./types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -58,8 +58,7 @@ interface Props {
 const COLUMNAS_ORDEN: { key: keyof Computer; label: string }[] = [
   { key: "name", label: "Nombre" },
   { key: "ipAddress", label: "Dirección IP" },
-  { key: "isActive", label: "Estado" },
-  { key: "serviceRunning", label: "Servicio" },
+  { key: "isActive", label: "Servicio" },
   { key: "lastSeen", label: "Última conexión" },
   { key: "createdAt", label: "Registro" },
 ];
@@ -187,8 +186,7 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
   const quickStats = useMemo(() => {
     if (loading) {
       return [
-        { label: "Activos", value: "--" },
-        { label: "Servicio OK", value: "--" },
+        { label: "Servicio activo", value: "--" },
         { label: "Inventario", value: "--" },
       ];
     }
@@ -196,14 +194,10 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
     const activeCount = sortedData.filter(
       (computer) => computer.isActive,
     ).length;
-    const runningCount = sortedData.filter(
-      (computer) => computer.serviceRunning,
-    ).length;
     const total = sortedData.length;
 
     return [
-      { label: "Activos", value: activeCount.toString() },
-      { label: "Servicio OK", value: runningCount.toString() },
+      { label: "Servicio activo", value: activeCount.toString() },
       { label: "Inventario", value: total.toString() },
     ];
   }, [sortedData, loading]);
@@ -402,8 +396,7 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
           {/* ── La flota, como lista de registros ── */}
           <ul className="mt-4 divide-y divide-border border-t border-border">
             {paginatedComputers.map((computer) => {
-              const canViewUsb =
-                computer.isActive && computer.serviceRunning;
+              const canViewUsb = computer.isActive;
               const eliminando = deletingId === computer.id;
               return (
                 <li
@@ -430,24 +423,18 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
                     </p>
                   </div>
 
-                  {/* Estado y servicio, como palabras con punto */}
+                  {/* Servicio: una sola palabra con punto. El dato
+                      sale de la señal del agente (GET /api/computers
+                      lo deriva de lastSeen): el agente ES el
+                      servicio. Antes había además un «Servicio: 200
+                      OK / Sin respuesta» de una sonda al :5001 que
+                      nunca podía responder — era el mismo dato dos
+                      veces y una de las dos mentía. */}
                   <div className="flex flex-wrap gap-x-10 gap-y-4 md:w-72 md:shrink-0">
-                    <Dato etiqueta="Estado">
-                      <PalabraEstado activo={computer.isActive}>
-                        {computer.isActive ? "Activo" : "Inactivo"}
-                      </PalabraEstado>
-                    </Dato>
                     <Dato etiqueta="Servicio">
-                      <PalabraEstado activo={Boolean(computer.serviceRunning)}>
-                        {computer.serviceRunning
-                          ? "200 OK"
-                          : "Sin respuesta"}
+                      <PalabraEstado activo={computer.isActive}>
+                        {computer.isActive ? "En ejecución" : "Sin señal"}
                       </PalabraEstado>
-                      {computer.lastServiceCheck && (
-                        <p className="mt-1 text-[11px] tabular-nums text-muted-foreground">
-                          Ping {formatTime(computer.lastServiceCheck)}
-                        </p>
-                      )}
                     </Dato>
                   </div>
 
