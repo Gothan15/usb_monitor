@@ -51,8 +51,17 @@ export async function PATCH(
     "password"
   );
   const ipProvided = Object.prototype.hasOwnProperty.call(body, "ipAddress");
+  const computerIdProvided = Object.prototype.hasOwnProperty.call(
+    body,
+    "computerId"
+  );
 
-  if (!usernameProvided && !passwordProvided && !ipProvided) {
+  if (
+    !usernameProvided &&
+    !passwordProvided &&
+    !ipProvided &&
+    !computerIdProvided
+  ) {
     return badRequest("No se enviaron cambios");
   }
 
@@ -63,8 +72,28 @@ export async function PATCH(
 
   const password = passwordProvided ? sanitizePassword(body?.password) : null;
 
+  // La asignación se hace por ID de equipo (la fila exacta que el
+  // administrador eligió). Antes se resolvía por la IP, que no es
+  // única: con varias filas compartiendo IP (127.0.0.1, IPs viejas)
+  // el usuario quedaba enlazado a otro equipo y el agente de su PC
+  // seguía respondiendo que no tenía dueño. computerId null =
+  // desasignar. La vía por IP queda como compatibilidad.
   let computerId: string | null | undefined = undefined;
-  if (ipProvided) {
+  if (computerIdProvided) {
+    const bruto = body?.computerId;
+    if (typeof bruto === "string" && bruto.trim()) {
+      const computer = await db.computer.findUnique({
+        where: { id: bruto.trim() },
+        select: { id: true },
+      });
+      if (!computer) {
+        return notFound("No se encontró el equipo seleccionado");
+      }
+      computerId = computer.id;
+    } else {
+      computerId = null;
+    }
+  } else if (ipProvided) {
     const ipAddress = normalizeIpAddress(body?.ipAddress);
     if (!ipAddress) {
       computerId = null;

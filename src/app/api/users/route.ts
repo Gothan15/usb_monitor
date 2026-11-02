@@ -102,8 +102,26 @@ export async function POST(req: NextRequest) {
     return badRequest("La contraseña es obligatoria");
   }
 
+  // La asignación se hace por ID de equipo: es la fila exacta que el
+  // administrador eligió en la lista. Antes se resolvía por la IP del
+  // equipo, que NO es única (varios equipos pueden compartir
+  // 127.0.0.1 o una IP vieja): el findFirst enlazaba al usuario con
+  // OTRA fila y el agente de su PC seguía sin dueño. La vía por IP
+  // queda solo como compatibilidad si no llega computerId.
   let computerId: string | null = null;
-  if (ipAddress) {
+  if (Object.prototype.hasOwnProperty.call(body, "computerId")) {
+    const bruto = body?.computerId;
+    if (typeof bruto === "string" && bruto.trim()) {
+      const computer = await db.computer.findUnique({
+        where: { id: bruto.trim() },
+        select: { id: true },
+      });
+      if (!computer) {
+        return notFound("No se encontró el equipo seleccionado");
+      }
+      computerId = computer.id;
+    }
+  } else if (ipAddress) {
     const computer = await db.computer.findFirst({
       where: {
         ipAddress: {
