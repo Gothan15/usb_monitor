@@ -32,6 +32,8 @@ public sealed class UnidadConectada
     [JsonPropertyName("serialNumber")] public string? SerialNumber { get; set; }
     [JsonPropertyName("model")] public string? Model { get; set; }
     [JsonPropertyName("size")] public long? Size { get; set; }
+    /// <summary>Tipo del dispositivo (DISCO, TELEFONO, OPTICO, RED, IMPRESORA).</summary>
+    [JsonPropertyName("deviceKind")] public string? DeviceKind { get; set; }
 }
 
 /// <summary>Bloqueo pendiente de ejecución de GET /api/usb-unlock/status.</summary>

@@ -55,6 +55,7 @@ export interface ConnectedUSBDevice {
   volumeName: string;
   serialNumber: string;
   model: string;
+  deviceKind: string;
   size: number;
   connectedAt: string;
   lastSeen: string;
@@ -69,6 +70,7 @@ export interface DisconnectedUSBDevice {
   volumeName: string;
   serialNumber: string;
   model: string;
+  deviceKind: string;
   size: number;
   connectedAt: string;
   disconnectedAt: string | null;

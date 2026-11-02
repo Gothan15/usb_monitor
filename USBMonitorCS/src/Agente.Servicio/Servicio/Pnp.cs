@@ -88,7 +88,7 @@ public static class Pnp
     }
 
     /// <summary>Deshabilita el nodo y VERIFICA que quedó deshabilitado.</summary>
-    public static bool Deshabilitar(string instancia)
+    public static bool Deshabilitar(string instancia, double segundos = 3.0)
     {
         var devInst = LocalizarNodo(instancia, fantasma: false);
         if (devInst is null)
@@ -100,7 +100,38 @@ public static class Pnp
         var resultado = CM_Disable_DevNode(devInst.Value, 0);
         if (resultado != CrSuccess)
             Log.Advertencia($"CM_Disable_DevNode({instancia}) -> {resultado}");
-        return EsperarEstado(instancia, deshabilitado: true);
+        return EsperarEstado(instancia, deshabilitado: true, segundos);
+    }
+
+    /// <summary>
+    /// Deshabilita EN CADENA y devuelve el nodo que quedó
+    /// deshabilitado (null si ninguno cedió). Primero el propio
+    /// nodo, con una espera larga; si no cede, el nodo USB del
+    /// dispositivo (USB\VID_…, jamás el concentrador raíz ni el
+    /// controlador: deshabilitarlos tumbaría todos los USB).
+    ///
+    /// Existe por los DISCOS DUROS externos: su nodo de disco a
+    /// menudo no llega al código 22 — Windows lo deja en «necesita
+    /// reinicio» por ser un disco fijo con volúmenes montados — y
+    /// el bloqueo caía degradado a solo lectura, mientras las
+    /// memorias (extraíbles) sí ceden al momento. El nodo USB del
+    /// dispositivo sí se puede deshabilitar en caliente y tumba
+    /// toda la pila, como al expulsar el dispositivo.
+    /// </summary>
+    public static string? DeshabilitarConCadena(string instancia, double segundosPorNodo = 10)
+    {
+        if (Deshabilitar(instancia, segundosPorNodo)) return instancia;
+        foreach (var ancestro in Ancestros(instancia))
+        {
+            var a = ancestro.ToUpperInvariant();
+            if (!a.StartsWith("USB\\VID_")) continue;
+            if (Deshabilitar(ancestro, segundosPorNodo))
+            {
+                Log.Info($"Bloqueado por el nodo USB del dispositivo: {ancestro}");
+                return ancestro;
+            }
+        }
+        return null;
     }
 
     /// <summary>Habilita el nodo (presente o fantasma) y VERIFICA el resultado.</summary>

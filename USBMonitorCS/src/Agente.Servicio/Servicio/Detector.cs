@@ -5,8 +5,9 @@
 // Tipos: DISCO (memorias, carcasas USBSTOR y carcasas UAS: disco SCSI
 // con ancestro USB — un SATA interno también es SCSI y jamás debe
 // clasificar), TELEFONO (WPD/MTP, sin letra, por serial), OPTICO
-// (unidades de CD/DVD USB físicas) y RED (adaptadores USB; el servicio
-// aplica la regla de línea base sobre ellos).
+// (unidades de CD/DVD USB físicas), RED (adaptadores USB; el servicio
+// aplica la regla de línea base sobre ellos) e IMPRESORA (impresoras
+// USB: solo se detectan y se reportan, nunca se bloquean).
 //
 // La clasificación vive en funciones puras (ClasificarDisco,
 // LimpiarSerial) separadas de WMI para poder probarla sin Windows.
@@ -23,6 +24,7 @@ public static class TipoDispositivo
     public const string Telefono = "TELEFONO";
     public const string Optico = "OPTICO";
     public const string Red = "RED";
+    public const string Impresora = "IMPRESORA";
 }
 
 /// <summary>Un dispositivo presente, tal como lo ve la enumeración.</summary>
@@ -115,6 +117,18 @@ public sealed class Detector
         if (!superior.StartsWith("USBSTOR\\CDROM")) return false;
         // Unidades virtuales (montadores de imágenes): no se vigilan.
         return !(modelo ?? "").ToLowerInvariant().Contains("virtual");
+    }
+
+    /// <summary>
+    /// Impresora tras el bus USB: su nodo es USBPRINT\… (el
+    /// dispositivo de impresión) o el propio nodo USB\… de clase
+    /// impresora. Las virtuales (PDF, XPS) no cuelgan de USB y
+    /// quedan fuera por el prefijo.
+    /// </summary>
+    public static bool EsImpresoraUsb(string? instancia)
+    {
+        var superior = (instancia ?? "").ToUpperInvariant();
+        return superior.StartsWith("USBPRINT\\") || superior.StartsWith("USB\\");
     }
 
     // ── WMI ───────────────────────────────────────────────────────
@@ -276,6 +290,31 @@ public sealed class Detector
             Log.Debug($"Enumerando WPD: {exc.Message}");
         }
 
+        // Impresoras USB (solo detección: nunca se bloquean)
+        try
+        {
+            using var buscador = new ManagementObjectSearcher(
+                "SELECT * FROM Win32_PnPEntity WHERE PNPClass = 'Printer'");
+            foreach (ManagementObject entidad in buscador.Get())
+            {
+                var instancia = Texto(entidad, "PNPDeviceID") ?? "";
+                if (!EsImpresoraUsb(instancia)) continue;
+                var nombre = Texto(entidad, "Name") ?? "";
+                var disp = new Dispositivo
+                {
+                    InstanciaPnP = instancia,
+                    Serial = SerialDesdeInstancia(instancia),
+                    Nombre = (nombre.Length > 0 ? nombre : "Impresora USB").Trim(),
+                    Tipo = TipoDispositivo.Impresora,
+                };
+                encontrados[disp.Clave] = disp;
+            }
+        }
+        catch (Exception exc)
+        {
+            Log.Debug($"Enumerando impresoras: {exc.Message}");
+        }
+
         // Red por USB (tethering, docks)
         try
         {
@@ -306,7 +345,13 @@ public sealed class Detector
         return encontrados;
     }
 
-    /// <summary>Formato de /api/usb-event/connected-status: solo con letra.</summary>
+    /// <summary>
+    /// Formato de /api/usb-event/connected-status: una entrada por
+    /// letra y, para lo que no tiene letra, una por dispositivo.
+    /// Cada entrada lleva su deviceKind: sin él, un adaptador de
+    /// red o una impresora se veían en el panel como si fueran
+    /// memorias.
+    /// </summary>
     public static List<UnidadConectada> UnidadesParaEstado(IEnumerable<Dispositivo> dispositivos)
     {
         var unidades = new List<UnidadConectada>();
@@ -327,6 +372,7 @@ public sealed class Detector
                     SerialNumber = disp.Serial,
                     Model = disp.Nombre,
                     Size = disp.Tamano,
+                    DeviceKind = disp.Tipo,
                 });
                 continue;
             }
@@ -339,6 +385,7 @@ public sealed class Detector
                     SerialNumber = disp.Serial,
                     Model = disp.Nombre,
                     Size = disp.Tamano,
+                    DeviceKind = disp.Tipo,
                 });
             }
         }
