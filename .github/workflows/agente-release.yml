@@ -1,0 +1,70 @@
+# Agente en C#: compilar, probar y publicar el ejecutable.
+#
+# Cómo se usa:
+#   · Release nueva: crea una etiqueta «agente-vX.Y.Z» y empújala
+#     (git tag agente-v1.1.0 && git push origin agente-v1.1.0).
+#     La acción compila y deja el zip en la Release de esa etiqueta.
+#   · A mano: pestaña Actions → «Agente — compilar y publicar» →
+#     Run workflow. El zip queda como artefacto de la ejecución
+#     (30 días), sin crear Release.
+#
+# La compilación llama al MISMO Build-All.ps1 que se usa en local:
+# lo que sale de aquí es bit a bit el mismo procedimiento de
+# siempre, solo que en una máquina Windows de GitHub.
+name: Agente — compilar y publicar
+
+on:
+  push:
+    tags:
+      - "agente-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  compilar:
+    runs-on: windows-latest
+    steps:
+      - name: Descargar el repositorio
+        uses: actions/checkout@v4
+
+      - name: Instalar .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Pruebas del núcleo
+        run: dotnet test USBMonitorCS/tests/Agente.Core.Tests -c Release
+
+      - name: Compilar el ejecutable
+        shell: pwsh
+        run: ./USBMonitorCS/compilacion/Build-All.ps1 -Clean
+
+      - name: Preparar el zip
+        id: paquete
+        shell: pwsh
+        run: |
+          $version = if ($env:GITHUB_REF -like 'refs/tags/*') {
+            $env:GITHUB_REF_NAME
+          } else {
+            "manual-$($env:GITHUB_SHA.Substring(0, 7))"
+          }
+          $zip = "USBMonitorService-$version.zip"
+          Compress-Archive -Path "USBMonitorCS/dist/USBMonitorService.exe", "USBMonitorCS/Install-Service.ps1" -DestinationPath $zip
+          "zip=$zip" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Guardar el zip como artefacto de la ejecución
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.paquete.outputs.zip }}
+          path: ${{ steps.paquete.outputs.zip }}
+          retention-days: 30
+
+      - name: Publicar el zip en la Release de la etiqueta
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.paquete.outputs.zip }}
+          generate_release_notes: true
