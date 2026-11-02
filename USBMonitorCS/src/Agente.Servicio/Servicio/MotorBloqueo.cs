@@ -48,6 +48,14 @@ public sealed class RegistroBloqueo
     public string? Capa { get; set; }
     public bool Degradado { get; set; }
     public bool? EnWhitelist { get; set; }
+
+    /// <summary>
+    /// Nodo que la capa PnP deshabilitó DE VERDAD: el del propio
+    /// dispositivo o, cuando ese no cede (discos duros externos),
+    /// el nodo USB del dispositivo. Liberar, extraer y vigilar
+    /// actúan sobre ESTE nodo, no sobre el de siempre.
+    /// </summary>
+    public string? NodoBloqueado { get; set; }
 }
 
 /// <summary>Motor de bloqueo en capas con vigía y restauración sin huella.</summary>
@@ -135,10 +143,15 @@ public sealed class MotorBloqueo
             }
             if (reg.Estado == EstadoBloqueo.Bloqueado) return reg;
 
-            // Capa 1: PnP verificado.
-            if (Pnp.Deshabilitar(disp.InstanciaPnP))
+            // Capa 1: PnP verificado, en cadena (el propio nodo o,
+            // si no cede — discos duros externos —, el nodo USB del
+            // dispositivo). El diario anota el nodo EFECTIVO: es el
+            // que hay que reactivar al liberar y al restaurar.
+            var nodo = Pnp.DeshabilitarConCadena(disp.InstanciaPnP);
+            if (nodo is not null)
             {
-                _diario.AnotarDeshabilitado(disp.InstanciaPnP, disp.Serial);
+                _diario.AnotarDeshabilitado(nodo, disp.Serial);
+                reg.NodoBloqueado = nodo;
                 reg.Capa = CapaBloqueo.Pnp;
                 reg.Degradado = false;
                 reg.Estado = EstadoBloqueo.Bloqueado;
@@ -146,18 +159,33 @@ public sealed class MotorBloqueo
                 return reg;
             }
 
-            // Capa 2: candado de volumen (solo con letra).
-            var letra = disp.Letra;
-            if (letra is not null && _candados.Bloquear(letra))
+            // Capa 2: candado de volumen sobre TODAS las letras.
+            // Un disco duro suele traer varias particiones: candar
+            // solo la primera dejaba las demás abiertas con el
+            // dispositivo «bloqueado». Si alguna letra se resiste,
+            // se suelta lo tomado y se pasa a la capa degradada.
+            if (disp.Letras.Count > 0)
             {
-                reg.Capa = CapaBloqueo.Volumen;
-                reg.Degradado = false;
-                reg.Estado = EstadoBloqueo.Bloqueado;
-                Log.Info($"Bloqueado por volumen: {disp.Nombre} en {letra}");
-                return reg;
+                var tomadas = new List<string>();
+                var todas = true;
+                foreach (var l in disp.Letras)
+                {
+                    if (_candados.Bloquear(l)) tomadas.Add(l);
+                    else { todas = false; break; }
+                }
+                if (todas)
+                {
+                    reg.Capa = CapaBloqueo.Volumen;
+                    reg.Degradado = false;
+                    reg.Estado = EstadoBloqueo.Bloqueado;
+                    Log.Info($"Bloqueado por volumen: {disp.Nombre} en {string.Join(", ", disp.Letras)}");
+                    return reg;
+                }
+                foreach (var l in tomadas) _candados.Soltar(l);
             }
 
             // Capa 3: solo lectura, degradado y declarado.
+            var letra = disp.Letra;
             if (letra is not null && _ponerSoloLectura is not null && _ponerSoloLectura(letra))
             {
                 reg.Capa = CapaBloqueo.SoloLectura;
@@ -185,9 +213,13 @@ public sealed class MotorBloqueo
             var ok = true;
             if (reg.Capa == CapaBloqueo.Pnp)
             {
+                var nodo = reg.NodoBloqueado ?? disp.InstanciaPnP;
                 foreach (var letra in disp.Letras) _candados.Soltar(letra);
-                if (Pnp.Habilitar(disp.InstanciaPnP))
-                    _diario.QuitarDeshabilitado(disp.InstanciaPnP);
+                if (Pnp.Habilitar(nodo))
+                {
+                    _diario.QuitarDeshabilitado(nodo);
+                    reg.NodoBloqueado = null;
+                }
                 else
                     ok = false;
             }
@@ -246,8 +278,9 @@ public sealed class MotorBloqueo
             foreach (var letra in disp.Letras) _candados.Soltar(letra);
             if (reg.Capa == CapaBloqueo.Pnp || reg.Estado == EstadoBloqueo.Bloqueado)
             {
-                if (Pnp.Habilitar(disp.InstanciaPnP))
-                    _diario.QuitarDeshabilitado(disp.InstanciaPnP);
+                var nodo = reg.NodoBloqueado ?? disp.InstanciaPnP;
+                if (Pnp.Habilitar(nodo))
+                    _diario.QuitarDeshabilitado(nodo);
             }
         }
     }
@@ -270,11 +303,13 @@ public sealed class MotorBloqueo
                 var revivido = false;
                 if (reg.Capa == CapaBloqueo.Pnp)
                 {
-                    revivido = Pnp.EstaDeshabilitado(disp.InstanciaPnP) == false;
+                    revivido = Pnp.EstaDeshabilitado(reg.NodoBloqueado ?? disp.InstanciaPnP) == false;
                 }
                 else if (reg.Capa == CapaBloqueo.Volumen)
                 {
-                    revivido = disp.Letra is not null && Volumen.EsAccesible(disp.Letra);
+                    // Con varias particiones basta que UNA vuelva a
+                    // ser accesible para dar el bloqueo por revivido.
+                    revivido = disp.Letras.Any(l => Volumen.EsAccesible(l));
                 }
                 if (revivido)
                 {

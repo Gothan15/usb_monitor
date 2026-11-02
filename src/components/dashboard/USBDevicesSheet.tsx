@@ -34,7 +34,7 @@ import {
   formatDuration,
 } from "./types";
 import { useUsbHistoryRange } from "@/hooks/useUsbHistoryRange";
-import { formatBytes } from "@/app/user/utils";
+import { formatBytes, etiquetaTipoDispositivo } from "@/app/user/utils";
 import { useAmbientScrollbar } from "@/hooks/useAmbientScrollbar";
 
 interface Props {
@@ -228,6 +228,14 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
                                     <HardDrive className="mr-1 h-3.5 w-3.5" />
                                     {d.driveLetter ?? "Sin letra"}
                                   </Badge>
+                                  {etiquetaTipoDispositivo(d.deviceKind) && (
+                                    <Badge
+                                      variant="secondary"
+                                      className="rounded-full border border-border/40 bg-muted/30 text-muted-foreground"
+                                    >
+                                      {etiquetaTipoDispositivo(d.deviceKind)}
+                                    </Badge>
+                                  )}
                                   {d.isWhitelisted ? (
                                     <Badge
                                       variant="success"
@@ -345,6 +353,14 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
                                     <HardDrive className="mr-1 h-3.5 w-3.5" />
                                     {d.driveLetter ?? "Sin letra"}
                                   </Badge>
+                                  {etiquetaTipoDispositivo(d.deviceKind) && (
+                                    <Badge
+                                      variant="secondary"
+                                      className="rounded-full border border-border/40 bg-muted/30 text-muted-foreground"
+                                    >
+                                      {etiquetaTipoDispositivo(d.deviceKind)}
+                                    </Badge>
+                                  )}
                                   {d.isWhitelisted ? (
                                     <Badge
                                       variant="success"

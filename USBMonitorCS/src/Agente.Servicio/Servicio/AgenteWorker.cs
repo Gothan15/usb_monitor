@@ -351,6 +351,15 @@ public sealed class AgenteWorker : BackgroundService
     // ── llegada y extracción ──────────────────────────────────────
     private async Task AlLlegarAsync(Dispositivo disp)
     {
+        if (disp.Tipo == TipoDispositivo.Impresora)
+        {
+            // Las impresoras solo se detectan: evento de conexión
+            // y presencia en la lista de conectados (vía el latido),
+            // sin bloqueo, sin contraseña y sin registro de bloqueo.
+            _cliente.Evento(EvConectado, disp.Letra, disp.Serial);
+            Log.Info($"Impresora USB detectada (sin bloqueo): {disp.Nombre}");
+            return;
+        }
         if (disp.Tipo == TipoDispositivo.Red && _baseRed.Contains(disp.Clave))
         {
             Log.Info($"Red USB de línea base, sin bloquear: {disp.Nombre}");
@@ -396,6 +405,12 @@ public sealed class AgenteWorker : BackgroundService
 
     private async Task AlExtraerAsync(string clave, Dispositivo disp)
     {
+        if (disp.Tipo == TipoDispositivo.Impresora)
+        {
+            // Nunca se bloqueó ni se registró: solo el evento.
+            _cliente.Evento(EvDesconectado, disp.Letra, disp.Serial);
+            return;
+        }
         _motor.AlExtraer(clave);
         await _cliente.CerrarBloqueoAsync(disp.Letra, disp.Serial).ConfigureAwait(false);
         _cliente.Evento(EvDesconectado, disp.Letra, disp.Serial);

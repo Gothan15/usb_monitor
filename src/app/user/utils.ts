@@ -52,6 +52,7 @@ const normalizeConnection = (payload: any): UsbConnection => ({
   volumeName: ensureString(payload?.volumeName || "Sin nombre"),
   serialNumber: ensureString(payload?.serialNumber || "—"),
   model: ensureString(payload?.model || "Desconocido"),
+  deviceKind: ensureString(payload?.deviceKind || "DISCO"),
   size: ensureNumber(payload?.size),
   connectedAt: ensureIsoString(payload?.connectedAt),
   disconnectedAt: payload?.disconnectedAt
@@ -148,4 +149,25 @@ export const formatBytes = (bytes: number): string => {
   return `${value.toFixed(value >= 10 || value % 1 === 0 ? 0 : 1)} ${
     units[exponent]
   }`;
+};
+
+/**
+ * Etiqueta legible del tipo de dispositivo (deviceKind del
+ * agente). DISCO es el caso normal y no lleva etiqueta: lo demás
+ * (teléfono, red, impresora, óptica) SÍ se nombra, para que un
+ * adaptador de red o una impresora no se lean como memorias.
+ */
+export const etiquetaTipoDispositivo = (deviceKind?: string): string => {
+  switch ((deviceKind || "DISCO").toUpperCase()) {
+    case "TELEFONO":
+      return "Teléfono";
+    case "OPTICO":
+      return "Óptica USB";
+    case "RED":
+      return "Red USB";
+    case "IMPRESORA":
+      return "Impresora";
+    default:
+      return "";
+  }
 };

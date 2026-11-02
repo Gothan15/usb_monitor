@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { formatDateTime, getCurrentDate } from "@/lib/time";
-import { fetchBasicUserSnapshot, formatBytes } from "../../utils";
+import { fetchBasicUserSnapshot, formatBytes, etiquetaTipoDispositivo } from "../../utils";
 import type { AssignedComputer, UsbConnection } from "../../types";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -157,6 +157,14 @@ export const DeviceList = ({ userId }: DeviceListProps) => {
                     >
                       {device.driveLetter}
                     </Badge>
+                    {etiquetaTipoDispositivo(device.deviceKind) && (
+                      <Badge
+                        variant="outline"
+                        className="border-border/40 text-xs text-muted-foreground"
+                      >
+                        {etiquetaTipoDispositivo(device.deviceKind)}
+                      </Badge>
+                    )}
                   </div>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
                     <span className="flex items-center gap-1 font-medium">

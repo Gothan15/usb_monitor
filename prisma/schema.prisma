@@ -87,6 +87,7 @@ model USBConnection {
   volumeName     String
   serialNumber   String
   model          String
+  deviceKind     String    @default("DISCO")
   size           BigInt    @default(0)
   connectedAt    DateTime  @default(now())
   disconnectedAt DateTime?
