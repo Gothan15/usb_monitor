@@ -2,7 +2,7 @@
 
 import { useMemo, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
-import { Clock, Key, Usb } from "lucide-react";
+import { Clock, Usb } from "lucide-react";
 import { AppShell, type AppShellNavItem } from "@/components/shell/AppShell";
 import { CommandPalette } from "@/components/shell/CommandPalette";
 import { PageTransition } from "@/components/shell/PageTransition";
@@ -27,8 +27,6 @@ function resolveView(pathname: string | null): UserViewKey {
       return "devices";
     case "history":
       return "history";
-    case "apikey":
-      return "apikey";
     default:
       return "devices";
   }
@@ -58,13 +56,6 @@ function UserLayoutContent({
         description: "Eventos recientes",
         icon: Clock,
         href: userViewToHref.history,
-      },
-      {
-        key: "apikey",
-        label: "Clave API",
-        description: "Credenciales seguras",
-        icon: Key,
-        href: userViewToHref.apikey,
       },
     ],
     [],
@@ -104,7 +95,7 @@ function UserLayoutContent({
       <TourEngine tour={userTour} />
       <PageTransition
         transitionKey={pathname ?? "user-root"}
-        className="space-y-6"
+        className="flex flex-1 flex-col gap-6"
       >
         <ErrorBoundary>{children}</ErrorBoundary>
       </PageTransition>

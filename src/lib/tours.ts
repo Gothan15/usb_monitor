@@ -101,7 +101,7 @@ export const userTour: TourDefinition = {
     {
       title: "Bienvenido a tu panel",
       description:
-        "Desde aquí puedes ver tus dispositivos USB conectados, revisar tu historial y gestionar tu clave API.",
+        "Desde aquí puedes ver tus dispositivos USB conectados y revisar tu historial. Tu equipo se identifica con un token propio: no necesitas ninguna clave.",
       icon: Monitor,
     },
     {
@@ -119,14 +119,6 @@ export const userTour: TourDefinition = {
         "Los dispositivos autorizados aparecen con una insignia verde. Si un dispositivo no está en la lista blanca, puedes solicitar su autorización.",
       position: "bottom",
       icon: ShieldCheck,
-    },
-    {
-      target: "[data-tour='api-key']",
-      title: "Tu clave API",
-      description:
-        "Necesitas esta clave para que el agente USB se comunique con el servidor. Puedes copiarla o rotarla desde la sección Clave API.",
-      position: "bottom",
-      icon: KeyRound,
     },
   ],
 };

@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth";
 import { logError } from "@/lib/logger";
 import { normalizeComputerName } from "@/lib/utils";
+import { readAppSettings } from "@/lib/appSettings";
+import { getCurrentDate } from "@/lib/time";
 
 type RouteContext = {
   params: Promise<{
@@ -56,10 +58,20 @@ export async function GET(req: Request, context: RouteContext) {
     const since = new Date(Date.now() - historyDays * 24 * 60 * 60 * 1000);
 
     if (type === "connected") {
+      // Solo cuenta como conectado lo que el agente ha reportado
+      // hace poco (reporta cada 30 s): sin esta frescura, una
+      // fila que nunca se marcó desconectada (agente caído,
+      // extracción sin reporte) se enseña como conectada para
+      // siempre. Umbral: el del método 3 (silenceThresholdMinutes).
+      const settings = await readAppSettings();
+      const umbralMs =
+        Math.max(2, settings.silenceThresholdMinutes || 5) * 60_000;
+      const senalReciente = new Date(getCurrentDate().getTime() - umbralMs);
       const rows = await db.uSBConnection.findMany({
         where: {
           pcName: computer.name,
           isConnected: true,
+          lastSeen: { gte: senalReciente },
         },
         orderBy: { lastSeen: "desc" },
         take: 200,

@@ -22,7 +22,7 @@ export default function UserDevicesPage() {
   if (!user) return null;
 
   return (
-    <section className="space-y-4">
+    <section className="flex flex-1 flex-col">
       <DeviceList userId={user.id} />
     </section>
   );

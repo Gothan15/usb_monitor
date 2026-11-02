@@ -48,7 +48,7 @@ const normalizeConnection = (payload: any): UsbConnection => ({
       }`
   ),
   pcName: ensureString(payload?.pcName || "—"),
-  driveLetter: ensureString(payload?.driveLetter || "—"),
+  driveLetter: ensureString(payload?.driveLetter || "Sin letra"),
   volumeName: ensureString(payload?.volumeName || "Sin nombre"),
   serialNumber: ensureString(payload?.serialNumber || "—"),
   model: ensureString(payload?.model || "Desconocido"),
@@ -129,7 +129,6 @@ export const fetchBasicUserSnapshot = async (
       ? data.usbHistory.map(normalizeConnection)
       : [],
     events: Array.isArray(data.events) ? data.events.map(normalizeEvent) : [],
-    apiKey: typeof data.apiKey === "string" ? data.apiKey : "",
     warnings: Array.isArray(data.warnings)
       ? data.warnings.map((item: unknown) => ensureString(item))
       : undefined,

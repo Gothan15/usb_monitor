@@ -459,51 +459,6 @@ export function AppShell({
                     </span>
                   </Link>
 
-                  <nav
-                    data-tour="sidebar"
-                    className="ml-6 hidden items-stretch gap-0.5 self-stretch min-[1600px]:flex"
-                    aria-label="Secciones"
-                  >
-                    {navItems.map((item) => {
-                      const isActive = item.key === activeKey;
-                      return (
-                        <Link
-                          key={item.key}
-                          href={item.href}
-                          prefetch
-                          className={cn(
-                            "group relative flex items-center gap-1.5 whitespace-nowrap px-2.5 text-[11.5px] font-semibold uppercase tracking-[0.08em] transition-colors",
-                            isActive
-                              ? "text-foreground"
-                              : "text-muted-foreground hover:text-foreground",
-                          )}
-                        >
-                          <item.icon
-                            className={cn(
-                              "size-4 shrink-0 transition-colors",
-                              isActive
-                                ? "text-[var(--acero)]"
-                                : "text-muted-foreground/70 group-hover:text-foreground/80",
-                            )}
-                          />
-                          {item.label}
-                          {item.badge !== undefined && (
-                            <span className="font-mono text-[10.5px] font-semibold tabular-nums text-[var(--acero)]">
-                              {item.badge}
-                            </span>
-                          )}
-                          {isActive && (
-                            <motion.span
-                              layoutId="nav-underline"
-                              className="absolute inset-x-3 bottom-0 h-[2px] bg-[var(--acero)]"
-                              transition={{ type: "spring", bounce: 0.18, duration: 0.55 }}
-                            />
-                          )}
-                        </Link>
-                      );
-                    })}
-                  </nav>
-
                   <div className="ml-auto flex shrink-0 items-center">
                     <span
                       className={cn(
@@ -588,10 +543,14 @@ export function AppShell({
                   </div>
                 </div>
 
-                                {/* Navegación en fila: en pantallas anchas las secciones
-                    ocupan todo el ancho, con «|» como divisor */}
+                {/* Navegación en fila para TODOS los anchos (decisión
+                    de Gothan): las secciones ocupan todo el ancho,
+                    con «|» como divisor. Antes, a partir de 1600 px
+                    se cambiaba a una navegación dentro de la cabecera;
+                    esa variante se eliminó para que la vista sea la
+                    misma en cualquier pantalla. */}
                 <nav
-                  className="scrollbar-thin flex items-stretch gap-0.5 overflow-x-auto border-t border-border/60 px-2 min-[1600px]:hidden xl:gap-0 xl:overflow-visible"
+                  className="scrollbar-thin flex items-stretch gap-0.5 overflow-x-auto border-t border-border/60 px-2 xl:gap-0 xl:overflow-visible"
                   aria-label="Secciones"
                 >
                   {navItems.map((item, indice) => {

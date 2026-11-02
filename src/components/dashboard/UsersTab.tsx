@@ -46,7 +46,6 @@ import {
   AlertCircle,
   ArrowDown,
   ArrowUp,
-  KeyRound,
   Pencil,
   Plus,
   Search,
@@ -60,7 +59,6 @@ interface AdminUser {
   id: string;
   username: string;
   role: string;
-  apiKey: string | null;
   computerId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -89,7 +87,6 @@ const COLUMNAS_ORDEN: { key: keyof AdminUser; label: string }[] = [
   { key: "username", label: "Usuario" },
   { key: "role", label: "Rol" },
   { key: "computer", label: "Equipo" },
-  { key: "apiKey", label: "clave API" },
   { key: "createdAt", label: "Creado" },
 ];
 
@@ -269,30 +266,6 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
 
   const isInitialLoading = loading && !hasLoadedOnce;
   const isSearching = loading && hasLoadedOnce;
-
-  const handleCopyKey = async (apiKey: string | null) => {
-    if (!apiKey) {
-      toast({
-        title: "Sin clave API",
-        description: "Genera o asigna una clave API antes de copiarla.",
-        variant: "destructive",
-      });
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(apiKey);
-      toast({
-        title: "clave API copiada",
-        description: "Se copió al portapapeles.",
-      });
-    } catch (err) {
-      toast({
-        title: "No se pudo copiar",
-        description: err instanceof Error ? err.message : "Intenta de nuevo",
-        variant: "destructive",
-      });
-    }
-  };
 
   const handleGeneratePassword = (updater: (value: string) => void) => {
     updater(generateRandomPassword());
@@ -724,30 +697,6 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
                           No asignado
                         </span>
                       )}
-                    </Dato>
-                  </div>
-
-                  {/* clave API enmascarada */}
-                  <div className="lg:flex-1">
-                    <Dato etiqueta="clave API">
-                      <span className="inline-flex items-center gap-1">
-                        <span className="font-mono text-xs text-muted-foreground">
-                          {user.apiKey
-                            ? `${user.apiKey.slice(0, 8)}…`
-                            : "No generada"}
-                        </span>
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7"
-                          onClick={() => handleCopyKey(user.apiKey)}
-                          aria-label={`Copiar clave API de ${user.username}`}
-                          title="Copiar clave API"
-                        >
-                          <KeyRound className="h-3.5 w-3.5" />
-                        </Button>
-                      </span>
                     </Dato>
                   </div>
 
