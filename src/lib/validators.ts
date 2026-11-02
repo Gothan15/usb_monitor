@@ -26,13 +26,19 @@ function buildSanitizedStringSchema(maxLength: number) {
 }
 
 function buildOptionalSanitizedStringSchema(maxLength: number) {
+  // OJO: el esquema interno también debe ser opcional. Con
+  // z.preprocess, un null de entrada se convierte en undefined y ese
+  // undefined entra al esquema interno: si el interno exige string,
+  // cualquier payload con el campo a null (p. ej. un evento de un
+  // teléfono, sin letra ni estado de solo lectura) se rechazaba con
+  // 400 aunque el campo es opcional.
   return z
     .preprocess((value) => {
       if (value == null) return undefined;
       if (typeof value !== "string") return undefined;
       const sanitized = sanitizeControlChars(value.trim());
       return sanitized.length ? sanitized : undefined;
-    }, buildSanitizedStringSchema(maxLength))
+    }, buildSanitizedStringSchema(maxLength).optional())
     .optional();
 }
 
@@ -43,7 +49,7 @@ const driveLetterSchema = z
     const sanitized = sanitizeControlChars(value.trim().toUpperCase());
     if (!sanitized) return undefined;
     return sanitized.endsWith(":") ? sanitized : `${sanitized}:`;
-  }, z.string().regex(/^[A-Z]:$/, "invalid drive letter"))
+  }, z.string().regex(/^[A-Z]:$/, "invalid drive letter").optional())
   .optional();
 
 export const usbEventPayloadSchema = z.object({
