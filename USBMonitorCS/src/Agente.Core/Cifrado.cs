@@ -7,7 +7,11 @@
 //    sal "USBMonitor_Salt_V1", 100 000 iteraciones; Fernet =
 //    AES-128-CBC + HMAC-SHA256, token base64url con versión 0x80,
 //    timestamp de 8 bytes e IV de 16).
-//  - Escritura nueva con DPAPI (ámbito máquina) y prefijo "DPAPI:".
+//  - Escritura nueva SIEMPRE con Fernet y prefijo "ENC:" (decisión
+//    de la prueba real del 2026-11-02: lo guardado con DPAPI no se
+//    pudo leer de vuelta de forma fiable entre cuentas y el panel
+//    rechazó el token). DPAPI queda solo como LECTURA de valores
+//    antiguos con prefijo "DPAPI:".
 // Fail-closed en todo: un valor ilegible se descarta (""), jamás se
 // usa como credencial.
 using System.Buffers.Binary;
@@ -247,8 +251,8 @@ public sealed class CifradorDpapi : ICifradorValores
 
 /// <summary>
 /// Fachada que usa Configuracion: lee "ENC:" (Fernet) y "DPAPI:"
-/// (DPAPI); escribe con DPAPI en Windows y con Fernet fuera de
-/// Windows (el formato ENC: sigue siendo legible por ambos agentes).
+/// (legado); escribe SIEMPRE con Fernet ("ENC:") en cualquier
+/// plataforma (ver la nota de Cifrar).
 /// </summary>
 public static class CifradoValores
 {
