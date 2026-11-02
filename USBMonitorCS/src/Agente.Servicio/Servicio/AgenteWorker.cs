@@ -64,6 +64,12 @@ public sealed class AgenteWorker : BackgroundService
     private int _chequeosSinCompanero;
     private DateTime _ultimoLanzamientoCompanero = DateTime.MinValue;
 
+    // Detección por eventos: Win32_DeviceChangeEvent despierta al
+    // bucle de detección en el acto (conectar/extraer hardware);
+    // sin vigilante disponible, el bucle sondea cada 1,5 s.
+    private readonly SemaphoreSlim _senalDispositivos = new(0, 1);
+    private ManagementEventWatcher? _vigiaDispositivos;
+
     private DateTime _inicio = DateTime.UtcNow;
     private DateTime _ultimoHash = DateTime.MinValue;
     private DateTime _ultimaConfig = DateTime.MinValue;
@@ -160,6 +166,7 @@ public sealed class AgenteWorker : BackgroundService
                 _emergencia, _compartida);
             _servidorLocal.Iniciar();
             _ = Registro.IniciarLatido(LineaLatido, ct);
+            IniciarVigiaDispositivos();
             Log.Info("Agente v2 en marcha");
 
             await Task.WhenAll(
@@ -179,6 +186,12 @@ public sealed class AgenteWorker : BackgroundService
         try
         {
             Log.Info("Deteniendo el agente: restaurando todo");
+            try
+            {
+                _vigiaDispositivos?.Stop();
+                _vigiaDispositivos?.Dispose();
+            }
+            catch { /* cierre best-effort */ }
             try { _servidorLocal?.Detener(); } catch { /* cierre best-effort */ }
             _cliente.Evento(EvParada);
             try
@@ -195,6 +208,57 @@ public sealed class AgenteWorker : BackgroundService
         {
             Log.Excepcion("Error en la parada ordenada", exc);
         }
+    }
+
+    /// <summary>
+    /// Vigilante WMI de cambios de hardware: cada evento despierta
+    /// al bucle de detección al instante en vez de esperar al
+    /// sondeo. Los eventos se funden en una sola señal (la
+    /// enumeración ya distingue qué llegó y qué se fue). Si WMI no
+    /// deja suscribirse, el bucle se queda con su sondeo de 1,5 s.
+    /// </summary>
+    private void IniciarVigiaDispositivos()
+    {
+        try
+        {
+            _vigiaDispositivos = new ManagementEventWatcher(
+                new WqlEventQuery("SELECT * FROM Win32_DeviceChangeEvent"));
+            _vigiaDispositivos.EventArrived += (_, _) =>
+            {
+                try
+                {
+                    if (_senalDispositivos.CurrentCount == 0)
+                        _senalDispositivos.Release();
+                }
+                catch { /* el servicio se está deteniendo */ }
+            };
+            _vigiaDispositivos.Start();
+            Log.Info("Vigilante de eventos de dispositivos activo: detección inmediata.");
+        }
+        catch (Exception exc)
+        {
+            Log.Advertencia(
+                $"Sin vigilante de eventos ({exc.Message}): la detección queda por sondeo.");
+            _vigiaDispositivos = null;
+        }
+    }
+
+    /// <summary>
+    /// Veredicto de la lista blanca SOLO desde la caché local, sin
+    /// tocar la red: sirve para bloquear y enseñar la ventana sin
+    /// esperar al panel. null = aún no se sabe (el vigía lo
+    /// completa en ≤5 s consultando al panel).
+    /// </summary>
+    private bool? EnWhitelistCacheada(string serial)
+    {
+        if (string.IsNullOrEmpty(serial)) return false;
+        lock (_lockConocidos)
+        {
+            if (_cacheWhitelist.TryGetValue(serial, out var cache) &&
+                DateTime.UtcNow - cache.Marca < TimeSpan.FromSeconds(60))
+                return cache.Valor;
+        }
+        return null;
     }
 
     // ── whitelist con caché de 60 s (como servicio.py) ────────────
@@ -293,13 +357,25 @@ public sealed class AgenteWorker : BackgroundService
             return;
         }
         _cliente.Evento(EvConectado, disp.Letra, disp.Serial);
-        var enWl = await EnWhitelistAsync(disp.Serial).ConfigureAwait(false);
+        // El veredicto sale de la CACHÉ, sin esperar a la red: la
+        // ventana de credenciales tiene que aparecer en cuanto el
+        // dispositivo queda bloqueado, no cuando el panel responda
+        // (con un panel lento, la consulta y el registro tardaban
+        // segundos y la ventana salía tarde). Si el veredicto no
+        // está en caché se bloquea con null: el vigía lo consulta,
+        // lo anota y registra el bloqueo en el panel en ≤5 s; el
+        // compañero muestra el formulario mientras tanto y la
+        // autorización la sigue decidiendo el servidor.
+        var enWl = EnWhitelistCacheada(disp.Serial);
         var reg = _motor.Bloquear(disp, enWl);
         if (reg.Estado == EstadoBloqueo.Bloqueado)
         {
             _cliente.Evento(
                 EvBloqueado, disp.Letra, disp.Serial,
                 reg.Capa + (reg.Degradado ? " (degradado)" : ""), enWl);
+            // pending_local.json ANTES que cualquier llamada al
+            // panel: es el archivo que hace aparecer la ventana.
+            RefrescarPendientesLocales();
             if (enWl is not null)
                 await RegistrarEnPanelAsync(disp, enWl.Value).ConfigureAwait(false);
             if (_compartida.LockSessionOnInsert)
@@ -353,7 +429,24 @@ public sealed class AgenteWorker : BackgroundService
             {
                 Log.Error($"Bucle de detección: {exc.Message}");
             }
-            if (!await EsperarAsync(1500, ct).ConfigureAwait(false)) return;
+            if (_vigiaDispositivos is not null)
+            {
+                // Despierta al instante con un evento de hardware;
+                // el tope de 5 s reconcilia por si algún evento se
+                // pierde (un sondeo lento de respaldo, no el camino
+                // normal).
+                try
+                {
+                    await _senalDispositivos
+                        .WaitAsync(TimeSpan.FromSeconds(5), ct)
+                        .ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+            }
+            else if (!await EsperarAsync(1500, ct).ConfigureAwait(false)) return;
         }
     }
 
