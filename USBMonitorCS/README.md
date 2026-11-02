@@ -56,6 +56,12 @@ con DPAPI de Windows).
 
 ## Compilar e instalar
 
+La primera compilación descarga los paquetes de NuGet: hace falta
+internet **o** la carpeta `paquetes/` con los `.nupkg` del proyecto
+(fuente local declarada en `nuget.config`, pensada para compilar sin
+conexión). Después los paquetes quedan en la caché del usuario y
+recompilar ya no pide red.
+
 ```powershell
 .\compilacion\Build-All.ps1            # deja el exe en dist\
 .\Install-Service.ps1 -ServerHost 192.168.1.10 -ServerPort 3000 -AgentToken <token>
