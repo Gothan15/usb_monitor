@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
   Clock,
-  Key,
   LayoutDashboard,
   MonitorSmartphone,
   Moon,
@@ -187,14 +186,6 @@ export function CommandPalette({ role }: CommandPaletteProps) {
           icon: Clock,
           keywords: "eventos historia",
           action: () => navigate("/user/history"),
-          group: "navigation",
-        },
-        {
-          id: "nav-apikey",
-          label: "Clave API",
-          icon: Key,
-          keywords: "credenciales token",
-          action: () => navigate("/user/apikey"),
           group: "navigation",
         },
       );

@@ -104,7 +104,7 @@ export const DeviceList = ({ userId }: DeviceListProps) => {
   const content = useMemo(() => {
     if (loading) {
       return (
-        <div className="flex h-48 items-center justify-center">
+        <div className="flex min-h-48 flex-1 items-center justify-center">
           <Spinner />
         </div>
       );
@@ -120,7 +120,7 @@ export const DeviceList = ({ userId }: DeviceListProps) => {
 
     if (!state.devices.length) {
       return (
-        <div className="flex h-48 flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground">
+        <div className="flex min-h-48 flex-1 flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground">
           <Usb className="h-10 w-10 text-muted-foreground/40" />
           <span>No hay dispositivos USB conectados en este momento.</span>
           <span className="text-xs text-muted-foreground/60">
@@ -192,7 +192,7 @@ export const DeviceList = ({ userId }: DeviceListProps) => {
   }, [error, loading, state.devices]);
 
   return (
-    <Card className="border-border/60 bg-card/80 shadow-sm backdrop-blur-xl">
+    <Card className="flex flex-1 flex-col border-border/60 bg-card/80 shadow-sm backdrop-blur-xl">
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="flex items-center gap-2 text-lg text-foreground">
           <Usb className="h-5 w-5 text-muted-foreground" />
@@ -223,7 +223,7 @@ export const DeviceList = ({ userId }: DeviceListProps) => {
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="flex-1 space-y-4">
         {state.warnings.length > 0 && (
           <Alert className="border-[oklch(0.80_0.10_85/0.40)] bg-[oklch(0.95_0.03_85)] text-[oklch(0.45_0.10_85)] dark:border-[oklch(0.65_0.08_85/0.30)] dark:bg-[oklch(0.80_0.10_85/0.10)] dark:text-[oklch(0.90_0.04_85)]">
             <AlertDescription className="space-y-2">

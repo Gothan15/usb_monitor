@@ -27,7 +27,7 @@ export default function UserHistoryPage() {
   return (
     <>
       <UserWelcomeCard username={user.username} />
-      <section className="space-y-4">
+      <section className="flex flex-1 flex-col">
         <EventHistory userId={user.id} />
       </section>
     </>

@@ -24,13 +24,12 @@ interface SessionResponse {
   error?: { code?: string; message?: string } | string;
 }
 
-export type UserViewKey = "devices" | "history" | "apikey";
+export type UserViewKey = "devices" | "history";
 
 // Mapa centralizado para traducir la vista activa en la ruta de Next.js.
 export const userViewToHref: Record<UserViewKey, string> = {
   devices: "/user",
   history: "/user/history",
-  apikey: "/user/apikey",
 };
 
 interface UserDashboardContextValue {

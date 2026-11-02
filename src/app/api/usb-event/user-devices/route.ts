@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verifySessionFromRequest } from "@/lib/auth";
 import { getCurrentDate } from "@/lib/time";
+import { readAppSettings } from "@/lib/appSettings";
 
 /**
  * GET /api/usb-event/user-devices
@@ -35,10 +36,21 @@ export async function GET(req: Request) {
         ok: true,
         events: [],
         computer: null,
-        apiKey: user.apiKey || "",
         message: "No tiene una computadora asignada",
       });
     }
+
+    // «Conectado» tiene que ser verdad AHORA: la fila solo pasa a
+    // desconectada cuando el agente vuelve a reportar, así que si
+    // el agente se detuvo (o la memoria se extrajo con el agente
+    // caído) la fila quedaba «conectada» para siempre y la vista
+    // del usuario enseñaba memorias que ya no están. Se exige
+    // señal reciente: el agente reporta su estado cada 30 s y el
+    // umbral es el mismo del método 3 (silenceThresholdMinutes).
+    const settings = await readAppSettings();
+    const umbralMs =
+      Math.max(2, settings.silenceThresholdMinutes || 5) * 60_000;
+    const senalReciente = new Date(getCurrentDate().getTime() - umbralMs);
 
     // Group the dashboard queries into a single round trip to cut latency and contention.
     const [events, connectedUSBs, usbHistory] = await (db as any).$transaction([
@@ -48,7 +60,11 @@ export async function GET(req: Request) {
         take: 100,
       }),
       (db as any).uSBConnection.findMany({
-        where: { pcName: user.computer.name, isConnected: true },
+        where: {
+          pcName: user.computer.name,
+          isConnected: true,
+          lastSeen: { gte: senalReciente },
+        },
         orderBy: { lastSeen: "desc" },
       }),
       (db as any).uSBConnection.findMany({
@@ -122,7 +138,6 @@ export async function GET(req: Request) {
       computer: user.computer,
       connectedUSBs: connectedUSBs.map(serializeConnection),
       usbHistory: usbHistory.map(serializeConnection),
-      apiKey: user.apiKey || "", // Incluir API Key del usuario
       warnings,
     });
   } catch (error: any) {

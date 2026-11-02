@@ -3,7 +3,6 @@ export interface BasicUserSnapshot {
   connectedUSBs: UsbConnection[];
   usbHistory: UsbConnection[];
   events: UsbEvent[];
-  apiKey: string;
   warnings?: string[];
 }
 
@@ -41,8 +40,4 @@ export interface UsbEvent {
   readonlyStatus: string | null;
   whitelisted: boolean;
   createdAt: string;
-}
-
-export interface ApiKeyPayload {
-  apiKey: string;
 }
