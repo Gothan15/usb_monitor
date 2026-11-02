@@ -14,10 +14,19 @@ import type { ProgressCallback, SSHOperationResult } from "./sshService";
 //  `winrm-client` (autenticación Basic para usuarios locales y
 //  NTLM/Negotiate para cuentas de dominio DOMAIN\user o UPN).
 //
-//  Requisitos en el equipo destino (una sola vez):
-//    winrm quickconfig
+//  Requisitos en el equipo destino (una sola vez, como
+//  administrador local, en una red SIN dominio):
+//    Enable-PSRemoting -SkipNetworkProfileCheck -Force
+//      (servicio en automático, listener 5985, excepción de
+//      firewall y LocalAccountTokenFilterPolicy=1 — sin esto
+//      último el admin local entra recortado por UAC y todo da
+//      «Access is denied»; el modificador salta el fallo que
+//      provoca un adaptador en perfil de red Público)
 //    winrm set winrm/config/service/Auth '@{Basic="true";Negotiate="true"}'
-//    winrm set winrm/config/service '@{AllowUnencrypted="true"}'   (solo HTTP)
+//    winrm set winrm/config/service '@{AllowUnencrypted="true"}'   (solo HTTP con Basic)
+//  Y la cuenta que se usa debe ser administradora local CON
+//  contraseña: sin contraseña no hay remoting en grupo de trabajo.
+//  La función checkWinRMRequirements comprueba todo esto en vivo.
 // ──────────────────────────────────────────────
 
 export const DEFAULT_WINRM_PORT = 5985;
@@ -25,18 +34,33 @@ const CONNECT_TIMEOUT_MS = 15_000;
 const OPERATION_TIMEOUT_MS = 120_000;
 const CHUNK_TIMEOUT_MS = 60_000;
 
-// Trozo de archivo por llamada WS-Man. El límite por defecto del sobre
-// SOAP (MaxEnvelopeSizekb) es 500 KB; 48 KB binarios ≈ 64 KB en base64,
-// muy por debajo del límite y con progreso visible en archivos grandes.
-const UPLOAD_CHUNK_BYTES = 48 * 1024;
+// Trozo de archivo por llamada WS-Man. El sobre SOAP por defecto
+// (MaxEnvelopeSizekb) es 500 KB: sin tocar el destino se sube en
+// trozos de 192 KB binarios (256 KB en base64, con margen). Al
+// empezar la copia se intenta subir el sobre del destino a
+// 8192 KB y entonces el trozo pasa a 1 MB: el exe autocontenido
+// del agente en C# pesa ~163 MB y con los trozos antiguos de
+// 48 KB hacían falta más de 3.400 viajes WS-Man.
+const UPLOAD_CHUNK_BYTES = 1024 * 1024;
+const UPLOAD_CHUNK_FALLBACK_BYTES = 192 * 1024;
 
 const SERVICE_NAME = process.env.AGENT_SERVICE_NAME || "USBMonitorService";
 const REMOTE_PATH = process.env.AGENT_REMOTE_PATH || "C:\\USBMonitor";
 
-// Mismos archivos que copia el flujo SSH
+// Archivos del agente ACTUAL (el de C#, en USBMonitorCS): su exe
+// autocontenido publicado y su Install-Service.ps1, que acepta la
+// misma interfaz (-ServerHost/-ServerPort/-AgentToken/-Action) y
+// delega el registro en el propio exe. Antes se copiaban el exe y
+// el script del agente Python (USBMonitor/dist + USBMonitor/), que
+// en una copia limpia del repo ni siquiera existen.
 const LOCAL_FILES = [
-  path.join(process.cwd(), "USBMonitor", "dist", "USBMonitorService.exe"),
-  path.join(process.cwd(), "USBMonitor", "Install-Service.ps1"),
+  path.join(
+    process.cwd(),
+    "USBMonitorCS",
+    "dist",
+    "USBMonitorService.exe",
+  ),
+  path.join(process.cwd(), "USBMonitorCS", "Install-Service.ps1"),
 ];
 
 /* ── Tipos ── */
@@ -207,6 +231,23 @@ export async function copyFilesViaWinRM(
       CONNECT_TIMEOUT_MS,
     );
 
+    // Sobre SOAP grande en el destino para poder subir en trozos
+    // de 1 MB (ver la nota de UPLOAD_CHUNK_BYTES). Es lo mejor que
+    // se puede intentar: si la cuenta no puede tocar la config de
+    // WinRM, se sigue con el trozo pequeño que cabe en el sobre
+    // por defecto.
+    let chunkBytes = UPLOAD_CHUNK_FALLBACK_BYTES;
+    try {
+      await runRemoteScript(
+        creds,
+        `winrm set winrm/config '@{MaxEnvelopeSizekb="8192"}' | Out-Null; Write-Output '__USB_OK__'`,
+        CONNECT_TIMEOUT_MS,
+      );
+      chunkBytes = UPLOAD_CHUNK_BYTES;
+    } catch {
+      // Sin sobre grande: trozo de reserva.
+    }
+
     // Crear directorio remoto
     onProgress?.("mkdir", `Creando directorio ${REMOTE_PATH}...`);
     await runRemoteScript(
@@ -221,7 +262,7 @@ export async function copyFilesViaWinRM(
       const remoteFile = `${REMOTE_PATH}\\${fileName}`;
       const partFile = `${remoteFile}.part`;
       const totalBytes = fs.statSync(localFile).size;
-      const totalChunks = Math.max(1, Math.ceil(totalBytes / UPLOAD_CHUNK_BYTES));
+      const totalChunks = Math.max(1, Math.ceil(totalBytes / chunkBytes));
 
       onProgress?.(
         "uploading",
@@ -237,14 +278,14 @@ export async function copyFilesViaWinRM(
 
       const handle = await fs.promises.open(localFile, "r");
       try {
-        const buffer = Buffer.alloc(UPLOAD_CHUNK_BYTES);
+        const buffer = Buffer.alloc(chunkBytes);
         let chunkIndex = 0;
         let bytesReadTotal = 0;
         for (;;) {
           const { bytesRead } = await handle.read(
             buffer,
             0,
-            UPLOAD_CHUNK_BYTES,
+            chunkBytes,
             null,
           );
           if (bytesRead === 0) break;
@@ -520,6 +561,203 @@ export async function probeWinRM(
   } finally {
     clearTimeout(timer);
   }
+}
+
+/* ── Comprobación previa de requisitos (solo WinRM) ─────────── */
+
+export interface RequisitoWinRM {
+  id: string;
+  etiqueta: string;
+  /** true = cumple; false = bloquea la instalación. */
+  ok: boolean;
+  detalle: string;
+  /** Qué hacer en el destino cuando no cumple. */
+  consejo?: string;
+}
+
+export interface WinRMRequirementsResult extends SSHOperationResult {
+  checks: RequisitoWinRM[];
+}
+
+const CONSEJO_ENABLE_PSREMOTING =
+  "En el equipo destino, como administrador local: Enable-PSRemoting -SkipNetworkProfileCheck -Force";
+
+/**
+ * Comprueba EN VIVO, antes de copiar nada, si el equipo destino
+ * cumple la receta de WinRM para redes sin dominio (ver la nota
+ * de cabecera del archivo). Primero la sonda Identify sin
+ * credenciales; si el listener vive, una sesión con las
+ * credenciales dadas lee la configuración real del destino.
+ */
+export async function checkWinRMRequirements(
+  creds: WinRMCredentials,
+): Promise<WinRMRequirementsResult> {
+  const checks: RequisitoWinRM[] = [];
+  const port = creds.port || DEFAULT_WINRM_PORT;
+  const useHttps = creds.useHttps ?? false;
+  const esCuentaLocal =
+    !creds.username.includes("\\") && !creds.username.includes("@");
+
+  const sonda = await probeWinRM(creds.host, port, useHttps);
+  checks.push({
+    id: "listener",
+    etiqueta: "WinRM responde en el destino (listener)",
+    ok: sonda.available,
+    detalle: sonda.available
+      ? `Identify respondió${sonda.productVersion ? ` (${sonda.productVersion})` : ""} en ${creds.host}:${port}.`
+      : sonda.error ||
+        "Sin respuesta: servicio parado, sin listener o firewall cerrado.",
+    consejo: sonda.available ? undefined : CONSEJO_ENABLE_PSREMOTING,
+  });
+  if (!sonda.available) {
+    return {
+      success: false,
+      message:
+        "El destino no responde por WinRM: sin listener no se puede comprobar nada más.",
+      checks,
+    };
+  }
+
+  let salida: string;
+  try {
+    salida = await runRemoteScript(
+      creds,
+      [
+        `$identidad = [Security.Principal.WindowsIdentity]::GetCurrent()`,
+        `$principal = New-Object Security.Principal.WindowsPrincipal($identidad)`,
+        `Write-Output "__CHK__admin=$($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))"`,
+        `$latfp = (Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System' -Name LocalAccountTokenFilterPolicy -ErrorAction SilentlyContinue).LocalAccountTokenFilterPolicy`,
+        `Write-Output "__CHK__latfp=$latfp"`,
+        `$auth = (winrm get winrm/config/service/Auth) -join ' '`,
+        `Write-Output "__CHK__basic=$($auth -match 'Basic\\s*=\\s*true')"`,
+        `$servicioCfg = (winrm get winrm/config/service) -join ' '`,
+        `Write-Output "__CHK__unenc=$($servicioCfg -match 'AllowUnencrypted\\s*=\\s*true')"`,
+        `$perfil = (Get-NetConnectionProfile -ErrorAction SilentlyContinue | Select-Object -First 1).NetworkCategory`,
+        `Write-Output "__CHK__perfil=$perfil"`,
+      ].join("; "),
+      30_000,
+    );
+  } catch (error: any) {
+    checks.push({
+      id: "credenciales",
+      etiqueta: "Las credenciales abren sesión WinRM",
+      ok: false,
+      detalle: describeWinRMError(error),
+      consejo:
+        "La cuenta debe ser administradora local del destino y tener contraseña (sin contraseña no hay remoting en grupo de trabajo).",
+    });
+    return {
+      success: false,
+      message: "WinRM responde, pero las credenciales no abren sesión.",
+      checks,
+    };
+  }
+
+  const valor = (id: string): string => {
+    const marcador = `__CHK__${id}=`;
+    const linea = salida
+      .split(/\r?\n/)
+      .find((l) => l.includes(marcador));
+    return linea
+      ? linea.slice(linea.indexOf(marcador) + marcador.length).trim()
+      : "";
+  };
+  const esTrue = (id: string) => /^true$/i.test(valor(id));
+
+  checks.push({
+    id: "credenciales",
+    etiqueta: "Las credenciales abren sesión WinRM",
+    ok: true,
+    detalle: `Sesión abierta como ${creds.username}.`,
+  });
+
+  const adminCompleto = esTrue("admin");
+  checks.push({
+    id: "admin",
+    etiqueta: "La sesión entra con token de administrador completo",
+    ok: adminCompleto,
+    detalle: adminCompleto
+      ? "Instalar servicios está permitido para esta sesión."
+      : "La sesión entró recortada por UAC: podrá conectar, pero no instalar servicios.",
+    consejo: adminCompleto
+      ? undefined
+      : "Suele faltar LocalAccountTokenFilterPolicy=1 en el destino: Enable-PSRemoting lo crea en equipos sin dominio (ver el punto siguiente).",
+  });
+
+  const latfpOk = valor("latfp") === "1";
+  checks.push({
+    id: "latfp",
+    etiqueta: "LocalAccountTokenFilterPolicy = 1 (UAC remoto)",
+    ok: latfpOk || adminCompleto,
+    detalle: latfpOk
+      ? "Presente: los administradores locales no se filtran en remoto."
+      : adminCompleto
+        ? "No está en el registro, pero la sesión ya entra como administrador completo (p. ej. cuenta Administrator integrada)."
+        : "Falta: el administrador local entra recortado en remoto.",
+    consejo:
+      latfpOk || adminCompleto ? undefined : CONSEJO_ENABLE_PSREMOTING,
+  });
+
+  if (esCuentaLocal && !useHttps) {
+    const basicOk = esTrue("basic");
+    checks.push({
+      id: "basic",
+      etiqueta: "Autenticación Basic habilitada (cuenta local por HTTP)",
+      ok: basicOk,
+      detalle: basicOk
+        ? "El servicio WinRM acepta Basic para cuentas locales."
+        : "Basic está apagado en el servicio y esta librería entra con Basic para cuentas locales.",
+      consejo: basicOk
+        ? undefined
+        : `En el destino: winrm set winrm/config/service/Auth '@{Basic="true";Negotiate="true"}'`,
+    });
+
+    const unencOk = esTrue("unenc");
+    checks.push({
+      id: "unenc",
+      etiqueta: "AllowUnencrypted permitido (HTTP con Basic)",
+      ok: unencOk,
+      detalle: unencOk
+        ? "El servicio acepta contenido sin cifrar sobre HTTP."
+        : "Con Basic sobre HTTP, el servicio rechaza el contenido sin cifrar.",
+      consejo: unencOk
+        ? undefined
+        : `En el destino: winrm set winrm/config/service '@{AllowUnencrypted="true"}' (o usar HTTPS 5986)`,
+    });
+  } else {
+    checks.push({
+      id: "basic",
+      etiqueta: "Autenticación Basic / AllowUnencrypted",
+      ok: true,
+      detalle: useHttps
+        ? "Con HTTPS no hacen falta: la credencial viaja protegida por TLS."
+        : "Cuenta de dominio (NTLM/Negotiate): la carga va cifrada con la clave de sesión, no hace falta Basic ni AllowUnencrypted.",
+    });
+  }
+
+  const perfil = valor("perfil");
+  const perfilOk = !/public/i.test(perfil);
+  checks.push({
+    id: "perfil",
+    etiqueta: "Perfil de red del destino",
+    ok: perfilOk,
+    detalle: perfil
+      ? `Perfil actual: ${perfil}.`
+      : "No se pudo leer el perfil de red.",
+    consejo: perfilOk
+      ? undefined
+      : "Con la red en Público, la excepción de firewall de WinRM no aplica en Windows cliente: pasa la red a Privada (Set-NetConnectionProfile -NetworkCategory Private) o habilita WinRM con -SkipNetworkProfileCheck.",
+  });
+
+  const bloqueos = checks.filter((c) => !c.ok).length;
+  return {
+    success: bloqueos === 0,
+    message:
+      bloqueos === 0
+        ? "El destino cumple todos los requisitos de WinRM."
+        : `Faltan ${bloqueos} requisito(s) en el destino: revisa la lista antes de instalar.`,
+    checks,
+  };
 }
 
 /* ── Descripciones de error ── */

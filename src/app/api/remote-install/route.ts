@@ -12,8 +12,10 @@ import {
 import {
   copyFilesViaWinRM,
   installServiceViaWinRM,
+  checkWinRMRequirements,
   DEFAULT_WINRM_PORT,
   type WinRMCredentials,
+  type WinRMRequirementsResult,
 } from "@/lib/winrmService";
 import { db } from "@/lib/db";
 
@@ -27,7 +29,7 @@ interface InstallRequest {
   ip: string;
   username: string;
   password: string;
-  phase: "copy" | "install";
+  phase: "copy" | "install" | "check";
   protocol: "ssh" | "winrm";
   port: number;
   stream: boolean;
@@ -76,8 +78,27 @@ async function prepareAgentToken(ip: string): Promise<string | undefined> {
 async function runPhase(
   input: InstallRequest,
   onProgress?: ProgressCallback,
-): Promise<SSHOperationResult> {
+): Promise<SSHOperationResult | WinRMRequirementsResult> {
   let result: SSHOperationResult;
+
+  // Comprobación previa de requisitos: solo WinRM (SSH no tiene
+  // una receta equivalente que comprobar desde aquí).
+  if (input.phase === "check") {
+    if (input.protocol !== "winrm") {
+      return {
+        success: false,
+        message: "La comprobación de requisitos es solo para WinRM.",
+        checks: [],
+      };
+    }
+    const creds: WinRMCredentials = {
+      host: input.ip,
+      username: input.username,
+      password: input.password,
+      port: input.port,
+    };
+    return await checkWinRMRequirements(creds);
+  }
 
   const agentToken =
     input.phase === "install" ? await prepareAgentToken(input.ip) : undefined;
@@ -150,9 +171,9 @@ export async function POST(req: NextRequest) {
     if (typeof password !== "string") {
       return NextResponse.json({ error: "Falta password" }, { status: 400 });
     }
-    if (phase !== "copy" && phase !== "install") {
+    if (phase !== "copy" && phase !== "install" && phase !== "check") {
       return NextResponse.json(
-        { error: "phase debe ser 'copy' o 'install'" },
+        { error: "phase debe ser 'copy', 'install' o 'check'" },
         { status: 400 },
       );
     }

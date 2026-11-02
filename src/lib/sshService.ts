@@ -14,10 +14,17 @@ const OPERATION_TIMEOUT_MS = 120_000;
 const SERVICE_NAME = process.env.AGENT_SERVICE_NAME || "USBMonitorService";
 const REMOTE_PATH = process.env.AGENT_REMOTE_PATH || "C:\\USBMonitor";
 
-// Archivos locales a copiar (relativos a CWD del servidor)
+// Archivos locales a copiar (relativos a CWD del servidor):
+// los del agente ACTUAL (el de C#, en USBMonitorCS), los mismos
+// que copia el flujo WinRM.
 const LOCAL_FILES = [
-  path.join(process.cwd(), "USBMonitor", "dist", "USBMonitorService.exe"),
-  path.join(process.cwd(), "USBMonitor", "Install-Service.ps1"),
+  path.join(
+    process.cwd(),
+    "USBMonitorCS",
+    "dist",
+    "USBMonitorService.exe",
+  ),
+  path.join(process.cwd(), "USBMonitorCS", "Install-Service.ps1"),
 ];
 
 /* ── Tipos ── */
