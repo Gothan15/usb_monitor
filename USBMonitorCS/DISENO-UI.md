@@ -40,14 +40,18 @@ el panel, para que ambos se lean como el mismo sistema.
    formulario usuario/contraseña con el botón «Desbloquear». Mensajes
    del servidor tal cual los devuelve usb-auth (401 genérico, 403 con
    su texto, sin conexión → sugiere la página de emergencia).
-2. **Caja de herramientas** (`gui`): cabecera con el estado como
-   palabra con punto de color (en ejecución / detenido / sin
-   conexión), secciones Servicio (iniciar, detener, reiniciar,
-   instalar, desinstalar), Servidor (host, puerto, esquema, guardar,
-   **Probar conexión** con el resultado paso a paso), Credencial
-   (token del equipo, se guarda cifrado), Acciones (Restaurar todo,
-   página de emergencia, compañero, visor) y Registro (cola del log
-   en mono, como el panel muestra sus tablas).
+2. **Caja de herramientas** (`gui`): todo en UNA sola pantalla de
+   960×700, sin desplazamiento (ver «Distribución» más abajo):
+   cabecera con el estado como palabra con punto de color (en
+   ejecución / detenido / sin conexión), resumen y dueño asignado
+   siempre visibles; columna izquierda con Servicio (iniciar,
+   detener, reiniciar, instalar, desinstalar) y Acciones (Restaurar
+   todo, página de emergencia, compañero, visor); columna derecha
+   con Servidor (host ancho completo, puerto y esquema en una fila,
+   guardar y **Probar conexión** con el resultado paso a paso) y
+   Credencial (token del equipo, se guarda cifrado); y abajo el
+   Registro como cinta de alto fijo sin barras — enseña la cola del
+   log siempre al día y el archivo completo se abre con un botón.
 3. **Visor de seriales** (`visor`): tabla clara de dispositivos
    presentes (nombre, serial, letra, tipo) con copiar al portapapeles.
 4. **Asistente de configuración** (`configurar`, y `gui` cuando es
@@ -67,6 +71,39 @@ el panel, para que ambos se lean como el mismo sistema.
    (y el doble clic sin argumentos) abre el asistente en vez de la
    caja de herramientas; el modo `configurar` lo abre siempre, para
    rehacer la configuración en cualquier PC.
+
+## Distribución de la caja de herramientas (una pantalla, sin scroll)
+
+Pedido de Gothan (2026-11-02): fácil de leer, con estilo pero
+minimalista, y sin tener que desplazarse dentro de la ventana.
+La versión anterior apilaba las cinco tarjetas en una columna de
+700×780 con `ScrollViewer`: el registro quedaba fuera de pantalla.
+
+Inspiración en diseños hechos por humanos (referencias reales):
+
+- **Ajustes de PowerToys y de Windows 11 (Microsoft)**: tarjetas
+  agrupadas por tema con etiquetas de sección claras y controles
+  alineados; de ahí salen las tarjetas y el orden por secciones.
+- **Ajustes del Sistema de macOS (Apple)**: filas de formulario con
+  la etiqueta a la izquierda y el control a la derecha, que es como
+  se leen Host/Puerto/Esquema sin esfuerzo.
+- **Preferencias de Raycast (Raycast Technologies)**: ventana de
+  utilidad compacta, densa pero con aire, donde todo se alcanza de
+  un vistazo sin páginas ni desplazamiento.
+
+Decisiones que salen de esas referencias:
+
+- Dos columnas por afinidad: a la izquierda lo que se TOCA a diario
+  (servicio y acciones); a la derecha lo que se CONFIGURA una vez
+  (servidor y credencial). El estado va en la cabecera, siempre
+  visible, no en una tarjeta más.
+- Botones en rejilla uniforme (ocupan todo el ancho de su tarjeta):
+  se localizan por posición, no leyendo una fila de píldoras.
+- El registro deja de ser una caja con barras: es una cinta de
+  alto fijo que enseña las últimas líneas (siempre pegada a la
+  cola) y el log completo se abre en el editor con un botón.
+- Se mantiene la paleta y la tipografía de este documento: el
+  estilo sale de la jerarquía y el aire, no de adornos nuevos.
 
 ## Reglas
 
