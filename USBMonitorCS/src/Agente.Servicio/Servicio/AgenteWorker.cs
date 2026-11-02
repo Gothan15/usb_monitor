@@ -38,6 +38,8 @@ public sealed class AgenteWorker : BackgroundService
     private const string EvEmergencia = "EMERGENCY_UNLOCK";
     private const string EvArranque = "SERVICE_START";
     private const string EvParada = "SERVICE_STOP";
+    private const string EvApagadoArmado = "SHUTDOWN_ARMED";
+    private const string EvApagadoCancelado = "SHUTDOWN_CANCELLED";
 
     private readonly Configuracion _configuracion = new();
     private readonly ClientePanel _cliente;
@@ -150,6 +152,13 @@ public sealed class AgenteWorker : BackgroundService
                 .Where(d => d.Tipo == TipoDispositivo.Red)
                 .Select(d => d.Clave)
                 .ToHashSet();
+            // Línea base también para el apagado: lo que ya estaba
+            // enchufado al arrancar el servicio NO lo arma (si no,
+            // un equipo con un dispositivo desconocido enchufado
+            // entraría en un bucle de apagados al encender).
+            lock (_lockApagado)
+                foreach (var clave in iniciales.Keys)
+                    _clavesDelArranque.Add(clave);
 
             // Fase 2: barrido inicial (bloquea lo presente salvo la base).
             foreach (var disp in iniciales.Values)
@@ -186,6 +195,10 @@ public sealed class AgenteWorker : BackgroundService
         try
         {
             Log.Info("Deteniendo el agente: restaurando todo");
+            // Una cuenta atrás de apagado no sobrevive a la parada
+            // del servicio (p. ej. al desinstalar): sin esto, el
+            // temporizador de Windows seguiría corriendo sin agente.
+            CancelarApagado("el servicio se está deteniendo");
             try
             {
                 _vigiaDispositivos?.Stop();
@@ -392,6 +405,10 @@ public sealed class AgenteWorker : BackgroundService
                 try { LockWorkStation(); } catch { /* bloquear sesión es best-effort */ }
             }
         }
+        // Veredicto confirmado de fuera de la lista: si el ajuste
+        // está activo, se arma el apagado (idempotente por equipo
+        // y dispositivo; ArmarApagado filtra tipos y línea base).
+        if (enWl == false) ArmarApagado(disp);
         RefrescarPendientesLocales();
     }
 
@@ -412,10 +429,145 @@ public sealed class AgenteWorker : BackgroundService
             return;
         }
         _motor.AlExtraer(clave);
+        DesarmarApagado(clave, disp, "el dispositivo se extrajo");
         await _cliente.CerrarBloqueoAsync(disp.Letra, disp.Serial).ConfigureAwait(false);
         _cliente.Evento(EvDesconectado, disp.Letra, disp.Serial);
         _pendientesRegistrados.Remove(clave);
         RefrescarPendientesLocales();
+    }
+
+    // ── apagado ante dispositivos fuera de la lista blanca ────────
+    // Ajuste del panel «shutdownOnNonWhitelisted» (apagado por
+    // defecto). Se arma SOLO con veredicto confirmado de «fuera de
+    // la lista» (false; jamás con «sin veredicto») y SOLO ante
+    // inserciones: lo presente al arrancar el servicio es línea
+    // base, como la red USB, para que un equipo no entre en un
+    // bucle de apagados con el dispositivo aún enchufado.
+    //
+    // Sin condiciones de carrera, por construcción:
+    //  - Todo el estado (causantes, cuenta en curso, línea base)
+    //    vive bajo _lockApagado y SOLO se toca dentro de él.
+    //  - Armar es idempotente por dispositivo (un HashSet) y hay
+    //    una única cuenta atrás por equipo: la lanza el único hilo
+    //    que voltea _apagadoEnCurso.
+    //  - La llamada a shutdown.exe se hace DENTRO del lock, a
+    //    propósito: armar (/s) y cancelar (/a) quedan serializados
+    //    y un «/a» jamás puede adelantarse a su «/s», que dejaría
+    //    una cuenta huérfana sin causante que la detenga. La
+    //    utilidad responde en milisegundos; la cuenta atrás en sí
+    //    es del sistema operativo, sin temporizadores del agente.
+    //  - La cuenta se cancela cuando el ÚLTIMO causante desaparece
+    //    (extracción o desbloqueo, incluido el de emergencia), si
+    //    el ajuste se desactiva en el panel o si el servicio se
+    //    detiene. Windows además permite abortarla a mano con
+    //    «shutdown /a» durante la cuenta.
+    // La cuenta atrás la define el panel (shutdownCountdownSeconds,
+    // 60 por defecto, acotada a 10–600 en ConfigCompartida).
+    private readonly object _lockApagado = new();
+    private readonly HashSet<string> _apagadoCausantes = new();
+    private readonly HashSet<string> _clavesDelArranque = new();
+    private bool _apagadoEnCurso;
+
+    private void ArmarApagado(Dispositivo disp)
+    {
+        // Solo dispositivos gobernados por la lista blanca: las
+        // impresoras nunca se bloquean ni se juzgan, y la red USB
+        // tiene su propia regla de línea base.
+        if (disp.Tipo is not (TipoDispositivo.Disco or TipoDispositivo.Telefono or TipoDispositivo.Optico))
+            return;
+        if (!_compartida.ShutdownOnNonWhitelisted) return;
+        var segundos = _compartida.ShutdownCountdownSeconds;
+        var armado = false;
+        lock (_lockApagado)
+        {
+            if (_clavesDelArranque.Contains(disp.Clave)) return;
+            _apagadoCausantes.Add(disp.Clave);
+            if (_apagadoEnCurso) return;
+            var mensaje =
+                $"USBMonitor: dispositivo no autorizado ({disp.Nombre}). " +
+                $"El equipo se apagara en {segundos} segundos.";
+            if (EjecutarShutdownExe("/s", "/t",
+                    segundos.ToString(), "/c", mensaje))
+            {
+                _apagadoEnCurso = true;
+                armado = true;
+            }
+        }
+        if (armado)
+        {
+            _cliente.Evento(EvApagadoArmado, disp.Letra, disp.Serial);
+            Log.Advertencia(
+                $"Apagado ARMADO ({segundos} s) por dispositivo " +
+                $"fuera de la lista blanca: {disp.Nombre} ({disp.Serial})");
+        }
+        else
+        {
+            Log.Error($"No se pudo armar el apagado por {disp.Nombre}");
+        }
+    }
+
+    /// <summary>El causante desapareció (extracción/desbloqueo): si era el último, se aborta la cuenta.</summary>
+    private void DesarmarApagado(string clave, Dispositivo? disp, string motivo)
+    {
+        var cancelado = false;
+        lock (_lockApagado)
+        {
+            if (!_apagadoCausantes.Remove(clave)) return;
+            if (_apagadoCausantes.Count > 0 || !_apagadoEnCurso) return;
+            EjecutarShutdownExe("/a");
+            _apagadoEnCurso = false;
+            cancelado = true;
+        }
+        if (cancelado)
+        {
+            if (disp is not null)
+                _cliente.Evento(EvApagadoCancelado, disp.Letra, disp.Serial);
+            Log.Info($"Apagado cancelado: {motivo}");
+        }
+    }
+
+    /// <summary>Cancela cualquier cuenta en curso y olvida los causantes (ajuste off, parada del servicio).</summary>
+    private void CancelarApagado(string motivo)
+    {
+        var cancelado = false;
+        lock (_lockApagado)
+        {
+            _apagadoCausantes.Clear();
+            if (!_apagadoEnCurso) return;
+            EjecutarShutdownExe("/a");
+            _apagadoEnCurso = false;
+            cancelado = true;
+        }
+        if (cancelado) Log.Info($"Apagado cancelado: {motivo}");
+    }
+
+    private static bool EjecutarShutdownExe(params string[] argumentos)
+    {
+        try
+        {
+            var info = new ProcessStartInfo
+            {
+                FileName = "shutdown.exe",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            foreach (var argumento in argumentos) info.ArgumentList.Add(argumento);
+            using var proceso = Process.Start(info);
+            if (proceso is null) return false;
+            if (!proceso.WaitForExit(5000))
+            {
+                try { proceso.Kill(); } catch { /* ya terminó */ }
+                return false;
+            }
+            return proceso.ExitCode == 0;
+        }
+        catch (Exception exc)
+        {
+            Log.Advertencia($"shutdown.exe ({string.Join(" ", argumentos)}): {exc.Message}");
+            return false;
+        }
     }
 
     // ── bucles ────────────────────────────────────────────────────
@@ -493,6 +645,7 @@ public sealed class AgenteWorker : BackgroundService
                             .ConfigureAwait(false);
                         if (enWl is null) continue;
                         reg.EnWhitelist = enWl;
+                        if (enWl == false) ArmarApagado(reg.Dispositivo);
                         RefrescarPendientesLocales();
                     }
                     // No-op si ya está registrado.
@@ -579,7 +732,10 @@ public sealed class AgenteWorker : BackgroundService
             return;
         }
         if (_motor.LiberarConReintentos(objetivo.Clave))
+        {
             _cliente.Evento(EvDesbloqueado, objetivo.Letra, objetivo.Serial);
+            DesarmarApagado(objetivo.Clave, objetivo, "el dispositivo se desbloqueó");
+        }
         else
             _cliente.Evento(EvFalloLiberacion, objetivo.Letra, objetivo.Serial);
         RefrescarPendientesLocales();
@@ -617,6 +773,11 @@ public sealed class AgenteWorker : BackgroundService
                     var remota = await _cliente.ConfigRemotaAsync().ConfigureAwait(false);
                     if (remota is not null) _compartida.AplicarRemota(remota);
                 }
+                // Si el ajuste se apagó en el panel (por la config
+                // periódica o por el empuje en caliente), una cuenta
+                // atrás en curso se cancela: no-op si no hay ninguna.
+                if (!_compartida.ShutdownOnNonWhitelisted)
+                    CancelarApagado("el ajuste se desactivó en el panel");
             }
             catch (Exception exc)
             {
@@ -656,6 +817,7 @@ public sealed class AgenteWorker : BackgroundService
             if (reg.Dispositivo.Serial != serial) continue;
             if (!_motor.LiberarConReintentos(reg.Dispositivo.Clave)) return false;
             _cliente.Evento(EvEmergencia, reg.Dispositivo.Letra, reg.Dispositivo.Serial);
+            DesarmarApagado(reg.Dispositivo.Clave, reg.Dispositivo, "desbloqueo de emergencia local");
             RefrescarPendientesLocales();
             return true;
         }

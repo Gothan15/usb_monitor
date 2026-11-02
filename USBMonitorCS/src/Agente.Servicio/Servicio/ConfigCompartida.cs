@@ -15,6 +15,7 @@ public sealed class ConfigCompartida
 {
     private readonly object _lock = new();
     private bool _lockSessionOnInsert;
+    private bool _shutdownOnNonWhitelisted;
     private int _startupNetworkDelay;
 
     /// <summary>Bloquear la sesión de Windows al insertar un USB bloqueado.</summary>
@@ -22,6 +23,26 @@ public sealed class ConfigCompartida
     {
         get { lock (_lock) return _lockSessionOnInsert; }
         set { lock (_lock) _lockSessionOnInsert = value; }
+    }
+
+    /// <summary>Apagar el equipo al insertar un dispositivo fuera de la lista blanca.</summary>
+    public bool ShutdownOnNonWhitelisted
+    {
+        get { lock (_lock) return _shutdownOnNonWhitelisted; }
+        set { lock (_lock) _shutdownOnNonWhitelisted = value; }
+    }
+
+    private int _shutdownCountdownSeconds = 60;
+
+    /// <summary>
+    /// Segundos de cuenta atrás antes del apagado. Se acota al
+    /// guardar (10–600): ni un apagado sin margen ni una cuenta de
+    /// horas, venga el valor de donde venga.
+    /// </summary>
+    public int ShutdownCountdownSeconds
+    {
+        get { lock (_lock) return _shutdownCountdownSeconds; }
+        set { lock (_lock) _shutdownCountdownSeconds = Math.Clamp(value, 10, 600); }
     }
 
     /// <summary>Espera de red al arrancar el servicio, en segundos.</summary>
@@ -41,6 +62,11 @@ public sealed class ConfigCompartida
             // ruta /api/agent/config lo devuelve siempre: se aplica
             // tal cual viene.
             _lockSessionOnInsert = remota.LockSessionOnInsert;
+            _shutdownOnNonWhitelisted = remota.ShutdownOnNonWhitelisted;
+            // La cuenta atrás es anulable: un panel sin el campo
+            // (versión anterior) no pisa el valor vigente.
+            if (remota.ShutdownCountdownSeconds is { } segundos)
+                ShutdownCountdownSeconds = segundos;
         }
     }
 }

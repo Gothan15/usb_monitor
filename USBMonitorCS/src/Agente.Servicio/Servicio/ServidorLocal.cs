@@ -227,6 +227,14 @@ public sealed class ServidorLocal : IDisposable
             _compartida.LockSessionOnInsert = bloquear;
         else if (ObtenerBool(datos, "lockSessionOnInsert") is { } bloquear2)
             _compartida.LockSessionOnInsert = bloquear2;
+        if (ObtenerBool(datos, "shutdown_on_non_whitelisted") is { } apagar)
+            _compartida.ShutdownOnNonWhitelisted = apagar;
+        else if (ObtenerBool(datos, "shutdownOnNonWhitelisted") is { } apagar2)
+            _compartida.ShutdownOnNonWhitelisted = apagar2;
+        if (ObtenerEntero(datos, "shutdown_countdown_seconds") is { } cuenta)
+            _compartida.ShutdownCountdownSeconds = cuenta;
+        else if (ObtenerEntero(datos, "shutdownCountdownSeconds") is { } cuenta2)
+            _compartida.ShutdownCountdownSeconds = cuenta2;
         Log.Info($"Config local actualizada: {cuerpo}");
         await ResponderJsonAsync(ctx, new { ok = true }).ConfigureAwait(false);
     }

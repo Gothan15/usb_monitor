@@ -11,8 +11,9 @@ import { logError } from "@/lib/logger";
  * El agente pide sus ajustes al arrancar y periódicamente, en vez de
  * depender solo del empuje (POST /api/settings → :5001/config), que
  * no llega si el equipo está apagado cuando se guarda el cambio.
- * Devuelve únicamente los dos ajustes que el agente aplica en local:
- * la espera de red al arranque y el bloqueo de sesión al conectar.
+ * Devuelve únicamente los ajustes que el agente aplica en local:
+ * la espera de red al arranque, el bloqueo de sesión al conectar
+ * y el apagado ante un dispositivo fuera de la lista blanca.
  */
 export async function GET(req: Request) {
   try {
@@ -34,10 +35,19 @@ export async function GET(req: Request) {
     }
 
     registrarContactoAgente(null, "/api/agent/config", 200);
+    // La cuenta atrás se sirve siempre acotada: ni un valor
+    // editado a mano en el JSON puede armar un apagado inmediato
+    // ni uno de horas.
+    const shutdownCountdownSeconds = Math.min(
+      600,
+      Math.max(10, Number(settings.shutdownCountdownSeconds) || 60),
+    );
     const res = NextResponse.json({
       ok: true,
       startupNetworkDelay,
       lockSessionOnInsert: settings.lockSessionOnInsert,
+      shutdownOnNonWhitelisted: settings.shutdownOnNonWhitelisted,
+      shutdownCountdownSeconds,
     });
     res.headers.set("Cache-Control", "no-store");
     return res;
