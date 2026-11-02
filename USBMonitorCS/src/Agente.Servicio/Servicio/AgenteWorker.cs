@@ -368,19 +368,24 @@ public sealed class AgenteWorker : BackgroundService
                             reg.Dispositivo.Letra, reg.Dispositivo.Serial);
                     }
                 }
-                // Registro en el panel de bloqueos creados sin red.
+                // Registro en el panel de los bloqueos que aún no
+                // constan allí: los creados sin red (falta el veredicto
+                // de la lista blanca) y los cuyo registro falló a
+                // mitad (p. ej. un timeout del panel), que antes
+                // quedaban sin reintento y no se podían desbloquear.
                 foreach (var reg in _motor.Bloqueados())
                 {
-                    if (reg.EnWhitelist is not null) continue;
-                    var enWl = await EnWhitelistAsync(reg.Dispositivo.Serial)
-                        .ConfigureAwait(false);
-                    if (enWl is not null)
+                    if (reg.EnWhitelist is null)
                     {
-                        reg.EnWhitelist = enWl;
-                        await RegistrarEnPanelAsync(reg.Dispositivo, enWl.Value)
+                        var enWl = await EnWhitelistAsync(reg.Dispositivo.Serial)
                             .ConfigureAwait(false);
+                        if (enWl is null) continue;
+                        reg.EnWhitelist = enWl;
                         RefrescarPendientesLocales();
                     }
+                    // No-op si ya está registrado.
+                    await RegistrarEnPanelAsync(reg.Dispositivo, reg.EnWhitelist.Value)
+                        .ConfigureAwait(false);
                 }
             }
             catch (Exception exc)

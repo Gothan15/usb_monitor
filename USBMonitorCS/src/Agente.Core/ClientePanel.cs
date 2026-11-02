@@ -8,6 +8,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
@@ -54,6 +55,20 @@ public sealed class ClientePanel : IDisposable
         var datos = directorioDatos ?? Registro.DirectorioDatos;
         _archivoCola = Path.Combine(datos, "cola_eventos.json");
         _cola = LeerCola();
+        // Diagnóstico de la credencial: nunca el token, solo su
+        // huella SHA-256 (la misma que el panel guarda en la BD),
+        // para poder comparar de un vistazo si el panel rechaza.
+        var token = _config.TokenAgente;
+        if (token is null)
+        {
+            Log.Info("Credencial del equipo: AUSENTE (sin token legible en server.json).");
+        }
+        else
+        {
+            var huella = Convert.ToHexString(
+                SHA256.HashData(Encoding.UTF8.GetBytes(token)))[..12].ToLowerInvariant();
+            Log.Info($"Credencial del equipo: presente (largo {token.Length}, huella sha256 {huella}…).");
+        }
     }
 
     public void Dispose() => _http.Dispose();
