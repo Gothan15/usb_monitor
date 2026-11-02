@@ -259,6 +259,33 @@ export async function scanNetwork(
   const concurrency = 30;
   const results: HostScanResult[] = [];
   const persistQueue: ComputerUpsertPayload[] = [];
+
+  // Registro de agentes según el propio panel: cada agente se
+  // reporta a sí mismo (su IP y su última señal). El sondeo HTTP
+  // al :5001 solo puede responder en el equipo donde corre el
+  // panel, porque el servidor local del agente escucha en
+  // 127.0.0.1 por seguridad (ahí van la página de emergencia y la
+  // configuración): para el resto de la red, la presencia del
+  // servicio se confirma con este registro. Si un agente reportó
+  // hace menos de 5 minutos, su servicio está en marcha.
+  const agentesPorIp = new Map<
+    string,
+    { nombre: string; ultimaSenal: Date }
+  >();
+  try {
+    const equipos = await (db as any).computer.findMany({
+      select: { name: true, ipAddress: true, lastSeen: true },
+    });
+    for (const eq of equipos) {
+      const ipEq = typeof eq.ipAddress === "string" ? eq.ipAddress.trim() : "";
+      if (ipEq && eq.lastSeen) {
+        agentesPorIp.set(ipEq, { nombre: eq.name, ultimaSenal: eq.lastSeen });
+      }
+    }
+  } catch {
+    // Sin registro disponible: el escaneo sigue con ping y sondeo.
+  }
+  const ipsPropias = new Set(getAllLocalNetworks().map((n) => n.address));
   let index = 0;
   async function worker() {
     while (index < ips.length) {
@@ -269,8 +296,29 @@ export async function scanNetwork(
         // Ping y puerto del agente se comprueban A LA VEZ y por
         // separado: un PC con el agente sano pero el ICMP bloqueado
         // por su cortafuegos debe aparecer igual (antes el servicio
-        // solo se miraba si el ping respondía).
-        const [isUp, svc] = await Promise.all([pingHost(ip), checkService(ip)]);
+        // solo se miraba si el ping respondía). El propio equipo se
+        // sondea por 127.0.0.1, que es donde su agente escucha.
+        const ipSondeo = ipsPropias.has(ip) ? "127.0.0.1" : ip;
+        const [isUp, svcSondeo] = await Promise.all([
+          pingHost(ip),
+          checkService(ipSondeo),
+        ]);
+        let svc = svcSondeo;
+        if (!svc.serviceInstalled) {
+          const reg = agentesPorIp.get(ip);
+          if (
+            reg &&
+            getCurrentTimestamp() - reg.ultimaSenal.getTime() < 5 * 60_000
+          ) {
+            svc = {
+              serviceInstalled: true,
+              serviceRunning: true,
+              lastServiceCheck: getCurrentDate(),
+              healthStatus: "OK (reportado al panel)",
+              hostname: reg.nombre,
+            };
+          }
+        }
         host.alive = isUp || svc.serviceInstalled === true;
         if (host.alive) {
           Object.assign(host, svc);

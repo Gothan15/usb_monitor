@@ -59,7 +59,7 @@ export async function checkServiceHealth(ip: string): Promise<{
     try {
       const response = await fetch(`${baseUrl}${path}`, {
         method: "GET",
-        signal: AbortSignal.timeout(3000),
+        signal: AbortSignal.timeout(1500),
       });
 
       const latencyMs = getCurrentTimestamp() - started;
@@ -70,7 +70,7 @@ export async function checkServiceHealth(ip: string): Promise<{
       const data = isJson ? await response.json().catch(() => ({})) : {};
 
       const hostname =
-        data.hostname || data.pc_name || data.name || data.pcName || undefined;
+        data.hostname || data.pc_name || data.pc || data.name || data.pcName || undefined;
       const statusField =
         (typeof data.status === "string" && data.status) ||
         (typeof data.service_status === "string" && data.service_status) ||
@@ -103,11 +103,8 @@ export async function checkServiceHealth(ip: string): Promise<{
 
       lastResult = result;
 
-      if (
-        !response.ok &&
-        path === "/service-status" &&
-        [404, 405].includes(response.status)
-      ) {
+      if (!response.ok && [404, 405].includes(response.status)) {
+        // Esta ruta no existe en ese agente: probar la siguiente.
         return null;
       }
 
@@ -122,11 +119,20 @@ export async function checkServiceHealth(ip: string): Promise<{
     }
   };
 
-  const primary = await attempt("/service-status");
-  if (primary) return primary;
-
-  const fallback = await attempt("/health");
-  if (fallback) return fallback;
+  // La ruta real del agente actual es /estado (antes se buscaban
+  // /service-status y /health, que el agente ya no expone: el
+  // escáner no encontraba el servicio ni en el propio equipo).
+  // Las antiguas quedan como compatibilidad. Si un intento falla
+  // por red (nadie escucha en ese puerto), no se prueban las
+  // demás: la respuesta sería la misma y el escaneo se eterniza.
+  for (const path of ["/estado", "/service-status", "/health"]) {
+    const result = await attempt(path);
+    if (result) return result;
+    // attempt solo devuelve null con respuesta HTTP 404/405 (la
+    // ruta no existe: probar la siguiente) o con error de red
+    // (sin statusCode: nadie escucha ahí, no insistir).
+    if (!lastResult?.statusCode) break;
+  }
 
   return (
     lastResult || {
