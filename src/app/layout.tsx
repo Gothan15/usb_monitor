@@ -7,6 +7,16 @@ import AuthGate from "@/components/system/AuthGate";
 import { ThemeProvider } from "@/components/system/ThemeProvider";
 import { QueryProvider } from "@/components/system/QueryProvider";
 
+// El middleware pone una CSP con nonce NUEVO EN CADA PETICIÓN y
+// Next solo puede sellar ese nonce en los scripts de la página si
+// la página se renderiza en esa petición. Sin esto, en producción
+// (npm run start) las páginas salen prerenderizadas del build, sus
+// scripts inline no llevan el nonce de la respuesta, el navegador
+// los bloquea TODOS por CSP y la página se ve en blanco. En
+// desarrollo no se notaba: la CSP de desarrollo permite
+// 'unsafe-inline'. No quitar sin cambiar antes la CSP.
+export const dynamic = "force-dynamic";
+
 const inter = Inter({
   variable: "--font-inter",
   subsets: ["latin"],
