@@ -51,7 +51,7 @@ export type HistoryRange = 1 | 7 | 30;
 export interface ConnectedUSBDevice {
   id: string;
   pcName: string;
-  driveLetter: string;
+  driveLetter: string | null;
   volumeName: string;
   serialNumber: string;
   model: string;
@@ -65,7 +65,7 @@ export interface ConnectedUSBDevice {
 export interface DisconnectedUSBDevice {
   id: string;
   pcName: string;
-  driveLetter: string;
+  driveLetter: string | null;
   volumeName: string;
   serialNumber: string;
   model: string;

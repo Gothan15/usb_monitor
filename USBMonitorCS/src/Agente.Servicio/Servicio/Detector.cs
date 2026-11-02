@@ -312,6 +312,24 @@ public sealed class Detector
         var unidades = new List<UnidadConectada>();
         foreach (var disp in dispositivos)
         {
+            if (disp.Letras.Count == 0)
+            {
+                // Sin letra (bloqueado por PnP, teléfono WPD…): el
+                // dispositivo ESTÁ conectado y tiene que verse en
+                // el panel. Antes solo se reportaban las letras y
+                // el panel nunca lo veía (o lo daba por
+                // desconectado): una memoria bloqueada desaparecía
+                // de «Dispositivos USB» de su equipo.
+                unidades.Add(new UnidadConectada
+                {
+                    DriveLetter = null,
+                    VolumeName = disp.Nombre,
+                    SerialNumber = disp.Serial,
+                    Model = disp.Nombre,
+                    Size = disp.Tamano,
+                });
+                continue;
+            }
             foreach (var letra in disp.Letras)
             {
                 unidades.Add(new UnidadConectada
