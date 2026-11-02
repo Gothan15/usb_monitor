@@ -5,6 +5,7 @@ using System.ServiceProcess;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Threading;
@@ -15,10 +16,11 @@ namespace USBMonitor.Agente.Servicio.Ventanas;
 /// <summary>
 /// Caja de herramientas del administrador.
 ///
-/// Espejo en tema claro de la ventana de gestión del agente Python:
-/// estado, control e instalación del servicio, servidor, credencial,
-/// acciones de recuperación y cola del registro. Ninguna operación
-/// de red, WMI o servicio se ejecuta en el hilo de la ventana.
+/// Estado, control e instalación del servicio, servidor, credencial,
+/// acciones de recuperación y cola del registro, todo en UNA sola
+/// pantalla de dos columnas sin desplazamiento (ver DISENO-UI.md).
+/// Ninguna operación de red, WMI o servicio se ejecuta en el hilo
+/// de la ventana.
 /// </summary>
 public sealed class ToolboxWindow : Window
 {
@@ -58,61 +60,59 @@ public sealed class ToolboxWindow : Window
         _cliente = new ClientePanel(_config);
 
         Title = "USBMonitor — Gestión del agente";
-        Width = 700;
-        Height = 780;
-        MinWidth = 620;
-        MinHeight = 640;
+        Width = 960;
+        Height = 700;
+        MinWidth = 900;
+        MinHeight = 660;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Tema.AplicarVentana(this);
 
-        var raiz = new StackPanel { Margin = new Thickness(18, 6, 18, 18) };
-        raiz.Children.Add(Tema.TitularVentana(
-            "USBMonitor · Gestión del agente",
-            "Herramienta interna del equipo"));
+        // ── Distribución en UNA sola pantalla, sin desplazamiento ──
+        // Inspiración (diseños humanos, ver DISENO-UI.md): los
+        // ajustes de PowerToys y de macOS agrupan por secciones con
+        // etiquetas a la izquierda y controles a la derecha, y las
+        // utilidades compactas tipo Raycast enseñan todo de un
+        // vistazo. Aquí: cabecera con el estado siempre visible,
+        // dos columnas (control a la izquierda, configuración a la
+        // derecha) y el registro como cinta inferior de alto fijo.
+        // Antes las secciones iban apiladas en una columna con
+        // ScrollViewer y había que bajar para llegar al registro.
+        var raiz = new Grid { Margin = new Thickness(18, 10, 18, 14) };
+        raiz.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        raiz.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        raiz.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        raiz.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-        // Estado general: palabra con punto de color, como el panel.
-        var filaEstado = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        _puntoEstado = Tema.PuntoEstado(Tema.Ambar);
-        filaEstado.Children.Add(_puntoEstado);
-        _textoEstado = new TextBlock
-        {
-            Text = "Consultando…",
-            FontFamily = Tema.FuenteTexto,
-            FontSize = 13.5,
-            FontWeight = FontWeights.SemiBold,
-            Foreground = Tema.Tinta
-        };
-        filaEstado.Children.Add(_textoEstado);
+        raiz.Children.Add(ConstruirCabecera());
 
-        var estado = new StackPanel();
-        estado.Children.Add(filaEstado);
-        _textoResumen = Tema.TextoDatos("servidor — · bloqueados ahora: —", 12);
-        _textoResumen.Foreground = Tema.TintaAtenuada;
-        _textoResumen.Margin = new Thickness(16, 5, 0, 0);
-        estado.Children.Add(_textoResumen);
-        _textoDueno = Tema.TextoDatos("dueño asignado: …", 12);
-        _textoDueno.Foreground = Tema.TintaAtenuada;
-        _textoDueno.Margin = new Thickness(16, 3, 0, 0);
-        _textoDueno.TextWrapping = TextWrapping.Wrap;
-        estado.Children.Add(_textoDueno);
-        raiz.Children.Add(Tema.Tarjeta(estado, new Thickness(0, 4, 0, 12), new Thickness(14, 11, 14, 11)));
+        var estado = ConstruirFranjaEstado(out _puntoEstado, out _textoEstado, out _textoResumen, out _textoDueno);
+        Grid.SetRow(estado, 1);
+        raiz.Children.Add(estado);
 
-        raiz.Children.Add(ConstruirSeccionServicio(out _textoServicio));
-        raiz.Children.Add(ConstruirSeccionServidor(out _host, out _puerto, out _esquema, out _botonProbar));
-        raiz.Children.Add(ConstruirSeccionCredencial(out _token));
-        raiz.Children.Add(ConstruirSeccionAcciones());
-        raiz.Children.Add(ConstruirSeccionRegistro(out _registro));
+        var columnas = new Grid { Margin = new Thickness(0, 12, 0, 12) };
+        columnas.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        columnas.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(12) });
+        columnas.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        Grid.SetRow(columnas, 2);
+        raiz.Children.Add(columnas);
 
-        Content = new ScrollViewer
-        {
-            Content = raiz,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
-        };
+        var izquierda = new StackPanel();
+        izquierda.Children.Add(ConstruirSeccionServicio(out _textoServicio));
+        izquierda.Children.Add(ConstruirSeccionAcciones());
+        Grid.SetColumn(izquierda, 0);
+        columnas.Children.Add(izquierda);
+
+        var derecha = new StackPanel();
+        derecha.Children.Add(ConstruirSeccionServidor(out _host, out _puerto, out _esquema, out _botonProbar));
+        derecha.Children.Add(ConstruirSeccionCredencial(out _token));
+        Grid.SetColumn(derecha, 2);
+        columnas.Children.Add(derecha);
+
+        var registro = ConstruirSeccionRegistro(out _registro);
+        Grid.SetRow(registro, 3);
+        raiz.Children.Add(registro);
+
+        Content = raiz;
 
         _temporizadorEstado = new DispatcherTimer { Interval = TimeSpan.FromSeconds(4) };
         _temporizadorEstado.Tick += async (_, _) => await RefrescarEstadoAsync();
@@ -137,6 +137,77 @@ public sealed class ToolboxWindow : Window
 
     // ── Construcción de secciones ────────────────────────────────
 
+    private static Border ConstruirCabecera()
+    {
+        var textos = new StackPanel();
+        textos.Children.Add(new TextBlock
+        {
+            Text = "USBMonitor · Gestión del agente",
+            FontFamily = Tema.FuenteTexto,
+            FontSize = 18,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = Tema.Tinta
+        });
+        textos.Children.Add(new TextBlock
+        {
+            Text = "Herramienta interna del equipo — todo en una pantalla, sin desplazarse.",
+            FontFamily = Tema.FuenteTexto,
+            FontSize = 12,
+            Foreground = Tema.TintaAtenuada,
+            Margin = new Thickness(0, 1, 0, 0)
+        });
+
+        return new Border
+        {
+            Background = Tema.FondoVentana,
+            BorderBrush = Tema.Acero,
+            BorderThickness = new Thickness(0, 2, 0, 0),
+            Padding = new Thickness(0, 8, 0, 6),
+            Child = textos
+        };
+    }
+
+    private static Border ConstruirFranjaEstado(
+        out Ellipse punto,
+        out TextBlock textoEstado,
+        out TextBlock textoResumen,
+        out TextBlock textoDueno)
+    {
+        var contenido = new StackPanel();
+
+        // Estado general: palabra con punto de color, como el panel.
+        var filaEstado = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        punto = Tema.PuntoEstado(Tema.Ambar);
+        filaEstado.Children.Add(punto);
+        textoEstado = new TextBlock
+        {
+            Text = "Consultando…",
+            FontFamily = Tema.FuenteTexto,
+            FontSize = 13.5,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = Tema.Tinta
+        };
+        filaEstado.Children.Add(textoEstado);
+        contenido.Children.Add(filaEstado);
+
+        textoResumen = Tema.TextoDatos("servidor — · bloqueados ahora: —", 12);
+        textoResumen.Foreground = Tema.TintaAtenuada;
+        textoResumen.Margin = new Thickness(16, 4, 0, 0);
+        contenido.Children.Add(textoResumen);
+
+        textoDueno = Tema.TextoDatos("dueño asignado: …", 12);
+        textoDueno.Foreground = Tema.TintaAtenuada;
+        textoDueno.Margin = new Thickness(16, 2, 0, 0);
+        textoDueno.TextWrapping = TextWrapping.Wrap;
+        contenido.Children.Add(textoDueno);
+
+        return Tema.Tarjeta(contenido, new Thickness(0, 8, 0, 0), new Thickness(12, 9, 12, 9));
+    }
+
     private Border ConstruirSeccionServicio(out TextBlock textoServicio)
     {
         var contenido = new StackPanel();
@@ -146,25 +217,28 @@ public sealed class ToolboxWindow : Window
         textoServicio.Margin = new Thickness(0, 0, 0, 10);
         contenido.Children.Add(textoServicio);
 
-        var fila = new WrapPanel();
+        var fila = new UniformGrid { Columns = 3 };
         fila.Children.Add(BotonServicio("Iniciar", async () => await ControlarServicioAsync("start")));
         fila.Children.Add(BotonServicio("Detener", async () => await ControlarServicioAsync("stop")));
-        fila.Children.Add(BotonServicio("Reiniciar", async () => await ControlarServicioAsync("restart")));
+        var reiniciar = BotonServicio("Reiniciar", async () => await ControlarServicioAsync("restart"));
+        reiniciar.Margin = new Thickness(0);
+        fila.Children.Add(reiniciar);
         contenido.Children.Add(fila);
 
-        var filaInstalacion = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
+        var filaInstalacion = new UniformGrid { Columns = 2, Margin = new Thickness(0, 8, 0, 0) };
         var instalar = Tema.BotonPrimario("Instalar servicio");
         instalar.Click += async (_, _) => await InstalarAsync();
         _botonesServicio.Add(instalar);
         filaInstalacion.Children.Add(instalar);
 
         var desinstalar = Tema.BotonSecundario("Desinstalar servicio");
+        desinstalar.Margin = new Thickness(0);
         desinstalar.Click += async (_, _) => await DesinstalarAsync();
         _botonesServicio.Add(desinstalar);
         filaInstalacion.Children.Add(desinstalar);
         contenido.Children.Add(filaInstalacion);
 
-        return Tema.Tarjeta(contenido);
+        return Tema.Tarjeta(contenido, new Thickness(0, 0, 0, 12), new Thickness(12));
     }
 
     private Button BotonServicio(string texto, Func<Task> accion)
@@ -184,31 +258,40 @@ public sealed class ToolboxWindow : Window
         var contenido = new StackPanel();
         contenido.Children.Add(Tema.EtiquetaSeccion("Servidor"));
 
-        contenido.Children.Add(FilaCampo("Host / IP", host = Tema.CampoTexto(datos: true), 300));
+        contenido.Children.Add(FilaCampo("Host / IP", host = Tema.CampoTexto(datos: true)));
         _host.Text = _config.HostServidor;
-        contenido.Children.Add(FilaCampo("Puerto", puerto = Tema.CampoTexto(datos: true), 110));
-        _puerto.Text = _config.PuertoServidor.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
-        var filaEsquema = new Grid { Margin = new Thickness(0, 0, 0, 7) };
-        filaEsquema.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(105) });
-        filaEsquema.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        // Puerto y esquema comparten fila: son los dos datos cortos
+        // del servidor y así la tarjeta no crece hacia abajo.
+        var filaDoble = new Grid { Margin = new Thickness(0, 0, 0, 2) };
+        filaDoble.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(92) });
+        filaDoble.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(96) });
+        filaDoble.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(70) });
+        filaDoble.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var etiquetaPuerto = Tema.EtiquetaCampo("Puerto");
+        etiquetaPuerto.Margin = new Thickness(0, 5, 0, 0);
+        filaDoble.Children.Add(etiquetaPuerto);
+        puerto = Tema.CampoTexto(datos: true);
+        Grid.SetColumn(puerto, 1);
+        filaDoble.Children.Add(puerto);
+        _puerto.Text = _config.PuertoServidor.ToString(System.Globalization.CultureInfo.InvariantCulture);
         var etiquetaEsquema = Tema.EtiquetaCampo("Esquema");
-        etiquetaEsquema.Margin = new Thickness(0, 5, 0, 0);
-        Grid.SetColumn(etiquetaEsquema, 0);
-        filaEsquema.Children.Add(etiquetaEsquema);
+        etiquetaEsquema.Margin = new Thickness(10, 5, 0, 0);
+        Grid.SetColumn(etiquetaEsquema, 2);
+        filaDoble.Children.Add(etiquetaEsquema);
         esquema = Tema.Selector();
         esquema.Items.Add("http");
         esquema.Items.Add("https");
         esquema.SelectedItem = _config.EsquemaServidor;
-        esquema.Width = 110;
-        Grid.SetColumn(esquema, 1);
-        filaEsquema.Children.Add(esquema);
-        contenido.Children.Add(filaEsquema);
+        Grid.SetColumn(esquema, 3);
+        filaDoble.Children.Add(esquema);
+        contenido.Children.Add(filaDoble);
 
-        var botones = new WrapPanel
+        var botones = new StackPanel
         {
+            Orientation = Orientation.Horizontal,
             HorizontalAlignment = HorizontalAlignment.Right,
-            Margin = new Thickness(0, 5, 0, 0)
+            Margin = new Thickness(0, 8, 0, 0)
         };
         var guardar = Tema.BotonPrimario("Guardar servidor");
         guardar.Click += (_, _) => GuardarServidor();
@@ -220,19 +303,18 @@ public sealed class ToolboxWindow : Window
         botones.Children.Add(botonProbar);
         contenido.Children.Add(botones);
 
-        return Tema.Tarjeta(contenido);
+        return Tema.Tarjeta(contenido, new Thickness(0, 0, 0, 12), new Thickness(12));
     }
 
-    private static Grid FilaCampo(string etiqueta, Control campo, double ancho)
+    private static Grid FilaCampo(string etiqueta, Control campo)
     {
         var fila = new Grid { Margin = new Thickness(0, 0, 0, 7) };
-        fila.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(105) });
-        fila.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        fila.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(92) });
+        fila.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         var texto = Tema.EtiquetaCampo(etiqueta);
         texto.Margin = new Thickness(0, 5, 0, 0);
         Grid.SetColumn(texto, 0);
         fila.Children.Add(texto);
-        campo.Width = ancho;
         Grid.SetColumn(campo, 1);
         fila.Children.Add(campo);
         return fila;
@@ -248,22 +330,28 @@ public sealed class ToolboxWindow : Window
         token.Margin = new Thickness(0, 0, 0, 9);
         contenido.Children.Add(token);
 
+        var fila = new Grid();
+        fila.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        fila.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         var guardar = Tema.BotonPrimario("Guardar credencial");
-        guardar.HorizontalAlignment = HorizontalAlignment.Left;
+        guardar.Margin = new Thickness(0);
         guardar.Click += (_, _) => GuardarCredencial();
-        contenido.Children.Add(guardar);
-
-        contenido.Children.Add(new TextBlock
+        fila.Children.Add(guardar);
+        var ayuda = new TextBlock
         {
             Text = "Lo genera un administrador en el panel: Equipos, botón «Token del agente».",
             FontFamily = Tema.FuenteTexto,
             FontSize = 11.5,
             Foreground = Tema.TintaAtenuada,
             TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 9, 0, 0)
-        });
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(12, 0, 0, 0)
+        };
+        Grid.SetColumn(ayuda, 1);
+        fila.Children.Add(ayuda);
+        contenido.Children.Add(fila);
 
-        return Tema.Tarjeta(contenido);
+        return Tema.Tarjeta(contenido, new Thickness(0), new Thickness(12));
     }
 
     private Border ConstruirSeccionAcciones()
@@ -271,41 +359,60 @@ public sealed class ToolboxWindow : Window
         var contenido = new StackPanel();
         contenido.Children.Add(Tema.EtiquetaSeccion("Acciones"));
 
-        var fila = new WrapPanel();
+        var rejilla = new UniformGrid { Columns = 2 };
         var restaurar = Tema.BotonDestructivo("Restaurar todo");
         restaurar.Click += async (_, _) => await RestaurarTodoAsync();
-        fila.Children.Add(restaurar);
+        rejilla.Children.Add(restaurar);
 
-        var emergencia = Tema.BotonSecundario("Abrir página de emergencia");
+        var emergencia = Tema.BotonSecundario("Página de emergencia");
+        emergencia.Margin = new Thickness(0);
         emergencia.Click += (_, _) => AbrirEmergencia();
-        fila.Children.Add(emergencia);
+        rejilla.Children.Add(emergencia);
 
         var companero = Tema.BotonSecundario("Compañero");
+        companero.Margin = new Thickness(0, 8, 8, 0);
         companero.Click += (_, _) => LanzarModo("prompt");
-        fila.Children.Add(companero);
+        rejilla.Children.Add(companero);
 
         var visor = Tema.BotonSecundario("Visor de seriales");
-        visor.Margin = new Thickness(0);
+        visor.Margin = new Thickness(0, 8, 0, 0);
         visor.Click += (_, _) => LanzarModo("visor");
-        fila.Children.Add(visor);
+        rejilla.Children.Add(visor);
 
-        contenido.Children.Add(fila);
-        return Tema.Tarjeta(contenido);
+        contenido.Children.Add(rejilla);
+        return Tema.Tarjeta(contenido, new Thickness(0), new Thickness(12));
     }
 
     private Border ConstruirSeccionRegistro(out TextBox registro)
     {
         var contenido = new StackPanel();
-        contenido.Children.Add(Tema.EtiquetaSeccion("Registro"));
 
+        var cabecera = new Grid { Margin = new Thickness(0, 0, 0, 7) };
+        cabecera.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        cabecera.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var etiqueta = Tema.EtiquetaSeccion("Registro · últimas líneas");
+        etiqueta.Margin = new Thickness(0);
+        cabecera.Children.Add(etiqueta);
+        var abrir = Tema.BotonSecundario("Abrir registro completo");
+        abrir.Margin = new Thickness(0);
+        abrir.Padding = new Thickness(10, 3, 10, 3);
+        abrir.FontSize = 12;
+        abrir.Click += (_, _) => AbrirRegistroCompleto();
+        Grid.SetColumn(abrir, 1);
+        cabecera.Children.Add(abrir);
+        contenido.Children.Add(cabecera);
+
+        // Cinta de alto fijo SIN barras: enseña siempre la cola del
+        // registro (RefrescarRegistroAsync se queda pegado al
+        // final) y el archivo entero se abre con el botón.
         registro = new TextBox
         {
-            Height = 180,
+            Height = 78,
             IsReadOnly = true,
             AcceptsReturn = true,
             TextWrapping = TextWrapping.NoWrap,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Hidden,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden,
             Background = Tema.SuperficieAtenuada,
             Foreground = Tema.Tinta,
             BorderBrush = Tema.Borde,
@@ -315,7 +422,26 @@ public sealed class ToolboxWindow : Window
             FontSize = 11.5
         };
         contenido.Children.Add(registro);
-        return Tema.Tarjeta(contenido, new Thickness(0));
+        return Tema.Tarjeta(contenido, new Thickness(0), new Thickness(12, 10, 12, 10));
+    }
+
+    private void AbrirRegistroCompleto()
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = DatosVentanas.RutaAgenteLog,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            Tema.AvisarError(
+                $"No se pudo abrir el registro: {ex.Message}",
+                "Registro");
+            _log.Excepcion("No se pudo abrir el registro completo desde la caja de herramientas", ex);
+        }
     }
 
     // ── Estado ───────────────────────────────────────────────────
@@ -819,15 +945,10 @@ public sealed class ToolboxWindow : Window
                 return;
             }
 
-            bool alFinal = _registro.Text.Length == 0 ||
-                _registro.VerticalOffset + _registro.ViewportHeight >=
-                    _registro.ExtentHeight - 24;
-
+            // La cinta no tiene barras: se queda siempre pegada a
+            // la cola del registro, que es lo único que cabe.
             _registro.Text = texto;
-            if (alFinal)
-            {
-                _registro.ScrollToEnd();
-            }
+            _registro.ScrollToEnd();
         }
         catch (Exception ex)
         {
