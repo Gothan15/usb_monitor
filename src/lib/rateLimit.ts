@@ -20,7 +20,12 @@ interface HitResult {
   resetIn: number;
 }
 
-const redisUrl = process.env.REDIS_URL || process.env.UPSTASH_REDIS_REST_URL;
+// Solo REDIS_URL (protocolo redis:// o rediss://). NO usar aquí
+// UPSTASH_REDIS_REST_URL: es un endpoint REST (HTTPS), ioredis no
+// puede hablar con él y el cliente quedaba fallando en cada uso.
+// Si se usa Upstash, su URL válida para esto es la de protocolo
+// (rediss://…) del panel de Upstash, puesta en REDIS_URL.
+const redisUrl = process.env.REDIS_URL;
 const isProduction = process.env.NODE_ENV === "production";
 
 let redisClient: Redis | null = null;
@@ -44,6 +49,7 @@ function ensureRedis() {
   redisClient = new Redis(redisUrl, {
     lazyConnect: true,
     maxRetriesPerRequest: 0,
+    connectTimeout: 2000,
   });
   redisClient.on("error", (error) => {
     logWarn("Error en cliente Redis para rate limiting", {
