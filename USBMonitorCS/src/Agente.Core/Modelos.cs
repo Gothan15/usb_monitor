@@ -77,6 +77,7 @@ public sealed class ConfigRemota
     [JsonPropertyName("ok")] public bool Ok { get; set; }
     [JsonPropertyName("startupNetworkDelay")] public int? StartupNetworkDelay { get; set; }
     [JsonPropertyName("lockSessionOnInsert")] public bool LockSessionOnInsert { get; set; }
+    [JsonPropertyName("shutdownOnNonWhitelisted")] public bool ShutdownOnNonWhitelisted { get; set; }
 }
 
 /// <summary>Respuesta de GET /api/agent/owner-hash.</summary>

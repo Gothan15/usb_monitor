@@ -16,6 +16,11 @@ export interface AppSettings {
   offlineEmergencyEnabled: boolean;
   /** Fase 5: bloquear la sesión de Windows al insertar un USB. */
   lockSessionOnInsert: boolean;
+  /**
+   * Apagar el equipo cliente cuando se inserta un dispositivo que
+   * NO está en la lista blanca (cuenta atrás cancelable del agente).
+   */
+  shutdownOnNonWhitelisted: boolean;
   /** Fase 5 (método 3): minutos sin señales para marcar un equipo. */
   silenceThresholdMinutes: number;
   [key: string]: unknown;
@@ -26,6 +31,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   passwordUnlockEnabled: true,
   offlineEmergencyEnabled: true,
   lockSessionOnInsert: false,
+  shutdownOnNonWhitelisted: false,
   silenceThresholdMinutes: 5,
 };
 

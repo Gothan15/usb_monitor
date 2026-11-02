@@ -33,6 +33,7 @@ interface UnlockSettings {
   offlineEmergencyEnabled: boolean;
   requireAgentToken: boolean;
   lockSessionOnInsert: boolean;
+  shutdownOnNonWhitelisted: boolean;
   silenceThresholdMinutes: number;
 }
 
@@ -53,6 +54,7 @@ export function SettingsTab() {
     offlineEmergencyEnabled: true,
     requireAgentToken: false,
     lockSessionOnInsert: false,
+    shutdownOnNonWhitelisted: false,
     silenceThresholdMinutes: 5,
   });
 
@@ -77,6 +79,7 @@ export function SettingsTab() {
           offlineEmergencyEnabled: data.offlineEmergencyEnabled ?? true,
           requireAgentToken: data.requireAgentToken ?? false,
           lockSessionOnInsert: data.lockSessionOnInsert ?? false,
+          shutdownOnNonWhitelisted: data.shutdownOnNonWhitelisted ?? false,
           silenceThresholdMinutes: data.silenceThresholdMinutes ?? 5,
         };
         setUnlock(unlockCargado);
@@ -284,6 +287,23 @@ export function SettingsTab() {
               <Switch
                 checked={unlock.lockSessionOnInsert}
                 onCheckedChange={(v) => setUnlock({ ...unlock, lockSessionOnInsert: v })}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-4 py-5">
+              <div>
+                <Label>Apagar el equipo si el dispositivo no está en la lista blanca</Label>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  Al insertar un dispositivo fuera de la lista blanca, el
+                  equipo cliente inicia una cuenta atrás de 60 segundos y
+                  se apaga. Se cancela si el dispositivo se extrae o se
+                  desbloquea a tiempo, y no se aplica a lo que ya estaba
+                  conectado al arrancar el servicio. Desactivado por
+                  defecto.
+                </p>
+              </div>
+              <Switch
+                checked={unlock.shutdownOnNonWhitelisted}
+                onCheckedChange={(v) => setUnlock({ ...unlock, shutdownOnNonWhitelisted: v })}
               />
             </div>
             <div className="py-5">
