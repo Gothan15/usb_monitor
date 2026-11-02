@@ -1,0 +1,289 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ================================================================
+  USB Monitor — Panel · instalador MSI (WiX v4)
+  ================================================================
+  Qué instala (por máquina, requiere administrador):
+    · El panel web (Next.js ya compilado) + Node.js integrado.
+    · PostgreSQL INTEGRADO y privado (sin pgAdmin: el panel solo
+      necesita el motor). Clúster propio en C:\ProgramData\USBMonitor,
+      servicio «USBMonitorPostgreSQL», puerto propio (def. 5433).
+    · El panel como servicio «USBMonitorPanel» (WinSW), con
+      arranque automático y dependencia del servicio de la BD.
+    · (Opcional, marcado por defecto) Regla de cortafuegos para
+      abrir el puerto del panel solo a la subred local.
+
+  El asistente es la interfaz estándar de WixUI (la de los
+  instaladores clásicos de Windows), en español, con una página
+  extra «Configuración del servidor» donde se eligen los puertos,
+  el usuario administrador inicial y su contraseña.
+
+  Los valores del asistente se guardan en
+  HKLM\Software\USBMonitor\Panel y los scripts de instalación
+  (scripts\) leen TODO de ahí: así las acciones diferidas (que se
+  ejecutan como SYSTEM y no pueden leer las propiedades de la UI)
+  comparten una única fuente de verdad, y una actualización
+  recupera los puertos sin volver a preguntarlos.
+
+  Construcción: Construir-Instalador.ps1 (ver LEEME.md).
+  ================================================================
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+  <?include versiones.wxi ?>
+
+  <Package Name="USB Monitor — Panel"
+           Manufacturer="Gothan"
+           Version="$(var.PanelVersion)"
+           Language="3082"
+           Codepage="1252"
+           UpgradeCode="25F59A03-8F5D-4203-95FC-13B799284FD2"
+           Scope="perMachine"
+           Compressed="yes">
+
+    <SummaryInformation Description="Panel web de USB Monitor con PostgreSQL integrado" />
+
+    <MajorUpgrade AllowSameVersionUpgrades="yes"
+                  Schedule="afterInstallInitialize"
+                  DowngradeErrorMessage="Ya hay instalada una versión más reciente del panel de USB Monitor." />
+
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <!-- ============ Propiedades del asistente ============ -->
+    <!-- En una actualización, los puertos salen del registro. -->
+    <Property Id="PANEL_PORT" Value="3000" Secure="yes">
+      <RegistrySearch Id="BuscarPuertoPanel" Root="HKLM"
+                      Key="Software\USBMonitor\Panel" Name="PanelPort" Type="raw" />
+    </Property>
+    <Property Id="PG_PORT" Value="5433" Secure="yes">
+      <RegistrySearch Id="BuscarPuertoBd" Root="HKLM"
+                      Key="Software\USBMonitor\Panel" Name="PgPort" Type="raw" />
+    </Property>
+    <Property Id="ADMIN_USER" Value="admin" Secure="yes">
+      <RegistrySearch Id="BuscarAdmin" Root="HKLM"
+                      Key="Software\USBMonitor\Panel" Name="AdminUser" Type="raw" />
+    </Property>
+    <!-- Sin valor por defecto: la contraseña NO viaja al registro ni
+         a ningún archivo permanente. Una acción inmediata de la
+         interfaz (GuardarAdmin.vbs) la pasa a un temporal con ACL
+         restringida que Configurar-Panel.ps1 consume y destruye. -->
+    <Property Id="ADMIN_PASSWORD" Secure="yes" Hidden="yes" />
+    <Property Id="FIREWALL_OK" Value="1" Secure="yes" />
+
+    <WixVariable Id="WixUILicenseRtf" Value="Licencia.rtf" />
+
+    <!-- ============ Estructura de carpetas ============ -->
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLFOLDER" Name="USB Monitor Panel">
+          <Directory Id="APPDIR" Name="app" />
+          <Directory Id="NODEDIR" Name="node" />
+          <Directory Id="PGDIR" Name="pgsql" />
+          <Directory Id="SERVDIR" Name="servicio" />
+          <Directory Id="SCRIPTSDIR" Name="scripts" />
+        </Directory>
+      </Directory>
+      <Directory Id="CommonAppDataFolder">
+        <!-- Datos FUERA de Archivos de programa: sobreviven a
+             actualizaciones y a la desinstalación (a propósito). -->
+        <Directory Id="DATADIR" Name="USBMonitor">
+          <Directory Id="PGDATADIR" Name="Datos" />
+          <Directory Id="LOGDIR" Name="Registros" />
+        </Directory>
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="MENUDIR" Name="USB Monitor" />
+      </Directory>
+      <Directory Id="DesktopFolder" />
+    </Directory>
+
+    <!-- ============ Archivos cosechados de la carpeta preparada ============
+         Construir-Instalador.ps1 deja el árbol listo en «preparado\»:
+         app\ (panel compilado + node_modules de producción), node\
+         (node.exe), pgsql\ (binarios de PostgreSQL), servicio\
+         (WinSW + su XML) y scripts\ (los .ps1/.vbs/.js de aquí). -->
+    <ComponentGroup Id="CG_App" Directory="APPDIR">
+      <Files Include="$(var.Preparado)\app\**" />
+    </ComponentGroup>
+    <ComponentGroup Id="CG_Nodo" Directory="NODEDIR">
+      <Files Include="$(var.Preparado)\node\**" />
+    </ComponentGroup>
+    <ComponentGroup Id="CG_Pg" Directory="PGDIR">
+      <Files Include="$(var.Preparado)\pgsql\**" />
+    </ComponentGroup>
+    <ComponentGroup Id="CG_Servicio" Directory="SERVDIR">
+      <Files Include="$(var.Preparado)\servicio\**" />
+    </ComponentGroup>
+    <ComponentGroup Id="CG_Scripts" Directory="SCRIPTSDIR">
+      <Files Include="$(var.Preparado)\scripts\**" />
+    </ComponentGroup>
+    <!-- Sueltos en la raíz de la instalación (AbrirPanel.cmd). -->
+    <ComponentGroup Id="CG_Raiz" Directory="INSTALLFOLDER">
+      <Files Include="$(var.Preparado)\raiz\**" />
+    </ComponentGroup>
+
+    <!-- Carpeta de datos: permanente, nunca se borra al desinstalar. -->
+    <Component Id="Comp_Datos" Directory="PGDATADIR" Guid="*" Permanent="yes">
+      <CreateFolder />
+      <RegistryValue Root="HKLM" Key="Software\USBMonitor\Panel" Name="DataDir"
+                     Value="[DATADIR]" Type="string" KeyPath="yes" />
+    </Component>
+    <Component Id="Comp_RegistrosDir" Directory="LOGDIR" Guid="*">
+      <CreateFolder />
+    </Component>
+
+    <!-- ============ Registro: la configuración del asistente ============ -->
+    <Component Id="Comp_Registro" Directory="INSTALLFOLDER" Guid="383BF406-D60F-4583-B8B3-F89EC8BE68BD">
+      <RegistryValue Root="HKLM" Key="Software\USBMonitor\Panel" Name="PanelPort"
+                     Value="[PANEL_PORT]" Type="string" KeyPath="yes" />
+      <RegistryValue Root="HKLM" Key="Software\USBMonitor\Panel" Name="PgPort"
+                     Value="[PG_PORT]" Type="string" />
+      <RegistryValue Root="HKLM" Key="Software\USBMonitor\Panel" Name="AdminUser"
+                     Value="[ADMIN_USER]" Type="string" />
+      <RegistryValue Root="HKLM" Key="Software\USBMonitor\Panel" Name="FirewallOk"
+                     Value="[FIREWALL_OK]" Type="string" />
+      <RegistryValue Root="HKLM" Key="Software\USBMonitor\Panel" Name="InstallDir"
+                     Value="[INSTALLFOLDER]" Type="string" />
+    </Component>
+
+    <!-- ============ Accesos directos ============ -->
+    <Component Id="Comp_AccesoMenu" Directory="MENUDIR" Guid="EB8812DC-FB15-43F1-ABBD-32A5432E2E67">
+      <Shortcut Id="AccesoPanel" Name="Abrir el panel"
+                Description="Abre el panel de USB Monitor en el navegador"
+                Target="[INSTALLFOLDER]AbrirPanel.cmd" WorkingDirectory="INSTALLFOLDER" />
+      <RegistryValue Root="HKCU" Key="Software\USBMonitor\Panel" Name="AccesoMenu"
+                     Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+    <Component Id="Comp_AccesoEscritorio" Directory="DesktopFolder" Guid="38B33439-F950-46C7-BD96-91FFC64DFA1E">
+      <Shortcut Id="AccesoPanelEscritorio" Name="USB Monitor — Panel"
+                Description="Abre el panel de USB Monitor en el navegador"
+                Target="[INSTALLFOLDER]AbrirPanel.cmd" WorkingDirectory="INSTALLFOLDER" />
+      <RegistryValue Root="HKCU" Key="Software\USBMonitor\Panel" Name="AccesoEscritorio"
+                     Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
+    <Feature Id="Principal" Title="Panel de USB Monitor" Level="1">
+      <ComponentGroupRef Id="CG_App" />
+      <ComponentGroupRef Id="CG_Nodo" />
+      <ComponentGroupRef Id="CG_Pg" />
+      <ComponentGroupRef Id="CG_Servicio" />
+      <ComponentGroupRef Id="CG_Scripts" />
+      <ComponentGroupRef Id="CG_Raiz" />
+      <ComponentRef Id="Comp_Datos" />
+      <ComponentRef Id="Comp_RegistrosDir" />
+      <ComponentRef Id="Comp_Registro" />
+      <ComponentRef Id="Comp_AccesoMenu" />
+      <ComponentRef Id="Comp_AccesoEscritorio" />
+    </Feature>
+
+    <!-- ============ Acciones a medida ============ -->
+    <!-- Inmediata, en la secuencia de la INTERFAZ: los scripts
+         todavía no están en disco, así que va incrustada (Binary)
+         como VBScript. Deja usuario+contraseña del administrador
+         en un temporal con ACL mínima dentro de DATADIR. -->
+    <Binary Id="GuardarAdminVbs" SourceFile="scripts\GuardarAdmin.vbs" />
+    <CustomAction Id="CA_GuardarAdmin" BinaryRef="GuardarAdminVbs"
+                  Execute="immediate" Return="ignore" />
+
+    <!-- Diferidas (SYSTEM, con el token elevado de la instalación):
+         powershell con los scripts YA instalados. Cada una lee su
+         configuración del registro, no de propiedades. -->
+    <CustomAction Id="CA_InstalarBD" Directory="SCRIPTSDIR"
+                  ExeCommand="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;[SCRIPTSDIR]Instalar-BaseDatos.ps1&quot;"
+                  Execute="deferred" Impersonate="no" Return="check" />
+    <CustomAction Id="CA_ConfigurarPanel" Directory="SCRIPTSDIR"
+                  ExeCommand="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;[SCRIPTSDIR]Configurar-Panel.ps1&quot;"
+                  Execute="deferred" Impersonate="no" Return="check" />
+    <CustomAction Id="CA_Desinstalar" Directory="SCRIPTSDIR"
+                  ExeCommand="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;[SCRIPTSDIR]Desinstalar-Servicios.ps1&quot;"
+                  Execute="deferred" Impersonate="no" Return="ignore" />
+
+    <InstallUISequence>
+      <!-- Justo al pulsar «Instalar»: la interfaz aún vive y la
+           acción puede leer ADMIN_USER / ADMIN_PASSWORD. -->
+      <Custom Action="CA_GuardarAdmin" After="ExecuteAction" />
+    </InstallUISequence>
+
+    <InstallExecuteSequence>
+      <Custom Action="CA_InstalarBD" After="InstallFiles" />
+      <Custom Action="CA_ConfigurarPanel" After="CA_InstalarBD" />
+      <!-- Antes de que se borren los archivos (el script incluido). -->
+      <Custom Action="CA_Desinstalar" Before="RemoveFiles">
+        REMOVE = "ALL" AND NOT UPGRADINGPRODUCTCODE
+      </Custom>
+    </InstallExecuteSequence>
+
+    <!-- ============ Interfaz (WixUI estándar + 1 página) ============ -->
+    <UI Id="InterfazInstalador">
+      <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+
+      <!-- Se inserta la página de configuración tras elegir la
+           carpeta: este Publish (Order alto) gana al de serie y
+           manda a DlgConfigurar; el de DlgConfigurar sigue a
+           VerifyReadyDlg, que es adonde iba el de serie. -->
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog"
+               Value="DlgConfigurar" Order="1000" />
+
+      <Dialog Id="DlgConfigurar" Width="370" Height="270"
+              Title="USB Monitor — Panel" NoMinimize="yes">
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44"
+                 Text="WixUIBannerBmp" />
+        <Control Id="Titulo" Type="Text" X="15" Y="10" Width="330" Height="20"
+                 Transparent="yes"
+                 Text="{\WixUI_Font_Bigger}Configuración del servidor" />
+        <Control Id="Subtitulo" Type="Text" X="15" Y="26" Width="330" Height="14"
+                 Transparent="yes"
+                 Text="Estos valores quedan guardados y se reutilizan al actualizar." />
+        <Control Id="LineaSup" Type="Line" X="0" Y="44" Width="370" Height="0" />
+
+        <Control Id="LblPuerto" Type="Text" X="20" Y="58" Width="150" Height="14"
+                 Text="Puerto del panel web:" />
+        <Control Id="EdPuerto" Type="Edit" X="180" Y="56" Width="60" Height="16"
+                 Property="PANEL_PORT" TextLimit="5" Integer="yes" />
+
+        <Control Id="LblPuertoBd" Type="Text" X="20" Y="80" Width="150" Height="14"
+                 Text="Puerto de la base de datos:" />
+        <Control Id="EdPuertoBd" Type="Edit" X="180" Y="78" Width="60" Height="16"
+                 Property="PG_PORT" TextLimit="5" Integer="yes" />
+        <Control Id="NotaBd" Type="Text" X="248" Y="80" Width="105" Height="14"
+                 Text="(solo local)" />
+
+        <Control Id="LblAdmin" Type="Text" X="20" Y="108" Width="150" Height="14"
+                 Text="Usuario administrador:" />
+        <Control Id="EdAdmin" Type="Edit" X="180" Y="106" Width="160" Height="16"
+                 Property="ADMIN_USER" TextLimit="40" />
+
+        <Control Id="LblClave" Type="Text" X="20" Y="130" Width="150" Height="14"
+                 Text="Contraseña del administrador:" />
+        <Control Id="EdClave" Type="Edit" X="180" Y="128" Width="160" Height="16"
+                 Property="ADMIN_PASSWORD" Password="yes" TextLimit="128" />
+
+        <Control Id="ChkFirewall" Type="CheckBox" X="20" Y="158" Width="330" Height="16"
+                 Property="FIREWALL_OK" CheckBoxValue="1"
+                 Text="Permitir el acceso al panel desde la red local (cortafuegos)" />
+
+        <Control Id="Nota" Type="Text" X="20" Y="182" Width="330" Height="36"
+                 Text="La base de datos es privada del panel: no se instala pgAdmin ni se toca ningún PostgreSQL que ya exista en el equipo. La contraseña no se guarda en ningún sitio: solo crea la cuenta inicial." />
+
+        <Control Id="LineaInf" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17"
+                 Text="&lt; Atrás">
+          <Publish Event="NewDialog" Value="InstallDirDlg" />
+        </Control>
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17"
+                 Default="yes" Text="Siguiente &gt;">
+          <Publish Event="NewDialog" Value="VerifyReadyDlg" />
+          <!-- Sin contraseña no se avanza en una instalación nueva
+               (en actualización la cuenta ya existe y se admite). -->
+          <ControlCondition Action="Disable">NOT ADMIN_PASSWORD AND NOT Installed</ControlCondition>
+          <ControlCondition Action="Enable">ADMIN_PASSWORD OR Installed</ControlCondition>
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17"
+                 Cancel="yes" Text="Cancelar">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+      </Dialog>
+    </UI>
+  </Package>
+</Wix>

@@ -1,0 +1,37 @@
+<!--
+  Plantilla del servicio del panel (WinSW 2.x).
+  Configurar-Panel.ps1 sustituye __PUERTO__ y __REGISTROS__ por los
+  valores reales al instalar y deja el resultado como
+  USBMonitorPanel.xml junto a USBMonitorPanel.exe (el ejecutable de
+  WinSW renombrado por Construir-Instalador.ps1: WinSW exige que el
+  XML se llame igual que el .exe).
+-->
+<service>
+  <id>USBMonitorPanel</id>
+  <name>USB Monitor — Panel</name>
+  <description>Panel web de USB Monitor. Depende de la base de datos integrada (USBMonitorPostgreSQL).</description>
+
+  <executable>%BASE%\..\node\node.exe</executable>
+  <arguments>"%BASE%\..\app\node_modules\tsx\dist\cli.mjs" "%BASE%\..\app\server.ts"</arguments>
+  <workingdirectory>%BASE%\..\app</workingdirectory>
+
+  <env name="NODE_ENV" value="production" />
+  <env name="PORT" value="__PUERTO__" />
+  <env name="APP_HOST" value="0.0.0.0" />
+
+  <depend>USBMonitorPostgreSQL</depend>
+  <startmode>Automatic</startmode>
+
+  <onfailure action="restart" delay="10 sec" />
+  <onfailure action="restart" delay="30 sec" />
+  <onfailure action="none" />
+
+  <logpath>__REGISTROS__</logpath>
+  <log mode="roll-by-size">
+    <sizeThreshold>10240</sizeThreshold>
+    <keepFiles>8</keepFiles>
+  </log>
+
+  <waithint>15 sec</waithint>
+  <stoptimeout>30 sec</stoptimeout>
+</service>

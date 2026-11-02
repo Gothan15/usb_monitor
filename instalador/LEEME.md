@@ -1,0 +1,85 @@
+# Instalador del panel (.msi)
+
+Convierte el panel de USB Monitor en **una aplicación que se instala como cualquier programa de Windows**: doble clic, asistente clásico (el de los instaladores de siempre, en español), y al terminar el servidor queda corriendo como servicio, con su base de datos propia debajo. Sin montar piezas a mano.
+
+## Qué instala
+
+| Pieza | Cómo queda |
+|---|---|
+| Panel web (Next.js compilado) | Carpeta `app\` en la ruta elegida (def. `C:\Program Files\USB Monitor Panel`) |
+| Node.js | Integrado (`node\node.exe`, versión fijada): el equipo NO necesita tener Node |
+| Base de datos | **PostgreSQL integrado y privado**: clúster propio creado con `initdb`, servicio `USBMonitorPostgreSQL`, puerto propio (def. 5433), solo escucha en localhost |
+| Servicio del panel | `USBMonitorPanel` (WinSW), automático, se reinicia si cae, depende del servicio de la BD |
+| Accesos directos | Escritorio y menú Inicio: «Abrir el panel» (lee el puerto real del registro) |
+| Cortafuegos (opcional) | Regla de entrada para el puerto del panel, limitada a la **subred local** |
+
+**Sobre pgAdmin:** no se instala porque no hace falta. pgAdmin es solo un cliente gráfico de administración; el panel habla directo con el motor PostgreSQL, que es lo que va empaquetado. Si el equipo ya tuviera otro PostgreSQL (y su pgAdmin), quedan intactos: este clúster es aparte, con su puerto y su carpeta.
+
+## El asistente, página a página
+
+1. Bienvenida y licencia (interfaz estándar de WixUI).
+2. Carpeta de instalación.
+3. **Configuración del servidor** (página propia de este instalador):
+   - Puerto del panel web (def. 3000).
+   - Puerto de la base de datos (def. 5433, solo local).
+   - Usuario y **contraseña del administrador inicial** — sin contraseña no se puede avanzar en una instalación nueva.
+   - Casilla del cortafuegos (marcada por defecto).
+4. Confirmación, progreso y fin.
+
+En una **actualización** los puertos y el usuario se recuperan solos del registro (`HKLM\Software\USBMonitor\Panel`) y la contraseña puede dejarse vacía: la cuenta ya existe y nadie la toca.
+
+## Dónde vive cada cosa
+
+- **Programas:** la ruta elegida (`app\`, `node\`, `pgsql\`, `servicio\`, `scripts\`).
+- **Datos:** `C:\ProgramData\USBMonitor\`
+  - `Datos\` — el clúster de PostgreSQL (la base de datos entera).
+  - `secretos.json` — contraseñas internas (superusuario de la BD y usuario de la aplicación), generadas al instalar, con ACL cerrada a SYSTEM + Administradores.
+  - `Registros\` — `instalacion.log` (lo que hicieron los scripts del instalador) y los registros del servicio del panel.
+  - `PRIMER-ACCESO.txt` — solo aparece en instalación silenciosa (sin asistente): la contraseña de administrador generada. Se borra a mano tras cambiarla.
+- **El `.env` del panel** se genera dentro de `app\` con `DATABASE_URL`, `SESSION_SECRET` aleatorio, `APP_PUBLIC_HOST` = nombre del equipo y `ALLOWED_ORIGINS` con localhost, el nombre y la IP local detectada al instalar. También con ACL cerrada.
+- **Redis no se instala a propósito:** sin `REDIS_URL` el panel limita los intentos en memoria (válido para una sola instancia, que es este caso; lo avisa en su registro).
+
+## La contraseña del asistente, sin dejar huella
+
+Las acciones diferidas de un MSI corren como SYSTEM y no pueden leer lo que se escribió en la interfaz. Por eso el paso es: una acción inmediata incrustada en el propio MSI (`GuardarAdmin.vbs`) deja usuario+contraseña en `acceso-inicial.ini` dentro de la carpeta de datos, con ACL mínima por SID; el script de configuración lo lee para crear la cuenta, lo **sobrescribe con bytes aleatorios y lo borra**. La contraseña no va al registro, ni al `.env`, ni queda en ningún archivo permanente.
+
+La cuenta se crea con `crear-admin-instalador.mjs`, que replica el formato exacto del panel (`argon2id$` + Argon2id con los mismos parámetros, apiKey `uk_…`) y es idempotente: si ya existe un administrador, no hace nada.
+
+## Actualizar y desinstalar
+
+- **Actualizar:** ejecutar el `.msi` nuevo. Es un `MajorUpgrade`: sustituye los programas, conserva la carpeta de datos, el `.env` (solo refresca el puerto), los secretos y todas las cuentas. Tras actualizar, los servicios quedan arrancados.
+- **Desinstalar:** quita programas, servicios y la regla de cortafuegos. **La carpeta `C:\ProgramData\USBMonitor` se conserva a propósito** (ahí está la base de datos): para una limpieza total, se borra a mano después.
+
+## Construir el .msi
+
+En el PC de desarrollo (Windows), desde esta carpeta:
+
+```powershell
+.\Construir-Instalador.ps1            # versión 1.0.0
+.\Construir-Instalador.ps1 -Version 1.1.0
+```
+
+El script: instala WiX v4 si falta, descarga las versiones fijadas de `versiones.wxi` (Node portable, binarios de PostgreSQL, WinSW; la primera vez imprime sus SHA-256 para que puedas fijarlos en `$HashEsperado`), compila el panel (`npm ci`, `prisma generate`, `npm run build`, poda de devDependencies), prepara el árbol en `salida-instalador\preparado\` — **excluyendo siempre el `.env` local** — y compila `Panel.wxs` con la extensión de interfaz, en español. Resultado: `salida-instalador\USBMonitor-Panel-<versión>.msi` con su SHA-256.
+
+## Lista de prueba en el PC real (la primera vez)
+
+1. Instalar en una máquina (o VM) **sin** PostgreSQL previo: asistente completo, y al final `http://localhost:3000` abre el panel y entra con el administrador creado.
+2. Desde otro equipo de la red: `http://<nombre-o-IP>:3000` responde (cortafuegos) y un agente puede reportar.
+3. Reiniciar el equipo: panel y BD arrancan solos; el panel responde sin tocar nada.
+4. Servicios: `USBMonitorPostgreSQL` y `USBMonitorPanel` en «Ejecución» y «Automático». Detener el del panel → vuelve solo (reinicio por fallo) o al arrancar el equipo.
+5. Desinstalar y reinstalar: los datos (equipos, usuarios, lista blanca) siguen ahí.
+6. Actualizar con un `.msi` de versión mayor: mismo resultado, sin asistente de configuración efectivo (puertos recuperados).
+
+## Problemas previstos
+
+- **SmartScreen / «editor desconocido»:** el `.msi` no va firmado (no hay certificado). Windows avisará al ejecutarlo; se continúa con «Más información → Ejecutar de todos modos». Firmarlo queda para cuando haya certificado.
+- **`initdb` o Prisma fallan con errores de DLL:** falta el *Microsoft Visual C++ Redistributable* 2015-2022 (x64) en ese equipo; se instala una vez y se reintenta (la instalación del panel se puede reparar/repetir sin perder datos).
+- **Puerto ocupado:** si el 3000 (o el elegido) ya lo usa otro programa, el servicio del panel no arrancará; queda en `Registros\instalacion.log` y en el registro del servicio. Solución: desinstalar y reinstalar eligiendo otro puerto.
+- **La IP del servidor cambia (DHCP):** los orígenes permitidos se fijaron al instalar. Acceder por el **nombre del equipo** (estable) evita el problema; si se cambia de IP de forma permanente, editar `ALLOWED_ORIGINS` en `app\.env` y reiniciar el servicio `USBMonitorPanel`.
+- **La BD corre como LocalSystem** (igual que el agente y el panel): decisión deliberada de la v1 para que el servicio funcione igual en Windows en cualquier idioma (las cuentas con nombre, como «Servicio de red», cambian según el idioma). Endurecerlo a una cuenta de servicio dedicada es posible más adelante.
+
+## Qué NO hace esta versión
+
+- No firma el paquete (ver arriba).
+- No instala HTTPS: dentro de la LAN va por HTTP; para exponerlo con HTTPS, el camino del proyecto es poner Caddy delante (kit aparte).
+- No migra datos desde una instalación «a mano» existente: instala su propio clúster vacío. (Si hiciera falta poblarlo desde el PostgreSQL actual, se hace con `pg_dump`/`pg_restore` a mano, una sola vez.)

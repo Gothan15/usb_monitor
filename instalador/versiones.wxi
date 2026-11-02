@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Versiones fijadas del instalador del panel.
+  PanelVersion se puede sobreescribir al construir:
+    wix build ... -d PanelVersion=1.2.0
+  Las de PostgreSQL / Node / WinSW las usa Construir-Instalador.ps1
+  para descargar siempre lo mismo (compilación reproducible).
+-->
+<Include>
+  <?define PanelVersion  = "1.0.0" ?>
+  <?define PgVersion     = "17.5" ?>
+  <?define NodeVersion   = "22.14.0" ?>
+  <?define WinSwVersion  = "2.12.0" ?>
+</Include>
