@@ -229,9 +229,26 @@ class Detector:
 
 
 def unidades_para_estado(dispositivos: Dict[str, Dispositivo]) -> List[Dict]:
-    """Formato de /api/usb-event/connected-status: solo con letra."""
+    """Formato de /api/usb-event/connected-status.
+
+    Una entrada por letra y, si el dispositivo no tiene letra
+    (bloqueado por PnP, teléfono WPD…), una entrada con
+    driveLetter None: está conectado y tiene que verse en el
+    panel; la identidad en el servidor es el serial.
+    """
     unidades: List[Dict] = []
     for disp in dispositivos.values():
+        if not disp.letras:
+            unidades.append(
+                {
+                    "driveLetter": None,
+                    "volumeName": disp.nombre,
+                    "serialNumber": disp.serial,
+                    "model": disp.nombre,
+                    "size": disp.tamano,
+                }
+            )
+            continue
         for letra in disp.letras:
             unidades.append(
                 {

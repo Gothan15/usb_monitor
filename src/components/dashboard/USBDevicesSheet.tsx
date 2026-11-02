@@ -226,7 +226,7 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
                                     className="rounded-full border border-border/40 bg-muted/30 text-muted-foreground"
                                   >
                                     <HardDrive className="mr-1 h-3.5 w-3.5" />
-                                    {d.driveLetter}
+                                    {d.driveLetter ?? "Sin letra"}
                                   </Badge>
                                   {d.isWhitelisted ? (
                                     <Badge
@@ -343,7 +343,7 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
                                     className="rounded-full border border-border/40 bg-muted/30 text-muted-foreground"
                                   >
                                     <HardDrive className="mr-1 h-3.5 w-3.5" />
-                                    {d.driveLetter}
+                                    {d.driveLetter ?? "Sin letra"}
                                   </Badge>
                                   {d.isWhitelisted ? (
                                     <Badge

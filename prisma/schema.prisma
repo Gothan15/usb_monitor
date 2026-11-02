@@ -83,7 +83,7 @@ enum Role {
 model USBConnection {
   id             String    @id @default(cuid())
   pcName         String
-  driveLetter    String
+  driveLetter    String?
   volumeName     String
   serialNumber   String
   model          String

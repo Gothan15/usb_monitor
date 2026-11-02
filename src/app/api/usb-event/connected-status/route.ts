@@ -59,42 +59,52 @@ export async function POST(req: NextRequest) {
 
     const now = getCurrentDate();
 
-    const sanitizedDrives = Array.isArray(connectedDrives)
-      ? connectedDrives
-          .map((drive: any) => {
-            const rawLetter =
-              typeof drive?.driveLetter === "string"
-                ? drive.driveLetter.trim()
-                : "";
-            const normalizedLetter = rawLetter || "SIN-LETRA";
-            const rawSerial =
-              typeof drive?.serialNumber === "string"
-                ? drive.serialNumber.trim()
-                : "";
-            const fallbackSerial = `AUTO-${normalizedLetter}`;
-            return {
-              driveLetter: rawLetter || null,
-              volumeName:
-                typeof drive?.volumeName === "string" ? drive.volumeName : null,
-              serialNumber: rawSerial || fallbackSerial,
-              model: typeof drive?.model === "string" ? drive.model : null,
-              size: Number.isFinite(drive?.size) ? Number(drive.size) : 0,
-            };
-          })
-          .filter((drive) => drive.driveLetter)
-      : [];
+    // La identidad de una conexión es el SERIAL, no la letra: un
+    // dispositivo bloqueado por PnP (o un teléfono WPD) no tiene
+    // letra y aun así está conectado; antes se filtraba fuera y el
+    // panel nunca lo veía en «Dispositivos USB». Si un mismo serial
+    // llega con varias letras (varias particiones), se conserva la
+    // primera con letra: una fila por dispositivo.
+    const porSerial = new Map<string, any>();
+    if (Array.isArray(connectedDrives)) {
+      for (const drive of connectedDrives) {
+        const rawLetter =
+          typeof drive?.driveLetter === "string"
+            ? drive.driveLetter.trim()
+            : "";
+        const normalizedLetter = rawLetter || "SIN-LETRA";
+        const rawSerial =
+          typeof drive?.serialNumber === "string"
+            ? drive.serialNumber.trim()
+            : "";
+        const entrada = {
+          driveLetter: rawLetter || null,
+          volumeName:
+            typeof drive?.volumeName === "string" ? drive.volumeName : null,
+          serialNumber: rawSerial || `AUTO-${normalizedLetter}`,
+          model: typeof drive?.model === "string" ? drive.model : null,
+          size: Number.isFinite(drive?.size) ? Number(drive.size) : 0,
+        };
+        const previa = porSerial.get(entrada.serialNumber);
+        if (!previa || (previa.driveLetter === null && entrada.driveLetter)) {
+          porSerial.set(entrada.serialNumber, entrada);
+        }
+      }
+    }
+    const sanitizedDrives = Array.from(porSerial.values());
 
-    const driveLetters = sanitizedDrives
-      .map((drive) => drive.driveLetter)
-      .filter((letter): letter is string => Boolean(letter));
+    const serials = sanitizedDrives
+      .map((drive) => drive.serialNumber)
+      .filter((serial): serial is string => Boolean(serial));
 
-    if (driveLetters.length) {
-      // Batch mark stale connections as disconnected instead of looping updates per row.
+    // Marcar como desconectado lo que el agente ya no reporta
+    // (por serial: la letra puede cambiar o no existir).
+    if (serials.length) {
       await (db as any).uSBConnection.updateMany({
         where: {
           pcName: normalizedPcName,
           isConnected: true,
-          driveLetter: { notIn: driveLetters },
+          serialNumber: { notIn: serials },
         },
         data: {
           isConnected: false,
@@ -113,10 +123,6 @@ export async function POST(req: NextRequest) {
         },
       });
     }
-
-    const serials = sanitizedDrives
-      .map((drive) => drive.serialNumber)
-      .filter((serial): serial is string => Boolean(serial));
 
     // Fetch active rows for incoming serials once to avoid per-drive round trips.
     const existingConnections = serials.length
@@ -178,7 +184,7 @@ export async function POST(req: NextRequest) {
     const res = NextResponse.json({
       ok: true,
       message: "Estado actualizado",
-      connectedCount: connectedDrives.length,
+      connectedCount: sanitizedDrives.length,
     });
     res.headers.set("Cache-Control", "no-store");
     return res;
