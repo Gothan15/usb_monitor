@@ -356,7 +356,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
       };
 
       if (selectedComputer) {
-        payload.ipAddress = selectedComputer.ipAddress;
+        payload.computerId = selectedComputer.id;
       }
 
       const response = await fetch("/api/users", {
@@ -402,7 +402,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
   const handleUpdateUser = async () => {
     if (!editingUser) return;
 
-    const payload: Record<string, string> = {};
+    const payload: Record<string, unknown> = {};
     const trimmedUsername = editForm.username.trim();
     if (trimmedUsername && trimmedUsername !== editingUser.username) {
       payload.username = trimmedUsername;
@@ -416,7 +416,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
     const currentComputerId = editingUser.computer?.id ?? "";
     if (editForm.computerId !== currentComputerId) {
       if (!editForm.computerId) {
-        payload.ipAddress = "";
+        payload.computerId = null;
       } else {
         const selectedComputer = sortedComputers.find(
           (computer) => computer.id === editForm.computerId,
@@ -432,7 +432,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
           return;
         }
 
-        payload.ipAddress = selectedComputer.ipAddress;
+        payload.computerId = selectedComputer.id;
       }
     }
 

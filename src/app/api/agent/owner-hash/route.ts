@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireServiceAuth } from "@/lib/auth";
 import { readAppSettings } from "@/lib/appSettings";
+import { normalizeComputerName } from "@/lib/utils";
 import { registrarContactoAgente } from "@/lib/agentDebug";
 import { logError } from "@/lib/logger";
 
@@ -29,7 +30,13 @@ export async function GET(req: Request) {
     }
 
     const { searchParams } = new URL(req.url);
-    const pcName = (searchParams.get("pcName") || serviceAuth.serviceId || "").trim();
+    // Normalizado como en ping y usb-event (mayúsculas, sin
+    // espacios): el nombre guardado del equipo es el normalizado, y
+    // buscarlo en crudo podía dar «no encontrado» con la fila
+    // existiendo.
+    const pcName = normalizeComputerName(
+      searchParams.get("pcName") || serviceAuth.serviceId || ""
+    );
     if (!pcName) {
       return NextResponse.json(
         { ok: false, error: "pcName requerido" },
