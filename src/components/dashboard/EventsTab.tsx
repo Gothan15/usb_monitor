@@ -175,6 +175,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: "easeOut" }}
       className="w-full"
+      data-tour="events-main"
     >
       {/* ── Cabecera del registro ── */}
       <div className="flex flex-wrap items-end justify-between gap-4">

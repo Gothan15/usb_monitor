@@ -145,7 +145,7 @@ export function UnlocksTab() {
   );
 
   return (
-    <div className="animate-view-in space-y-12 p-6">
+    <div data-tour="unlocks-main" className="animate-view-in space-y-12 p-6">
       {/* ── Cabecera de la auditoría ── */}
       <div className="flex items-end justify-between gap-4">
         <div className="flex flex-1 flex-col">

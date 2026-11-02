@@ -284,6 +284,7 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: "easeOut" }}
       className="w-full"
+      data-tour="computers-main"
     >
       {/* ── Cabecera plana ── */}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">

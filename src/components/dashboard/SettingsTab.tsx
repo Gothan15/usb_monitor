@@ -18,7 +18,16 @@ import {
   RotateCcw,
   Activity,
   KeyRound,
+  ChevronDown,
+  HelpCircle,
 } from "lucide-react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { resetTour } from "@/components/onboarding/TourEngine";
+import { adminTour } from "@/lib/tours";
 import { useLayoutStore, type Disposicion } from "@/store/useLayoutStore";
 import { PanelLeft, PanelTop } from "lucide-react";
 import { useLiveSyncStore } from "@/store/useLiveSyncStore";
@@ -43,10 +52,114 @@ const SECCIONES = [
   { id: "api-y-automatizacion", nombre: "API y automatización" },
   { id: "desbloqueo-por-contrasena", nombre: "Desbloqueo por contraseña" },
   { id: "interfaz-y-navegacion", nombre: "Interfaz y Navegación" },
+  { id: "preguntas-frecuentes", nombre: "Preguntas frecuentes" },
 ] as const;
+
+const PREGUNTAS_FRECUENTES: { pregunta: string; respuesta: string }[] = [
+  {
+    pregunta: "¿Estar en la lista blanca significa que un dispositivo ya no pide contraseña?",
+    respuesta:
+      "No. La lista blanca solo marca el dispositivo como conocido. La contraseña se sigue pidiendo siempre, y el desbloqueo dura hasta que el dispositivo se extrae: al volver a conectarlo, la pide otra vez.",
+  },
+  {
+    pregunta: "¿Puedo desbloquear con la contraseña de administrador un dispositivo que no está en la lista blanca?",
+    respuesta:
+      "No, ni siquiera con la del administrador. Primero hay que darlo de alta en Lista blanca con su número de serie; sin eso, el equipo cliente solo muestra el aviso de dispositivo no listado y no ofrece campo de contraseña.",
+  },
+  {
+    pregunta: "¿El administrador tiene que aprobar cada desbloqueo?",
+    respuesta:
+      "No hay aprobaciones de ningún tipo. La contraseña la introduce en el equipo cliente el dueño asignado a ese equipo, o un administrador usando la suya. El panel se limita a registrar el intento y su resultado.",
+  },
+  {
+    pregunta: "¿Quién puede desbloquear los dispositivos de un equipo?",
+    respuesta:
+      "El usuario asignado a ese equipo (la asignación se hace en Usuarios, eligiendo el equipo) o cualquier administrador con su propia contraseña. Si el equipo está en modo «solo administrador», solo vale la contraseña de un administrador.",
+  },
+  {
+    pregunta: "¿Qué pasa si el equipo cliente se queda sin red?",
+    respuesta:
+      "El agente bloquea igual, usando su copia local de la lista blanca, y guarda los eventos en una cola persistente que se sube cuando vuelve la conexión. Además, el equipo tiene una página de emergencia local para desbloquear sin red, con límite de intentos y registro diferido.",
+  },
+  {
+    pregunta: "¿Cómo bloquea el agente un dispositivo?",
+    respuesta:
+      "Por capas, verificando cada una antes de darla por buena: primero deshabilita el dispositivo (PnP); si ese nodo no cede, aplica un candado de volumen sobre todas sus particiones; y solo como último recurso, lo deja en solo lectura, marcado como degradado. Todo lo que cambia lo anota con su valor original y lo revierte al extraer el dispositivo, al parar el servicio o al desinstalar.",
+  },
+  {
+    pregunta: "¿Un disco duro externo se bloquea igual que una memoria USB?",
+    respuesta:
+      "Sí. Los discos conectados por USB se bloquean y desbloquean igual que las memorias. Y los discos internos nunca se tocan: para clasificar un disco como USB, el agente exige que su árbol de dispositivos cuelgue del bus USB, algo que un SATA o un NVMe interno jamás cumple; si la comprobación falla, el disco no se clasifica y no se toca.",
+  },
+  {
+    pregunta: "¿Las impresoras USB se bloquean?",
+    respuesta:
+      "No. Las impresoras se detectan y aparecen en la lista de dispositivos del equipo con su etiqueta «Impresora», pero no se bloquean ni piden contraseña: no son almacenamiento. Los adaptadores de red USB tampoco son memorias: son un tipo propio («Red USB») y los que ya estaban conectados al arrancar el servicio no se bloquean.",
+  },
+  {
+    pregunta: "¿Qué hace el ajuste «Apagar el equipo si el dispositivo no está en la lista blanca»?",
+    respuesta:
+      "Si está activado, al insertar un dispositivo fuera de la lista blanca el equipo cliente inicia la cuenta atrás configurada (entre 10 y 600 segundos) y se apaga. La cuenta se cancela si el dispositivo se extrae o se desbloquea a tiempo, si el ajuste se desactiva o si el servicio se detiene; y no se aplica a lo que ya estaba conectado al arrancar el servicio, para que el equipo no entre en un bucle de apagados.",
+  },
+  {
+    pregunta: "¿Cómo sé si el agente de un equipo está funcionando?",
+    respuesta:
+      "En Equipos, el estado sale de la última señal que el agente envió al panel: «En ejecución» o «Sin señal», sin datos duplicados. En Desbloqueos, los equipos que superan el umbral de silencio se marcan con su última señal: si alguien detiene o desinstala el agente, el panel lo evidencia por el silencio, aunque no pueda impedirlo físicamente.",
+  },
+  {
+    pregunta: "¿Qué es el token por equipo y cómo se cambia?",
+    respuesta:
+      "Es la credencial con la que cada agente se identifica ante el panel. Se genera en Equipos, con el botón «Token del agente»: se muestra una sola vez, el panel guarda solo su huella y el agente lo guarda en el equipo. Generar uno nuevo invalida el anterior en el acto.",
+  },
+  {
+    pregunta: "¿Cómo instalo el agente en un equipo nuevo?",
+    respuesta:
+      "Hay dos caminos: ejecutar el instalador en el propio equipo (el ejecutable se registra a sí mismo como servicio y crea la tarea del compañero), o la instalación remota desde Equipos (WinRM o SSH). En WinRM, el diálogo de instalación tiene el botón «Comprobar requisitos»: verifica en vivo en el destino todo lo necesario y, si falta algo, enseña el comando exacto para corregirlo.",
+  },
+  {
+    pregunta: "¿El agente y el compañero sobreviven a un reinicio?",
+    respuesta:
+      "Sí. El servicio se instala con arranque automático y recuperación ante fallos (Windows lo relanza si se cae). El compañero arranca al iniciar sesión mediante su tarea programada y, si en una sesión falta, el propio servicio lo vuelve a lanzar en la sesión del usuario.",
+  },
+  {
+    pregunta: "¿Por qué no se ve el compañero aunque el servicio esté activo?",
+    respuesta:
+      "Es lo normal: el compañero arranca oculto y solo muestra su ventana cuando hay un dispositivo bloqueado esperando la contraseña. Oculto no significa ausente: sigue vigilando en segundo plano.",
+  },
+  {
+    pregunta: "¿Qué tengo que hacer tras actualizar el panel desde GitHub?",
+    respuesta:
+      "Si el aviso de la actualización lo indica, ejecuta «npm run db:push» en la carpeta del panel para aplicar los cambios de la base de datos, y reconstruye con «npm run build» antes de arrancar con «npm run start». El agente se actualiza sustituyendo su ejecutable por el nuevo y reiniciando el servicio.",
+  },
+  {
+    pregunta: "¿Para qué sirve Redis? ¿Dónde se configura?",
+    respuesta:
+      "Solo lo usa el límite de peticiones del panel. Se configura con la variable REDIS_URL del archivo .env (por ejemplo, redis://localhost:6379) y es lo recomendado en producción.",
+  },
+  {
+    pregunta: "¿Cómo vuelvo a ver la guía introductoria?",
+    respuesta:
+      "Con el botón «Reactivar guía» de esta misma sección. La guía también aparece sola la primera vez que un administrador abre el panel en un navegador donde aún no la ha visto.",
+  },
+];
 
 export function SettingsTab() {
   const { toast } = useToast();
+
+  // La guía vive en el layout de administración: aquí solo se
+  // limpia su marca de «ya vista» y se le pide que arranque.
+  const reactivarGuia = () => {
+    resetTour(adminTour.id);
+    window.dispatchEvent(
+      new CustomEvent("usb-monitor:restart-tour", {
+        detail: { tourId: adminTour.id },
+      }),
+    );
+    toast({
+      title: "Guía introductoria",
+      description: "El recorrido vuelve a empezar desde el principio.",
+    });
+  };
   const [api, setApi] = useState<ApiSettings>({
     startupNetworkDelay: 15,
   });
@@ -131,7 +244,7 @@ export function SettingsTab() {
     });
 
   return (
-    <div className="animate-view-in lg:grid lg:grid-cols-[230px_minmax(0,1fr)] lg:gap-14">
+    <div data-tour="settings-main" className="animate-view-in lg:grid lg:grid-cols-[230px_minmax(0,1fr)] lg:gap-14">
       {/* ── Índice de ajustes ── */}
       <aside className="mb-10 lg:mb-0">
         <div className="lg:sticky lg:top-8">
@@ -437,6 +550,59 @@ export function SettingsTab() {
               Se aplica al momento y se recuerda en este navegador. En
               pantallas pequeñas se usa siempre la cabecera.
             </p>
+          </div>
+        </section>
+
+        <section
+          id="preguntas-frecuentes"
+          className="scroll-mt-24 border-t border-border py-12"
+        >
+          <h2 className="font-display flex items-center gap-2.5 text-[1.4rem] font-bold leading-tight text-foreground">
+            <HelpCircle className="size-5 shrink-0 text-[var(--acero)]" />
+            Preguntas frecuentes
+          </h2>
+          <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">
+            Cómo se comporta el sistema en los casos que más se
+            preguntan: la lista blanca, los desbloqueos, los agentes
+            y las actualizaciones.
+          </p>
+
+          <div className="mt-8 flex flex-wrap items-center justify-between gap-4 border border-border/60 bg-muted/20 px-4 py-4">
+            <div>
+              <p className="text-sm font-semibold text-foreground">
+                Guía introductoria
+              </p>
+              <p className="mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">
+                Vuelve a ver el recorrido guiado por el panel: la
+                vista se mueve sola hasta cada sección y la enfoca
+                sobre el fondo oscuro.
+              </p>
+            </div>
+            <Button variant="outline" onClick={reactivarGuia}>
+              <RotateCcw className="mr-2 size-4" />
+              Reactivar guía
+            </Button>
+          </div>
+
+          <div className="mt-6">
+            {PREGUNTAS_FRECUENTES.map((item) => (
+              <Collapsible
+                key={item.pregunta}
+                className="border-b border-border/60"
+              >
+                <CollapsibleTrigger className="group flex w-full items-center justify-between gap-4 py-4 text-left">
+                  <span className="text-sm font-medium text-foreground">
+                    {item.pregunta}
+                  </span>
+                  <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <p className="max-w-3xl pb-5 text-sm leading-relaxed text-muted-foreground">
+                    {item.respuesta}
+                  </p>
+                </CollapsibleContent>
+              </Collapsible>
+            ))}
           </div>
         </section>
       </div>

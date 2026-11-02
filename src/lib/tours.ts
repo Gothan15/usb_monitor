@@ -5,16 +5,25 @@ import {
   Bell,
   BarChart3,
   Usb,
-  Keyboard,
   Rocket,
   Monitor,
+  MonitorSmartphone,
+  Radar,
   ShieldCheck,
   KeyRound,
+  Users,
+  Wrench,
 } from "lucide-react";
 
 export interface TourStep {
   /** CSS selector for the target element to highlight */
   target?: string;
+  /**
+   * Ruta de la vista donde vive el objetivo (p. ej. "/admin/computers").
+   * Si el paso la trae y no estás en ella, la guía navega hasta ahí,
+   * espera a que el componente monte y desplaza la vista hasta él.
+   */
+  view?: string;
   title: string;
   description: string;
   /** Preferred popover position relative to target */
@@ -35,59 +44,118 @@ export const adminTour: TourDefinition = {
     {
       title: "Bienvenido al centro de control",
       description:
-        "Este es tu centro de control para monitorear toda la actividad USB de la organización. Te guiaremos por las funcionalidades principales.",
+        "Este panel vigila la actividad USB de todos los equipos con el agente instalado: qué se conecta, qué se bloquea y quién lo desbloquea. Te llevo por cada sección; la vista se moverá sola hasta lo que estemos viendo.",
       icon: Rocket,
     },
     {
       target: "[data-tour='sidebar']",
-      title: "Navegación lateral",
+      title: "Navegación",
       description:
-        "Pasa el cursor sobre la barra lateral para expandirla y navega entre las distintas secciones: Resumen, Eventos, Equipos, Usuarios, Lista blanca y más.",
+        "Desde aquí saltas entre las secciones: Resumen, Eventos, Equipos, Usuarios, Lista blanca, Desbloqueos, Escáner de red y Ajustes. Los contadores avisan de un vistazo cuántos equipos y eventos hay.",
       position: "right",
       icon: LayoutDashboard,
     },
     {
-      target: "[data-tour='command-trigger']",
-      title: "Paleta de comandos (⌘K)",
+      view: "/admin",
+      target: "[data-tour='stats-cards']",
+      title: "Resumen: el pulso de la red",
       description:
-        "Usa Ctrl+K o ⌘K para abrir la paleta de comandos. Desde ahí puedes navegar, ejecutar acciones y buscar rápidamente.",
+        "El titular y las cifras del día: dispositivos en lista blanca, eventos totales y actividad de la última hora. Si algo va mal en la red, aquí se nota primero.",
       position: "bottom",
-      icon: Command,
+      icon: BarChart3,
+    },
+    {
+      view: "/admin",
+      target: "[data-tour='activity-feed']",
+      title: "Alertas recientes",
+      description:
+        "Las últimas alertas sin tener que buscarlas: dispositivos no autorizados, bloqueos y equipos que dejan de dar señales.",
+      position: "top",
+      icon: Bell,
+    },
+    {
+      view: "/admin/events",
+      target: "[data-tour='events-main']",
+      title: "Eventos USB",
+      description:
+        "El historial completo y con filtros: conexiones, desconexiones, bloqueos, desbloqueos y el apagado de un equipo si alguna vez se arma. Todo queda auditado.",
+      position: "bottom",
+      icon: Usb,
+    },
+    {
+      view: "/admin/computers",
+      target: "[data-tour='computers-main']",
+      title: "Equipos",
+      description:
+        "Cada equipo aparece solo cuando su agente hace el primer contacto. Su estado sale de la última señal del agente: «En ejecución» o «Sin señal», sin datos duplicados. Desde aquí provisionas el token de cada agente, ves sus dispositivos USB e instalas el servicio en equipos nuevos.",
+      position: "bottom",
+      icon: MonitorSmartphone,
+    },
+    {
+      view: "/admin/unlocks",
+      target: "[data-tour='unlocks-main']",
+      title: "Desbloqueos",
+      description:
+        "Los bloqueos en curso y los intentos de contraseña. Ojo: el administrador NO aprueba nada aquí: la contraseña la introduce el dueño del equipo (o un administrador con la suya) en el propio equipo. Los equipos que dejan de dar señales se marcan: el silencio también es una evidencia.",
+      position: "bottom",
+      icon: KeyRound,
+    },
+    {
+      view: "/admin/users",
+      target: "[data-tour='users-main']",
+      title: "Usuarios",
+      description:
+        "Las cuentas las crea un administrador y a cada una se le asigna SU equipo: esa asignación es la que decide quién puede desbloquear los dispositivos de ese equipo con su contraseña.",
+      position: "bottom",
+      icon: Users,
+    },
+    {
+      view: "/admin/whitelist",
+      target: "[data-tour='whitelist-main']",
+      title: "Lista blanca",
+      description:
+        "El registro de dispositivos conocidos, por número de serie. Estar en la lista NO exime de la contraseña: solo significa que el dispositivo puede desbloquearse. Fuera de la lista no hay contraseña que valga: primero se da de alta aquí.",
+      position: "bottom",
+      icon: ShieldCheck,
+    },
+    {
+      view: "/admin/network",
+      target: "[data-tour='network-main']",
+      title: "Escáner de red",
+      description:
+        "Descubre equipos en la red local y cuáles tienen el agente. La presencia del servicio se confirma con la señal que el propio agente envía al panel, no abriendo puertos en los equipos.",
+      position: "bottom",
+      icon: Radar,
     },
     {
       target: "[data-tour='notifications']",
       title: "Centro de notificaciones",
       description:
-        "Aquí recibirás alertas en tiempo real: dispositivos no autorizados, servicios caídos y más. El badge rojo indica notificaciones sin leer.",
+        "Alertas en tiempo real: dispositivos no autorizados, bloqueos y servicios caídos. El punto rojo indica que hay algo sin leer.",
       position: "bottom",
       icon: Bell,
     },
     {
-      target: "[data-tour='stats-cards']",
-      title: "Métricas en vivo",
+      target: "[data-tour='command-trigger']",
+      title: "Paleta de comandos (Ctrl+K)",
       description:
-        "Las tarjetas KPI muestran el estado general: equipos activos, eventos totales, alertas recientes y cobertura de la lista blanca.",
+        "Con Ctrl+K o ⌘K saltas a cualquier sección y ejecutas acciones sin tocar el ratón. También tienes atajos Alt+1…8 para cambiar de sección.",
       position: "bottom",
-      icon: BarChart3,
+      icon: Command,
     },
     {
-      target: "[data-tour='activity-feed']",
-      title: "Eventos USB en vivo",
+      view: "/admin/settings",
+      target: "[data-tour='settings-main']",
+      title: "Ajustes",
       description:
-        "El feed de actividad muestra eventos USB en tiempo real conforme llegan. Verás conexiones, desconexiones y bloqueos.",
-      position: "left",
-      icon: Usb,
-    },
-    {
-      title: "Atajos de teclado",
-      description:
-        "Usa Alt+1-9 para navegar entre secciones, Alt+R para refrescar, ⌘K para la paleta de comandos y Ctrl/⌘ + / para abrir la ayuda de atajos.",
-      icon: Keyboard,
+        "Las políticas del sistema: desbloqueo por contraseña, emergencia sin red, bloqueo de sesión, el apagado automático ante dispositivos desconocidos (con su cuenta atrás editable) y el umbral de silencio. Abajo del todo tienes las preguntas frecuentes y el botón para repetir esta guía cuando quieras.",
+      position: "bottom",
+      icon: Wrench,
     },
     {
       title: "¡Listo para empezar!",
       description:
-        "Ya conoces las herramientas principales. Explora el panel, configura tu lista blanca y mantén tu red segura.",
+        "Ya conoces el panel. Da de alta tus dispositivos en la lista blanca, asigna cada usuario a su equipo y deja que los agentes hagan el resto.",
       icon: Rocket,
     },
   ],

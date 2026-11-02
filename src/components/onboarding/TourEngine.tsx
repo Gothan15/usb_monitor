@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -74,6 +75,8 @@ export function TourEngine({
   forceStart = false,
   onComplete,
 }: TourEngineProps) {
+  const router = useRouter();
+  const pathname = usePathname();
   const [active, setActive] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
   const [targetRect, setTargetRect] = useState<Rect | null>(null);
@@ -92,6 +95,78 @@ export function TourEngine({
       return () => clearTimeout(timer);
     }
   }, [tour.id, forceStart]);
+
+  // Reactivación desde Ajustes: quien quiera repetir la guía
+  // limpia su marca de «vista» y dispara este evento con el id
+  // de la guía; el motor que la tenga montada la reinicia.
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ tourId?: string }>).detail;
+      if (detail?.tourId && detail.tourId !== tour.id) return;
+      setStepIndex(0);
+      setActive(true);
+    };
+    window.addEventListener("usb-monitor:restart-tour", handler);
+    return () => window.removeEventListener("usb-monitor:restart-tour", handler);
+  }, [tour.id]);
+
+  // Llegada al paso: si el objetivo vive en otra vista, la guía
+  // NAVEGA hasta ella, espera a que monte, desplaza la vista
+  // hasta el componente (scrollIntoView suave, centrado) y
+  // entonces mide para el foco. Mientras tanto no hay foco:
+  // el telón cubre todo y la tarjeta se lee en el centro.
+  useEffect(() => {
+    if (!active || !step) return;
+    let cancelled = false;
+    let poll: number | undefined;
+    let settle: number | undefined;
+
+    const arrive = () => {
+      if (!step.target) {
+        setTargetRect(null);
+        return;
+      }
+      const el = document.querySelector(step.target);
+      if (!el) {
+        setTargetRect(null);
+        return;
+      }
+      el.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+      // Medir al momento y otra vez cuando el desplazamiento
+      // se asienta, para que el foco caiga en su sitio final.
+      setTargetRect(getElementRect(step.target));
+      settle = window.setTimeout(() => {
+        if (!cancelled) setTargetRect(getElementRect(step.target!));
+      }, 550);
+    };
+
+    if (step.view && pathname !== step.view) {
+      setTargetRect(null);
+      router.push(step.view);
+      const started = Date.now();
+      poll = window.setInterval(() => {
+        if (cancelled) return;
+        if (!step.target || document.querySelector(step.target)) {
+          window.clearInterval(poll);
+          arrive();
+        } else if (Date.now() - started > 3000) {
+          window.clearInterval(poll);
+          setTargetRect(null);
+        }
+      }, 120);
+    } else {
+      arrive();
+    }
+
+    return () => {
+      cancelled = true;
+      if (poll) window.clearInterval(poll);
+      if (settle) window.clearTimeout(settle);
+    };
+    // pathname se lee pero no es dependencia: al llegar a la
+    // vista destino el efecto no debe relanzar la llegada.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, stepIndex, step?.target, step?.view, tour.id, router]);
 
   // Track target element position
   useLayoutEffect(() => {
@@ -144,49 +219,101 @@ export function TourEngine({
     return () => window.removeEventListener("keydown", handler);
   }, [active, finish, next, prev]);
 
-  // Popover position calculation
-  const popoverStyle = useMemo(() => {
+  // Tamaño real de la tarjeta, para poder centrarla y
+  // voltearla cuando no cabe junto a su objetivo.
+  const [cardSize, setCardSize] = useState({ width: 360, height: 250 });
+  useLayoutEffect(() => {
+    if (!active) return;
+    const el = popoverRef.current;
+    if (!el) return;
+    const width = el.offsetWidth;
+    const height = el.offsetHeight;
+    if (width > 0 && height > 0) {
+      setCardSize((prev) =>
+        prev.width === width && prev.height === height
+          ? prev
+          : { width, height },
+      );
+    }
+  });
+
+  // Posición de la tarjeta en píxeles. La tarjeta NO se remonta
+  // en cada paso: su posición se anima con un muelle y el cartel
+  // VIAJA por la pantalla hasta el siguiente objetivo (y al
+  // centro mientras la guía cambia de vista).
+  const popoverPos = useMemo(() => {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const margin = 16;
+    const clampLeft = (v: number) =>
+      Math.max(margin, Math.min(v, vw - cardSize.width - margin));
+    const clampTop = (v: number) =>
+      Math.max(margin, Math.min(v, vh - cardSize.height - margin));
+
     if (!targetRect || !step?.target) {
-      // Center on screen
       return {
-        top: "50%",
-        left: "50%",
-        transform: "translate(-50%, -50%)",
-      } as const;
+        top: Math.max(margin, (vh - cardSize.height) / 2),
+        left: Math.max(margin, (vw - cardSize.width) / 2),
+      };
     }
 
-    const padding = 16;
     const pos = step.position ?? "bottom";
     const cx = targetRect.left + targetRect.width / 2;
-
     switch (pos) {
-      case "bottom":
-        return {
-          top: `${targetRect.top + targetRect.height + padding}px`,
-          left: `${Math.max(padding, Math.min(cx - 180, window.innerWidth - 376))}px`,
-        } as const;
-      case "top":
-        return {
-          bottom: `${window.innerHeight - targetRect.top + padding}px`,
-          left: `${Math.max(padding, Math.min(cx - 180, window.innerWidth - 376))}px`,
-        } as const;
       case "right":
         return {
-          top: `${Math.max(padding, targetRect.top)}px`,
-          left: `${targetRect.left + targetRect.width + padding}px`,
-        } as const;
+          top: clampTop(targetRect.top),
+          left: Math.min(
+            targetRect.left + targetRect.width + margin,
+            vw - cardSize.width - margin,
+          ),
+        };
       case "left":
         return {
-          top: `${Math.max(padding, targetRect.top)}px`,
-          right: `${window.innerWidth - targetRect.left + padding}px`,
-        } as const;
+          top: clampTop(targetRect.top),
+          left: Math.max(margin, targetRect.left - cardSize.width - margin),
+        };
+      case "top": {
+        const above = targetRect.top - cardSize.height - margin;
+        return {
+          top:
+            above >= margin
+              ? above
+              : clampTop(targetRect.top + targetRect.height + margin),
+          left: clampLeft(cx - cardSize.width / 2),
+        };
+      }
+      case "bottom":
+      default: {
+        const below = targetRect.top + targetRect.height + margin;
+        return {
+          top:
+            below + cardSize.height <= vh - margin
+              ? below
+              : clampTop(targetRect.top - cardSize.height - margin),
+          left: clampLeft(cx - cardSize.width / 2),
+        };
+      }
     }
-  }, [targetRect, step?.target, step?.position]);
+  }, [targetRect, step?.target, step?.position, cardSize]);
+
+  // Geometría del hueco del telón: un div transparente cuya
+  // sombra exterior oscurece todo lo demás. Sus medidas se
+  // animan por CSS, así que el hueco también se desliza de un
+  // componente a otro en vez de saltar.
+  const spotlightStyle = useMemo(() => {
+    if (!targetRect) return null;
+    return {
+      top: targetRect.top - 8,
+      left: targetRect.left - 8,
+      width: targetRect.width + 16,
+      height: targetRect.height + 16,
+    };
+  }, [targetRect]);
 
   if (!active || !step) return null;
 
   const StepIcon = step.icon;
-  const spotlightPadding = 8;
 
   return (
     <AnimatePresence>
@@ -199,59 +326,53 @@ export function TourEngine({
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
           className="fixed inset-0 z-[9999]"
         >
-          {/* Backdrop with spotlight cutout */}
-          <svg
-            className="absolute inset-0 size-full"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <defs>
-              <mask id="tour-spotlight-mask">
-                <rect width="100%" height="100%" fill="white" />
-                {targetRect && (
-                  <rect
-                    x={targetRect.left - spotlightPadding}
-                    y={targetRect.top - spotlightPadding}
-                    width={targetRect.width + spotlightPadding * 2}
-                    height={targetRect.height + spotlightPadding * 2}
-                    rx="12"
-                    fill="black"
-                  />
-                )}
-              </mask>
-            </defs>
-            <rect
-              width="100%"
-              height="100%"
-              fill="rgba(0,0,0,0.6)"
-              mask="url(#tour-spotlight-mask)"
-              className="backdrop-blur-[2px]"
-            />
-          </svg>
+          {/* Telón: con objetivo, un div transparente cuya sombra
+              exterior oscurece todo menos el hueco enfocado; sin
+              objetivo, un telón liso. Ambos se cruzan con un
+              fundido y el hueco viaja animando su geometría. */}
+          <div
+            className="absolute inset-0 bg-black/60 transition-opacity duration-500"
+            style={{ opacity: targetRect ? 0 : 1 }}
+          />
+          <div
+            className="absolute rounded-xl transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
+            style={{
+              ...(spotlightStyle ?? { top: 0, left: 0, width: 0, height: 0 }),
+              boxShadow: "0 0 0 9999px rgba(0,0,0,0.6)",
+              opacity: targetRect ? 1 : 0,
+            }}
+          />
 
-          {/* Spotlight ring glow */}
-          {targetRect && (
-            <div
-              className="absolute rounded-xl ring-2 ring-primary/60 ring-offset-2 ring-offset-transparent transition-all duration-300"
-              style={{
-                top: targetRect.top - spotlightPadding,
-                left: targetRect.left - spotlightPadding,
-                width: targetRect.width + spotlightPadding * 2,
-                height: targetRect.height + spotlightPadding * 2,
-              }}
-            />
-          )}
+          {/* Anillo del foco, solidario con el hueco */}
+          <div
+            className="pointer-events-none absolute rounded-xl ring-2 ring-primary/60 transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
+            style={{
+              ...(spotlightStyle ?? { top: 0, left: 0, width: 0, height: 0 }),
+              opacity: targetRect ? 1 : 0,
+            }}
+          />
 
-          {/* Popover card */}
+          {/* Tarjeta viajera: vive montada durante todo el
+              recorrido y se desplaza con un muelle hasta cada
+              objetivo; solo su contenido se renueva, con un
+              fundido corto a mitad de camino. */}
           <motion.div
             ref={popoverRef}
-            key={stepIndex}
-            initial={{ opacity: 0, y: 8, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -8, scale: 0.96 }}
-            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            initial={{ opacity: 0, top: popoverPos.top, left: popoverPos.left }}
+            animate={{ opacity: 1, top: popoverPos.top, left: popoverPos.left }}
+            transition={{
+              opacity: { duration: 0.25 },
+              top: { type: "spring", stiffness: 200, damping: 30, mass: 0.9 },
+              left: { type: "spring", stiffness: 200, damping: 30, mass: 0.9 },
+            }}
             className="absolute z-10 w-[360px]"
-            style={popoverStyle}
           >
+            <motion.div
+              key={stepIndex}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2 }}
+            >
             <GlassPanel variant="elevated" className="p-5 shadow-2xl">
               {/* Header */}
               <div className="flex items-start justify-between gap-3">
@@ -335,6 +456,7 @@ export function TourEngine({
                 ))}
               </div>
             </GlassPanel>
+            </motion.div>
           </motion.div>
         </motion.div>
       )}
