@@ -222,6 +222,7 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, ease: "easeOut" }}
       className="w-full"
+      data-tour="network-main"
     >
       {/* ── Fila de control ── */}
       <div className="flex flex-col gap-6 border-b border-border pb-7 lg:flex-row lg:items-end lg:justify-between">

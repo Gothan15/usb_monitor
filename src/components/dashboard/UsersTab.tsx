@@ -550,6 +550,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: "easeOut" }}
       className="w-full"
+      data-tour="users-main"
     >
       {/* ── Cabecera plana: título, buscador con subrayado y alta ── */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">

@@ -224,7 +224,7 @@ export function OverviewTab({
   return (
     <div className="animate-view-in">
       {/* ── Titular: estado y cifras del día ── */}
-      <section className="grid gap-10 lg:grid-cols-[1.2fr_2fr] lg:gap-16">
+      <section data-tour="stats-cards" className="grid gap-10 lg:grid-cols-[1.2fr_2fr] lg:gap-16">
         <div>
           <p className="smallcaps flex items-center gap-2 text-muted-foreground">
             <span
@@ -333,7 +333,7 @@ export function OverviewTab({
           </div>
         </section>
 
-        <section className="border-t border-border pt-6">
+        <section data-tour="activity-feed" className="border-t border-border pt-6">
           <h3 className="font-display text-[1.3rem] font-bold">
             Alertas recientes
           </h3>

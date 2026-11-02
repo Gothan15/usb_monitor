@@ -187,6 +187,7 @@ export function WhitelistTab({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: "easeOut" }}
       className="w-full"
+      data-tour="whitelist-main"
     >
       {/* ── Cabecera del registro ── */}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
