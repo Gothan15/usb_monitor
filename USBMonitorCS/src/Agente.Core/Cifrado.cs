@@ -268,8 +268,13 @@ public static class CifradoValores
 
     public static string Cifrar(string valor)
     {
-        if (OperatingSystem.IsWindows())
-            return Dpapi.Cifrar(valor);
+        // Escritura siempre con Fernet («ENC:»), el mismo formato
+        // del agente Python, probado en producción: DPAPI ataba el
+        // valor a las APIs de protección de Windows y su lectura de
+        // vuelta no era fiable en todas las cuentas (prueba real del
+        // 2026-11-02: el token guardado con DPAPI era rechazado por
+        // el panel y solo funcionó en claro). DPAPI se mantiene
+        // solo como lectura de valores antiguos.
         return FernetMaquina.Value.Cifrar(valor);
     }
 }

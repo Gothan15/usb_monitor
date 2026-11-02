@@ -254,6 +254,12 @@ public sealed class Detector
             {
                 var instancia = Texto(entidad, "PNPDeviceID") ?? "";
                 if (instancia.Length == 0) continue;
+                // Solo dispositivos WPD tras un bus USB (regla del
+                // agente Python): sin este filtro, los volúmenes de
+                // almacenamiento (STORAGE\Volume\{guid}#...) entran
+                // como «teléfonos» fantasma con un GUID por serial
+                // cuando una memoria consigue montar su volumen.
+                if (!instancia.StartsWith("USB\\", StringComparison.OrdinalIgnoreCase)) continue;
                 var nombre = Texto(entidad, "Name") ?? "";
                 var disp = new Dispositivo
                 {

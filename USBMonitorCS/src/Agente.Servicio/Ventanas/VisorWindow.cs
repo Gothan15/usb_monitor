@@ -272,6 +272,10 @@ public sealed class VisorWindow : Window
             foreach (ManagementObject movil in moviles)
             {
                 string pnp = Texto(movil, "PNPDeviceID");
+                // Solo WPD por USB: fuera los volúmenes de
+                // almacenamiento (su «serial» sería un GUID inútil).
+                if (!pnp.StartsWith("USB\\", StringComparison.OrdinalIgnoreCase))
+                    continue;
                 filas.Add(new FilaDispositivo(
                     Nombre: Texto(movil, "Name") is { Length: > 0 } n ? n : "Móvil",
                     Serial: NormalizarSerial(SegmentoFinal(pnp)),

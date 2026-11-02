@@ -203,6 +203,10 @@ public static class Instalador
         // El compañero al iniciar sesión: el mismo exe en modo prompt.
         Ejecutar("schtasks.exe", "/Create", "/TN", NombreTarea,
             "/TR", $"\"{exe}\" prompt", "/SC", "ONLOGON", "/RL", "LIMITED", "/F");
+        // Y a correr AHORA, en la sesión actual: sin esto el
+        // compañero no existe hasta el próximo inicio de sesión y
+        // ningún bloqueo podría desbloquearse tras instalar.
+        Ejecutar("schtasks.exe", "/Run", "/TN", NombreTarea);
 
         using var controlador = new ServiceController(NombreServicio);
         controlador.Start();
