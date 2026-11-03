@@ -1,0 +1,78 @@
+# Panel: construir el instalador .msi y publicarlo.
+#
+# Cómo se usa:
+#   · Release nueva: crea una etiqueta «panel-vX.Y.Z» y empújala
+#     (git tag panel-v1.0.0 && git push origin panel-v1.0.0).
+#     La acción construye el .msi y lo deja en la Release de esa
+#     etiqueta. La versión del instalador sale de la etiqueta.
+#   · A mano: pestaña Actions → «Panel — instalador MSI» →
+#     Run workflow, indicando la versión. El .msi queda como
+#     artefacto de la ejecución (30 días), sin crear Release.
+#
+# La construcción llama al MISMO Construir-Instalador.ps1 que se
+# usa en local (compila el panel, descarga las versiones fijadas
+# de PostgreSQL/Node/WinSW y compila el .msi con WiX): lo que sale
+# de aquí es el mismo procedimiento de siempre, en una máquina
+# Windows de GitHub. Las etiquetas del agente son «agente-v*» y
+# las del panel «panel-v*»: no se pisan.
+name: Panel — instalador MSI
+
+on:
+  push:
+    tags:
+      - "panel-v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Versión del instalador (solo en ejecuciones manuales)"
+        required: true
+        default: "1.0.0"
+
+permissions:
+  contents: write
+
+jobs:
+  construir:
+    runs-on: windows-latest
+    steps:
+      - name: Descargar el repositorio
+        uses: actions/checkout@v5
+
+      - name: Instalar Node.js 22 (para compilar el panel)
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Instalar .NET 8 (para la herramienta WiX)
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Calcular la versión del instalador
+        id: version
+        shell: pwsh
+        run: |
+          $version = if ($env:GITHUB_REF -like 'refs/tags/panel-v*') {
+            $env:GITHUB_REF_NAME -replace '^panel-v', ''
+          } else {
+            "${{ inputs.version }}"
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Construir el instalador
+        shell: pwsh
+        run: ./instalador/Construir-Instalador.ps1 -Version ${{ steps.version.outputs.version }}
+
+      - name: Guardar el .msi como artefacto de la ejecución
+        uses: actions/upload-artifact@v6
+        with:
+          name: USBMonitor-Panel-${{ steps.version.outputs.version }}.msi
+          path: salida-instalador/USBMonitor-Panel-${{ steps.version.outputs.version }}.msi
+          retention-days: 30
+
+      - name: Publicar el .msi en la Release de la etiqueta
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: salida-instalador/USBMonitor-Panel-${{ steps.version.outputs.version }}.msi
+          generate_release_notes: true
