@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 
 namespace USBMonitor.Agente.Servicio.Ventanas;
@@ -43,6 +44,31 @@ public static class Tema
         ventana.FontSize = 13.5;
         ventana.SnapsToDevicePixels = true;
         TextOptions.SetTextFormattingMode(ventana, TextFormattingMode.Display);
+    }
+
+    /// <summary>
+    /// Entrada suave de ventana: fundido y escala breve al
+    /// cargar, en la línea de las animaciones del panel web. El
+    /// compañero no la usa: gestiona su propia aparición y
+    /// retirada porque nace oculto.
+    /// </summary>
+    public static void AnimarEntrada(Window ventana)
+    {
+        var escala = new ScaleTransform(0.98, 0.98);
+        ventana.RenderTransform = escala;
+        ventana.RenderTransformOrigin = new Point(0.5, 0.5);
+        ventana.Opacity = 0;
+        ventana.Loaded += (_, _) =>
+        {
+            ventana.BeginAnimation(Window.OpacityProperty,
+                new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200)));
+            var animacion = new DoubleAnimation(0.98, 1, TimeSpan.FromMilliseconds(240))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+            };
+            escala.BeginAnimation(ScaleTransform.ScaleXProperty, animacion);
+            escala.BeginAnimation(ScaleTransform.ScaleYProperty, animacion);
+        };
     }
 
     /// <summary>

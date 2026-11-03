@@ -66,6 +66,7 @@ public sealed class ToolboxWindow : Window
         MinHeight = 660;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Tema.AplicarVentana(this);
+        Tema.AnimarEntrada(this);
 
         // ── Distribución en UNA sola pantalla, sin desplazamiento ──
         // Inspiración (diseños humanos, ver DISENO-UI.md): los

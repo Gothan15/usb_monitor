@@ -35,6 +35,7 @@ public sealed class VisorWindow : Window
         MinHeight = 360;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Tema.AplicarVentana(this);
+        Tema.AnimarEntrada(this);
 
         var raiz = new Grid { Margin = new Thickness(18, 6, 18, 18) };
         raiz.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });

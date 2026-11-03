@@ -294,17 +294,47 @@ public sealed class AgenteWorker : BackgroundService
     }
 
     // ── handoff al compañero: pending_local.json atómico ─────────
-    private void RefrescarPendientesLocales()
+    private List<object> PendientesLocalesActuales()
     {
-        var pendientes = _motor.Bloqueados().Select(reg => (object)new
+        return _motor.Bloqueados().Select(reg => (object)new
         {
             clave = reg.Dispositivo.Clave,
             serial = reg.Dispositivo.Serial,
-            nombre = reg.Dispositivo.Nombre,
+            nombre = reg.Dispositivo.NombreVisible,
             letra = reg.Dispositivo.Letra,
             tipo = reg.Dispositivo.Tipo,
             en_whitelist = reg.EnWhitelist,
         }).ToList();
+    }
+
+    private void RefrescarPendientesLocales()
+    {
+        EscribirPendientesLocales(PendientesLocalesActuales());
+    }
+
+    /// <summary>
+    /// Anota el bloqueo en pending_local.json ANTES de ejecutar
+    /// las capas: la ventana del compañero tiene que salir en
+    /// cuanto el dispositivo se detecta, no cuando la cadena de
+    /// bloqueo termine (en memorias y discos puede tardar
+    /// segundos y el teléfono, que cede al instante, salía
+    /// siempre primero). Al volver de Bloquear, el refresco
+    /// normal sustituye lo provisional por el estado real del
+    /// motor — y lo retira si ninguna capa logró bloquear.
+    /// </summary>
+    private void EscribirPendienteProvisional(Dispositivo disp, bool? enWl)
+    {
+        if (_motor.Registro(disp.Clave)?.Estado == EstadoBloqueo.Bloqueado) return;
+        var pendientes = PendientesLocalesActuales();
+        pendientes.Add(new
+        {
+            clave = disp.Clave,
+            serial = disp.Serial,
+            nombre = disp.NombreVisible,
+            letra = disp.Letra,
+            tipo = disp.Tipo,
+            en_whitelist = enWl,
+        });
         EscribirPendientesLocales(pendientes);
     }
 
@@ -389,6 +419,7 @@ public sealed class AgenteWorker : BackgroundService
         // compañero muestra el formulario mientras tanto y la
         // autorización la sigue decidiendo el servidor.
         var enWl = EnWhitelistCacheada(disp.Serial);
+        EscribirPendienteProvisional(disp, enWl);
         var reg = _motor.Bloquear(disp, enWl);
         if (reg.Estado == EstadoBloqueo.Bloqueado)
         {
@@ -416,7 +447,7 @@ public sealed class AgenteWorker : BackgroundService
     {
         if (_pendientesRegistrados.Contains(disp.Clave)) return;
         var pid = await _cliente.RegistrarBloqueoAsync(
-            disp.Letra, disp.Serial, disp.Nombre, enWl).ConfigureAwait(false);
+            disp.Letra, disp.Serial, disp.NombreVisible, enWl).ConfigureAwait(false);
         if (!string.IsNullOrEmpty(pid)) _pendientesRegistrados.Add(disp.Clave);
     }
 
@@ -731,7 +762,10 @@ public sealed class AgenteWorker : BackgroundService
                 $"letra={pendiente.DriveLetter} serial={pendiente.SerialNumber}");
             return;
         }
-        if (_motor.LiberarConReintentos(objetivo.Clave))
+        // Escalera corta: hay una persona esperando frente a la
+        // ventana; la de 10/30/60 s dejaba el «Autorizado» pintado
+        // un buen rato con el dispositivo ya en vías de liberarse.
+        if (_motor.LiberarConReintentos(objetivo.Clave, new[] { 1, 2, 5 }))
         {
             _cliente.Evento(EvDesbloqueado, objetivo.Letra, objetivo.Serial);
             DesarmarApagado(objetivo.Clave, objetivo, "el dispositivo se desbloqueó");
@@ -806,7 +840,7 @@ public sealed class AgenteWorker : BackgroundService
         return _motor.Bloqueados()
             .Select(reg => new ServidorLocal.BlockedInfo(
                 reg.Dispositivo.Clave, reg.Dispositivo.Serial,
-                reg.Dispositivo.Letra, reg.Dispositivo.Nombre))
+                reg.Dispositivo.Letra, reg.Dispositivo.NombreVisible))
             .ToList();
     }
 
@@ -815,7 +849,7 @@ public sealed class AgenteWorker : BackgroundService
         foreach (var reg in _motor.Bloqueados())
         {
             if (reg.Dispositivo.Serial != serial) continue;
-            if (!_motor.LiberarConReintentos(reg.Dispositivo.Clave)) return false;
+            if (!_motor.LiberarConReintentos(reg.Dispositivo.Clave, new[] { 1, 2, 5 })) return false;
             _cliente.Evento(EvEmergencia, reg.Dispositivo.Letra, reg.Dispositivo.Serial);
             DesarmarApagado(reg.Dispositivo.Clave, reg.Dispositivo, "desbloqueo de emergencia local");
             RefrescarPendientesLocales();

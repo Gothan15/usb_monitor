@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { etiquetaEventoUsb } from "@/lib/eventosUsb";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { LiveIndicator } from "@/components/ui/live-indicator";
 import { Badge } from "@/components/ui/badge";
@@ -197,7 +198,7 @@ export function ActivityFeed({
                         </span>
                       </div>
                       <p className="mt-0.5 text-[11px] text-muted-foreground truncate leading-relaxed">
-                        {event.event}
+                        {etiquetaEventoUsb(event.event)}
                       </p>
                       {mode === "full" && event.serialNumber && (
                         <p className="mt-0.5 font-mono text-[10px] text-muted-foreground/60">

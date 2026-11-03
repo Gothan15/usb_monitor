@@ -154,21 +154,25 @@ async function handleDeviceUnlock(body: any, pcName: string) {
     status: "BLOCKED" as const,
     expiresAt: { gte: now },
   };
-  const pending =
-    (await db.pendingUnlock.findFirst({
-      where: {
-        ...baseWhere,
-        ...(driveLetter ? { driveLetter } : {}),
-        ...(serialNumber ? { serialNumber } : {}),
-      },
-      orderBy: { createdAt: "desc" },
-    })) ??
-    (driveLetter || serialNumber
+  // La autorización vale SOLO para el dispositivo que se está
+  // desbloqueando: la identidad es el serial (la letra puede
+  // cambiar o no existir). Antes, si el bloqueo exacto no
+  // aparecía, se caía a «cualquier bloqueo activo de la PC» y la
+  // contraseña podía autorizar contra el bloqueo de OTRO
+  // dispositivo — incluido uno fuera de la whitelist apoyado en
+  // el bloqueo de uno listado. Sin coincidencia exacta no hay
+  // autorización posible.
+  const pending = serialNumber
+    ? await db.pendingUnlock.findFirst({
+        where: { ...baseWhere, serialNumber },
+        orderBy: { createdAt: "desc" },
+      })
+    : driveLetter
       ? await db.pendingUnlock.findFirst({
-          where: baseWhere,
+          where: { ...baseWhere, driveLetter },
           orderBy: { createdAt: "desc" },
         })
-      : null);
+      : null;
 
   if (!pending) {
     await recordAttempt({
