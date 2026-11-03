@@ -65,6 +65,15 @@ En el PC de desarrollo (Windows), desde esta carpeta:
 
 El script: instala WiX v4 si falta, descarga las versiones fijadas de `versiones.wxi` (Node portable, binarios de PostgreSQL, WinSW; la primera vez imprime sus SHA-256 para que puedas fijarlos en `$HashEsperado`), compila el panel (`npm ci`, `prisma generate`, `npm run build`, poda de devDependencies), prepara el árbol en `salida-instalador\preparado\` — **excluyendo siempre el `.env` local** — y compila `Panel.wxs` con la extensión de interfaz, en español. Resultado: `salida-instalador\USBMonitor-Panel-<versión>.msi` con su SHA-256.
 
+## También sale por GitHub Actions (Releases)
+
+Igual que el agente: el workflow `.github/workflows/panel-instalador.yml` corre **el mismo** `Construir-Instalador.ps1` en una máquina Windows de GitHub.
+
+- **Con etiqueta** `panel-vX.Y.Z` (las del agente son `agente-v*`: no se pisan): construye el `.msi` con esa versión y lo publica en la Release de la etiqueta, permanente.
+- **A mano** (Actions → «Panel — instalador MSI» → Run workflow): pides la versión en el formulario y el `.msi` queda como artefacto de la corrida durante 30 días.
+
+La primera corrida de este workflow es, además, la primera compilación real del instalador: si WiX o algún script tuvieran un problema, saltará ahí antes que en tu PC.
+
 ## Lista de prueba en el PC real (la primera vez)
 
 1. Instalar en una máquina (o VM) **sin** PostgreSQL previo: asistente completo, y al final `http://localhost:3000` abre el panel y entra con el administrador creado.
