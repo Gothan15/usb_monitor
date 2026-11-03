@@ -91,14 +91,20 @@ export function ActivityFeed({
     return () => el.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // Count new events while scrolled up
-  useEffect(() => {
+  // Count new events while scrolled up: ajuste durante el render
+  // cuando cambian el conteo de eventos o la posición de scroll.
+  const [prevFeed, setPrevFeed] = useState({
+    count: liveEventCount,
+    scrolled: isScrolledUp,
+  });
+  if (prevFeed.count !== liveEventCount || prevFeed.scrolled !== isScrolledUp) {
+    setPrevFeed({ count: liveEventCount, scrolled: isScrolledUp });
     if (isScrolledUp) {
       setNewCount((prev) => prev + 1);
     } else {
       setNewCount(0);
     }
-  }, [liveEventCount, isScrolledUp]);
+  }
 
   const scrollToTop = () => {
     listRef.current?.scrollTo({ top: 0, behavior: "smooth" });

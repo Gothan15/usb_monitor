@@ -97,7 +97,11 @@ export const EventHistory = ({ userId }: EventHistoryProps) => {
   useEffect(() => {
     if (!userId) return;
     const controller = new AbortController();
-    loadHistory(controller.signal);
+    // Diferida a una microtarea: los setState de la carga ocurren
+    // en un contexto asíncrono, no en el cuerpo síncrono del efecto.
+    queueMicrotask(() => {
+      if (!controller.signal.aborted) void loadHistory(controller.signal);
+    });
     const interval = setInterval(() => {
       const nextController = new AbortController();
       loadHistory(nextController.signal).catch(() => {});

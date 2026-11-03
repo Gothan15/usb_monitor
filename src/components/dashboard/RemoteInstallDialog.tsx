@@ -73,10 +73,13 @@ export function RemoteInstallDialog({
   const [password, setPassword] = useState("");
   const [port, setPort] = useState(22);
 
-  // Puerto por defecto según el protocolo elegido
-  useEffect(() => {
+  // Puerto por defecto según el protocolo elegido: al cambiar el
+  // protocolo se restablece el suyo (ajuste durante el render).
+  const [prevProtocol, setPrevProtocol] = useState(protocol);
+  if (protocol !== prevProtocol) {
+    setPrevProtocol(protocol);
     setPort(protocol === "winrm" ? 5985 : 22);
-  }, [protocol]);
+  }
 
   // Phase states
   const [copyStatus, setCopyStatus] = useState<PhaseStatus>("idle");

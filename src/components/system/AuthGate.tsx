@@ -1,16 +1,16 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useSyncExternalStore } from "react";
 import { FullscreenSpinner } from "@/components/ui/spinner";
 
 // Componente cliente separado para control de sesión sin forzar layout a client component
 export default function AuthGate({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<"checking" | "ok" | "login">("checking");
-  const [mounted, setMounted] = useState(false);
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
   const channelRef = React.useRef<BroadcastChannel | null>(null);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   // NOTA HIDRATACIÓN:
   // Antes devolvíamos 'children' en SSR y 'null' en el primer render cliente (status = 'checking'),

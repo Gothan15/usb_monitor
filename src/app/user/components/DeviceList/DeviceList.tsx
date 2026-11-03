@@ -90,7 +90,11 @@ export const DeviceList = ({ userId }: DeviceListProps) => {
   useEffect(() => {
     if (!userId) return;
     const controller = new AbortController();
-    loadDevices(controller.signal);
+    // Diferida a una microtarea: los setState de la carga ocurren
+    // en un contexto asíncrono, no en el cuerpo síncrono del efecto.
+    queueMicrotask(() => {
+      if (!controller.signal.aborted) void loadDevices(controller.signal);
+    });
     const interval = setInterval(() => {
       const nextController = new AbortController();
       loadDevices(nextController.signal).catch(() => {});

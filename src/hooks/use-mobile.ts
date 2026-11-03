@@ -2,18 +2,18 @@ import * as React from "react"
 
 const MOBILE_BREAKPOINT = 768
 
+function suscribirse(onChange: () => void) {
+  const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`)
+  mql.addEventListener("change", onChange)
+  return () => mql.removeEventListener("change", onChange)
+}
+
 export function useIsMobile() {
-  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined)
-
-  React.useEffect(() => {
-    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`)
-    const onChange = () => {
-      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
-    }
-    mql.addEventListener("change", onChange)
-    setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
-    return () => mql.removeEventListener("change", onChange)
-  }, [])
-
-  return !!isMobile
+  // La media query es un sistema externo: useSyncExternalStore la
+  // lee sin efecto ni estado intermedio (en servidor, no móvil).
+  return React.useSyncExternalStore(
+    suscribirse,
+    () => window.innerWidth < MOBILE_BREAKPOINT,
+    () => false
+  )
 }

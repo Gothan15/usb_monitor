@@ -140,26 +140,35 @@ export function TourEngine({
       }, 550);
     };
 
-    if (step.view && pathname !== step.view) {
-      setTargetRect(null);
-      router.push(step.view);
-      const started = Date.now();
-      poll = window.setInterval(() => {
-        if (cancelled) return;
-        if (!step.target || document.querySelector(step.target)) {
-          window.clearInterval(poll);
-          arrive();
-        } else if (Date.now() - started > 3000) {
-          window.clearInterval(poll);
-          setTargetRect(null);
-        }
-      }, 120);
-    } else {
-      arrive();
-    }
+    const comenzar = () => {
+      if (step.view && pathname !== step.view) {
+        setTargetRect(null);
+        router.push(step.view);
+        const started = Date.now();
+        poll = window.setInterval(() => {
+          if (cancelled) return;
+          if (!step.target || document.querySelector(step.target)) {
+            window.clearInterval(poll);
+            arrive();
+          } else if (Date.now() - started > 3000) {
+            window.clearInterval(poll);
+            setTargetRect(null);
+          }
+        }, 120);
+      } else {
+        arrive();
+      }
+    };
+
+    // La llegada trabaja sobre el DOM ya pintado: se programa en
+    // el siguiente frame y sus setState quedan asíncronos.
+    const frame = window.requestAnimationFrame(() => {
+      if (!cancelled) comenzar();
+    });
 
     return () => {
       cancelled = true;
+      window.cancelAnimationFrame(frame);
       if (poll) window.clearInterval(poll);
       if (settle) window.clearTimeout(settle);
     };
@@ -170,20 +179,23 @@ export function TourEngine({
 
   // Track target element position
   useLayoutEffect(() => {
-    if (!active || !step?.target) {
-      setTargetRect(null);
-      return;
-    }
+    // Sin objetivo no hay nada que seguir; el rect anterior se
+    // ignora al pintar (la tarjeta se centra y el telón solo se
+    // muestra con la guía activa), así que no hace falta limpiarlo.
+    if (!active || !step?.target) return;
 
     const update = () => {
       const rect = getElementRect(step.target!);
       setTargetRect(rect);
     };
 
-    update();
+    // La primera medición va en el siguiente frame (asíncrona);
+    // las demás llegan por los eventos de resize y scroll.
+    const frame = window.requestAnimationFrame(update);
     window.addEventListener("resize", update);
     window.addEventListener("scroll", update, true);
     return () => {
+      window.cancelAnimationFrame(frame);
       window.removeEventListener("resize", update);
       window.removeEventListener("scroll", update, true);
     };

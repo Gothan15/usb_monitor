@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
@@ -68,16 +68,16 @@ export function AppShell({
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const { isLiveSyncEnabled, toggleLiveSync } = useLiveSyncStore();
   const disposicionGuardada = useLayoutStore((state) => state.disposicion);
-  const [mounted, setMounted] = useState(false);
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
 
   useKeyboardShortcuts(navItems, {
     onRefresh,
     onOpenShortcuts: () => setShortcutsOpen(true),
   });
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const esLateral = mounted && disposicionGuardada === "lateral";
 
