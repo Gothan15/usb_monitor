@@ -83,29 +83,27 @@
     <Property Id="ARPCOMMENTS" Value="Panel web de USB Monitor con PostgreSQL integrado" />
 
     <!-- ============ Estructura de carpetas ============ -->
-    <Directory Id="TARGETDIR" Name="SourceDir">
-      <Directory Id="ProgramFiles64Folder">
-        <Directory Id="INSTALLFOLDER" Name="USB Monitor Panel">
-          <Directory Id="APPDIR" Name="app" />
-          <Directory Id="NODEDIR" Name="node" />
-          <Directory Id="PGDIR" Name="pgsql" />
-          <Directory Id="SERVDIR" Name="servicio" />
-          <Directory Id="SCRIPTSDIR" Name="scripts" />
-        </Directory>
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="USB Monitor Panel">
+        <Directory Id="APPDIR" Name="app" />
+        <Directory Id="NODEDIR" Name="node" />
+        <Directory Id="PGDIR" Name="pgsql" />
+        <Directory Id="SERVDIR" Name="servicio" />
+        <Directory Id="SCRIPTSDIR" Name="scripts" />
       </Directory>
-      <Directory Id="CommonAppDataFolder">
-        <!-- Datos FUERA de Archivos de programa: sobreviven a
-             actualizaciones y a la desinstalación (a propósito). -->
-        <Directory Id="DATADIR" Name="USBMonitor">
-          <Directory Id="PGDATADIR" Name="Datos" />
-          <Directory Id="LOGDIR" Name="Registros" />
-        </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="CommonAppDataFolder">
+      <!-- Datos FUERA de Archivos de programa: sobreviven a
+           actualizaciones y a la desinstalación (a propósito). -->
+      <Directory Id="DATADIR" Name="USBMonitor">
+        <Directory Id="PGDATADIR" Name="Datos" />
+        <Directory Id="LOGDIR" Name="Registros" />
       </Directory>
-      <Directory Id="ProgramMenuFolder">
-        <Directory Id="MENUDIR" Name="USB Monitor" />
-      </Directory>
-      <Directory Id="DesktopFolder" />
-    </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="MENUDIR" Name="USB Monitor" />
+    </StandardDirectory>
+    <StandardDirectory Id="DesktopFolder" />
 
     <!-- ============ Archivos cosechados de la carpeta preparada ============
          Construir-Instalador.ps1 deja el árbol listo en «preparado\»:

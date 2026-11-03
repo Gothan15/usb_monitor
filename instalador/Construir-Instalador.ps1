@@ -148,8 +148,12 @@ Write-Host '== 5/5 Construir el .msi =='
 $msi = Join-Path $salida "USBMonitor-Panel-$Version.msi"
 Push-Location $inst
 try {
+    # -sw1163: el aviso de que VBScript está en retirada se acepta a
+    # propósito: las dos acciones en VBScript llevan Return="ignore" y su
+    # fallo degrada sin romper la instalación (ver «Problemas previstos»
+    # del LEEME). Cualquier otro aviso sí debe verse.
     wix build Panel.wxs -ext WixToolset.UI.wixext -culture es-es -arch x64 `
-        -d "Preparado=$prep" -d "PanelVersion=$Version" -o $msi
+        -d "Preparado=$prep" -d "PanelVersion=$Version" -sw1163 -o $msi
     if ($LASTEXITCODE -ne 0) { throw 'wix build falló' }
 } finally { Pop-Location }
 
