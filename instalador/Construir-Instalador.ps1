@@ -1,4 +1,4 @@
-# ================================================================
+﻿# ================================================================
 # USB Monitor — Panel · construcción del instalador .msi
 # ----------------------------------------------------------------
 # Se ejecuta en el PC de desarrollo (Windows). Deja el resultado en
@@ -76,12 +76,21 @@ $env:Path = "$env:USERPROFILE\.dotnet\tools;$env:Path"
 if (-not (Get-Command wix -ErrorAction SilentlyContinue)) {
     Write-Host 'Instalando WiX v5 como herramienta de dotnet…'
     dotnet tool install --global wix --version 5.0.2
+    Exigir 'dotnet tool install wix'
 }
+# «wix extension list» es una SONDA, no un paso: sin extensiones
+# instaladas sale con código 2 sin que pase nada malo. Con la
+# preferencia estricta que se activa arriba, ese código lanzaba
+# NativeCommandExitException y tumbaba la construcción entera
+# (corrida de panel-v1.0.2). La sonda va con la preferencia en pausa.
+$PSNativeCommandUseErrorActionPreference = $false
 & wix extension list 2>$null | Out-Null
 $extensiones = (& wix extension list) -join ' '
+$PSNativeCommandUseErrorActionPreference = $true
 if ($extensiones -notmatch 'UI') {
     Write-Host 'Añadiendo la extensión de interfaz de WiX…'
     wix extension add -g WixToolset.UI.wixext/5.0.2
+    Exigir 'wix extension add'
 }
 
 Write-Host '== 2/5 Descargas fijadas =='
@@ -118,9 +127,14 @@ foreach ($carpeta in @('app', 'node', 'pgsql', 'servicio', 'scripts', 'raiz')) {
 }
 # La aplicación: el repo compilado, sin lo que no es el panel.
 # OJO: /XF .env — jamás empaquetar el .env del PC de desarrollo.
+# Robocopy devuelve 0–7 en los casos buenos (1 = «copió archivos»):
+# su código se juzga a mano en la línea siguiente. Con la preferencia
+# estricta lanzaría en cuanto copiara algo, así que también va en pausa.
+$PSNativeCommandUseErrorActionPreference = $false
 robocopy $raiz (Join-Path $prep 'app') /E `
     /XD .git instalador USBMonitorCS USBMonitor salida-instalador `
     /XF .env *.log *.zip | Out-Null
+$PSNativeCommandUseErrorActionPreference = $true
 if ($LASTEXITCODE -ge 8) { throw "robocopy del panel falló ($LASTEXITCODE)" }
 Copy-Item (Join-Path $inst 'scripts\crear-admin.js') `
           (Join-Path $prep 'app\crear-admin-instalador.mjs')
