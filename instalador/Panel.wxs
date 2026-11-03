@@ -241,7 +241,7 @@
       <Dialog Id="DlgConfigurar" Width="370" Height="270"
               Title="USB Monitor — Panel" NoMinimize="yes">
         <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44"
-                 Text="WixUIBannerBmp" />
+                 Text="WixUI_Bmp_Banner" />
         <Control Id="Titulo" Type="Text" X="15" Y="10" Width="330" Height="20"
                  Transparent="yes"
                  Text="{\WixUI_Font_Bigger}Configuración del servidor" />
