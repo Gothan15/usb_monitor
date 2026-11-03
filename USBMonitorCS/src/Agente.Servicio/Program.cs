@@ -20,6 +20,15 @@
 //   debug        el agente en consola, para depurar
 //   fijar-token  guarda el token del equipo cifrado y sale (lo usa
 //                Install-Service.ps1 tras escribir server.json)
+//   instalar-remoto
+//                instalación sin asistente para el empujón del panel
+//                (SMB+RPC): escribe server.json y el token que trae
+//                en los argumentos e instala, sin abrir ventanas
+//   aplicar-actualizacion
+//                sustituye el ejecutable instalado por otro ya
+//                descargado y verificado, y rearranca el servicio;
+//                lo lanza el propio agente desde una COPIA temporal
+//                de sí mismo (el archivo en uso no se puede pisar)
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -93,6 +102,30 @@ internal static class Program
                     return 1;
                 }
 
+            case "instalar-remoto":
+                Registro.Configurar("agente.log");
+                return InstalarRemoto(args);
+
+            case "aplicar-actualizacion":
+                Registro.Configurar("agente.log");
+                if (args.Length < 2 || string.IsNullOrWhiteSpace(args[1]))
+                {
+                    Console.WriteLine(
+                        "Falta el ejecutable nuevo: USBMonitorService.exe aplicar-actualizacion <ruta>");
+                    return 1;
+                }
+                try
+                {
+                    Console.WriteLine(Instalador.AplicarActualizacion(args[1].Trim()));
+                    return 0;
+                }
+                catch (Exception exc)
+                {
+                    Console.WriteLine($"No se pudo actualizar: {exc.Message}");
+                    Console.WriteLine("Ejecuta este programa como administrador.");
+                    return 1;
+                }
+
             case "desinstalar":
                 Registro.Configurar("agente.log");
                 try
@@ -158,6 +191,73 @@ internal static class Program
                 Console.WriteLine("Modos: gui, configurar, prompt, visor, instalar, desinstalar, restaurar, debug");
                 return 1;
         }
+    }
+
+    /// <summary>
+    /// Instalación sin asistente para el empujón del panel
+    /// (modelo Kaspersky: SMB + servicio temporal). Sintaxis:
+    ///   instalar-remoto --servidor <host>[:<puerto>] --token <valor>
+    /// Escribe la configuración del panel y el token del equipo y
+    /// después instala como el modo `instalar`, sin abrir ninguna
+    /// ventana: quien lo lanza es un servicio temporal en sesión 0.
+    /// </summary>
+    private static int InstalarRemoto(string[] args)
+    {
+        var servidor = LeerOpcion(args, "--servidor");
+        var token = LeerOpcion(args, "--token");
+        if (string.IsNullOrWhiteSpace(servidor) || string.IsNullOrWhiteSpace(token))
+        {
+            Console.WriteLine(
+                "Uso: USBMonitorService.exe instalar-remoto --servidor <host>[:<puerto>] --token <valor>");
+            return 2;
+        }
+
+        var host = servidor.Trim();
+        var puerto = 3000;
+        var corte = host.LastIndexOf(':');
+        if (corte > 0 && int.TryParse(host[(corte + 1)..], out var puertoLeido))
+        {
+            host = host[..corte];
+            puerto = puertoLeido;
+        }
+
+        var configuracion = new Configuracion();
+        if (!configuracion.Guardar(new Dictionary<string, object?>
+            {
+                ["serverHost"] = host,
+                ["serverPort"] = puerto,
+            }))
+        {
+            Console.WriteLine("No se pudo escribir server.json.");
+            return 1;
+        }
+        if (!configuracion.GuardarTokenAgente(token.Trim()))
+        {
+            Console.WriteLine("No se pudo guardar el token del equipo.");
+            return 1;
+        }
+
+        try
+        {
+            Console.WriteLine(Instalador.Instalar());
+            return 0;
+        }
+        catch (Exception exc)
+        {
+            Console.WriteLine($"No se pudo instalar: {exc.Message}");
+            return 1;
+        }
+    }
+
+    /// <summary>Valor de una opción «--nombre valor» en los argumentos.</summary>
+    private static string? LeerOpcion(string[] args, string nombre)
+    {
+        for (var i = 1; i < args.Length - 1; i++)
+        {
+            if (string.Equals(args[i], nombre, StringComparison.OrdinalIgnoreCase))
+                return args[i + 1];
+        }
+        return null;
     }
 
     /// <summary>

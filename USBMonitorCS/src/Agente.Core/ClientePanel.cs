@@ -7,6 +7,7 @@
 // decida. NINGÚN método lanza por un fallo de red.
 using System.Diagnostics;
 using System.Net;
+using System.Reflection;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
@@ -241,7 +242,9 @@ public sealed class ClientePanel : IDisposable
         try
         {
             var respuesta = await PeticionAsync(
-                "GET", "/api/agent/ping" + Consulta(("pcName", Configuracion.NombrePc)))
+                "GET", "/api/agent/ping" + Consulta(
+                    ("pcName", Configuracion.NombrePc),
+                    ("version", VersionAgente)))
                 .ConfigureAwait(false);
             if (respuesta is null)
             {
@@ -306,11 +309,40 @@ public sealed class ClientePanel : IDisposable
         return pasos;
     }
 
+    /// <summary>
+    /// Versión de este agente (la del ejecutable que corre, p. ej.
+    /// «1.0.3»): se lee del ensamblado de entrada, que en el servicio
+    /// y en el compañero es el propio USBMonitorService.exe.
+    /// </summary>
+    public static string VersionAgente { get; } = ObtenerVersionAgente();
+
+    private static string ObtenerVersionAgente()
+    {
+        try
+        {
+            var ensamblado = System.Reflection.Assembly.GetEntryAssembly()
+                             ?? typeof(ClientePanel).Assembly;
+            var cruda = ensamblado
+                            .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()
+                            ?.InformationalVersion
+                        ?? ensamblado.GetName().Version?.ToString()
+                        ?? "desconocida";
+            // La versión informativa puede traer «+<commit>» detrás.
+            return cruda.Split('+')[0];
+        }
+        catch
+        {
+            return "desconocida";
+        }
+    }
+
     /// <summary>Señal de vida: GET /api/agent/ping (renueva lastSeen en el panel).</summary>
     public async Task<bool> PingAsync()
     {
         var respuesta = await PeticionAsync(
-            "GET", "/api/agent/ping" + Consulta(("pcName", Configuracion.NombrePc)))
+            "GET", "/api/agent/ping" + Consulta(
+                ("pcName", Configuracion.NombrePc),
+                ("version", VersionAgente)))
             .ConfigureAwait(false);
         var datos = IntentarJson<RespuestaPing>(respuesta);
         return respuesta is { Estado: 200 } && datos is { Ok: true };

@@ -10,6 +10,7 @@
 //   - RestaurarSinServicio: revierte el diario sin el servicio; lo
 //     usan el desinstalador, el modo `restaurar` y «Restaurar todo».
 using System.Diagnostics;
+using Microsoft.Win32;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
@@ -91,6 +92,36 @@ public static class Instalador
     {
         return Environment.ProcessPath
                ?? Path.Combine(AppContext.BaseDirectory, "USBMonitorService.exe");
+    }
+
+    /// <summary>
+    /// Ruta del ejecutable que el servicio tiene registrado
+    /// (ImagePath en el registro). Difiere de RutaExe() cuando
+    /// quien corre es una COPIA del exe — el actualizador, por
+    /// ejemplo —: lo instalado es lo que manda.
+    /// </summary>
+    public static string RutaExeInstalado()
+    {
+        try
+        {
+            using var clave = Registry.LocalMachine.OpenSubKey(
+                $@"SYSTEM\CurrentControlSet\Services\{NombreServicio}");
+            if (clave?.GetValue("ImagePath") is string imagen
+                && !string.IsNullOrWhiteSpace(imagen))
+            {
+                var ruta = imagen.Trim().Trim('"');
+                var corte = ruta.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
+                if (corte > 0)
+                    ruta = ruta[..(corte + 4)];
+                if (ruta.Length > 0)
+                    return ruta;
+            }
+        }
+        catch
+        {
+            // Sin acceso al registro: se cae a la ruta en ejecución.
+        }
+        return RutaExe();
     }
 
     /// <summary>Estado del servicio con las palabras de la caja de herramientas.</summary>
@@ -239,6 +270,134 @@ public static class Instalador
         using var controlador = new ServiceController(NombreServicio);
         controlador.Start();
         return $"Servicio instalado desde {exe} y en marcha.";
+    }
+
+    /// <summary>
+    /// Sustituye el ejecutable instalado por otro ya descargado y
+    /// verificado (la verificación de hash la hace quien llama:
+    /// este modo solo intercambia y rearranca). Lo lanza el propio
+    /// agente DESDE UNA COPIA temporal de sí mismo, nunca desde el
+    /// archivo instalado: el intercambio es por renombrado
+    /// (renombrar un exe en uso está permitido y crear otro en su
+    /// sitio también), la versión saliente queda en
+    /// «&lt;exe&gt;.anterior» y si la nueva no arranca se restaura
+    /// sola. El compañero en sesión de usuario se cierra antes del
+    /// cambio: el servicio lo relanza al arrancar.
+    /// </summary>
+    public static string AplicarActualizacion(string rutaNuevo)
+    {
+        if (!File.Exists(rutaNuevo))
+            throw new FileNotFoundException("No existe el ejecutable nuevo.", rutaNuevo);
+        var destino = RutaExeInstalado();
+        if (string.Equals(
+                Path.GetFullPath(rutaNuevo), Path.GetFullPath(destino),
+                StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                "El ejecutable nuevo es el que ya está instalado.");
+        if (EstadoServicio() == "no instalado")
+            throw new InvalidOperationException(
+                "El servicio no está instalado: no hay nada que actualizar.");
+
+        var respaldo = destino + ".anterior";
+        using var controlador = new ServiceController(NombreServicio);
+        var estabaEnMarcha = controlador.Status is
+            ServiceControllerStatus.Running or ServiceControllerStatus.StartPending;
+
+        if (controlador.Status != ServiceControllerStatus.Stopped)
+        {
+            try { controlador.Stop(); }
+            catch { /* ya parado o parándose: lo fija la espera */ }
+            try
+            {
+                controlador.WaitForStatus(
+                    ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(60));
+            }
+            catch { /* el renombrado no depende de que haya parado */ }
+        }
+
+        CerrarProcesosDelExe(destino);
+
+        if (File.Exists(respaldo))
+            File.Delete(respaldo);
+        File.Move(destino, respaldo);
+        try
+        {
+            File.Copy(rutaNuevo, destino);
+        }
+        catch
+        {
+            File.Move(respaldo, destino);
+            if (estabaEnMarcha)
+            {
+                try { controlador.Start(); }
+                catch { /* el error que se propaga es el de la copia */ }
+            }
+            throw;
+        }
+
+        try
+        {
+            controlador.Refresh();
+            controlador.Start();
+            controlador.WaitForStatus(
+                ServiceControllerStatus.Running, TimeSpan.FromSeconds(60));
+        }
+        catch (Exception exc)
+        {
+            // Vuelta atrás: la versión anterior sigue en el respaldo.
+            try
+            {
+                controlador.Refresh();
+                if (controlador.Status != ServiceControllerStatus.Stopped)
+                    controlador.Stop();
+            }
+            catch { /* la restauración del archivo no depende de esto */ }
+            try
+            {
+                File.Delete(destino);
+                File.Move(respaldo, destino);
+                controlador.Start();
+            }
+            catch { /* se propaga el fallo original, no este */ }
+            throw new InvalidOperationException(
+                $"La versión nueva no arrancó ({exc.Message}); se restauró la anterior.",
+                exc);
+        }
+
+        return $"Agente actualizado en {destino}; la versión anterior queda en {respaldo}.";
+    }
+
+    /// <summary>
+    /// Cierra los procesos que corren desde el ejecutable dado
+    /// (el compañero en la sesión del usuario) salvo este proceso.
+    /// Sin piedad pero sin bloqueo: si alguno no muere, el
+    /// intercambio por renombrado sigue adelante igual.
+    /// </summary>
+    private static void CerrarProcesosDelExe(string rutaExe)
+    {
+        foreach (var proceso in Process.GetProcesses())
+        {
+            try
+            {
+                if (proceso.Id == Environment.ProcessId)
+                    continue;
+                var suya = proceso.MainModule?.FileName;
+                if (suya is not null && string.Equals(
+                        suya, rutaExe, StringComparison.OrdinalIgnoreCase))
+                {
+                    proceso.Kill();
+                    proceso.WaitForExit(3000);
+                }
+            }
+            catch
+            {
+                // Sin acceso a ese proceso: no es asunto del actualizador.
+            }
+            finally
+            {
+                proceso.Dispose();
+            }
+        }
     }
 
     /// <summary>
