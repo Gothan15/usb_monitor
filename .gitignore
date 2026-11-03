@@ -89,3 +89,6 @@ USBMonitor/C:/
 USBMonitorCS/**/bin/
 USBMonitorCS/**/obj/
 USBMonitorCS/dist/
+
+# Instalador del panel (salida de Construir-Instalador.ps1)
+salida-instalador/
