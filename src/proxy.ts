@@ -26,7 +26,7 @@ function generateNonce() {
   return raw;
 }
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   if (!dev && shouldEnforceHttps && !isHttps(req)) {
     const host = req.headers.get("host");
     if (host) {

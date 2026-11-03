@@ -1,7 +1,7 @@
-import { PrismaClient } from "@prisma/client";
+import { createPrismaClient } from "../src/lib/db";
 import { getCurrentDate } from "@/lib/time";
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 async function updateComputerIP(computerName: string, newIP: string) {
   try {

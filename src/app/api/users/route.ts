@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { hashPassword, generateApiKey } from "@/lib/auth";
 import { requireAdminUser } from "@/lib/admin";

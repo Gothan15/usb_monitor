@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 
 export function sanitizeUsername(value: unknown): string | null {
   if (typeof value !== "string") return null;
