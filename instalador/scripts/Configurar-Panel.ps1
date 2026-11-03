@@ -175,6 +175,24 @@ try {
     if ($responde) { Escribir-Log "El panel responde en el puerto $puerto." }
     else { Escribir-Log "AVISO: el panel aún no responde; revisa Registros\USBMonitorPanel.*.log" }
 
+    # --- 8. Copia de seguridad semanal de la BD ---
+    # Si esto falla no debe tumbar la instalación: es un extra.
+    try {
+        $accionTarea = New-ScheduledTaskAction -Execute 'powershell.exe' `
+            -Argument ('-NoProfile -ExecutionPolicy Bypass -File "' +
+                       (Join-Path $instalacion 'scripts\Copia-BaseDatos.ps1') + '"')
+        $disparoTarea = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At 03:00
+        $principalTarea = New-ScheduledTaskPrincipal -UserId 'SYSTEM' `
+            -LogonType ServiceAccount -RunLevel Highest
+        Register-ScheduledTask -TaskName 'USB Monitor — Copia de la BD' `
+            -Action $accionTarea -Trigger $disparoTarea -Principal $principalTarea `
+            -Description 'Copia semanal de la base de datos de USB Monitor (pg_dump; conserva las 8 últimas en Datos\Copias).' `
+            -Force | Out-Null
+        Escribir-Log 'Tarea de copia semanal registrada (domingos 03:00).'
+    } catch {
+        Escribir-Log "AVISO: no se pudo registrar la tarea de copia semanal: $($_.Exception.Message)"
+    }
+
     Escribir-Log 'Configuración terminada.'
     exit 0
 } catch {

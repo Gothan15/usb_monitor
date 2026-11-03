@@ -23,4 +23,6 @@ foreach ($servicio in @('USBMonitorPanel', 'USBMonitorPostgreSQL')) {
     }
 }
 & netsh advfirewall firewall delete rule name='USB Monitor — Panel' 2>&1 | Out-Null
+Unregister-ScheduledTask -TaskName 'USB Monitor — Copia de la BD' -Confirm:$false `
+    -ErrorAction SilentlyContinue
 exit 0

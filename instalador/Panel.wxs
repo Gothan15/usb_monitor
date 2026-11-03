@@ -73,6 +73,15 @@
 
     <WixVariable Id="WixUILicenseRtf" Value="Licencia.rtf" />
 
+    <!-- Ficha en «Aplicaciones instaladas»: el icono es el favicon
+         del propio panel (src\app\favicon.ico; la ruta es relativa
+         a esta carpeta, por eso se compila siempre con
+         Construir-Instalador.ps1, que trabaja desde aquí). -->
+    <Icon Id="IconoPanel" SourceFile="..\src\app\favicon.ico" />
+    <Property Id="ARPPRODUCTICON" Value="IconoPanel" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/Gothan15/usb_monitor" />
+    <Property Id="ARPCOMMENTS" Value="Panel web de USB Monitor con PostgreSQL integrado" />
+
     <!-- ============ Estructura de carpetas ============ -->
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFiles64Folder">
@@ -186,6 +195,13 @@
     <CustomAction Id="CA_GuardarAdmin" BinaryRef="GuardarAdminVbs"
                   Execute="immediate" Return="ignore" />
 
+    <!-- Aviso de puertos ocupados: se invoca con DoAction desde el
+         botón «Siguiente» de la página de configuración, antes de
+         pasar a la confirmación. Solo avisa (MsgBox); no bloquea. -->
+    <Binary Id="ComprobarPuertosVbs" SourceFile="scripts\ComprobarPuertos.vbs" />
+    <CustomAction Id="CA_ComprobarPuertos" BinaryRef="ComprobarPuertosVbs"
+                  Execute="immediate" Return="ignore" />
+
     <!-- Diferidas (SYSTEM, con el token elevado de la instalación):
          powershell con los scripts YA instalados. Cada una lee su
          configuración del registro, no de propiedades. -->
@@ -273,6 +289,7 @@
         </Control>
         <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17"
                  Default="yes" Text="Siguiente &gt;">
+          <Publish Event="DoAction" Value="CA_ComprobarPuertos" />
           <Publish Event="NewDialog" Value="VerifyReadyDlg" />
           <!-- Sin contraseña no se avanza en una instalación nueva
                (en actualización la cuenta ya existe y se admite). -->
