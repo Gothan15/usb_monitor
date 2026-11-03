@@ -18,6 +18,11 @@ import { logError } from "@/lib/logger";
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const pcNameRaw = searchParams.get("pcName") || "";
+  // La versión del agente viaja en el ping desde la fase A: se
+  // guarda tal cual (acotada) para que el panel enseñe qué corre
+  // cada equipo y para confirmar una actualización por la señal.
+  const versionRaw = (searchParams.get("version") || "").trim();
+  const agentVersion = versionRaw ? versionRaw.slice(0, 32) : null;
   try {
     const serviceAuth = await requireServiceAuth(req);
 
@@ -35,7 +40,11 @@ export async function GET(req: Request) {
         pc = computer.name;
         await db.computer.update({
           where: { id: computer.id },
-          data: { lastSeen: getCurrentDate(), isActive: true },
+          data: {
+            lastSeen: getCurrentDate(),
+            isActive: true,
+            ...(agentVersion ? { agentVersion } : {}),
+          },
         });
       }
     }

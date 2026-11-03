@@ -48,6 +48,7 @@ model Computer {
   updatedAt        DateTime  @updatedAt
   users            User[] // Relación con usuarios
   pendingUnlocks   PendingUnlock[]
+  agentCommands    AgentCommand[]
 
   @@index([lastSeen])
   @@index([ipAddress])
@@ -165,4 +166,30 @@ model UnlockAttempt {
 
   @@index([pcName, createdAt])
   @@map("unlock_attempts")
+}
+
+// ─── Canal de órdenes del agente (instalación remota estilo Kaspersky) ───
+// Órdenes persistidas que el panel deja a un equipo y el agente recoge
+// en su llamada de configuración: el panel ya no necesita credenciales
+// ni puertos entrantes en el cliente, el agente conecta saliente.
+// Estado: ESPERA | ENTREGADA | EN_CURSO | HECHA | ERROR.
+// La primera orden es «actualizar»: el agente descarga el paquete del
+// panel, verifica su SHA-256 y se sustituye a sí mismo.
+model AgentCommand {
+  id            String    @id @default(cuid())
+  computerId    String
+  computer      Computer  @relation(fields: [computerId], references: [id], onDelete: Cascade)
+  type          String // actualizar
+  status        String    @default("ESPERA")
+  detail        String? // resultado o causa del error, según el estado
+  targetVersion String? // versión que la orden «actualizar» debe dejar instalada
+  attempts      Int       @default(0)
+  createdAt     DateTime  @default(now())
+  deliveredAt   DateTime?
+  startedAt     DateTime?
+  finishedAt    DateTime?
+
+  @@index([computerId, status])
+  @@index([createdAt])
+  @@map("agent_commands")
 }

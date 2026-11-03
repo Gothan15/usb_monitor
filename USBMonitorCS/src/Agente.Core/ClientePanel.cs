@@ -512,6 +512,88 @@ public sealed class ClientePanel : IDisposable
         return datos is { Ok: true } ? datos : null;
     }
 
+    // ── canal de órdenes: actualización a través del agente ────
+
+    /// <summary>
+    /// Manifiesto del paquete que el panel tenga para actualizar
+    /// (versión y SHA-256 del exe). Null si el panel no tiene
+    /// paquete (404) o no responde.
+    /// </summary>
+    public async Task<ManifiestoPaquete?> ManifiestoPaqueteAsync()
+    {
+        var respuesta = await PeticionAsync("GET", "/api/agent/paquete/manifiesto")
+            .ConfigureAwait(false);
+        var datos = IntentarJson<ManifiestoPaquete>(respuesta);
+        return datos is { Ok: true } ? datos : null;
+    }
+
+    /// <summary>
+    /// Informa al panel del avance de una orden (POST
+    /// /api/agent/comandos/:id). True si el panel lo aceptó.
+    /// </summary>
+    public async Task<bool> InformarOrdenAsync(
+        string id, string estado, string? detalle = null, string? versionObjetivo = null)
+    {
+        var respuesta = await PeticionAsync(
+            "POST", $"/api/agent/comandos/{Uri.EscapeDataString(id)}",
+            new SolicitudInformeOrden
+            {
+                Estado = estado,
+                Detalle = detalle,
+                VersionObjetivo = versionObjetivo,
+            }).ConfigureAwait(false);
+        return respuesta is { Estado: 200 } &&
+               IntentarJson<RespuestaBasica>(respuesta) is { Ok: true };
+    }
+
+    /// <summary>
+    /// Descarga el exe del paquete a la ruta dada, en flujo (son
+    /// ~140 MB: cliente propio con un límite generoso, el general
+    /// de 8 s no sirve aquí). False ante cualquier fallo; el
+    /// archivo parcial se borra para que un hash nunca se calcule
+    /// sobre una descarga a medias creyéndola completa (el tamaño
+    /// y el hash se verifican después igualmente).
+    /// </summary>
+    public async Task<bool> DescargarPaqueteAsync(string rutaDestino)
+    {
+        try
+        {
+            var carpeta = Path.GetDirectoryName(rutaDestino);
+            if (!string.IsNullOrEmpty(carpeta))
+                Directory.CreateDirectory(carpeta);
+            using var http = new HttpClient(
+                new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(4) })
+            {
+                Timeout = TimeSpan.FromMinutes(15),
+            };
+            using var solicitud = new HttpRequestMessage(
+                HttpMethod.Get, _config.UrlBase + "/api/agent/paquete");
+            foreach (var (clave, valor) in _config.CabecerasAuth())
+                solicitud.Headers.TryAddWithoutValidation(clave, valor);
+            using var respuesta = await http
+                .SendAsync(solicitud, HttpCompletionOption.ResponseHeadersRead)
+                .ConfigureAwait(false);
+            if (!respuesta.IsSuccessStatusCode)
+            {
+                Log.Error($"Descarga del paquete: el panel respondió {(int)respuesta.StatusCode}.");
+                return false;
+            }
+            await using var origen = await respuesta.Content
+                .ReadAsStreamAsync().ConfigureAwait(false);
+            await using var destino = new FileStream(
+                rutaDestino, FileMode.Create, FileAccess.Write, FileShare.None);
+            await origen.CopyToAsync(destino).ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception exc)
+        {
+            Log.Error($"Descarga del paquete: {exc.Message}");
+            try { if (File.Exists(rutaDestino)) File.Delete(rutaDestino); }
+            catch { /* la limpieza no tapa el fallo original */ }
+            return false;
+        }
+    }
+
     public async Task<HashDuenoRespuesta?> HashDuenoAsync()
     {
         var ruta = "/api/agent/owner-hash" + Consulta(("pcName", Configuracion.NombrePc));

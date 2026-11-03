@@ -49,6 +49,7 @@ public sealed class AgenteWorker : BackgroundService
     private readonly CandadosVolumen _candados = new();
     private readonly MotorBloqueo _motor;
     private readonly ConfigCompartida _compartida = new();
+    private readonly ActualizadorAgente _actualizador;
     private ServidorLocal? _servidorLocal;
 
     private readonly object _lockConocidos = new();
@@ -87,6 +88,7 @@ public sealed class AgenteWorker : BackgroundService
     {
         _cliente = new ClientePanel(_configuracion);
         _motor = new MotorBloqueo(_diario, _candados, PonerSoloLectura, QuitarSoloLectura);
+        _actualizador = new ActualizadorAgente(_cliente);
     }
 
     [DllImport("user32.dll", SetLastError = true)]
@@ -126,6 +128,12 @@ public sealed class AgenteWorker : BackgroundService
             // Configuración remota inicial y espera de red.
             var remota = await _cliente.ConfigRemotaAsync().ConfigureAwait(false);
             if (remota is not null) _compartida.AplicarRemota(remota);
+            // Canal de órdenes: la configuración inicial también
+            // concilia una actualización que quedó EN_CURSO en el
+            // reinicio anterior (confirmarla exige poco: la
+            // descarga, si toca, va en segundo plano).
+            if (remota?.Comandos is { Count: > 0 } ordenesIniciales)
+                _actualizador.ProcesarEnSegundoPlano(ordenesIniciales);
             var espera = _compartida.StartupNetworkDelay;
             if (espera > 0)
             {
@@ -806,6 +814,8 @@ public sealed class AgenteWorker : BackgroundService
                     _ultimaConfig = ahora;
                     var remota = await _cliente.ConfigRemotaAsync().ConfigureAwait(false);
                     if (remota is not null) _compartida.AplicarRemota(remota);
+                    if (remota?.Comandos is { Count: > 0 } ordenes)
+                        _actualizador.ProcesarEnSegundoPlano(ordenes);
                 }
                 // Si el ajuste se apagó en el panel (por la config
                 // periódica o por el empuje en caliente), una cuenta

@@ -81,6 +81,40 @@ public sealed class ConfigRemota
     [JsonPropertyName("lockSessionOnInsert")] public bool LockSessionOnInsert { get; set; }
     [JsonPropertyName("shutdownOnNonWhitelisted")] public bool ShutdownOnNonWhitelisted { get; set; }
     [JsonPropertyName("shutdownCountdownSeconds")] public int? ShutdownCountdownSeconds { get; set; }
+    [JsonPropertyName("comandos")] public List<OrdenAgente>? Comandos { get; set; }
+}
+
+/// <summary>
+/// Una orden del canal (tabla agent_commands del panel), servida en
+/// la misma respuesta de configuración. Estado: ENTREGADA cuando
+/// llega nueva y EN_CURSO cuando ya hubo un intento (tras el
+/// reinicio de una actualización, el agente la concilia).
+/// </summary>
+public sealed class OrdenAgente
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = "";
+    [JsonPropertyName("tipo")] public string Tipo { get; set; } = "";
+    [JsonPropertyName("estado")] public string Estado { get; set; } = "";
+    [JsonPropertyName("versionObjetivo")] public string? VersionObjetivo { get; set; }
+    [JsonPropertyName("intentos")] public int Intentos { get; set; }
+}
+
+/// <summary>Respuesta de GET /api/agent/paquete/manifiesto.</summary>
+public sealed class ManifiestoPaquete
+{
+    [JsonPropertyName("ok")] public bool Ok { get; set; }
+    [JsonPropertyName("version")] public string? Version { get; set; }
+    [JsonPropertyName("sha256")] public string Sha256 { get; set; } = "";
+    [JsonPropertyName("tamano")] public long Tamano { get; set; }
+    [JsonPropertyName("nombreArchivo")] public string? NombreArchivo { get; set; }
+}
+
+/// <summary>Cuerpo de POST /api/agent/comandos/:id.</summary>
+internal sealed class SolicitudInformeOrden
+{
+    [JsonPropertyName("estado")] public string Estado { get; set; } = "";
+    [JsonPropertyName("detalle")] public string? Detalle { get; set; }
+    [JsonPropertyName("versionObjetivo")] public string? VersionObjetivo { get; set; }
 }
 
 /// <summary>Respuesta de GET /api/agent/owner-hash.</summary>
