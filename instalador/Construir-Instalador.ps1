@@ -24,6 +24,15 @@ param(
     [string]$Version = '1.0.0'
 )
 $ErrorActionPreference = 'Stop'
+# Que un comando nativo fallido (npm, npx) detenga el script: sin esto, una
+# compilación fallida del panel seguiría adelante y el .msi saldría «bien»
+# con un panel roto dentro (visto en la corrida de panel-v1.0.1). En
+# PowerShell 7.3+ lo hace esta variable; en 5.1 lo cubre Exigir, que se
+# llama tras cada comando crítico.
+$PSNativeCommandUseErrorActionPreference = $true
+function Exigir([string]$Que) {
+    if ($LASTEXITCODE -ne 0) { throw "Falló: $Que (código $LASTEXITCODE)" }
+}
 
 $inst = $PSScriptRoot
 $raiz = Split-Path $inst -Parent
@@ -85,12 +94,20 @@ Descargar "https://nodejs.org/dist/v$NodeVersion/node-v$NodeVersion-win-x64.zip"
 Descargar "https://github.com/winsw/winsw/releases/download/v$WinSwVersion/WinSW-x64.exe" $exeWinSw 'winsw'
 
 Write-Host '== 3/5 Compilar el panel =='
+# Al recoger los datos de las páginas, la compilación de Next ejecuta los
+# módulos de las rutas, y el de sesión EXIGE SESSION_SECRET aunque solo sea
+# para compilar: sin .env en el runner, la compilación de panel-v1.0.1 cayó
+# justo ahí. Se le dan valores de usar y tirar, solo para este proceso; el
+# secreto de verdad se genera al instalar, en el .env del equipo destino, y
+# Next no incrusta las variables de servidor en la salida compilada.
+$env:SESSION_SECRET = 'solo-para-compilar-' + [guid]::NewGuid().ToString('N')
+$env:DATABASE_URL = 'postgresql://compilacion:compilacion@localhost:5432/compilacion'
 Push-Location $raiz
 try {
-    npm ci
-    npx prisma generate
-    npm run build
-    npm prune --omit=dev   # node_modules solo de producción para el paquete
+    npm ci;               Exigir 'npm ci'
+    npx prisma generate;  Exigir 'prisma generate'
+    npm run build;        Exigir 'npm run build'
+    npm prune --omit=dev; Exigir 'npm prune'   # node_modules solo de producción para el paquete
 } finally { Pop-Location }
 
 Write-Host '== 4/5 Preparar el árbol =='
