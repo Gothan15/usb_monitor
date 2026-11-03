@@ -27,6 +27,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { resetTour } from "@/components/onboarding/TourEngine";
+import { WinRMChecklist } from "./WinRMChecklist";
 import { adminTour } from "@/lib/tours";
 import { useLayoutStore, type Disposicion } from "@/store/useLayoutStore";
 import { PanelLeft, PanelTop } from "lucide-react";
@@ -95,6 +96,12 @@ const PREGUNTAS_FRECUENTES: { pregunta: string; respuesta: string }[] = [
     pregunta: "¿Las impresoras USB se bloquean?",
     respuesta:
       "No. Las impresoras se detectan y aparecen en la lista de dispositivos del equipo con su etiqueta «Impresora», pero no se bloquean ni piden contraseña: no son almacenamiento. Los adaptadores de red USB tampoco son memorias: son un tipo propio («Red USB») y los que ya estaban conectados al arrancar el servicio no se bloquean.",
+  },
+  {
+    pregunta:
+      "¿Cómo preparo una máquina virtual o un equipo nuevo para la instalación remota por WinRM?",
+    respuesta:
+      "WinRM no viene listo de fábrica para redes sin dominio: hay que cumplir cinco pasos en el destino, recogidos en la lista de verificación de aquí abajo. Los tres comandos se ejecutan una sola vez en PowerShell como administrador local, la cuenta que se usa debe ser administradora y tener contraseña, y la red de la máquina debe estar en perfil Privado. Al instalar desde el panel no hace falta fiarse de memoria: el diálogo de instalación remota comprueba la lista en vivo contra el destino y marca cada paso antes de copiar nada.",
   },
   {
     pregunta: "¿Qué hace el ajuste «Apagar el equipo si el dispositivo no está en la lista blanca»?",
@@ -585,6 +592,21 @@ export function SettingsTab() {
               <RotateCcw className="mr-2 size-4" />
               Reactivar guía
             </Button>
+          </div>
+
+          <div className="mt-8 border border-border/60 bg-muted/20 px-4 py-4">
+            <p className="text-sm font-semibold text-foreground">
+              Lista de verificación — WinRM en una máquina recién creada
+            </p>
+            <p className="mt-1 max-w-xl text-xs leading-relaxed text-muted-foreground">
+              Los cinco pasos del destino, en orden, con el comando de
+              cada uno. En el diálogo de instalación remota esta misma
+              lista se comprueba en vivo y cada paso se marca solo
+              cuando el destino lo cumple.
+            </p>
+            <div className="mt-4 max-w-3xl">
+              <WinRMChecklist />
+            </div>
           </div>
 
           <div className="mt-6">

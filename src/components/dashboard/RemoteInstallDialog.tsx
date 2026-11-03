@@ -16,6 +16,8 @@ import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { getCsrfTokenFromDocument } from "@/lib/utils";
+import { WinRMChecklist } from "./WinRMChecklist";
+import { todosPasosCumplen } from "@/lib/winrmChecklist";
 import {
   CheckCircle2,
   AlertCircle,
@@ -209,7 +211,7 @@ export function RemoteInstallDialog({
     );
   };
 
-  const handleCheckRequirements = useCallback(async () => {
+  const runRequirementsCheck = useCallback(async (): Promise<boolean> => {
     setCheckRunning(true);
     setChecks(null);
     setCheckMessage("");
@@ -219,7 +221,7 @@ export function RemoteInstallDialog({
         setCheckMessage(
           "Sesión sin token de seguridad. Inicia sesión nuevamente.",
         );
-        return;
+        return false;
       }
       const res = await fetch("/api/remote-install", {
         method: "POST",
@@ -240,21 +242,35 @@ export function RemoteInstallDialog({
       });
       const data = await res.json().catch(() => null);
       if (data && Array.isArray(data.checks)) {
-        setChecks(data.checks as RequisitoWinRM[]);
+        const lista = data.checks as RequisitoWinRM[];
+        setChecks(lista);
         setCheckMessage(data.message || "");
-      } else {
-        setCheckMessage(
-          data?.error || data?.message || `Error HTTP ${res.status}`,
-        );
+        return todosPasosCumplen(lista);
       }
+      setCheckMessage(
+        data?.error || data?.message || `Error HTTP ${res.status}`,
+      );
+      return false;
     } catch (err: any) {
       setCheckMessage(err?.message || "Error de conexión");
+      return false;
     } finally {
       setCheckRunning(false);
     }
   }, [targetIp, username, password, port]);
 
+  const handleCheckRequirements = useCallback(() => {
+    void runRequirementsCheck();
+  }, [runRequirementsCheck]);
+
   const handleStartCopy = useCallback(async () => {
+    // Por WinRM, la lista de verificación se comprueba en vivo
+    // antes de copiar nada: si falta algún paso, el diálogo se
+    // queda en credenciales enseñando cuál falló y cómo se arregla.
+    if (protocol === "winrm") {
+      const cumple = await runRequirementsCheck();
+      if (!cumple) return;
+    }
     setStep("copy");
     setCopyStatus("running");
     setCopyMessage("Conectando...");
@@ -275,7 +291,7 @@ export function RemoteInstallDialog({
       setCopyMessage(err?.message || "Error de conexión");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetIp, username, password, port, protocol]);
+  }, [targetIp, username, password, port, protocol, runRequirementsCheck]);
 
   const handleStartInstall = useCallback(async () => {
     setStep("install");
@@ -321,7 +337,7 @@ export function RemoteInstallDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-foreground">
             <Monitor className="size-5" />
@@ -529,34 +545,7 @@ export function RemoteInstallDialog({
                     {checkMessage}
                   </p>
                 )}
-                {checks && (
-                  <ul className="space-y-1.5">
-                    {checks.map((check) => (
-                      <li key={check.id} className="text-xs">
-                        <span className="flex items-start gap-1.5">
-                          {check.ok ? (
-                            <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-emerald-600" />
-                          ) : (
-                            <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-rose-600" />
-                          )}
-                          <span>
-                            <span className="font-medium text-foreground">
-                              {check.etiqueta}
-                            </span>
-                            <span className="block text-muted-foreground">
-                              {check.detalle}
-                            </span>
-                            {!check.ok && check.consejo && (
-                              <span className="mt-0.5 block font-mono text-[11px] text-muted-foreground">
-                                {check.consejo}
-                              </span>
-                            )}
-                          </span>
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                <WinRMChecklist checks={checks} comprobando={checkRunning} />
               </div>
             )}
           </div>
@@ -565,6 +554,11 @@ export function RemoteInstallDialog({
         {/* ── Step 2: Copy ── */}
         {step === "copy" && (
           <div className="flex flex-col gap-4">
+            {protocol === "winrm" && checks && (
+              <div className="border border-border/60 p-3">
+                <WinRMChecklist checks={checks} />
+              </div>
+            )}
             {copyStatus === "running" && (
               <>
                 <div className="flex items-center gap-3 text-sm text-muted-foreground">
@@ -610,6 +604,11 @@ export function RemoteInstallDialog({
         {/* ── Step 3: Install ── */}
         {step === "install" && (
           <div className="flex flex-col gap-4">
+            {protocol === "winrm" && checks && (
+              <div className="border border-border/60 p-3">
+                <WinRMChecklist checks={checks} />
+              </div>
+            )}
             {/* Show copy success banner */}
             <Alert className="border-emerald-200/60 bg-emerald-50 text-emerald-700 dark:border-emerald-300/40 dark:bg-emerald-500/10 dark:text-emerald-100">
               <CheckCircle2 className="size-4" />
