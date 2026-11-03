@@ -6,7 +6,7 @@
 #
 # Requisitos en este PC:
 #   · Node.js + npm (para compilar el panel, como siempre).
-#   · SDK de .NET (para la herramienta «wix» de WiX v4; si falta,
+#   · SDK de .NET (para la herramienta «wix» de WiX v5; si falta,
 #     este script la instala como herramienta global de dotnet).
 #   · Internet la primera vez (descarga Node portable, los binarios
 #     de PostgreSQL y WinSW; luego quedan cacheados en descargas\).
@@ -65,14 +65,14 @@ function Descargar([string]$url, [string]$destino, [string]$clave) {
 Write-Host '== 1/5 Herramientas =='
 $env:Path = "$env:USERPROFILE\.dotnet\tools;$env:Path"
 if (-not (Get-Command wix -ErrorAction SilentlyContinue)) {
-    Write-Host 'Instalando WiX v4 como herramienta de dotnet…'
-    dotnet tool install --global wix --version 4.0.5
+    Write-Host 'Instalando WiX v5 como herramienta de dotnet…'
+    dotnet tool install --global wix --version 5.0.2
 }
 & wix extension list 2>$null | Out-Null
 $extensiones = (& wix extension list) -join ' '
 if ($extensiones -notmatch 'UI') {
     Write-Host 'Añadiendo la extensión de interfaz de WiX…'
-    wix extension add -g WixToolset.UI.wixext/4.0.5
+    wix extension add -g WixToolset.UI.wixext/5.0.2
 }
 
 Write-Host '== 2/5 Descargas fijadas =='
