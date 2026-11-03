@@ -192,14 +192,14 @@
          como VBScript. Deja usuario+contraseña del administrador
          en un temporal con ACL mínima dentro de DATADIR. -->
     <Binary Id="GuardarAdminVbs" SourceFile="scripts\GuardarAdmin.vbs" />
-    <CustomAction Id="CA_GuardarAdmin" BinaryRef="GuardarAdminVbs"
+    <CustomAction Id="CA_GuardarAdmin" BinaryRef="GuardarAdminVbs" VBScriptCall="Guardar"
                   Execute="immediate" Return="ignore" />
 
     <!-- Aviso de puertos ocupados: se invoca con DoAction desde el
          botón «Siguiente» de la página de configuración, antes de
          pasar a la confirmación. Solo avisa (MsgBox); no bloquea. -->
     <Binary Id="ComprobarPuertosVbs" SourceFile="scripts\ComprobarPuertos.vbs" />
-    <CustomAction Id="CA_ComprobarPuertos" BinaryRef="ComprobarPuertosVbs"
+    <CustomAction Id="CA_ComprobarPuertos" BinaryRef="ComprobarPuertosVbs" VBScriptCall="Comprobar"
                   Execute="immediate" Return="ignore" />
 
     <!-- Diferidas (SYSTEM, con el token elevado de la instalación):
@@ -225,9 +225,8 @@
       <Custom Action="CA_InstalarBD" After="InstallFiles" />
       <Custom Action="CA_ConfigurarPanel" After="CA_InstalarBD" />
       <!-- Antes de que se borren los archivos (el script incluido). -->
-      <Custom Action="CA_Desinstalar" Before="RemoveFiles">
-        REMOVE = "ALL" AND NOT UPGRADINGPRODUCTCODE
-      </Custom>
+      <Custom Action="CA_Desinstalar" Before="RemoveFiles"
+              Condition="REMOVE = &quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
     </InstallExecuteSequence>
 
     <!-- ============ Interfaz (WixUI estándar + 1 página) ============ -->
@@ -290,17 +289,26 @@
         <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17"
                  Default="yes" Text="Siguiente &gt;">
           <Publish Event="DoAction" Value="CA_ComprobarPuertos" />
-          <Publish Event="NewDialog" Value="VerifyReadyDlg" />
+          <!-- Sin contraseña en una instalación nueva no se avanza:
+               se avisa y se permanece en esta página (antes se intentaba
+               con ControlCondition, que WiX v4 y v5 rechazan por igual). -->
+          <Publish Event="SpawnDialog" Value="DlgAvisoSinClave">NOT ADMIN_PASSWORD AND NOT Installed</Publish>
+          <Publish Event="NewDialog" Value="VerifyReadyDlg">ADMIN_PASSWORD OR Installed</Publish>
         </Control>
         <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17"
                  Cancel="yes" Text="Cancelar">
           <Publish Event="SpawnDialog" Value="CancelDlg" />
         </Control>
-        <!-- Sin contraseña no se avanza en una instalación nueva
-             (en actualización la cuenta ya existe y se admite).
-             ControlCondition cuelga del Dialog, no del Control. -->
-        <ControlCondition Dialog="DlgConfigurar" Control="Next" Action="Disable">NOT ADMIN_PASSWORD AND NOT Installed</ControlCondition>
-        <ControlCondition Dialog="DlgConfigurar" Control="Next" Action="Enable">ADMIN_PASSWORD OR Installed</ControlCondition>
+      </Dialog>
+
+      <!-- Aviso cuando falta la contraseña del administrador. -->
+      <Dialog Id="DlgAvisoSinClave" Width="300" Height="120" Title="Falta la contraseña">
+        <Control Id="Texto" Type="Text" X="15" Y="15" Width="270" Height="50"
+                 Text="Escribe la contraseña de la cuenta administradora para continuar. Es la que usarás para entrar al panel la primera vez." />
+        <Control Id="Aceptar" Type="PushButton" X="115" Y="85" Width="70" Height="17"
+                 Default="yes" Cancel="yes" Text="Aceptar">
+          <Publish Event="EndDialog" Value="Return" />
+        </Control>
       </Dialog>
     </UI>
   </Package>
