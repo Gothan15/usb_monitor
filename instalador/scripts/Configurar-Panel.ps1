@@ -108,7 +108,7 @@ try {
     # --- 3. Esquema de la base de datos ---
     $env:DATABASE_URL = $urlBd
     & $nodo (Join-Path $app 'node_modules\prisma\build\index.js') db push `
-        --schema (Join-Path $app 'prisma\schema.prisma') --skip-generate
+        --schema (Join-Path $app 'prisma\schema.prisma')
     if ($LASTEXITCODE -ne 0) { throw "prisma db push falló ($LASTEXITCODE)" }
     Escribir-Log 'Esquema aplicado (prisma db push).'
 
