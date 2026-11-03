@@ -95,3 +95,7 @@ salida-instalador/
 
 # Cliente Prisma 7 generado (se regenera con prisma generate)
 /src/generated
+
+# paquete de actualización del agente (lo sirve el panel en local)
+/paquete-agente/*.exe
+/paquete-agente/manifiesto.json

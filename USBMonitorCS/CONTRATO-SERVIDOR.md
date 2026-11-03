@@ -29,7 +29,11 @@ por detrás del agente actual ni del panel.
 | GET `/api/agent/owner-hash?pcName` | Hash Argon2 del dueño para la emergencia sin red | Solo si `offlineEmergencyEnabled` está activo en el panel; si no, no hay emergencia. Se renueva cada 10 min. |
 | GET `/api/agent/owner?pcName` | Identidad pública del equipo: dueño asignado y modo | `{ownerUsername (null si no hay dueño asignado), unlockMode, passwordUnlockEnabled}`. SIN ninguna credencial: lo muestran la toolbox y el compañero para decir de quién es la contraseña que vale en la PC. |
 | POST `/api/agent/offline-attempts` | Subir la auditoría de intentos sin red al volver la conexión | `{pcName, attempts:[{usernameTried, result, driveLetter, serialNumber, createdAt}]}`. |
-| GET `/api/agent/ping?pcName` | Prueba de conexión y señal de vida | `{ok, serverTime, pc}`; renueva `lastSeen` del equipo. Lo usa el botón «Probar conexión». |
+| GET `/api/agent/ping?pcName&version` | Prueba de conexión y señal de vida | `{ok, serverTime, pc}`; renueva `lastSeen` del equipo y guarda la versión del agente (`version`, p. ej. `1.0.4`). Lo usa el botón «Probar conexión». |
+| GET `/api/agent/config` (órdenes) | Canal de órdenes (fase B) | La misma respuesta trae `comandos: [{id, tipo, estado, versionObjetivo, intentos}]` con las órdenes activas del equipo dueño del token. Al servirlas, el panel pasa las ESPERA a ENTREGADA. Las EN_CURSO se siguen sirviendo para conciliarlas tras un reinicio. |
+| POST `/api/agent/comandos/:id` | Informe del agente sobre su orden | `{estado: EN_CURSO\|HECHA\|ERROR, detalle?, versionObjetivo?}`. Solo el equipo dueño de la orden (su token). EN_CURSO suma un intento (tope 3). |
+| GET `/api/agent/paquete/manifiesto` | Qué actualización ofrece el panel | `{version, sha256, tamano, nombreArchivo}` del exe en `paquete-agente/`; 404 si el panel no tiene paquete. |
+| GET `/api/agent/paquete` | Descarga del exe de actualización | Binario en flujo. El agente verifica tamaño y SHA-256 contra el manifiesto antes de aplicarlo con el modo `aplicar-actualizacion`. |
 
 ## Ajustes del panel que el agente obedece
 
