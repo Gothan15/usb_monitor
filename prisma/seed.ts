@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { createPrismaClient } from "../src/lib/db";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -27,7 +27,7 @@ type SeedData = {
   whitelist: SeedWhitelistEntry[];
 };
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const seedPath = path.join(__dirname, "seed-data.json");
 

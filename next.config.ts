@@ -7,9 +7,6 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   async headers() {
     const securityHeaders = [
       {

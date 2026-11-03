@@ -1,6 +1,6 @@
 import "reflect-metadata";
 
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "@/generated/prisma/client";
 import { container, type InjectionToken } from "tsyringe";
 
 import { db } from "@/lib/db";
