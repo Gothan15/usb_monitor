@@ -9,6 +9,9 @@
          modos de consola ya vuelcan todo a agente.log. -->
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- Versión del agente: es la que el ping anuncia al panel.
+         Se sube a mano con cada Release del agente. -->
+    <Version>1.0.3</Version>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>dotnet-Agente.Servicio-c78ab9c7-132a-4654-97f3-83d7b06e3b0b</UserSecretsId>
