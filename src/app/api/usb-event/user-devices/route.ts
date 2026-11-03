@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { verifySessionFromRequest } from "@/lib/auth";
 import { getCurrentDate } from "@/lib/time";
 import { readAppSettings } from "@/lib/appSettings";
+import { normalizeComputerName } from "@/lib/utils";
 
 /**
  * GET /api/usb-event/user-devices
@@ -52,23 +53,28 @@ export async function GET(req: Request) {
       Math.max(2, settings.silenceThresholdMinutes || 5) * 60_000;
     const senalReciente = new Date(getCurrentDate().getTime() - umbralMs);
 
+    // Los registros del agente se guardan con el nombre
+    // normalizado; la asignación del usuario puede tener el
+    // nombre del equipo con otra capitalización.
+    const pcName = normalizeComputerName(user.computer.name);
+
     // Group the dashboard queries into a single round trip to cut latency and contention.
     const [events, connectedUSBs, usbHistory] = await (db as any).$transaction([
       (db as any).uSBEvent.findMany({
-        where: { pcName: user.computer.name },
+        where: { pcName },
         orderBy: { createdAt: "desc" },
         take: 100,
       }),
       (db as any).uSBConnection.findMany({
         where: {
-          pcName: user.computer.name,
+          pcName,
           isConnected: true,
           lastSeen: { gte: senalReciente },
         },
         orderBy: { lastSeen: "desc" },
       }),
       (db as any).uSBConnection.findMany({
-        where: { pcName: user.computer.name },
+        where: { pcName },
         orderBy: { connectedAt: "desc" },
         take: 100,
       }),
@@ -188,7 +194,7 @@ export async function DELETE(req: Request) {
       );
     }
 
-    const pcName = user.computer.name;
+    const pcName = normalizeComputerName(user.computer.name);
     const [deletedEvents, deletedConnections] = await Promise.all([
       (db as any).uSBEvent.deleteMany({ where: { pcName } }),
       (db as any).uSBConnection.deleteMany({ where: { pcName } }),

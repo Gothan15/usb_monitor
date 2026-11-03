@@ -55,6 +55,12 @@ export async function GET(req: Request, context: RouteContext) {
       );
     }
 
+    // Las conexiones se guardan con el nombre normalizado (así lo
+    // escribe el agente al reportar); si el nombre del equipo en
+    // el panel difiere en mayúsculas o espacios, la consulta tiene
+    // que normalizar igual o no encuentra nada.
+    const pcName = normalizeComputerName(computer.name);
+
     const since = new Date(Date.now() - historyDays * 24 * 60 * 60 * 1000);
 
     if (type === "connected") {
@@ -69,7 +75,7 @@ export async function GET(req: Request, context: RouteContext) {
       const senalReciente = new Date(getCurrentDate().getTime() - umbralMs);
       const rows = await db.uSBConnection.findMany({
         where: {
-          pcName: computer.name,
+          pcName: pcName,
           isConnected: true,
           lastSeen: { gte: senalReciente },
         },
@@ -107,7 +113,7 @@ export async function GET(req: Request, context: RouteContext) {
     // history
     const rows = await db.uSBConnection.findMany({
       where: {
-        pcName: computer.name,
+        pcName: pcName,
         isConnected: false,
         disconnectedAt: { gte: since },
       },

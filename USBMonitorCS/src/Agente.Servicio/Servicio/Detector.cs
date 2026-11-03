@@ -37,6 +37,33 @@ public sealed class Dispositivo
     public List<string> Letras { get; init; } = new();
     public long Tamano { get; init; }
 
+    /// <summary>
+    /// Etiqueta de volumen por letra (lo que Windows muestra en
+    /// el Explorador: «KINGSTON», «TRABAJO»…). El modelo WMI del
+    /// disco no sirve como nombre visible: en muchas memorias es
+    /// genérico («Generic Flash Disk USB Device») y el panel y
+    /// los eventos enseñaban ese texto en vez del nombre real.
+    /// </summary>
+    public Dictionary<string, string> Etiquetas { get; init; } = new();
+
+    /// <summary>Etiqueta de la primera letra con volumen, si hay.</summary>
+    public string? EtiquetaVolumen =>
+        Letras.Count > 0 &&
+        Etiquetas.TryGetValue(Letras[0], out var etiqueta) &&
+        !string.IsNullOrWhiteSpace(etiqueta)
+            ? etiqueta
+            : null;
+
+    /// <summary>Nombre para enseñar: la etiqueta si existe; si no, el modelo.</summary>
+    public string NombreVisible => EtiquetaVolumen ?? Nombre;
+
+    /// <summary>Nombre para enseñar de una letra concreta.</summary>
+    public string EtiquetaDe(string letra) =>
+        Etiquetas.TryGetValue(letra, out var etiqueta) &&
+        !string.IsNullOrWhiteSpace(etiqueta)
+            ? etiqueta
+            : Nombre;
+
     /// <summary>Clave estable del dispositivo (instancia normalizada).</summary>
     public string Clave => InstanciaPnP.Trim().ToUpperInvariant();
 
@@ -165,9 +192,9 @@ public sealed class Detector
         return ancestros;
     }
 
-    private static List<string> LetrasDeDisco(ManagementObject disco)
+    private static List<(string Letra, string Etiqueta)> LetrasDeDisco(ManagementObject disco)
     {
-        var letras = new List<string>();
+        var letras = new List<(string, string)>();
         try
         {
             foreach (ManagementObject particion in disco.GetRelated("Win32_DiskPartition"))
@@ -175,7 +202,9 @@ public sealed class Detector
                 foreach (ManagementObject logico in particion.GetRelated("Win32_LogicalDisk"))
                 {
                     var deviceId = Texto(logico, "DeviceID");
-                    if (!string.IsNullOrEmpty(deviceId)) letras.Add(deviceId.ToUpperInvariant());
+                    if (string.IsNullOrEmpty(deviceId)) continue;
+                    var etiqueta = (Texto(logico, "VolumeName") ?? "").Trim();
+                    letras.Add((deviceId.ToUpperInvariant(), etiqueta));
                 }
             }
         }
@@ -212,13 +241,17 @@ public sealed class Detector
                 if (serial.Length == 0) serial = SerialDesdeInstancia(instancia);
                 long tamano = 0;
                 try { tamano = Convert.ToInt64(disco["Size"] ?? 0); } catch { /* sin tamaño */ }
+                var letras = LetrasDeDisco(disco);
                 var disp = new Dispositivo
                 {
                     InstanciaPnP = instancia,
                     Serial = serial,
                     Nombre = (modelo.Length > 0 ? modelo : "Disco USB").Trim(),
                     Tipo = tipo,
-                    Letras = LetrasDeDisco(disco),
+                    Letras = letras.Select(l => l.Letra).ToList(),
+                    Etiquetas = letras
+                        .Where(l => l.Etiqueta.Length > 0)
+                        .ToDictionary(l => l.Letra, l => l.Etiqueta),
                     Tamano = tamano,
                 };
                 encontrados[disp.Clave] = disp;
@@ -368,7 +401,7 @@ public sealed class Detector
                 unidades.Add(new UnidadConectada
                 {
                     DriveLetter = null,
-                    VolumeName = disp.Nombre,
+                    VolumeName = disp.NombreVisible,
                     SerialNumber = disp.Serial,
                     Model = disp.Nombre,
                     Size = disp.Tamano,
@@ -381,7 +414,7 @@ public sealed class Detector
                 unidades.Add(new UnidadConectada
                 {
                     DriveLetter = letra,
-                    VolumeName = disp.Nombre,
+                    VolumeName = disp.EtiquetaDe(letra),
                     SerialNumber = disp.Serial,
                     Model = disp.Nombre,
                     Size = disp.Tamano,

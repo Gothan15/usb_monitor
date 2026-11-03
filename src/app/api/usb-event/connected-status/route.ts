@@ -180,7 +180,7 @@ export async function POST(req: NextRequest) {
           driveLetter: drive.driveLetter,
           volumeName: drive.volumeName || "Sin nombre",
           serialNumber: drive.serialNumber,
-          model: drive.model || "Unknown",
+          model: drive.model || "Desconocido",
           deviceKind: drive.deviceKind,
           size: BigInt(drive.size || 0),
           connectedAt: now,

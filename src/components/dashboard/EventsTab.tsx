@@ -21,6 +21,7 @@ import {
 import { ShieldCheck, Siren, Trash2, Usb } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
+import { etiquetaEventoUsb, etiquetaCapaBloqueo } from "@/lib/eventosUsb";
 import { USBEvent, formatDate, formatTime } from "./types";
 
 /* «hace 5 min» para leer el registro de un vistazo. */
@@ -52,23 +53,24 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
   });
 
   const classifyEvent = (event: USBEvent) => {
-    if (event.whitelisted) {
-      return {
-        badgeVariant: "success" as const,
-        rowClassName:
-          "bg-[oklch(0.92_0.03_160)] dark:bg-[oklch(0.55_0.12_160/0.10)] transition-colors",
-        tone: "success" as const,
-      };
-    }
-
     const normalized = event.event.toLowerCase();
+    const code = event.event.trim().toUpperCase();
     const readonly = (event.readonlyStatus || "").toLowerCase();
+    // El tono sale del TIPO de evento, no de la lista blanca:
+    // que un dispositivo esté en la lista no convierte su
+    // conexión en un desbloqueo (antes, cualquier evento de un
+    // dispositivo listado se pintaba como éxito y contaba como
+    // desbloqueo en el resumen de arriba).
     const isUnlock =
+      code === "UNLOCKED" ||
+      code === "EMERGENCY_UNLOCK" ||
       normalized.includes("readonly removido") ||
       normalized.includes("desbloqueada") ||
       normalized.includes("desbloqueado") ||
       readonly.includes("removido");
     const isError =
+      code === "UNLOCK_RELEASE_FAILED" ||
+      (code === "BLOCKED" && !event.whitelisted) ||
       normalized.includes("error") ||
       normalized.includes("fallo") ||
       normalized.includes("denegado");
@@ -255,14 +257,14 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                         )}
                       >
                         {tone === "success"
-                          ? "Autorizado"
+                          ? "Desbloqueado"
                           : tone === "error"
                             ? "Alerta"
                             : "Info"}
                       </span>
                     </div>
                     <p className="mt-1 text-[13px] text-muted-foreground">
-                      {event.event}
+                      {etiquetaEventoUsb(event.event)}
                     </p>
                     <p className="mt-2 font-mono text-[11px] leading-relaxed text-muted-foreground/80">
                       {event.pcUser} · {event.pcIp}
@@ -271,7 +273,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                     </p>
                     <p className="mt-1 text-[11px] text-muted-foreground/70">
                       {formatDate(occurredAt)} · {formatTime(occurredAt)} · {haceCuanto(occurredAt)} ·{" "}
-                      {event.whitelisted ? "En lista blanca" : "Sin autorizar"}
+                      {event.whitelisted ? "En lista blanca" : "Fuera de la lista blanca"}
                     </p>
                   </article>
                 );
@@ -335,7 +337,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                               {tone === "success" ? "Autorizado" : tone === "error" ? "Alerta" : "Info"}
                             </span>
                             <span className="mt-0.5 block truncate text-xs text-muted-foreground" title={event.event}>
-                              {event.event}
+                              {etiquetaEventoUsb(event.event)}
                             </span>
                           </TableCell>
                           <TableCell className="max-w-[180px] text-muted-foreground">
@@ -348,7 +350,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                                   <div className="mt-0.5 text-muted-foreground/75">
                                     {event.driveLetter && <>Unidad {event.driveLetter}</>}
                                     {event.driveLetter && event.readonlyStatus && " · "}
-                                    {event.readonlyStatus}
+                                    {event.readonlyStatus ? etiquetaCapaBloqueo(event.readonlyStatus) : null}
                                   </div>
                                 </div>
                               </TooltipTrigger>
@@ -356,7 +358,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                                 <div className="space-y-1.5">
                                   <p><span className="font-semibold">Serial:</span> {event.serialNumber || "Sin serial"}</p>
                                   <p><span className="font-semibold">Unidad:</span> {event.driveLetter || "Sin unidad"}</p>
-                                  <p><span className="font-semibold">Modo:</span> {event.readonlyStatus || "Sin modo"}</p>
+                                  <p><span className="font-semibold">Modo:</span> {event.readonlyStatus ? etiquetaCapaBloqueo(event.readonlyStatus) : "Sin modo"}</p>
                                 </div>
                               </TooltipContent>
                             </Tooltip>
@@ -369,7 +371,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                                   event.whitelisted ? "bg-success" : "bg-warning",
                                 )}
                               />
-                              {event.whitelisted ? "Autorizado" : "Sin autorizar"}
+                              {event.whitelisted ? "En lista blanca" : "Fuera de la lista blanca"}
                             </span>
                           </TableCell>
                           <TableCell className="text-muted-foreground">

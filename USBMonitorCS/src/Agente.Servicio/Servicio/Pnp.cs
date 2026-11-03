@@ -106,9 +106,9 @@ public static class Pnp
     /// <summary>
     /// Deshabilita EN CADENA y devuelve el nodo que quedó
     /// deshabilitado (null si ninguno cedió). Primero el propio
-    /// nodo, con una espera larga; si no cede, el nodo USB del
-    /// dispositivo (USB\VID_…, jamás el concentrador raíz ni el
-    /// controlador: deshabilitarlos tumbaría todos los USB).
+    /// nodo; si no cede, el nodo USB del dispositivo (USB\VID_…,
+    /// jamás el concentrador raíz ni el controlador:
+    /// deshabilitarlos tumbaría todos los USB).
     ///
     /// Existe por los DISCOS DUROS externos: su nodo de disco a
     /// menudo no llega al código 22 — Windows lo deja en «necesita
@@ -117,15 +117,23 @@ public static class Pnp
     /// memorias (extraíbles) sí ceden al momento. El nodo USB del
     /// dispositivo sí se puede deshabilitar en caliente y tumba
     /// toda la pila, como al expulsar el dispositivo.
+    ///
+    /// Las esperas son CORTAS a propósito: un nodo que va a ceder
+    /// llega al código 22 en uno o dos segundos; el que no cede
+    /// no lo hace ni en diez. Con 10 s por nodo, una memoria
+    /// tardaba hasta 20 s en quedar bloqueada y la ventana del
+    /// compañero salía tardísimo, mientras un teléfono (cuyo
+    /// nodo cede al instante) aparecía enseguida.
     /// </summary>
-    public static string? DeshabilitarConCadena(string instancia, double segundosPorNodo = 10)
+    public static string? DeshabilitarConCadena(
+        string instancia, double segundosPropio = 3, double segundosAncestro = 5)
     {
-        if (Deshabilitar(instancia, segundosPorNodo)) return instancia;
+        if (Deshabilitar(instancia, segundosPropio)) return instancia;
         foreach (var ancestro in Ancestros(instancia))
         {
             var a = ancestro.ToUpperInvariant();
             if (!a.StartsWith("USB\\VID_")) continue;
-            if (Deshabilitar(ancestro, segundosPorNodo))
+            if (Deshabilitar(ancestro, segundosAncestro))
             {
                 Log.Info($"Bloqueado por el nodo USB del dispositivo: {ancestro}");
                 return ancestro;

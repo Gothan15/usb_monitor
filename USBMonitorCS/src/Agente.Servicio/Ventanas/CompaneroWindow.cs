@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using USBMonitor.Agente.Core;
 
@@ -38,6 +39,8 @@ public sealed class CompaneroWindow : Window
     private List<BloqueoLocal> _bloqueos = new();
     private string _firmaArchivo = string.Empty;
     private string? _claveActual;
+    private string? _claveMensaje;
+    private readonly ScaleTransform _escala = new(0.97, 0.97);
     private bool _leyendo;
     private bool _enviando;
     private bool _cerrando;
@@ -56,6 +59,8 @@ public sealed class CompaneroWindow : Window
         Visibility = Visibility.Hidden;
         ShowInTaskbar = true;
         Tema.AplicarVentana(this);
+        RenderTransform = _escala;
+        RenderTransformOrigin = new Point(0.5, 0.5);
 
         var raiz = new StackPanel { Margin = new Thickness(18, 6, 18, 18) };
         raiz.Children.Add(Tema.TitularVentana("Dispositivo bloqueado"));
@@ -350,7 +355,9 @@ public sealed class CompaneroWindow : Window
         if (_bloqueos.Count == 0)
         {
             _claveActual = null;
-            Visibility = Visibility.Hidden;
+            _claveMensaje = null;
+            _mensaje.Text = string.Empty;
+            OcultarConAnimacion();
             return;
         }
 
@@ -373,6 +380,7 @@ public sealed class CompaneroWindow : Window
 
         if (estabaOculta)
         {
+            AnimarEntrada();
             Topmost = true;
             var bajar = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(600) };
             bajar.Tick += (_, _) =>
@@ -404,6 +412,15 @@ public sealed class CompaneroWindow : Window
         }
 
         _claveActual = actual.Clave;
+        if (_claveMensaje is not null && _claveMensaje != actual.Clave)
+        {
+            // El mensaje pintado (p. ej. un «Autorizado») era de
+            // OTRO dispositivo: no puede seguir en pantalla para
+            // este, ni su contraseña a medio escribir.
+            _mensaje.Text = string.Empty;
+            _claveMensaje = null;
+            _contrasena.Clear();
+        }
         string letra = string.IsNullOrWhiteSpace(actual.Letra)
             ? "sin letra"
             : actual.Letra;
@@ -527,6 +544,54 @@ public sealed class CompaneroWindow : Window
     {
         _mensaje.Text = texto;
         _mensaje.Foreground = color;
+        // El mensaje pertenece al dispositivo en pantalla: si el
+        // seleccionado cambia, ActualizarSeleccion lo borra.
+        _claveMensaje = _claveActual;
+    }
+
+    /// <summary>
+    /// Entrada suave al aparecer: fundido y escala breve, en la
+    /// línea de las animaciones del panel (nada de parpadeos).
+    /// </summary>
+    private void AnimarEntrada()
+    {
+        BeginAnimation(OpacityProperty, null);
+        Opacity = 0;
+        _escala.ScaleX = 0.97;
+        _escala.ScaleY = 0.97;
+        BeginAnimation(OpacityProperty,
+            new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(180)));
+        var escala = new DoubleAnimation(0.97, 1, TimeSpan.FromMilliseconds(220))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+        };
+        _escala.BeginAnimation(ScaleTransform.ScaleXProperty, escala);
+        _escala.BeginAnimation(ScaleTransform.ScaleYProperty, escala);
+    }
+
+    /// <summary>
+    /// Salida suave al vaciarse los bloqueos: fundido corto y la
+    /// ventana se retira; si entra otro bloqueo a mitad del
+    /// fundido, la entrada lo cancela y la ventana se queda.
+    /// </summary>
+    private void OcultarConAnimacion()
+    {
+        if (Visibility != Visibility.Visible)
+        {
+            Visibility = Visibility.Hidden;
+            return;
+        }
+        var fundido = new DoubleAnimation(Opacity, 0, TimeSpan.FromMilliseconds(150));
+        fundido.Completed += (_, _) =>
+        {
+            BeginAnimation(OpacityProperty, null);
+            Opacity = 1;
+            if (_bloqueos.Count == 0)
+            {
+                Visibility = Visibility.Hidden;
+            }
+        };
+        BeginAnimation(OpacityProperty, fundido);
     }
 
     private void AnotarLatido()
