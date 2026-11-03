@@ -1,7 +1,8 @@
 import { spawn } from "child_process";
-import { PrismaClient, Role } from "@prisma/client";
+import { Role } from "../src/generated/prisma/client";
+import { createPrismaClient } from "../src/lib/db";
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 interface RemoteConfig {
   hostname: string;

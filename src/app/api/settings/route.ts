@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
-import { PrismaClient } from "@prisma/client";
+import { db as prisma } from "@/lib/db";
 import { requireAuth } from "@/lib/auth";
 import { DEFAULT_SETTINGS } from "@/lib/appSettings";
 
-const prisma = new PrismaClient();
 const SETTINGS_PATH = path.join(process.cwd(), "config", "app_settings.json");
 
 export async function GET() {

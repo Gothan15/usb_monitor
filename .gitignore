@@ -92,3 +92,6 @@ USBMonitorCS/dist/
 
 # Instalador del panel (salida de Construir-Instalador.ps1)
 salida-instalador/
+
+# Cliente Prisma 7 generado (se regenera con prisma generate)
+/src/generated

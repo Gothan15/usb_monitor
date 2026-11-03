@@ -1,14 +1,8 @@
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-import { FlatCompat } from "@eslint/eslintrc";
+import nextVitals from "eslint-config-next/core-web-vitals";
+import nextTs from "eslint-config-next/typescript";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
-
+// Next 16: eslint-config-next ya trae configuración flat nativa;
+// el FlatCompat anterior dejó de funcionar.
 const eslintConfig = [
   {
     // Artefactos generados y binarios: fuera del lint (sin esto,
@@ -20,30 +14,32 @@ const eslintConfig = [
       "coverage/**",
       "node_modules/**",
       "next-env.d.ts",
+      "src/generated/**",
     ],
   },
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
+  ...nextVitals,
+  ...nextTs,
   {
     rules: {
-      // TypeScript 相关规则
+      // TypeScript
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-unused-vars": "off",
       "@typescript-eslint/no-non-null-assertion": "off",
       "@typescript-eslint/ban-ts-comment": "off",
       "@typescript-eslint/prefer-as-const": "off",
-      
-      // React 相关规则
+
+      // React
       "react-hooks/exhaustive-deps": "off",
       "react/no-unescaped-entities": "off",
       "react/display-name": "off",
       "react/prop-types": "off",
-      
-      // Next.js 相关规则
+
+      // Next.js
       "@next/next/no-img-element": "off",
       "@next/next/no-html-link-for-pages": "off",
-      
-      // 一般JavaScript规则
-      "prefer-const": "off",  // 关闭prefer-const规则
+
+      // JavaScript general
+      "prefer-const": "off",
       "no-unused-vars": "off",
       "no-console": "off",
       "no-debugger": "off",

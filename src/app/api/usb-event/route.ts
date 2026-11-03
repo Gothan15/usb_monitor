@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "@/generated/prisma/client";
 import { resolve, TOKENS } from "@/lib/di/container";
 import { requireAuth, requireServiceAuth } from "@/lib/auth"; // requireAuth: GET (consulta). requireServiceAuth: POST si el ajuste requireAgentToken está activo
 import { readAppSettings } from "@/lib/appSettings";
