@@ -237,8 +237,12 @@ internal static class LanzadorModos
         // ejecutable publicado acepta el modo directamente.
         bool esDotNet = Path.GetFileName(proceso).Equals(
             "dotnet.exe", StringComparison.OrdinalIgnoreCase);
+        // Sin Assembly.Location: en el ejecutable de un solo archivo
+        // devuelve "" (aviso IL3000 de la CI). La DLL del ensamblado
+        // está junto al resto de la salida, en AppContext.BaseDirectory
+        // (esta rama solo se usa en desarrollo, con «dotnet run»).
         string argumentos = esDotNet
-            ? $"\"{typeof(AppVentanas).Assembly.Location}\" {modo}"
+            ? $"\"{Path.Combine(AppContext.BaseDirectory, typeof(AppVentanas).Assembly.GetName().Name + ".dll")}\" {modo}"
             : modo;
 
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
