@@ -292,8 +292,8 @@
           <!-- Sin contraseña en una instalación nueva no se avanza:
                se avisa y se permanece en esta página (antes se intentaba
                con ControlCondition, que WiX v4 y v5 rechazan por igual). -->
-          <Publish Event="SpawnDialog" Value="DlgAvisoSinClave">NOT ADMIN_PASSWORD AND NOT Installed</Publish>
-          <Publish Event="NewDialog" Value="VerifyReadyDlg">ADMIN_PASSWORD OR Installed</Publish>
+          <Publish Event="SpawnDialog" Value="DlgAvisoSinClave" Condition="NOT ADMIN_PASSWORD AND NOT Installed" />
+          <Publish Event="NewDialog" Value="VerifyReadyDlg" Condition="ADMIN_PASSWORD OR Installed" />
         </Control>
         <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17"
                  Cancel="yes" Text="Cancelar">
