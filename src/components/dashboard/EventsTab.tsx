@@ -358,7 +358,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                                 <div className="space-y-1.5">
                                   <p><span className="font-semibold">Serial:</span> {event.serialNumber || "Sin serial"}</p>
                                   <p><span className="font-semibold">Unidad:</span> {event.driveLetter || "Sin unidad"}</p>
-                                  <p><span className="font-semibold">Modo:</span> {event.readonlyStatus ? etiquetaCapaBloqueo(event.readonlyStatus) : "Sin modo"}</p>
+                                  <p><span className="font-semibold">Capa de bloqueo:</span> {event.readonlyStatus ? etiquetaCapaBloqueo(event.readonlyStatus) : "Sin capa"}</p>
                                 </div>
                               </TooltipContent>
                             </Tooltip>
