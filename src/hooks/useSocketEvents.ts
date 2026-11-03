@@ -53,7 +53,10 @@ export function useSocketEvents({
   onUnlockChange,
   enabled = true,
 }: UseSocketEventsOptions = {}) {
-  const [status, setStatus] = useState<ConnectionStatus>("disconnected");
+  const [statusInterno, setStatus] = useState<ConnectionStatus>("disconnected");
+  // Sin conexión permitida, el estado visible es «desconectado»
+  // aunque el interno conserve el último valor del socket.
+  const status: ConnectionStatus = enabled ? statusInterno : "disconnected";
   const socketRef = useRef<Socket | null>(null);
 
   // Keep callback refs stable to avoid reconnect on handler change.
@@ -83,7 +86,6 @@ export function useSocketEvents({
     if (!enabled) {
       socketRef.current?.disconnect();
       socketRef.current = null;
-      setStatus("disconnected");
       return;
     }
 

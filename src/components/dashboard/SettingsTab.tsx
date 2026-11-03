@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useSyncExternalStore } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -173,13 +173,19 @@ export function SettingsTab() {
     silenceThresholdMinutes: 5,
   });
 
+  const [apiInicial, setApiInicial] = useState<number | null>(null);
+  const [unlockInicial, setUnlockInicial] = useState<UnlockSettings | null>(null);
+
   const disposicion = useLayoutStore((state) => state.disposicion);
   const setDisposicion = useLayoutStore((state) => state.setDisposicion);
   const { isLiveSyncEnabled, toggleLiveSync } = useLiveSyncStore();
-  const [mounted, setMounted] = useState(false);
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
 
   useEffect(() => {
-    setMounted(true);
     fetch("/api/settings")
       .then((res) => res.json())
       .then((data) => {
@@ -203,9 +209,6 @@ export function SettingsTab() {
       })
       .catch((err) => console.error("Failed to load settings", err));
   }, []);
-
-  const [apiInicial, setApiInicial] = useState<number | null>(null);
-  const [unlockInicial, setUnlockInicial] = useState<UnlockSettings | null>(null);
 
   const saveSettings = async (
     sectionLabel: string,

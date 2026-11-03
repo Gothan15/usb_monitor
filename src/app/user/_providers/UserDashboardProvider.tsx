@@ -100,7 +100,11 @@ export function UserDashboardProvider({
   }, [router, toast]);
 
   useEffect(() => {
-    void fetchSession();
+    // Diferido a una microtarea: los setState de la carga ocurren
+    // en un contexto asíncrono, no en el cuerpo síncrono del efecto.
+    queueMicrotask(() => {
+      void fetchSession();
+    });
   }, [fetchSession]);
 
   const navigateTo = useCallback(

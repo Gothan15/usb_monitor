@@ -126,9 +126,13 @@ export function BulkBar({
     return () => clearTimeout(timer);
   }, [confirmando]);
 
-  useEffect(() => {
+  // Al vaciarse la selección se cancela la confirmación en curso:
+  // ajuste durante el render al cambiar la prop, sin efecto.
+  const [prevCount, setPrevCount] = useState(count);
+  if (count !== prevCount) {
+    setPrevCount(count);
     if (count === 0) setConfirmando(false);
-  }, [count]);
+  }
 
   if (count === 0) return null;
 

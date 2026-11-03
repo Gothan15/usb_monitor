@@ -135,7 +135,11 @@ export function UnlocksTab() {
   }, [resultFilter, pcFilter]);
 
   useEffect(() => {
-    load();
+    // Diferida a una microtarea: los setState de la carga ocurren
+    // en un contexto asíncrono, no en el cuerpo síncrono del efecto.
+    queueMicrotask(() => {
+      void load();
+    });
     // Red de seguridad, no el mecanismo: el silencio de un
     // equipo se mide con el reloj y puede vencer sin que llegue
     // ningún evento. El refresco normal lo manda el empuje de

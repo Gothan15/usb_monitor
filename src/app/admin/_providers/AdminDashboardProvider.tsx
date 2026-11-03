@@ -101,7 +101,6 @@ export function AdminDashboardProvider({
   const queryClient = useQueryClient();
   const { isLiveSyncEnabled } = useLiveSyncStore();
 
-  const [usersCount, setUsersCount] = useState<number | null>(null);
   const [checkingRole, setCheckingRole] = useState(true);
   const [user, setUser] = useState<{
     name?: string | null;
@@ -210,11 +209,17 @@ export function AdminDashboardProvider({
     refetchInterval: needs.users && isLiveSyncEnabled ? 120_000 : false,
   });
 
-  useEffect(() => {
+  // El conteo vive en un estado porque además de la query lo
+  // escribe handleUsersSummaryChange; la query lo sincroniza con
+  // un ajuste durante el render cuando llega un dato nuevo.
+  const [usersCount, setUsersCount] = useState<number | null>(null);
+  const [prevUsersData, setPrevUsersData] = useState(usersSummaryQuery.data);
+  if (usersSummaryQuery.data !== prevUsersData) {
+    setPrevUsersData(usersSummaryQuery.data);
     if (typeof usersSummaryQuery.data === "number") {
       setUsersCount(usersSummaryQuery.data);
     }
-  }, [usersSummaryQuery.data]);
+  }
 
   const events = eventsQuery.data ?? [];
   const computers = computersQuery.data ?? [];

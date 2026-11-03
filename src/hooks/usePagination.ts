@@ -50,13 +50,6 @@ export function usePagination({
     return Math.ceil(totalItems / safePageSize);
   }, [totalItems, safePageSize]);
 
-  // Clamp page when pageCount shrinks (e.g. after filtering / deleting)
-  useEffect(() => {
-    if (page > pageCount) {
-      setPageRaw(pageCount);
-    }
-  }, [page, pageCount]);
-
   const currentPage = Math.min(Math.max(page, 1), pageCount);
 
   const startItem =

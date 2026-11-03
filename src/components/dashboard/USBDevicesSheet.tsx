@@ -160,17 +160,26 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
     if (!open) return;
     const controller = new AbortController();
     abortRef.current = controller;
-    void Promise.all([
-      fetchDevices("connected", controller.signal),
-      fetchDevices("history", controller.signal),
-    ]);
+    // Diferida a una microtarea: los setState de la carga ocurren
+    // en un contexto asíncrono, no en el cuerpo síncrono del efecto.
+    queueMicrotask(() => {
+      if (controller.signal.aborted) return;
+      void Promise.all([
+        fetchDevices("connected", controller.signal),
+        fetchDevices("history", controller.signal),
+      ]);
+    });
     return () => controller.abort();
   }, [open, fetchDevices]);
 
   useEffect(() => {
     if (!open) return;
     const signal = abortRef.current?.signal;
-    void fetchDevices("history", signal);
+    // Diferido a una microtarea: los setState de la carga ocurren
+    // en un contexto asíncrono, no en el cuerpo síncrono del efecto.
+    queueMicrotask(() => {
+      void fetchDevices("history", signal);
+    });
   }, [historyRange, open, fetchDevices]);
 
   const headerSubtitle = useMemo(() => {

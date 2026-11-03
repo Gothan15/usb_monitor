@@ -207,11 +207,11 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
     return Math.max(1, Math.ceil(sortedData.length / Math.max(pageSize, 1)));
   }, [sortedData.length, pageSize]);
 
-  useEffect(() => {
-    if (page > pageCount) {
-      setPage(pageCount);
-    }
-  }, [page, pageCount]);
+  // Ajuste durante el render: si la página queda fuera de rango
+  // (menos equipos que antes), se baja a la última válida.
+  if (page > pageCount) {
+    setPage(pageCount);
+  }
 
   const handlePageChange = useCallback(
     (nextPage: number) => {
@@ -236,9 +236,13 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
     );
   }, [sortedData, busqueda]);
 
-  useEffect(() => {
+  // Al cambiar la búsqueda se vuelve a la primera página
+  // (ajuste durante el render al cambiar el valor anterior).
+  const [prevBusqueda, setPrevBusqueda] = useState(busqueda);
+  if (busqueda !== prevBusqueda) {
+    setPrevBusqueda(busqueda);
     setPage(1);
-  }, [busqueda]);
+  }
 
   const paginatedComputers = useMemo(() => {
     if (filtrados.length === 0) return [];

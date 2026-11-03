@@ -75,14 +75,14 @@ export function LiveDataProvider({
 
   const notificadosRef = useRef<Set<string>>(new Set());
 
-  const invalidatorRef = useRef<ReturnType<typeof createDebouncedInvalidator> | null>(null);
-  if (!invalidatorRef.current) {
-    // 400 ms: agrupa ráfagas sin que la tabla se sienta lenta.
-    // Con 3000 ms el panel parecía ir «a saltos» aunque el aviso
-    // por socket hubiera llegado al instante.
-    invalidatorRef.current = createDebouncedInvalidator(queryClient, 400);
-  }
-  const debouncedInvalidate = invalidatorRef.current;
+  // 400 ms: agrupa ráfagas sin que la tabla se sienta lenta.
+  // Con 3000 ms el panel parecía ir «a saltos» aunque el aviso
+  // por socket hubiera llegado al instante. Se crea una vez con el
+  // inicializador de estado (con ref habría que escribirla en el
+  // render, que la regla de hooks prohíbe).
+  const [debouncedInvalidate] = useState(() =>
+    createDebouncedInvalidator(queryClient, 400)
+  );
 
   const onUSBEvent = useCallback(
     (event: SocketUSBEvent) => {
