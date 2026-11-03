@@ -83,29 +83,27 @@
     <Property Id="ARPCOMMENTS" Value="Panel web de USB Monitor con PostgreSQL integrado" />
 
     <!-- ============ Estructura de carpetas ============ -->
-    <Directory Id="TARGETDIR" Name="SourceDir">
-      <Directory Id="ProgramFiles64Folder">
-        <Directory Id="INSTALLFOLDER" Name="USB Monitor Panel">
-          <Directory Id="APPDIR" Name="app" />
-          <Directory Id="NODEDIR" Name="node" />
-          <Directory Id="PGDIR" Name="pgsql" />
-          <Directory Id="SERVDIR" Name="servicio" />
-          <Directory Id="SCRIPTSDIR" Name="scripts" />
-        </Directory>
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="USB Monitor Panel">
+        <Directory Id="APPDIR" Name="app" />
+        <Directory Id="NODEDIR" Name="node" />
+        <Directory Id="PGDIR" Name="pgsql" />
+        <Directory Id="SERVDIR" Name="servicio" />
+        <Directory Id="SCRIPTSDIR" Name="scripts" />
       </Directory>
-      <Directory Id="CommonAppDataFolder">
-        <!-- Datos FUERA de Archivos de programa: sobreviven a
-             actualizaciones y a la desinstalación (a propósito). -->
-        <Directory Id="DATADIR" Name="USBMonitor">
-          <Directory Id="PGDATADIR" Name="Datos" />
-          <Directory Id="LOGDIR" Name="Registros" />
-        </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="CommonAppDataFolder">
+      <!-- Datos FUERA de Archivos de programa: sobreviven a
+           actualizaciones y a la desinstalación (a propósito). -->
+      <Directory Id="DATADIR" Name="USBMonitor">
+        <Directory Id="PGDATADIR" Name="Datos" />
+        <Directory Id="LOGDIR" Name="Registros" />
       </Directory>
-      <Directory Id="ProgramMenuFolder">
-        <Directory Id="MENUDIR" Name="USB Monitor" />
-      </Directory>
-      <Directory Id="DesktopFolder" />
-    </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="MENUDIR" Name="USB Monitor" />
+    </StandardDirectory>
+    <StandardDirectory Id="DesktopFolder" />
 
     <!-- ============ Archivos cosechados de la carpeta preparada ============
          Construir-Instalador.ps1 deja el árbol listo en «preparado\»:
@@ -192,14 +190,14 @@
          como VBScript. Deja usuario+contraseña del administrador
          en un temporal con ACL mínima dentro de DATADIR. -->
     <Binary Id="GuardarAdminVbs" SourceFile="scripts\GuardarAdmin.vbs" />
-    <CustomAction Id="CA_GuardarAdmin" BinaryRef="GuardarAdminVbs"
+    <CustomAction Id="CA_GuardarAdmin" BinaryRef="GuardarAdminVbs" VBScriptCall="Guardar"
                   Execute="immediate" Return="ignore" />
 
     <!-- Aviso de puertos ocupados: se invoca con DoAction desde el
          botón «Siguiente» de la página de configuración, antes de
          pasar a la confirmación. Solo avisa (MsgBox); no bloquea. -->
     <Binary Id="ComprobarPuertosVbs" SourceFile="scripts\ComprobarPuertos.vbs" />
-    <CustomAction Id="CA_ComprobarPuertos" BinaryRef="ComprobarPuertosVbs"
+    <CustomAction Id="CA_ComprobarPuertos" BinaryRef="ComprobarPuertosVbs" VBScriptCall="Comprobar"
                   Execute="immediate" Return="ignore" />
 
     <!-- Diferidas (SYSTEM, con el token elevado de la instalación):
@@ -225,9 +223,8 @@
       <Custom Action="CA_InstalarBD" After="InstallFiles" />
       <Custom Action="CA_ConfigurarPanel" After="CA_InstalarBD" />
       <!-- Antes de que se borren los archivos (el script incluido). -->
-      <Custom Action="CA_Desinstalar" Before="RemoveFiles">
-        REMOVE = "ALL" AND NOT UPGRADINGPRODUCTCODE
-      </Custom>
+      <Custom Action="CA_Desinstalar" Before="RemoveFiles"
+              Condition="REMOVE = &quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
     </InstallExecuteSequence>
 
     <!-- ============ Interfaz (WixUI estándar + 1 página) ============ -->
@@ -290,17 +287,26 @@
         <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17"
                  Default="yes" Text="Siguiente &gt;">
           <Publish Event="DoAction" Value="CA_ComprobarPuertos" />
-          <Publish Event="NewDialog" Value="VerifyReadyDlg" />
+          <!-- Sin contraseña en una instalación nueva no se avanza:
+               se avisa y se permanece en esta página (antes se intentaba
+               con ControlCondition, que WiX v4 y v5 rechazan por igual). -->
+          <Publish Event="SpawnDialog" Value="DlgAvisoSinClave" Condition="NOT ADMIN_PASSWORD AND NOT Installed" />
+          <Publish Event="NewDialog" Value="VerifyReadyDlg" Condition="ADMIN_PASSWORD OR Installed" />
         </Control>
         <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17"
                  Cancel="yes" Text="Cancelar">
           <Publish Event="SpawnDialog" Value="CancelDlg" />
         </Control>
-        <!-- Sin contraseña no se avanza en una instalación nueva
-             (en actualización la cuenta ya existe y se admite).
-             ControlCondition cuelga del Dialog, no del Control. -->
-        <ControlCondition Dialog="DlgConfigurar" Control="Next" Action="Disable">NOT ADMIN_PASSWORD AND NOT Installed</ControlCondition>
-        <ControlCondition Dialog="DlgConfigurar" Control="Next" Action="Enable">ADMIN_PASSWORD OR Installed</ControlCondition>
+      </Dialog>
+
+      <!-- Aviso cuando falta la contraseña del administrador. -->
+      <Dialog Id="DlgAvisoSinClave" Width="300" Height="120" Title="Falta la contraseña">
+        <Control Id="Texto" Type="Text" X="15" Y="15" Width="270" Height="50"
+                 Text="Escribe la contraseña de la cuenta administradora para continuar. Es la que usarás para entrar al panel la primera vez." />
+        <Control Id="Aceptar" Type="PushButton" X="115" Y="85" Width="70" Height="17"
+                 Default="yes" Cancel="yes" Text="Aceptar">
+          <Publish Event="EndDialog" Value="Return" />
+        </Control>
       </Dialog>
     </UI>
   </Package>
