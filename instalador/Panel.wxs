@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   ================================================================
-  USB Monitor — Panel · instalador MSI (WiX v4)
+  USB Monitor — Panel · instalador MSI (WiX v5)
   ================================================================
   Qué instala (por máquina, requiere administrador):
     · El panel web (Next.js ya compilado) + Node.js integrado.
@@ -133,12 +133,12 @@
     </ComponentGroup>
 
     <!-- Carpeta de datos: permanente, nunca se borra al desinstalar. -->
-    <Component Id="Comp_Datos" Directory="PGDATADIR" Guid="*" Permanent="yes">
+    <Component Id="Comp_Datos" Directory="PGDATADIR" Guid="1884E3A8-AD52-4C83-9BF7-56E1A842AB9D" Permanent="yes">
       <CreateFolder />
       <RegistryValue Root="HKLM" Key="Software\USBMonitor\Panel" Name="DataDir"
                      Value="[DATADIR]" Type="string" KeyPath="yes" />
     </Component>
-    <Component Id="Comp_RegistrosDir" Directory="LOGDIR" Guid="*">
+    <Component Id="Comp_RegistrosDir" Directory="LOGDIR" Guid="9B0472F1-12A8-4C22-97AC-F984077190DE">
       <CreateFolder />
     </Component>
 
@@ -256,24 +256,24 @@
         <Control Id="LblPuerto" Type="Text" X="20" Y="58" Width="150" Height="14"
                  Text="Puerto del panel web:" />
         <Control Id="EdPuerto" Type="Edit" X="180" Y="56" Width="60" Height="16"
-                 Property="PANEL_PORT" TextLimit="5" Integer="yes" />
+                 Property="PANEL_PORT" Integer="yes" />
 
         <Control Id="LblPuertoBd" Type="Text" X="20" Y="80" Width="150" Height="14"
                  Text="Puerto de la base de datos:" />
         <Control Id="EdPuertoBd" Type="Edit" X="180" Y="78" Width="60" Height="16"
-                 Property="PG_PORT" TextLimit="5" Integer="yes" />
+                 Property="PG_PORT" Integer="yes" />
         <Control Id="NotaBd" Type="Text" X="248" Y="80" Width="105" Height="14"
                  Text="(solo local)" />
 
         <Control Id="LblAdmin" Type="Text" X="20" Y="108" Width="150" Height="14"
                  Text="Usuario administrador:" />
         <Control Id="EdAdmin" Type="Edit" X="180" Y="106" Width="160" Height="16"
-                 Property="ADMIN_USER" TextLimit="40" />
+                 Property="ADMIN_USER" />
 
         <Control Id="LblClave" Type="Text" X="20" Y="130" Width="150" Height="14"
                  Text="Contraseña del administrador:" />
         <Control Id="EdClave" Type="Edit" X="180" Y="128" Width="160" Height="16"
-                 Property="ADMIN_PASSWORD" Password="yes" TextLimit="128" />
+                 Property="ADMIN_PASSWORD" Password="yes" />
 
         <Control Id="ChkFirewall" Type="CheckBox" X="20" Y="158" Width="330" Height="16"
                  Property="FIREWALL_OK" CheckBoxValue="1"
@@ -291,15 +291,16 @@
                  Default="yes" Text="Siguiente &gt;">
           <Publish Event="DoAction" Value="CA_ComprobarPuertos" />
           <Publish Event="NewDialog" Value="VerifyReadyDlg" />
-          <!-- Sin contraseña no se avanza en una instalación nueva
-               (en actualización la cuenta ya existe y se admite). -->
-          <ControlCondition Action="Disable">NOT ADMIN_PASSWORD AND NOT Installed</ControlCondition>
-          <ControlCondition Action="Enable">ADMIN_PASSWORD OR Installed</ControlCondition>
         </Control>
         <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17"
                  Cancel="yes" Text="Cancelar">
           <Publish Event="SpawnDialog" Value="CancelDlg" />
         </Control>
+        <!-- Sin contraseña no se avanza en una instalación nueva
+             (en actualización la cuenta ya existe y se admite).
+             ControlCondition cuelga del Dialog, no del Control. -->
+        <ControlCondition Dialog="DlgConfigurar" Control="Next" Action="Disable">NOT ADMIN_PASSWORD AND NOT Installed</ControlCondition>
+        <ControlCondition Dialog="DlgConfigurar" Control="Next" Action="Enable">ADMIN_PASSWORD OR Installed</ControlCondition>
       </Dialog>
     </UI>
   </Package>

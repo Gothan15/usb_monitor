@@ -63,7 +63,7 @@ En el PC de desarrollo (Windows), desde esta carpeta:
 .\Construir-Instalador.ps1 -Version 1.1.0
 ```
 
-El script: instala WiX v4 si falta, descarga las versiones fijadas de `versiones.wxi` (Node portable, binarios de PostgreSQL, WinSW; la primera vez imprime sus SHA-256 para que puedas fijarlos en `$HashEsperado`), compila el panel (`npm ci`, `prisma generate`, `npm run build`, poda de devDependencies), prepara el árbol en `salida-instalador\preparado\` — **excluyendo siempre el `.env` local** — y compila `Panel.wxs` con la extensión de interfaz, en español. Resultado: `salida-instalador\USBMonitor-Panel-<versión>.msi` con su SHA-256.
+El script: instala WiX v5 si falta, descarga las versiones fijadas de `versiones.wxi` (Node portable, binarios de PostgreSQL, WinSW; la primera vez imprime sus SHA-256 para que puedas fijarlos en `$HashEsperado`), compila el panel (`npm ci`, `prisma generate`, `npm run build`, poda de devDependencies), prepara el árbol en `salida-instalador\preparado\` — **excluyendo siempre el `.env` local** — y compila `Panel.wxs` con la extensión de interfaz, en español. Resultado: `salida-instalador\USBMonitor-Panel-<versión>.msi` con su SHA-256.
 
 ## También sale por GitHub Actions (Releases)
 
