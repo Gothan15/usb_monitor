@@ -124,6 +124,16 @@ const PREGUNTAS_FRECUENTES: { pregunta: string; respuesta: string }[] = [
       "Hay tres caminos: ejecutar el instalador en el propio equipo (el ejecutable se registra a sí mismo como servicio y crea la tarea del compañero); crear una tarea de instalación desde el escáner de red o desde Equipos, que lo empuja por SMB con la cuenta administradora del destino; o, si el equipo ya tiene un agente que reporta, la misma tarea lo actualiza por su canal sin tocar credenciales. En todos los casos el panel solo da el equipo por instalado cuando el agente da su primera señal.",
   },
   {
+    pregunta: "¿Cómo funciona una tarea de instalación?",
+    respuesta:
+      "Una tarea es una instalación (o actualización) lanzada contra uno o varios equipos a la vez: la creas desde el escáner de red o desde Equipos, eligiendo los destinos y dando una vez el usuario y la contraseña de administrador de esos equipos. Para cada destino, el panel elige solo el método: si el equipo ya tiene un agente que da señales, se actualiza por su propio canal, sin credenciales; si no, va por empujón SMB. Con «omitir si ya está instalado» activado, un destino que ya corre el agente vigente se marca como omitido y no se toca. El panel trabaja con dos destinos a la vez, reintenta los fallos que pueden salir bien a la segunda (una sesión o un permiso denegado no se reintentan: no van a cambiar solos) y la vista de Tareas muestra cada estado en directo. Y un equipo solo se da por instalado cuando su agente da la primera señal al panel: que la copia termine no basta.",
+  },
+  {
+    pregunta: "¿Dónde queda guardada la contraseña de una tarea?",
+    respuesta:
+      "En ningún sitio permanente: vive solo en la memoria del servidor mientras la tarea está en curso, y en la base de datos queda únicamente el usuario empleado y el historial de estados, nunca la clave. Por eso, si el panel se reinicia a mitad de una tarea, los destinos que estaban en curso quedan marcados como «Interrumpido» y reintentar la tarea vuelve a pedir la contraseña.",
+  },
+  {
     pregunta: "¿El agente y el compañero sobreviven a un reinicio?",
     respuesta:
       "Sí. El servicio se instala con arranque automático y recuperación ante fallos (Windows lo relanza si se cae). El compañero arranca al iniciar sesión mediante su tarea programada y, si en una sesión falta, el propio servicio lo vuelve a lanzar en la sesión del usuario.",

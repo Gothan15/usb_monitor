@@ -168,7 +168,7 @@ export function InstallTasksTab() {
   };
 
   return (
-    <div className="animate-view-in space-y-10 p-6">
+    <div className="animate-view-in space-y-10 p-6" data-tour="tasks-main">
       <div className="flex items-end justify-between gap-4">
         <div className="flex flex-1 flex-col">
           <p className="smallcaps text-acero">
