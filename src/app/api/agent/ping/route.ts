@@ -4,6 +4,7 @@ import { requireServiceAuth } from "@/lib/auth";
 import { getCurrentDate, getCurrentIsoString } from "@/lib/time";
 import { normalizeComputerName } from "@/lib/utils";
 import { registrarContactoAgente } from "@/lib/agentDebug";
+import { refrescarPresencia } from "@/lib/agentPresence";
 import { logError } from "@/lib/logger";
 
 /**
@@ -46,6 +47,10 @@ export async function GET(req: Request) {
             ...(agentVersion ? { agentVersion } : {}),
           },
         });
+        // Misma señal, en Redis: la presencia con expiración igual al
+        // umbral de silencio, para que Equipos pueda leerla sin pasar
+        // por la BD. Si Redis no está, no pasa nada: queda el lastSeen.
+        await refrescarPresencia(computer.id);
       }
     }
 
