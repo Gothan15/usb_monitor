@@ -72,6 +72,151 @@ public static class Tema
     }
 
     /// <summary>
+    /// Spinner del agente: un arco que gira, en el color que se
+    /// le pida (dentro de un botón, el de su propio texto). Gira
+    /// mientras está en pantalla; al salir de la ventana, la
+    /// animación se detiene sola.
+    /// </summary>
+    public static FrameworkElement CrearSpinner(double tamano, Brush color)
+    {
+        double grosor = 2;
+        double unidades = Math.PI * tamano / grosor;
+        var arco = new Ellipse
+        {
+            Width = tamano,
+            Height = tamano,
+            Stroke = color,
+            StrokeThickness = grosor,
+            StrokeDashArray = new DoubleCollection
+            {
+                unidades * 0.72,
+                unidades * 0.28
+            },
+            StrokeDashCap = PenLineCap.Round,
+            VerticalAlignment = VerticalAlignment.Center,
+            RenderTransformOrigin = new Point(0.5, 0.5)
+        };
+        var giro = new RotateTransform();
+        arco.RenderTransform = giro;
+        arco.Loaded += (_, _) =>
+            giro.BeginAnimation(
+                RotateTransform.AngleProperty,
+                new DoubleAnimation(0, 360, TimeSpan.FromMilliseconds(900))
+                {
+                    RepeatBehavior = RepeatBehavior.Forever
+                });
+        arco.Unloaded += (_, _) =>
+            giro.BeginAnimation(RotateTransform.AngleProperty, null);
+        return arco;
+    }
+
+    /// <summary>
+    /// Pone un botón «ocupado»: spinner y texto de trabajo
+    /// («Probando…», «Instalando…») con su propio color de
+    /// texto. Devuelve el contenido anterior, que se repone
+    /// con RestaurarBoton al terminar. La habilitación no se
+    /// toca aquí: unos botones se apagan en grupo y otros
+    /// solos, y eso lo sigue mandando quien llama.
+    /// </summary>
+    public static object? MarcarOcupado(Button boton, string texto)
+    {
+        object? previo = boton.Content;
+        var fila = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
+        var spinner = CrearSpinner(13, boton.Foreground);
+        spinner.Margin = new Thickness(0, 0, 7, 0);
+        fila.Children.Add(spinner);
+        fila.Children.Add(new TextBlock
+        {
+            Text = texto,
+            Foreground = boton.Foreground,
+            FontFamily = boton.FontFamily,
+            FontSize = boton.FontSize,
+            FontWeight = boton.FontWeight,
+            VerticalAlignment = VerticalAlignment.Center
+        });
+        boton.Content = fila;
+        return previo;
+    }
+
+    public static void RestaurarBoton(Button boton, object? contenidoPrevio)
+    {
+        boton.Content = contenidoPrevio;
+    }
+
+    /// <summary>
+    /// Pulso suave para un punto de estado: respira entre la
+    /// opacidad llena y 0,4, en bucle. DetenerPulso lo deja
+    /// fijo en opacidad llena.
+    /// </summary>
+    public static void Pulsar(Ellipse punto)
+    {
+        if (punto.Tag is "pulsando")
+        {
+            return;
+        }
+        punto.Tag = "pulsando";
+        punto.BeginAnimation(
+            UIElement.OpacityProperty,
+            new DoubleAnimation(1, 0.4, TimeSpan.FromMilliseconds(900))
+            {
+                AutoReverse = true,
+                RepeatBehavior = RepeatBehavior.Forever
+            });
+    }
+
+    public static void DetenerPulso(Ellipse punto)
+    {
+        if (punto.Tag is not "pulsando")
+        {
+            return;
+        }
+        punto.Tag = null;
+        punto.BeginAnimation(UIElement.OpacityProperty, null);
+        punto.Opacity = 1;
+    }
+
+    private static readonly IEasingFunction SalidaCubica =
+        new CubicEase { EasingMode = EasingMode.EaseOut };
+
+    /// <summary>
+    /// Respuesta al clic: el botón se hunde un 4 % en 60 ms y
+    /// vuelve en 140 ms con salida cúbica. Se monta en la
+    /// fábrica común, así que vale para todos los botones de
+    /// todas las ventanas sin tocar cada una.
+    /// </summary>
+    private static void PrepararRespuestaClic(Button boton)
+    {
+        var escala = new ScaleTransform(1, 1);
+        boton.RenderTransform = escala;
+        boton.RenderTransformOrigin = new Point(0.5, 0.5);
+        boton.PreviewMouseDown += (_, _) =>
+        {
+            if (boton.IsEnabled)
+            {
+                AnimarEscalaBoton(escala, 0.96, 60, null);
+            }
+        };
+        boton.PreviewMouseUp += (_, _) =>
+            AnimarEscalaBoton(escala, 1, 140, SalidaCubica);
+        boton.MouseLeave += (_, _) => AnimarEscalaBoton(escala, 1, 140, SalidaCubica);
+    }
+
+    private static void AnimarEscalaBoton(
+        ScaleTransform escala, double destino, int milisegundos, IEasingFunction? easing)
+    {
+        var animacion = new DoubleAnimation(destino, TimeSpan.FromMilliseconds(milisegundos))
+        {
+            EasingFunction = easing
+        };
+        escala.BeginAnimation(ScaleTransform.ScaleXProperty, animacion);
+        escala.BeginAnimation(ScaleTransform.ScaleYProperty, animacion);
+    }
+
+    /// <summary>
     /// Cabecera común: filete superior de 2 px en acero, título en
     /// Segoe UI semibold y, si se pide, una línea secundaria atenuada.
     /// </summary>
@@ -204,6 +349,7 @@ public static class Tema
             FocusVisualStyle = null
         };
         boton.Template = PlantillaBoton();
+        PrepararRespuestaClic(boton);
         return boton;
     }
 
