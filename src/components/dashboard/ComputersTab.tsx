@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   ArrowDown,
   ArrowUp,
+  ArrowUpCircle,
   Copy,
   KeyRound,
   Router,
@@ -107,6 +108,62 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
   const { toast } = useToast();
   const router = useRouter();
   const [instalarAbierto, setInstalarAbierto] = useState(false);
+  const [actualizandoId, setActualizandoId] = useState<string | null>(null);
+  const [ordenesCreadas, setOrdenesCreadas] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
+
+  const actualizarAgente = useCallback(
+    async (computer: Computer) => {
+      const csrfToken = getCsrfTokenFromDocument();
+      if (!csrfToken) {
+        toast({
+          title: "Sesión sin token de seguridad",
+          description: "Inicia sesión nuevamente.",
+          variant: "destructive",
+        });
+        return;
+      }
+      try {
+        setActualizandoId(computer.id);
+        const res = await fetch("/api/agent/comandos", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-csrf-token": csrfToken,
+          },
+          credentials: "include",
+          body: JSON.stringify({
+            pcName: computer.name,
+            tipo: "actualizar",
+          }),
+        });
+        const datos = await res.json().catch(() => null);
+        if (!res.ok || !datos?.ok) {
+          toast({
+            title: "No se pudo crear la orden",
+            description:
+              datos?.error || "El panel no aceptó la orden de actualización.",
+            variant: "destructive",
+          });
+          return;
+        }
+        setOrdenesCreadas((prev) => new Set(prev).add(computer.id));
+        toast({
+          title: "Orden de actualización creada",
+          description: `${computer.name} se actualizará solo por su canal en cuanto recoja la orden.`,
+        });
+      } catch {
+        toast({
+          title: "No se pudo contactar con el panel",
+          variant: "destructive",
+        });
+      } finally {
+        setActualizandoId(null);
+      }
+    },
+    [toast],
+  );
   const [busqueda, setBusqueda] = useState("");
   const [tokenAbierto, setTokenAbierto] = useState(false);
   const [tokenPc, setTokenPc] = useState("");
@@ -201,9 +258,13 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
     ).length;
     const total = sortedData.length;
 
+    const porActualizar = sortedData.filter(
+      (computer) => computer.actualizacionDisponible,
+    ).length;
     return [
       { label: "Servicio activo", value: activeCount.toString() },
       { label: "Inventario", value: total.toString() },
+      { label: "Por actualizar", value: porActualizar.toString() },
     ];
   }, [sortedData, loading]);
 
@@ -445,6 +506,41 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
                       <PalabraEstado activo={computer.isActive}>
                         {computer.isActive ? "En ejecución" : "Sin señal"}
                       </PalabraEstado>
+                    </Dato>
+                    <Dato etiqueta="Versión del agente">
+                      <span className="text-sm text-foreground">
+                        {computer.agentVersion
+                          ? `v${computer.agentVersion}`
+                          : "Sin anunciar"}
+                      </span>
+                      {computer.actualizacionDisponible && (
+                        <span className="mt-1 flex items-center gap-2">
+                          <span className="inline-flex items-center border border-amber-600/50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-500">
+                            Actualización disponible
+                            {computer.versionPaquete
+                              ? ` · v${computer.versionPaquete}`
+                              : ""}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={
+                              actualizandoId === computer.id ||
+                              ordenesCreadas.has(computer.id)
+                            }
+                            onClick={() => void actualizarAgente(computer)}
+                            className="smallcaps inline-flex items-center gap-1 text-[var(--acero)] underline decoration-[var(--acero)] decoration-2 underline-offset-4 transition-opacity disabled:no-underline disabled:opacity-60"
+                          >
+                            {actualizandoId === computer.id ? (
+                              <Spinner size={12} />
+                            ) : (
+                              <ArrowUpCircle className="size-3.5" />
+                            )}
+                            {ordenesCreadas.has(computer.id)
+                              ? "Orden creada"
+                              : "Actualizar"}
+                          </button>
+                        </span>
+                      )}
                     </Dato>
                   </div>
 
