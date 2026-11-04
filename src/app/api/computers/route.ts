@@ -4,6 +4,8 @@ import { requireAuth } from "@/lib/auth";
 import { logError } from "@/lib/logger";
 import { readAppSettings } from "@/lib/appSettings";
 import { getCurrentDate } from "@/lib/time";
+import { manifiestoPaquete } from "@/lib/paqueteAgente";
+import { necesitaActualizacion } from "@/lib/versionesAgente";
 
 export async function GET(req: Request) {
   try {
@@ -29,11 +31,27 @@ export async function GET(req: Request) {
       Math.max(2, settings.silenceThresholdMinutes || 5) * 60_000;
     const ahora = getCurrentDate().getTime();
 
+    // Versión del paquete que sirve el panel: contra ella se
+    // sabe si el agente de cada equipo (agentVersion, la que el
+    // ping guarda desde la fase B) va por detrás y necesita
+    // actualizarse por el canal.
+    const manifiesto = await manifiestoPaquete();
+    const versionPaquete = manifiesto?.version ?? null;
+
     const conEstadoReal = computers.map((computer) => {
       const activo =
         computer.lastSeen != null &&
         ahora - new Date(computer.lastSeen).getTime() <= umbralMs;
-      return { ...computer, isActive: activo, serviceRunning: activo };
+      return {
+        ...computer,
+        isActive: activo,
+        serviceRunning: activo,
+        versionPaquete,
+        actualizacionDisponible: necesitaActualizacion(
+          computer.agentVersion,
+          versionPaquete,
+        ),
+      };
     });
 
     return NextResponse.json(conEstadoReal);

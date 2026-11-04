@@ -23,6 +23,12 @@ export interface Computer {
   serviceInstalled?: boolean;
   serviceRunning?: boolean;
   lastServiceCheck?: string | null;
+  /** Versión que el agente anuncia en su ping (null si aún no la ha dado). */
+  agentVersion?: string | null;
+  /** Versión del paquete que sirve el panel, si hay paquete. */
+  versionPaquete?: string | null;
+  /** El agente va por detrás del paquete: hay actualización. */
+  actualizacionDisponible?: boolean;
 }
 
 export interface WhitelistEntry {

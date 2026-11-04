@@ -21,7 +21,11 @@ import {
 } from "lucide-react";
 import { getCurrentIsoString } from "@/lib/time";
 import { formatDateTime } from "@/components/dashboard/types";
-import { cn, getCsrfTokenFromDocument } from "@/lib/utils";
+import {
+  cn,
+  getCsrfTokenFromDocument,
+  normalizeComputerName,
+} from "@/lib/utils";
 import { Spinner } from "@/components/ui/spinner";
 import {
   InstallTaskDialog,
@@ -113,8 +117,51 @@ const dedupeByIdentifier = (items: ScanResult[]): ScanResult[] => {
   return Array.from(byIdentifier.values());
 };
 
+interface VersionConocida {
+  version: string | null;
+  desactualizado: boolean;
+}
+
 export function NetworkScannerTab({ onRefreshComputers }: Props) {
   const router = useRouter();
+  const [versiones, setVersiones] = useState<Map<string, VersionConocida>>(
+    new Map(),
+  );
+
+  const cargarVersiones = useCallback(async () => {
+    try {
+      const res = await fetch("/api/computers", { credentials: "include" });
+      const datos = await res.json().catch(() => null);
+      if (!res.ok || !Array.isArray(datos)) return;
+      const mapa = new Map<string, VersionConocida>();
+      for (const c of datos) {
+        const entrada: VersionConocida = {
+          version:
+            typeof c?.agentVersion === "string" ? c.agentVersion : null,
+          desactualizado: c?.actualizacionDisponible === true,
+        };
+        if (typeof c?.ipAddress === "string" && c.ipAddress) {
+          mapa.set(c.ipAddress.trim().toLowerCase(), entrada);
+        }
+        if (typeof c?.name === "string" && c.name) {
+          mapa.set(
+            normalizeComputerName(c.name).toLowerCase(),
+            entrada,
+          );
+        }
+      }
+      setVersiones(mapa);
+    } catch {
+      // Sin versiones conocidas el escáner sigue igual: la fila
+      // simplemente no enseña etiqueta.
+    }
+  }, []);
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      void cargarVersiones();
+    });
+  }, [cargarVersiones]);
   const [scanning, setScanning] = useState(false);
   const [scanResults, setScanResults] = useState<ScanResult[]>([]);
   const [scanError, setScanError] = useState<string | null>(null);
@@ -227,13 +274,14 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
       setScanResults(normalized);
       setLastScanAt(getCurrentIsoString());
       onRefreshComputers();
+      void cargarVersiones();
     } catch (error: any) {
       const message = error?.message || "No se pudo completar el escaneo";
       setScanError(message);
     } finally {
       setScanning(false);
     }
-  }, [onRefreshComputers, selectedCidr]);
+  }, [onRefreshComputers, selectedCidr, cargarVersiones]);
 
   const results = useMemo(() => scanResults, [scanResults]);
 
@@ -386,6 +434,30 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
                     </span>
                     <span className="truncate text-sm text-muted-foreground">
                       {result.hostname || "Sin nombre"}
+                      {(() => {
+                        const info =
+                          versiones.get(result.ip.toLowerCase()) ??
+                          (result.hostname
+                            ? versiones.get(
+                                normalizeComputerName(
+                                  result.hostname,
+                                ).toLowerCase(),
+                              )
+                            : undefined);
+                        if (!info?.version) return null;
+                        return (
+                          <span className="ml-2 inline-flex items-center gap-1.5">
+                            <span className="inline-flex items-center border border-border px-1.5 py-0.5 font-mono text-[11px] text-foreground">
+                              Agente v{info.version}
+                            </span>
+                            {info.desactualizado && (
+                              <span className="inline-flex items-center border border-amber-600/50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-500">
+                                Desactualizado
+                              </span>
+                            )}
+                          </span>
+                        );
+                      })()}
                     </span>
                     <span className="flex items-center gap-2 text-sm text-foreground">
                       <span
