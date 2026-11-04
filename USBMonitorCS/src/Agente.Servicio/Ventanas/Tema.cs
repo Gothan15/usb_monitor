@@ -54,21 +54,63 @@ public static class Tema
     /// </summary>
     public static void AnimarEntrada(Window ventana)
     {
-        var escala = new ScaleTransform(0.98, 0.98);
-        ventana.RenderTransform = escala;
-        ventana.RenderTransformOrigin = new Point(0.5, 0.5);
-        ventana.Opacity = 0;
-        ventana.Loaded += (_, _) =>
+        // La animación de entrada es decoración: JAMÁS puede tumbar
+        // la ventana. Si el WPF de este equipo se niega (controla-
+        // dores gráficos, renderizado), la ventana abre sin animar
+        // y el fallo queda escrito en el registro. Sin esta red, un
+        // error aquí cerraba el proceso antes de dejar ni una línea
+        // (caza del «no abre» de la 1.0.1 en adelante).
+        try
         {
-            ventana.BeginAnimation(Window.OpacityProperty,
-                new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200)));
-            var animacion = new DoubleAnimation(0.98, 1, TimeSpan.FromMilliseconds(240))
+            var escala = new ScaleTransform(0.98, 0.98);
+            ventana.RenderTransform = escala;
+            ventana.RenderTransformOrigin = new Point(0.5, 0.5);
+            ventana.Opacity = 0;
+            ventana.Loaded += (_, _) =>
             {
-                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+                try
+                {
+                    ventana.BeginAnimation(Window.OpacityProperty,
+                        new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200)));
+                    var animacion = new DoubleAnimation(0.98, 1, TimeSpan.FromMilliseconds(240))
+                    {
+                        EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+                    };
+                    escala.BeginAnimation(ScaleTransform.ScaleXProperty, animacion);
+                    escala.BeginAnimation(ScaleTransform.ScaleYProperty, animacion);
+                }
+                catch (Exception ex)
+                {
+                    RegistroVentanas.Error(
+                        "La animación de entrada falló; la ventana sigue sin animar.", ex);
+                    RestablecerVentana(ventana);
+                }
             };
-            escala.BeginAnimation(ScaleTransform.ScaleXProperty, animacion);
-            escala.BeginAnimation(ScaleTransform.ScaleYProperty, animacion);
-        };
+        }
+        catch (Exception ex)
+        {
+            RegistroVentanas.Error(
+                "No se pudo preparar la animación de entrada; la ventana abre sin ella.", ex);
+            RestablecerVentana(ventana);
+        }
+    }
+
+    /// <summary>
+    /// Deja la ventana visible y sin transformaciones tras un fallo
+    /// de animación: ni invisible (opacidad 0) ni encogida.
+    /// </summary>
+    private static void RestablecerVentana(Window ventana)
+    {
+        try
+        {
+            ventana.BeginAnimation(Window.OpacityProperty, null);
+            ventana.Opacity = 1;
+            ventana.RenderTransform = null;
+        }
+        catch
+        {
+            // La ventana manda: si ni esto se puede, no hay más red.
+        }
     }
 
     /// <summary>

@@ -64,19 +64,52 @@ public static class AppVentanas
     public static void EjecutarToolbox()
     {
         RegistroVentanas.Configurar("agente.log");
-        EjecutarVentana(() => ConIcono(new ToolboxWindow(), "usb_monitor_service.ico"));
+        try
+        {
+            RegistroVentanas.Info($"Caja de herramientas iniciada, pid {Environment.ProcessId}.");
+            EjecutarVentana(() => ConIcono(new ToolboxWindow(), "usb_monitor_service.ico"));
+            RegistroVentanas.Info("Caja de herramientas cerrada.");
+        }
+        catch (Exception ex)
+        {
+            // Como el compañero: que un cierre por error NUNCA sea
+            // mudo. Antes esta ruta no registraba nada y un fallo al
+            // abrir moría sin dejar ni una línea en agente.log.
+            RegistroVentanas.Error("LA CAJA DE HERRAMIENTAS SE CERRÓ POR UN ERROR", ex);
+            throw;
+        }
     }
 
     public static void EjecutarAsistente()
     {
         RegistroVentanas.Configurar("agente.log");
-        EjecutarVentana(() => ConIcono(new AsistenteWindow(), "usb_monitor_service.ico"));
+        try
+        {
+            RegistroVentanas.Info($"Asistente de configuración iniciado, pid {Environment.ProcessId}.");
+            EjecutarVentana(() => ConIcono(new AsistenteWindow(), "usb_monitor_service.ico"));
+            RegistroVentanas.Info("Asistente de configuración cerrado.");
+        }
+        catch (Exception ex)
+        {
+            RegistroVentanas.Error("EL ASISTENTE SE CERRÓ POR UN ERROR", ex);
+            throw;
+        }
     }
 
     public static void EjecutarVisor()
     {
         RegistroVentanas.Configurar("visor.log");
-        EjecutarVentana(() => ConIcono(new VisorWindow(), "usb_monitor_service.ico"));
+        try
+        {
+            RegistroVentanas.Info($"Visor iniciado, pid {Environment.ProcessId}.");
+            EjecutarVentana(() => ConIcono(new VisorWindow(), "usb_monitor_service.ico"));
+            RegistroVentanas.Info("Visor cerrado.");
+        }
+        catch (Exception ex)
+        {
+            RegistroVentanas.Error("EL VISOR SE CERRÓ POR UN ERROR", ex);
+            throw;
+        }
     }
 
     /// <summary>
@@ -135,6 +168,18 @@ public static class AppVentanas
                 var aplicacion = new Application
                 {
                     ShutdownMode = ShutdownMode.OnMainWindowClose
+                };
+
+                // Última red del hilo de la ventana: las excepciones
+                // que escapen de los manejadores (temporizadores,
+                // eventos de controles) quedan escritas en el registro
+                // antes de que el proceso muera, en vez de perderse.
+                // No se marca como tratada: el comportamiento ante el
+                // error no cambia, solo deja de ser mudo.
+                aplicacion.DispatcherUnhandledException += (_, e) =>
+                {
+                    RegistroVentanas.Error(
+                        "Error no controlado en el hilo de la ventana", e.Exception);
                 };
 
                 Window ventana = crearVentana();
