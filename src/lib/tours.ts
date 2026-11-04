@@ -13,6 +13,7 @@ import {
   KeyRound,
   Users,
   Wrench,
+  ListTodo,
 } from "lucide-react";
 
 export interface TourStep {
@@ -51,7 +52,7 @@ export const adminTour: TourDefinition = {
       target: "[data-tour='sidebar']",
       title: "Navegación",
       description:
-        "Desde aquí saltas entre las secciones: Resumen, Eventos, Equipos, Usuarios, Lista blanca, Desbloqueos, Escáner de red y Ajustes. Los contadores avisan de un vistazo cuántos equipos y eventos hay.",
+        "Desde aquí saltas entre las secciones: Resumen, Eventos, Equipos, Usuarios, Lista blanca, Desbloqueos, Tareas, Escáner de red y Ajustes. Los contadores avisan de un vistazo cuántos equipos y eventos hay.",
       position: "right",
       icon: LayoutDashboard,
     },
@@ -87,7 +88,7 @@ export const adminTour: TourDefinition = {
       target: "[data-tour='computers-main']",
       title: "Equipos",
       description:
-        "Cada equipo aparece solo cuando su agente hace el primer contacto. Su estado sale de la última señal del agente: «En ejecución» o «Sin señal», sin datos duplicados. Desde aquí provisionas el token de cada agente, ves sus dispositivos USB e instalas el servicio en equipos nuevos.",
+        "Cada equipo aparece solo cuando su agente hace el primer contacto. Su estado sale de la última señal del agente: «En ejecución» o «Sin señal», sin datos duplicados. Desde aquí provisionas el token de cada agente, ves sus dispositivos USB e instalas el servicio en equipos nuevos: esas instalaciones se crean como tareas y se siguen en directo en la sección Tareas.",
       position: "bottom",
       icon: MonitorSmartphone,
     },
@@ -123,9 +124,18 @@ export const adminTour: TourDefinition = {
       target: "[data-tour='network-main']",
       title: "Escáner de red",
       description:
-        "Descubre equipos en la red local y cuáles tienen el agente. La presencia del servicio se confirma con la señal que el propio agente envía al panel, no abriendo puertos en los equipos.",
+        "Descubre equipos en la red local y cuáles tienen el agente. La presencia del servicio se confirma con la señal que el propio agente envía al panel, no abriendo puertos en los equipos. Y sin salir de aquí puedes lanzar la instalación en un equipo suelto o en varios a la vez con las casillas de selección.",
       position: "bottom",
       icon: Radar,
+    },
+    {
+      view: "/admin/tasks",
+      target: "[data-tour='tasks-main']",
+      title: "Tareas de instalación",
+      description:
+        "Cada instalación o actualización que lanzas desde el escáner o desde Equipos vive aquí hasta que termina. Por cada destino ves su estado en directo — comprobando, copiando, instalando, esperando señal — y el detalle de qué paso falló si algo va mal. El panel trabaja con dos destinos a la vez, reintenta los fallos que pueden salir bien a la segunda y solo da un equipo por instalado cuando su agente da la primera señal: la copia terminar no basta.",
+      position: "bottom",
+      icon: ListTodo,
     },
     {
       target: "[data-tour='notifications']",
@@ -139,7 +149,7 @@ export const adminTour: TourDefinition = {
       target: "[data-tour='command-trigger']",
       title: "Paleta de comandos (Ctrl+K)",
       description:
-        "Con Ctrl+K o ⌘K saltas a cualquier sección y ejecutas acciones sin tocar el ratón. También tienes atajos Alt+1…8 para cambiar de sección.",
+        "Con Ctrl+K o ⌘K saltas a cualquier sección y ejecutas acciones sin tocar el ratón. También tienes atajos Alt+1…9 para cambiar de sección.",
       position: "bottom",
       icon: Command,
     },
