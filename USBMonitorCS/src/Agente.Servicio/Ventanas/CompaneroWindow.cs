@@ -40,7 +40,6 @@ public sealed class CompaneroWindow : Window
     private string _firmaArchivo = string.Empty;
     private string? _claveActual;
     private string? _claveMensaje;
-    private readonly ScaleTransform _escala = new(0.97, 0.97);
     private bool _leyendo;
     private bool _enviando;
     private bool _cerrando;
@@ -59,8 +58,6 @@ public sealed class CompaneroWindow : Window
         Visibility = Visibility.Hidden;
         ShowInTaskbar = true;
         Tema.AplicarVentana(this);
-        RenderTransform = _escala;
-        RenderTransformOrigin = new Point(0.5, 0.5);
 
         var raiz = new StackPanel { Margin = new Thickness(18, 6, 18, 18) };
         raiz.Children.Add(Tema.TitularVentana("Dispositivo bloqueado"));
@@ -380,7 +377,11 @@ public sealed class CompaneroWindow : Window
 
         if (estabaOculta)
         {
-            AnimarEntrada();
+            // Sin animación de entrada: la ventana aparece tal cual.
+            // La entrada animada (fundido + escala del PR #59) se
+            // retiró en la caza del «no abre»: era la sospechosa del
+            // cierre al arrancar y el compañero no puede permitirse
+            // ni un adorno que le cueste el arranque.
             Topmost = true;
             var bajar = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(600) };
             bajar.Tick += (_, _) =>
@@ -547,48 +548,6 @@ public sealed class CompaneroWindow : Window
         // El mensaje pertenece al dispositivo en pantalla: si el
         // seleccionado cambia, ActualizarSeleccion lo borra.
         _claveMensaje = _claveActual;
-    }
-
-    /// <summary>
-    /// Entrada suave al aparecer: fundido y escala breve, en la
-    /// línea de las animaciones del panel (nada de parpadeos).
-    /// </summary>
-    private void AnimarEntrada()
-    {
-        // Decoración con red, como en Tema.AnimarEntrada: un fallo
-        // de animación nunca puede tumbar al compañero; aparece sin
-        // animar y el error queda en el registro.
-        try
-        {
-            BeginAnimation(OpacityProperty, null);
-            Opacity = 0;
-            _escala.ScaleX = 0.97;
-            _escala.ScaleY = 0.97;
-            BeginAnimation(OpacityProperty,
-                new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(180)));
-            var escala = new DoubleAnimation(0.97, 1, TimeSpan.FromMilliseconds(220))
-            {
-                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
-            };
-            _escala.BeginAnimation(ScaleTransform.ScaleXProperty, escala);
-            _escala.BeginAnimation(ScaleTransform.ScaleYProperty, escala);
-        }
-        catch (Exception ex)
-        {
-            RegistroVentanas.Error(
-                "La animación de entrada del compañero falló; aparece sin animar.", ex);
-            try
-            {
-                BeginAnimation(OpacityProperty, null);
-                Opacity = 1;
-                _escala.ScaleX = 1;
-                _escala.ScaleY = 1;
-            }
-            catch
-            {
-                // Sin más red: la ventana ya está visible como quede.
-            }
-        }
     }
 
     /// <summary>
