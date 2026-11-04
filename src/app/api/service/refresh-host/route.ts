@@ -4,7 +4,6 @@ import { requireAuth } from "@/lib/auth";
 import { getCurrentDate } from "@/lib/time";
 import { hit } from "@/lib/rateLimit";
 import { logError } from "@/lib/logger";
-import { probeWinRM } from "@/lib/winrmService";
 import { checkServiceHealth } from "@/lib/serviceNotifier";
 import { getAllLocalNetworks } from "@/lib/networkScanner";
 
@@ -40,22 +39,6 @@ export async function POST(req: NextRequest) {
     const health = resultado.available ? resultado : null;
     const serviceInstalled = !!health;
     const serviceRunning = !!health;
-    // Estado WinRM real sin credenciales: sonda WS-Man Identify
-    // (no requiere autenticación). Dice si el listener está activo y
-    // qué protocolo habla; el estado del servicio vía WinRM requiere
-    // credenciales, que esta ruta no recibe, así que va en null.
-    const probe = await probeWinRM(normalizedIp);
-    const winrm = {
-      success: probe.available,
-      action: "status",
-      available: probe.available,
-      protocolVersion: probe.protocolVersion,
-      productVersion: probe.productVersion,
-      auth: probe.auth,
-      error: probe.available ? null : (probe.error ?? null),
-      serviceInstalled: null,
-      serviceRunning: null,
-    };
     const checkedAt = getCurrentDate();
     // OJO: una sonda del panel NO es señal del agente. Antes esta
     // ruta escribía lastSeen = ahora e isActive = true al
@@ -86,7 +69,6 @@ export async function POST(req: NextRequest) {
       serviceInstalled,
       serviceRunning,
       agentVersion: health?.serviceVersion || null,
-      winrm,
       health,
     });
     res.headers.set("Cache-Control", "no-store");

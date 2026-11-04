@@ -30,6 +30,8 @@ interface LiveDataContextValue {
   liveEventCount: number;
   /** Bumps on every unlock-related change pushed by the server */
   unlockVersion: number;
+  /** Bumps on every install-task change pushed by the server */
+  installVersion: number;
   /** Clear the live events buffer */
   clearLiveEvents: () => void;
 }
@@ -72,6 +74,7 @@ export function LiveDataProvider({
   const eventCountRef = useRef(0);
   const [liveEventCount, setLiveEventCount] = useState(0);
   const [unlockVersion, setUnlockVersion] = useState(0);
+  const [installVersion, setInstallVersion] = useState(0);
 
   const notificadosRef = useRef<Set<string>>(new Set());
 
@@ -159,12 +162,19 @@ export function LiveDataProvider({
     setUnlockVersion((v) => v + 1);
   }, []);
 
+  const onInstallChange = useCallback(() => {
+    // Igual que Desbloqueos: la vista de Tareas consume este
+    // contador y recarga cuando sube.
+    setInstallVersion((v) => v + 1);
+  }, []);
+
   const { status } = useSocketEvents({
     onUSBEvent,
     onComputerStatus,
     onWhitelistChange,
     onUserChange,
     onUnlockChange,
+    onInstallChange,
     enabled,
   });
 
@@ -180,9 +190,10 @@ export function LiveDataProvider({
       liveEvents,
       liveEventCount,
       unlockVersion,
+      installVersion,
       clearLiveEvents,
     }),
-    [status, liveEvents, liveEventCount, unlockVersion, clearLiveEvents],
+    [status, liveEvents, liveEventCount, unlockVersion, installVersion, clearLiveEvents],
   );
 
   return (

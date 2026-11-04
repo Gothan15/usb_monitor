@@ -3,17 +3,17 @@
 import { AlertCircle, CheckCircle2, Circle } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import {
-  PASOS_WINRM_VM,
-  estadoPasoWinRM,
-  type PasoWinRM,
-} from "@/lib/winrmChecklist";
+  PASOS_EMPUJE_VM,
+  estadoPasoEmpuje,
+  type PasoEmpuje,
+} from "@/lib/empujeChecklist";
 
-/** Requisito tal como lo devuelve la fase «check» de remote-install. */
-export interface RequisitoWinRMVista {
+/** Requisito tal como lo deja guardado la comprobación del empujador. */
+export interface RequisitoEmpujeVista {
   id: string;
   ok: boolean;
   detalle: string;
-  consejo?: string;
+  consejo?: string | null;
 }
 
 interface Props {
@@ -22,23 +22,23 @@ interface Props {
    * lista se enseña como guía (modo FAQ): pasos numerados con su
    * explicación y sus comandos, sin estados.
    */
-  checks?: RequisitoWinRMVista[] | null;
+  checks?: RequisitoEmpujeVista[] | null;
   /** La comprobación está corriendo: los pasos aún sin estado definitivo muestran el spinner. */
   comprobando?: boolean;
 }
 
 /**
- * La lista de verificación de WinRM para una máquina recién
- * creada (src/lib/winrmChecklist.ts), en dos modos con el mismo
- * contenido: guía en el FAQ y en vivo en el diálogo de
- * instalación remota, donde cada paso se marca con el resultado
- * real de checkWinRMRequirements.
+ * La lista de verificación del empujón SMB para una máquina
+ * recién creada (src/lib/empujeChecklist.ts), en dos modos con
+ * el mismo contenido: guía en el FAQ y en vivo en la fila de
+ * cada destino de una tarea, donde cada paso se marca con el
+ * resultado real de USBMonitorEmpujador.exe --comprobar.
  */
-export function WinRMChecklist({ checks, comprobando = false }: Props) {
+export function EmpujeChecklist({ checks, comprobando = false }: Props) {
   const enVivo = checks !== undefined;
   const porId = new Map((checks ?? []).map((c) => [c.id, c]));
 
-  const icono = (paso: PasoWinRM, indice: number) => {
+  const icono = (paso: PasoEmpuje, indice: number) => {
     if (!enVivo) {
       return (
         <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border border-border text-[11px] font-semibold text-muted-foreground">
@@ -46,7 +46,7 @@ export function WinRMChecklist({ checks, comprobando = false }: Props) {
         </span>
       );
     }
-    const estado = estadoPasoWinRM(paso, checks ?? null);
+    const estado = estadoPasoEmpuje(paso, checks ?? null);
     if (estado === "cumple") {
       return (
         <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-emerald-600" />
@@ -68,13 +68,13 @@ export function WinRMChecklist({ checks, comprobando = false }: Props) {
 
   return (
     <ol className="space-y-3">
-      {PASOS_WINRM_VM.map((paso, i) => {
+      {PASOS_EMPUJE_VM.map((paso, i) => {
         const estado = enVivo
-          ? estadoPasoWinRM(paso, checks ?? null)
+          ? estadoPasoEmpuje(paso, checks ?? null)
           : "sin-comprobar";
         const fallidos = paso.checks
           .map((id) => porId.get(id))
-          .filter((c): c is RequisitoWinRMVista => !!c && !c.ok);
+          .filter((c): c is RequisitoEmpujeVista => !!c && !c.ok);
         return (
           <li key={paso.id} className="flex items-start gap-2.5">
             {icono(paso, i)}

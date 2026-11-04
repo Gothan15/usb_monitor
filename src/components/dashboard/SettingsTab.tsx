@@ -27,7 +27,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { resetTour } from "@/components/onboarding/TourEngine";
-import { WinRMChecklist } from "./WinRMChecklist";
+import { EmpujeChecklist } from "./EmpujeChecklist";
 import { adminTour } from "@/lib/tours";
 import { useLayoutStore, type Disposicion } from "@/store/useLayoutStore";
 import { PanelLeft, PanelTop } from "lucide-react";
@@ -99,9 +99,9 @@ const PREGUNTAS_FRECUENTES: { pregunta: string; respuesta: string }[] = [
   },
   {
     pregunta:
-      "¿Cómo preparo una máquina virtual o un equipo nuevo para la instalación remota por WinRM?",
+      "¿Cómo preparo una máquina virtual o un equipo nuevo para la instalación remota?",
     respuesta:
-      "WinRM no viene listo de fábrica para redes sin dominio: hay que cumplir cinco pasos en el destino, recogidos en la lista de verificación de aquí abajo. Los tres comandos se ejecutan una sola vez en PowerShell como administrador local, la cuenta que se usa debe ser administradora y tener contraseña, y la red de la máquina debe estar en perfil Privado. Al instalar desde el panel no hace falta fiarse de memoria: el diálogo de instalación remota comprueba la lista en vivo contra el destino y marca cada paso antes de copiar nada.",
+      "La instalación remota sigue el modelo de Kaspersky: el panel empuja el agente por SMB (recurso C$) y lo instala creando un servicio temporal por RPC, sin WinRM ni SSH. Para que el empujón entre en una red sin dominio hay que cumplir los pasos de la lista de verificación de aquí abajo en el destino: compartición activa con la red en perfil Privado, una cuenta administradora local con contraseña y LocalAccountTokenFilterPolicy=1 para que el administrador entre completo en remoto. No hace falta fiarse de memoria: al crear la tarea, el panel comprueba los requisitos en vivo contra cada destino y la vista de Tareas enseña qué paso falló y con qué comando se arregla.",
   },
   {
     pregunta: "¿Qué hace el ajuste «Apagar el equipo si el dispositivo no está en la lista blanca»?",
@@ -121,7 +121,7 @@ const PREGUNTAS_FRECUENTES: { pregunta: string; respuesta: string }[] = [
   {
     pregunta: "¿Cómo instalo el agente en un equipo nuevo?",
     respuesta:
-      "Hay dos caminos: ejecutar el instalador en el propio equipo (el ejecutable se registra a sí mismo como servicio y crea la tarea del compañero), o la instalación remota desde Equipos (WinRM o SSH). En WinRM, el diálogo de instalación tiene el botón «Comprobar requisitos»: verifica en vivo en el destino todo lo necesario y, si falta algo, enseña el comando exacto para corregirlo.",
+      "Hay tres caminos: ejecutar el instalador en el propio equipo (el ejecutable se registra a sí mismo como servicio y crea la tarea del compañero); crear una tarea de instalación desde el escáner de red o desde Equipos, que lo empuja por SMB con la cuenta administradora del destino; o, si el equipo ya tiene un agente que reporta, la misma tarea lo actualiza por su canal sin tocar credenciales. En todos los casos el panel solo da el equipo por instalado cuando el agente da su primera señal.",
   },
   {
     pregunta: "¿El agente y el compañero sobreviven a un reinicio?",
@@ -596,16 +596,16 @@ export function SettingsTab() {
 
           <div className="mt-8 border border-border/60 bg-muted/20 px-4 py-4">
             <p className="text-sm font-semibold text-foreground">
-              Lista de verificación — WinRM en una máquina recién creada
+              Lista de verificación — empujón SMB en una máquina recién creada
             </p>
             <p className="mt-1 max-w-xl text-xs leading-relaxed text-muted-foreground">
-              Los cinco pasos del destino, en orden, con el comando de
-              cada uno. En el diálogo de instalación remota esta misma
-              lista se comprueba en vivo y cada paso se marca solo
-              cuando el destino lo cumple.
+              Los pasos del destino, en orden, con el comando de
+              cada uno. En la vista de Tareas esta misma lista se
+              comprueba en vivo contra cada destino y cada paso se
+              marca solo cuando el destino lo cumple.
             </p>
             <div className="mt-4 max-w-3xl">
-              <WinRMChecklist />
+              <EmpujeChecklist />
             </div>
           </div>
 

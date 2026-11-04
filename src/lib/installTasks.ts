@@ -1,0 +1,107 @@
+/**
+ * Tareas de instalación (fase D): constantes y reglas puras.
+ * La ejecución vive en installExecutor.ts; esto es solo el
+ * vocabulario compartido entre el ejecutor, las rutas y la
+ * vista, para poder probarlo sin procesos ni base de datos.
+ */
+
+export const ESTADO_TAREA = {
+  EN_CURSO: "EN_CURSO",
+  COMPLETADA: "COMPLETADA",
+  CON_ERRORES: "CON_ERRORES",
+} as const;
+
+export const ESTADO_DESTINO = {
+  EN_COLA: "EN_COLA",
+  COMPROBANDO: "COMPROBANDO",
+  COPIANDO: "COPIANDO",
+  INSTALANDO: "INSTALANDO",
+  ESPERANDO_SENAL: "ESPERANDO_SENAL",
+  INSTALADO: "INSTALADO",
+  OMITIDO: "OMITIDO",
+  ERROR: "ERROR",
+  INTERRUMPIDO: "INTERRUMPIDO",
+} as const;
+
+export type EstadoDestino =
+  (typeof ESTADO_DESTINO)[keyof typeof ESTADO_DESTINO];
+
+export const METODO = {
+  EMPUJE: "EMPUJE",
+  AGENTE: "AGENTE",
+} as const;
+
+export type MetodoInstalacion = (typeof METODO)[keyof typeof METODO];
+
+/** Estados de destino que ya no se mueven solos. */
+export const ESTADOS_DESTINO_FINALES: EstadoDestino[] = [
+  ESTADO_DESTINO.INSTALADO,
+  ESTADO_DESTINO.OMITIDO,
+  ESTADO_DESTINO.ERROR,
+  ESTADO_DESTINO.INTERRUMPIDO,
+];
+
+/** Cuántas instalaciones corren a la vez en todo el panel. */
+export const CONCURRENCIA_INSTALACION = 2;
+
+/** Datos mínimos de un equipo para decidir por dónde se instala. */
+export interface DatosMetodo {
+  /** Última señal del agente (null si nunca ha reportado). */
+  lastSeen: Date | string | null;
+  /** El equipo tiene token de agente provisionado. */
+  tieneToken: boolean;
+  /** Ahora, inyectable para las pruebas. */
+  ahora: number;
+  /** Umbral de silencio del método 3 en ms (mínimo 2 minutos). */
+  umbralMs: number;
+}
+
+/**
+ * Método de un destino: AGENTE si el equipo ya reporta dentro
+ * del umbral de silencio (el canal llega sin empujar ni pedir
+ * credenciales al destino); EMPUJE en cualquier otro caso.
+ */
+export function resolverMetodo(datos: DatosMetodo): MetodoInstalacion {
+  if (!datos.tieneToken || !datos.lastSeen) return METODO.EMPUJE;
+  const ultima = new Date(datos.lastSeen).getTime();
+  if (Number.isNaN(ultima)) return METODO.EMPUJE;
+  return datos.ahora - ultima <= datos.umbralMs
+    ? METODO.AGENTE
+    : METODO.EMPUJE;
+}
+
+/** Estado final de la tarea según cómo acabaron sus destinos. */
+export function estadoFinalTarea(
+  estados: string[],
+): typeof ESTADO_TAREA.COMPLETADA | typeof ESTADO_TAREA.CON_ERRORES {
+  const algunoMal = estados.some(
+    (e) => e === ESTADO_DESTINO.ERROR || e === ESTADO_DESTINO.INTERRUMPIDO,
+  );
+  return algunoMal ? ESTADO_TAREA.CON_ERRORES : ESTADO_TAREA.COMPLETADA;
+}
+
+/** Etapa de progreso del empujador → estado del destino. */
+export function estadoDesdeEtapaEmpujador(etapa: string): EstadoDestino {
+  switch (etapa) {
+    case "copia":
+      return ESTADO_DESTINO.COPIANDO;
+    case "servicio":
+      return ESTADO_DESTINO.INSTALANDO;
+    case "conexion":
+    default:
+      return ESTADO_DESTINO.COMPROBANDO;
+  }
+}
+
+/** Etiqueta legible de cada estado de destino, para la vista. */
+export const ETIQUETA_ESTADO_DESTINO: Record<string, string> = {
+  EN_COLA: "En cola",
+  COMPROBANDO: "Comprobando",
+  COPIANDO: "Copiando",
+  INSTALANDO: "Instalando",
+  ESPERANDO_SENAL: "Esperando señal",
+  INSTALADO: "Instalado",
+  OMITIDO: "Omitido",
+  ERROR: "Error",
+  INTERRUMPIDO: "Interrumpido",
+};
