@@ -555,18 +555,40 @@ public sealed class CompaneroWindow : Window
     /// </summary>
     private void AnimarEntrada()
     {
-        BeginAnimation(OpacityProperty, null);
-        Opacity = 0;
-        _escala.ScaleX = 0.97;
-        _escala.ScaleY = 0.97;
-        BeginAnimation(OpacityProperty,
-            new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(180)));
-        var escala = new DoubleAnimation(0.97, 1, TimeSpan.FromMilliseconds(220))
+        // Decoración con red, como en Tema.AnimarEntrada: un fallo
+        // de animación nunca puede tumbar al compañero; aparece sin
+        // animar y el error queda en el registro.
+        try
         {
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
-        };
-        _escala.BeginAnimation(ScaleTransform.ScaleXProperty, escala);
-        _escala.BeginAnimation(ScaleTransform.ScaleYProperty, escala);
+            BeginAnimation(OpacityProperty, null);
+            Opacity = 0;
+            _escala.ScaleX = 0.97;
+            _escala.ScaleY = 0.97;
+            BeginAnimation(OpacityProperty,
+                new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(180)));
+            var escala = new DoubleAnimation(0.97, 1, TimeSpan.FromMilliseconds(220))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+            };
+            _escala.BeginAnimation(ScaleTransform.ScaleXProperty, escala);
+            _escala.BeginAnimation(ScaleTransform.ScaleYProperty, escala);
+        }
+        catch (Exception ex)
+        {
+            RegistroVentanas.Error(
+                "La animación de entrada del compañero falló; aparece sin animar.", ex);
+            try
+            {
+                BeginAnimation(OpacityProperty, null);
+                Opacity = 1;
+                _escala.ScaleX = 1;
+                _escala.ScaleY = 1;
+            }
+            catch
+            {
+                // Sin más red: la ventana ya está visible como quede.
+            }
+        }
     }
 
     /// <summary>
@@ -581,17 +603,36 @@ public sealed class CompaneroWindow : Window
             Visibility = Visibility.Hidden;
             return;
         }
-        var fundido = new DoubleAnimation(Opacity, 0, TimeSpan.FromMilliseconds(150));
-        fundido.Completed += (_, _) =>
+        try
         {
-            BeginAnimation(OpacityProperty, null);
-            Opacity = 1;
-            if (_bloqueos.Count == 0)
+            var fundido = new DoubleAnimation(Opacity, 0, TimeSpan.FromMilliseconds(150));
+            fundido.Completed += (_, _) =>
             {
-                Visibility = Visibility.Hidden;
+                BeginAnimation(OpacityProperty, null);
+                Opacity = 1;
+                if (_bloqueos.Count == 0)
+                {
+                    Visibility = Visibility.Hidden;
+                }
+            };
+            BeginAnimation(OpacityProperty, fundido);
+        }
+        catch (Exception ex)
+        {
+            // Sin fundido, pero oculta igual: el bloqueo ya no está.
+            RegistroVentanas.Error(
+                "El fundido de salida del compañero falló; se oculta sin animar.", ex);
+            try
+            {
+                BeginAnimation(OpacityProperty, null);
+                Opacity = 1;
             }
-        };
-        BeginAnimation(OpacityProperty, fundido);
+            catch
+            {
+                // Ni el restablecimiento: ocultar es lo imprescindible.
+            }
+            Visibility = Visibility.Hidden;
+        }
     }
 
     private void AnotarLatido()
