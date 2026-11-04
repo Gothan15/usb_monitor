@@ -47,6 +47,9 @@ import {
 import { useTableSort } from "@/hooks/useTableSort";
 import { USBDevicesSheet } from "./USBDevicesSheet";
 import { Spinner } from "@/components/ui/spinner";
+import { InstallTaskDialog } from "./InstallTaskDialog";
+import { useRouter } from "next/navigation";
+import { Rocket } from "lucide-react";
 
 interface Props {
   computers: Computer[];
@@ -102,6 +105,8 @@ function PalabraEstado({
 
 export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Props) {
   const { toast } = useToast();
+  const router = useRouter();
+  const [instalarAbierto, setInstalarAbierto] = useState(false);
   const [busqueda, setBusqueda] = useState("");
   const [tokenAbierto, setTokenAbierto] = useState(false);
   const [tokenPc, setTokenPc] = useState("");
@@ -507,6 +512,27 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
               onCancel={bulk.clear}
             />
           )}
+
+          {bulk.count > 0 && (
+            <div className="mt-3 flex justify-end">
+              <Button onClick={() => setInstalarAbierto(true)}>
+                <Rocket className="mr-2 size-4" />
+                Instalar el agente en los seleccionados
+              </Button>
+            </div>
+          )}
+
+          <InstallTaskDialog
+            open={instalarAbierto}
+            onOpenChange={setInstalarAbierto}
+            destinos={computers
+              .filter((c) => bulk.selected.has(c.id))
+              .map((c) => ({ pcName: c.name, ip: c.ipAddress }))}
+            onCreada={() => {
+              bulk.clear();
+              router.push("/admin/tasks");
+            }}
+          />
 
           {/* ── Paginación ── */}
             <DashboardPagination

@@ -23,7 +23,12 @@ import { getCurrentIsoString } from "@/lib/time";
 import { formatDateTime } from "@/components/dashboard/types";
 import { cn, getCsrfTokenFromDocument } from "@/lib/utils";
 import { Spinner } from "@/components/ui/spinner";
-import { RemoteInstallDialog } from "@/components/dashboard/RemoteInstallDialog";
+import {
+  InstallTaskDialog,
+  type DestinoTarea,
+} from "@/components/dashboard/InstallTaskDialog";
+import { RowCheckbox } from "@/components/dashboard/BulkSelection";
+import { useRouter } from "next/navigation";
 
 interface NetworkInterfaceInfo {
   name: string;
@@ -109,12 +114,33 @@ const dedupeByIdentifier = (items: ScanResult[]): ScanResult[] => {
 };
 
 export function NetworkScannerTab({ onRefreshComputers }: Props) {
+  const router = useRouter();
   const [scanning, setScanning] = useState(false);
   const [scanResults, setScanResults] = useState<ScanResult[]>([]);
   const [scanError, setScanError] = useState<string | null>(null);
   const [lastScanAt, setLastScanAt] = useState<string | null>(null);
   const [installDialogOpen, setInstallDialogOpen] = useState(false);
-  const [installTarget, setInstallTarget] = useState<ScanResult | null>(null);
+  const [destinosDialog, setDestinosDialog] = useState<DestinoTarea[]>([]);
+  const [seleccionados, setSeleccionados] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
+
+  const alternarSeleccion = (ip: string) => {
+    setSeleccionados((prev) => {
+      const next = new Set(prev);
+      if (next.has(ip)) {
+        next.delete(ip);
+      } else {
+        next.add(ip);
+      }
+      return next;
+    });
+  };
+
+  const abrirInstalacion = (destinos: DestinoTarea[]) => {
+    setDestinosDialog(destinos);
+    setInstallDialogOpen(true);
+  };
 
   // Network interface selector
   const [interfaces, setInterfaces] = useState<NetworkInterfaceInfo[]>([]);
@@ -325,7 +351,8 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
           </p>
         ) : (
           <>
-            <div className="smallcaps sticky top-0 z-10 hidden grid-cols-[1.1fr_1fr_1fr_auto_7.5rem] items-center gap-6 border-b border-border bg-card py-3 text-muted-foreground md:grid">
+            <div className="smallcaps sticky top-0 z-10 hidden grid-cols-[auto_1.1fr_1fr_1fr_auto_7.5rem] items-center gap-6 border-b border-border bg-card py-3 text-muted-foreground md:grid">
+              <span />
               <span>IP</span>
               <span>Nombre</span>
               <span>Puerto del agente</span>
@@ -343,8 +370,17 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
                 return (
                   <li
                     key={result.ip}
-                    className="grid gap-2 py-5 transition-colors duration-150 md:grid-cols-[1.1fr_1fr_1fr_auto_7.5rem] md:items-center md:gap-6"
+                    className="grid gap-2 py-5 transition-colors duration-150 md:grid-cols-[auto_1.1fr_1fr_1fr_auto_7.5rem] md:items-center md:gap-6"
                   >
+                    <span>
+                      {!serviceOk && (
+                        <RowCheckbox
+                          checked={seleccionados.has(result.ip)}
+                          onChange={() => alternarSeleccion(result.ip)}
+                          label={`Seleccionar ${result.ip} para instalar`}
+                        />
+                      )}
+                    </span>
                     <span className="font-display text-[1.35rem] font-bold leading-none text-foreground">
                       {result.ip}
                     </span>
@@ -373,8 +409,12 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
                           variant="ghost"
                           size="sm"
                           onClick={() => {
-                            setInstallTarget(result);
-                            setInstallDialogOpen(true);
+                            abrirInstalacion([
+                              {
+                                pcName: result.hostname || result.ip,
+                                ip: result.ip,
+                              },
+                            ]);
                           }}
                           className="h-7 px-2.5 text-xs"
                         >
@@ -391,18 +431,53 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
         )}
       </ScrollArea>
 
-      {installTarget && (
-        <RemoteInstallDialog
-          open={installDialogOpen}
-          onOpenChange={(open) => {
-            setInstallDialogOpen(open);
-            if (!open) setInstallTarget(null);
-          }}
-          targetIp={installTarget.ip}
-          targetHostname={installTarget.hostname}
-          onInstallComplete={onRefreshComputers}
-        />
+      {seleccionados.size > 0 && (
+        <div className="sticky bottom-4 z-10 mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 border border-border bg-card px-4 py-3 shadow-lg">
+          <span className="text-sm text-foreground">
+            <strong className="tabular-nums">{seleccionados.size}</strong>{" "}
+            <span className="text-muted-foreground">
+              equipo{seleccionados.size === 1 ? "" : "s"} seleccionado
+              {seleccionados.size === 1 ? "" : "s"}
+            </span>
+          </span>
+          <span className="ml-auto flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSeleccionados(new Set())}
+            >
+              Limpiar
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                abrirInstalacion(
+                  results
+                    .filter((r) => seleccionados.has(r.ip))
+                    .map((r) => ({
+                      pcName: r.hostname || r.ip,
+                      ip: r.ip,
+                    })),
+                );
+              }}
+            >
+              <Download className="mr-1.5 size-3.5" />
+              Instalar el agente
+            </Button>
+          </span>
+        </div>
       )}
+
+      <InstallTaskDialog
+        open={installDialogOpen}
+        onOpenChange={setInstallDialogOpen}
+        destinos={destinosDialog}
+        onCreada={() => {
+          setSeleccionados(new Set());
+          onRefreshComputers();
+          router.push("/admin/tasks");
+        }}
+      />
     </motion.section>
   );
 }

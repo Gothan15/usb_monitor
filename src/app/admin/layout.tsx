@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   KeyRound,
   LayoutDashboard,
+  ListTodo,
   MonitorSmartphone,
   Radar,
   ShieldCheck,
@@ -45,6 +46,8 @@ function resolveViewKey(pathname: string | null): ViewKey {
       return "whitelist";
     case "unlocks":
       return "unlocks";
+    case "tasks":
+      return "tasks";
     case "network":
       return "network";
     case "settings":
@@ -127,6 +130,13 @@ function AdminLayoutContent({
         description: "Bloqueos en curso, intentos y equipos sin agente",
         icon: KeyRound,
         href: viewKeyToHref.unlocks,
+      },
+      {
+        key: "tasks",
+        label: "Tareas",
+        description: "Instalaciones del agente en curso y su historial",
+        icon: ListTodo,
+        href: viewKeyToHref.tasks,
       },
       {
         key: "network",

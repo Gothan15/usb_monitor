@@ -39,6 +39,8 @@ interface UseSocketEventsOptions {
   onUserChange?: () => void;
   /** Callback fired when unlock-related state changes. */
   onUnlockChange?: () => void;
+  /** Callback fired when an install task changes. */
+  onInstallChange?: () => void;
   /** Disable the connection entirely. */
   enabled?: boolean;
 }
@@ -51,6 +53,7 @@ export function useSocketEvents({
   onWhitelistChange,
   onUserChange,
   onUnlockChange,
+  onInstallChange,
   enabled = true,
 }: UseSocketEventsOptions = {}) {
   const [statusInterno, setStatus] = useState<ConnectionStatus>("disconnected");
@@ -65,6 +68,7 @@ export function useSocketEvents({
   const onWhitelistChangeRef = useRef(onWhitelistChange);
   const onUserChangeRef = useRef(onUserChange);
   const onUnlockChangeRef = useRef(onUnlockChange);
+  const onInstallChangeRef = useRef(onInstallChange);
 
   useEffect(() => {
     onUSBEventRef.current = onUSBEvent;
@@ -81,6 +85,10 @@ export function useSocketEvents({
   useEffect(() => {
     onUnlockChangeRef.current = onUnlockChange;
   }, [onUnlockChange]);
+
+  useEffect(() => {
+    onInstallChangeRef.current = onInstallChange;
+  }, [onInstallChange]);
 
   useEffect(() => {
     if (!enabled) {
@@ -125,6 +133,10 @@ export function useSocketEvents({
 
     socket.on("unlock:change", () => {
       onUnlockChangeRef.current?.();
+    });
+
+    socket.on("install:change", () => {
+      onInstallChangeRef.current?.();
     });
 
     return () => {

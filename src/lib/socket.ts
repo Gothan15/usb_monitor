@@ -75,6 +75,15 @@ export function broadcastUnlockChange(): void {
   ioActual()?.emit("unlock:change");
 }
 
+/**
+ * Aviso de que una tarea de instalación cambió (un destino
+ * avanzó de estado o la tarea terminó). La vista de Tareas se
+ * refresca con este empuje en vez de sondear.
+ */
+export function broadcastInstallChange(): void {
+  ioActual()?.emit("install:change");
+}
+
 /* ── Setup ── */
 
 export const setupSocket = (io: Server) => {

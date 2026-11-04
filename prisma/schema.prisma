@@ -49,6 +49,7 @@ model Computer {
   users            User[] // Relación con usuarios
   pendingUnlocks   PendingUnlock[]
   agentCommands    AgentCommand[]
+  installTargets   InstallTaskTarget[]
 
   @@index([lastSeen])
   @@index([ipAddress])
@@ -192,4 +193,50 @@ model AgentCommand {
   @@index([computerId, status])
   @@index([createdAt])
   @@map("agent_commands")
+}
+
+// ─── Tareas de instalación (capa de Kaspersky, fase D) ────────
+// Una tarea instala el agente en varios equipos a la vez. Cada
+// destino va por su método: EMPUJE (SMB+RPC con el empujador,
+// equipos vírgenes) o AGENTE (orden «actualizar» del canal,
+// equipos que ya reportan). La contraseña de la cuenta vive SOLO
+// en la memoria del servidor mientras la tarea corre: aquí se
+// guarda el usuario, nunca la clave.
+model InstallTask {
+  id              String              @id @default(cuid())
+  status          String              @default("EN_CURSO") // EN_CURSO | COMPLETADA | CON_ERRORES
+  username        String // cuenta administradora de los destinos (sin su clave)
+  omitIfInstalled Boolean             @default(true)
+  maxAttempts     Int                 @default(2)
+  createdBy       String? // admin del panel que creó la tarea
+  createdAt       DateTime            @default(now())
+  finishedAt      DateTime?
+  targets         InstallTaskTarget[]
+
+  @@index([createdAt])
+  @@map("install_tasks")
+}
+
+model InstallTaskTarget {
+  id         String      @id @default(cuid())
+  taskId     String
+  task       InstallTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  computerId String?
+  computer   Computer?   @relation(fields: [computerId], references: [id], onDelete: SetNull)
+  pcName     String
+  ipAddress  String
+  method     String? // EMPUJE | AGENTE (se resuelve al ejecutarse)
+  status     String      @default("EN_COLA") // EN_COLA | COMPROBANDO | COPIANDO | INSTALANDO | ESPERANDO_SENAL | INSTALADO | OMITIDO | ERROR | INTERRUMPIDO
+  message    String?
+  detail     String?
+  checks     Json? // lista de requisitos del empujador (--comprobar)
+  attempts   Int         @default(0)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  startedAt  DateTime?
+  finishedAt DateTime?
+
+  @@index([taskId, status])
+  @@index([pcName])
+  @@map("install_task_targets")
 }

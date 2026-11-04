@@ -9,6 +9,7 @@ import nextPackage from "next/package.json" with { type: "json" };
 import { Server } from "socket.io";
 import { withContainer } from "@/lib/di/container";
 import { iniciarLatidoDepuracionAgente } from "@/lib/agentDebug";
+import { recuperarTareasInterrumpidas } from "@/lib/installExecutor";
 import { logError, logInfo, logWarn } from "@/lib/logger";
 import { setupSocket } from "@/lib/socket";
 
@@ -209,6 +210,11 @@ async function createCustomServer() {
 // Latido de depuración agente↔servidor: solo imprime si
 // USB_MONITOR_DEBUG=1; sin el modo activo no sale nada nuevo.
 iniciarLatidoDepuracionAgente();
+
+// Tareas de instalación que un reinicio dejó a medias: sus
+// destinos quedan marcados INTERRUMPIDO (la clave solo vive en
+// memoria; el reintento la pedirá otra vez).
+void recuperarTareasInterrumpidas();
 
 // Start the server
 createCustomServer();
