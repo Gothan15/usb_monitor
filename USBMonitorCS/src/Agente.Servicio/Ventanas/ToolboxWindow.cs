@@ -219,22 +219,22 @@ public sealed class ToolboxWindow : Window
         contenido.Children.Add(textoServicio);
 
         var fila = new UniformGrid { Columns = 3 };
-        fila.Children.Add(BotonServicio("Iniciar", async () => await ControlarServicioAsync("start")));
-        fila.Children.Add(BotonServicio("Detener", async () => await ControlarServicioAsync("stop")));
-        var reiniciar = BotonServicio("Reiniciar", async () => await ControlarServicioAsync("restart"));
+        fila.Children.Add(BotonServicio("Iniciar", "start", "Iniciando…"));
+        fila.Children.Add(BotonServicio("Detener", "stop", "Deteniendo…"));
+        var reiniciar = BotonServicio("Reiniciar", "restart", "Reiniciando…");
         reiniciar.Margin = new Thickness(0);
         fila.Children.Add(reiniciar);
         contenido.Children.Add(fila);
 
         var filaInstalacion = new UniformGrid { Columns = 2, Margin = new Thickness(0, 8, 0, 0) };
         var instalar = Tema.BotonPrimario("Instalar servicio");
-        instalar.Click += async (_, _) => await InstalarAsync();
+        instalar.Click += async (_, _) => await InstalarAsync(instalar);
         _botonesServicio.Add(instalar);
         filaInstalacion.Children.Add(instalar);
 
         var desinstalar = Tema.BotonSecundario("Desinstalar servicio");
         desinstalar.Margin = new Thickness(0);
-        desinstalar.Click += async (_, _) => await DesinstalarAsync();
+        desinstalar.Click += async (_, _) => await DesinstalarAsync(desinstalar);
         _botonesServicio.Add(desinstalar);
         filaInstalacion.Children.Add(desinstalar);
         contenido.Children.Add(filaInstalacion);
@@ -242,10 +242,10 @@ public sealed class ToolboxWindow : Window
         return Tema.Tarjeta(contenido, new Thickness(0, 0, 0, 12), new Thickness(12));
     }
 
-    private Button BotonServicio(string texto, Func<Task> accion)
+    private Button BotonServicio(string texto, string accion, string gerundio)
     {
         var boton = Tema.BotonSecundario(texto);
-        boton.Click += async (_, _) => await accion();
+        boton.Click += async (_, _) => await ControlarServicioAsync(accion, boton, gerundio);
         _botonesServicio.Add(boton);
         return boton;
     }
@@ -362,7 +362,7 @@ public sealed class ToolboxWindow : Window
 
         var rejilla = new UniformGrid { Columns = 2 };
         var restaurar = Tema.BotonDestructivo("Restaurar todo");
-        restaurar.Click += async (_, _) => await RestaurarTodoAsync();
+        restaurar.Click += async (_, _) => await RestaurarTodoAsync(restaurar);
         rejilla.Children.Add(restaurar);
 
         var emergencia = Tema.BotonSecundario("Página de emergencia");
@@ -483,6 +483,16 @@ public sealed class ToolboxWindow : Window
                 "detenido" => Tema.Rojo,
                 _ => Tema.Ambar
             };
+            // El punto respira solo con el servicio en marcha y
+            // conectado: es la señal de «vivo» de la franja.
+            if (foto.Servicio == "en ejecución" && foto.Conexion != "Sin conexión")
+            {
+                Tema.Pulsar(_puntoEstado);
+            }
+            else
+            {
+                Tema.DetenerPulso(_puntoEstado);
+            }
         }
         catch (Exception ex)
         {
@@ -611,7 +621,7 @@ public sealed class ToolboxWindow : Window
 
     // ── Servicio e instalación ──────────────────────────────────
 
-    private async Task ControlarServicioAsync(string accion)
+    private async Task ControlarServicioAsync(string accion, Button boton, string gerundio)
     {
         if (_operandoServicio)
         {
@@ -619,6 +629,7 @@ public sealed class ToolboxWindow : Window
         }
         _operandoServicio = true;
         FijarBotonesServicio(true);
+        object? previo = Tema.MarcarOcupado(boton, gerundio);
 
         try
         {
@@ -642,6 +653,7 @@ public sealed class ToolboxWindow : Window
         finally
         {
             _operandoServicio = false;
+            Tema.RestaurarBoton(boton, previo);
             FijarBotonesServicio(false);
             await RefrescarEstadoAsync();
         }
@@ -684,7 +696,7 @@ public sealed class ToolboxWindow : Window
         }
     }
 
-    private async Task InstalarAsync()
+    private async Task InstalarAsync(Button boton)
     {
         if (!ComprobarAdministrador("Instalar el servicio"))
         {
@@ -698,6 +710,8 @@ public sealed class ToolboxWindow : Window
             return;
         }
 
+        FijarBotonesServicio(true);
+        object? previo = Tema.MarcarOcupado(boton, "Instalando…");
         try
         {
             string resumen = await Task.Run(() => Instalador.Instalar());
@@ -708,10 +722,15 @@ public sealed class ToolboxWindow : Window
             Tema.AvisarError(ex.Message, "Instalar servicio");
             _log.Excepcion("No se pudo instalar el servicio desde la caja de herramientas", ex);
         }
+        finally
+        {
+            Tema.RestaurarBoton(boton, previo);
+            FijarBotonesServicio(false);
+        }
         await RefrescarEstadoAsync();
     }
 
-    private async Task DesinstalarAsync()
+    private async Task DesinstalarAsync(Button boton)
     {
         if (!ComprobarAdministrador("Desinstalar el servicio"))
         {
@@ -726,6 +745,8 @@ public sealed class ToolboxWindow : Window
             return;
         }
 
+        FijarBotonesServicio(true);
+        object? previo = Tema.MarcarOcupado(boton, "Desinstalando…");
         try
         {
             string resumen = await Task.Run(() => Instalador.Desinstalar());
@@ -735,6 +756,11 @@ public sealed class ToolboxWindow : Window
         {
             Tema.AvisarError(ex.Message, "Desinstalar servicio");
             _log.Excepcion("No se pudo desinstalar el servicio desde la caja de herramientas", ex);
+        }
+        finally
+        {
+            Tema.RestaurarBoton(boton, previo);
+            FijarBotonesServicio(false);
         }
         await RefrescarEstadoAsync();
     }
@@ -808,7 +834,7 @@ public sealed class ToolboxWindow : Window
         }
         _probando = true;
         _botonProbar.IsEnabled = false;
-        _botonProbar.Content = "Probando…";
+        object? previo = Tema.MarcarOcupado(_botonProbar, "Probando…");
 
         try
         {
@@ -840,7 +866,7 @@ public sealed class ToolboxWindow : Window
         {
             _probando = false;
             _botonProbar.IsEnabled = true;
-            _botonProbar.Content = "Probar conexión";
+            Tema.RestaurarBoton(_botonProbar, previo);
             await RefrescarEstadoAsync();
         }
     }
@@ -869,7 +895,7 @@ public sealed class ToolboxWindow : Window
 
     // ── Acciones ─────────────────────────────────────────────────
 
-    private async Task RestaurarTodoAsync()
+    private async Task RestaurarTodoAsync(Button boton)
     {
         if (Tema.Confirmar(
                 "Se reactivan los dispositivos que el agente deshabilitó y se " +
@@ -879,6 +905,8 @@ public sealed class ToolboxWindow : Window
             return;
         }
 
+        boton.IsEnabled = false;
+        object? previo = Tema.MarcarOcupado(boton, "Restaurando…");
         try
         {
             ResumenRestauracion resumen =
@@ -893,6 +921,11 @@ public sealed class ToolboxWindow : Window
         {
             Tema.AvisarError(ex.Message, "Restaurar todo");
             _log.Excepcion("No se pudo ejecutar la restauración desde la caja de herramientas", ex);
+        }
+        finally
+        {
+            Tema.RestaurarBoton(boton, previo);
+            boton.IsEnabled = true;
         }
         await RefrescarEstadoAsync();
     }

@@ -472,7 +472,7 @@ public sealed class CompaneroWindow : Window
         _boton.IsEnabled = false;
         _usuario.IsEnabled = false;
         _contrasena.IsEnabled = false;
-        _boton.Content = "Comprobando…";
+        object? previoBoton = Tema.MarcarOcupado(_boton, "Comprobando…");
         PintarMensaje("", Tema.TintaAtenuada);
 
         try
@@ -534,7 +534,7 @@ public sealed class CompaneroWindow : Window
             _boton.IsEnabled = true;
             _usuario.IsEnabled = true;
             _contrasena.IsEnabled = true;
-            _boton.Content = "Desbloquear";
+            Tema.RestaurarBoton(_boton, previoBoton);
             _contrasena.Clear();
             _contrasena.Focus();
         }
