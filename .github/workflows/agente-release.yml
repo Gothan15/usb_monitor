@@ -11,6 +11,11 @@
 # La compilación llama al MISMO Build-All.ps1 que se usa en local:
 # lo que sale de aquí es bit a bit el mismo procedimiento de
 # siempre, solo que en una máquina Windows de GitHub.
+#
+# El zip lleva también USBMonitorEmpujador.exe, el ayudante SMB
+# del panel: se compila en su propio paso, con las mismas banderas
+# de publicación autocontenida, para que una sola descarga surta
+# las carpetas «paquete-agente» y «empujador» del panel.
 name: Agente — compilar y publicar
 
 on:
@@ -41,6 +46,10 @@ jobs:
         shell: pwsh
         run: ./USBMonitorCS/compilacion/Build-All.ps1 -Clean
 
+      - name: Compilar el empujador del panel
+        shell: pwsh
+        run: dotnet publish USBMonitorCS/empujador/Empujador.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o USBMonitorCS/dist-empujador
+
       - name: Preparar el zip
         id: paquete
         shell: pwsh
@@ -51,7 +60,7 @@ jobs:
             "manual-$($env:GITHUB_SHA.Substring(0, 7))"
           }
           $zip = "USBMonitorService-$version.zip"
-          Compress-Archive -Path "USBMonitorCS/dist/USBMonitorService.exe", "USBMonitorCS/Install-Service.ps1" -DestinationPath $zip
+          Compress-Archive -Path "USBMonitorCS/dist/USBMonitorService.exe", "USBMonitorCS/Install-Service.ps1", "USBMonitorCS/dist-empujador/USBMonitorEmpujador.exe" -DestinationPath $zip
           "zip=$zip" >> $env:GITHUB_OUTPUT
           "version=$version" >> $env:GITHUB_OUTPUT
 
