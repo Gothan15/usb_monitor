@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useSyncExternalStore } from "react";
+import { useState, useEffect, useRef, useSyncExternalStore } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ import {
   KeyRound,
   ChevronDown,
   HelpCircle,
+  Package,
 } from "lucide-react";
 import {
   Collapsible,
@@ -38,6 +39,18 @@ interface ApiSettings {
   startupNetworkDelay: number;
 }
 
+interface EstadoPaquete {
+  version: string | null;
+  sha256: string | null;
+  agente: { presente: boolean; tamano: number };
+  empujador: { presente: boolean; tamano: number };
+}
+
+function formatoTamano(bytes: number): string {
+  if (!bytes) return "";
+  return `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`;
+}
+
 interface UnlockSettings {
   passwordUnlockEnabled: boolean;
   offlineEmergencyEnabled: boolean;
@@ -54,6 +67,7 @@ const SECCIONES = [
   { id: "api-y-automatizacion", nombre: "API y automatización" },
   { id: "desbloqueo-por-contrasena", nombre: "Desbloqueo por contraseña" },
   { id: "interfaz-y-navegacion", nombre: "Interfaz y Navegación" },
+  { id: "paquete-agente", nombre: "Paquete del agente" },
   { id: "preguntas-frecuentes", nombre: "Preguntas frecuentes" },
 ] as const;
 
@@ -143,6 +157,12 @@ const PREGUNTAS_FRECUENTES: { pregunta: string; respuesta: string }[] = [
       "De la carpeta local del panel, no de internet: en «paquete-agente», junto al panel, se deja el USBMonitorService.exe vigente (con su manifiesto.json), y el empujador — el USBMonitorEmpujador.exe de la carpeta «empujador» — lo copia por SMB a C:\\USBMonitor del destino. Nada se descarga de GitHub durante la instalación: GitHub es solo el origen donde se recoge el paquete, porque el zip de la Release del agente trae los dos ejecutables. La caja de herramientas no interviene: en el destino, un servicio temporal ejecuta el ejecutable copiado en su modo «instalar-remoto», sin ventanas ni asistente, con la dirección de este panel y un token recién provisionado para ese equipo; registra el servicio, crea la tarea de inicio del compañero y el servicio temporal se borra solo. Las actualizaciones de agentes ya instalados parten del mismo sitio: descargan el paquete de este panel y verifican su SHA-256 antes de sustituirse.",
   },
   {
+    pregunta:
+      "¿Cómo actualizo el paquete del agente que el panel sirve a los demás equipos?",
+    respuesta:
+      "Desde Ajustes → Paquete del agente: sube el zip de la Release del agente (desde la v1.0.11 trae el ejecutable y el empujador) y el panel lo descomprime y coloca cada pieza en su carpeta — el ejecutable en «paquete-agente» y el empujador en «empujador» — y escribe el manifiesto con la versión, que se deduce del nombre del zip o se escribe en el campo de versión. Ese paquete es el que los agentes ya instalados descargan al actualizarse (verificando su SHA-256) y el que el empujador copia a los equipos nuevos; y la versión del manifiesto es la que Equipos compara con la de cada equipo para enseñar el sello de «Actualización disponible».",
+  },
+  {
     pregunta: "¿Cómo funciona una tarea de instalación?",
     respuesta:
       "Una tarea es una instalación (o actualización) lanzada contra uno o varios equipos a la vez: la creas desde el escáner de red o desde Equipos, eligiendo los destinos y dando una vez el usuario y la contraseña de administrador de esos equipos. Para cada destino, el panel elige solo el método: si el equipo ya tiene un agente que da señales, se actualiza por su propio canal, sin credenciales; si no, va por empujón SMB. Con «omitir si ya está instalado» activado, un destino que ya corre el agente vigente se marca como omitido y no se toca. El panel trabaja con dos destinos a la vez, reintenta los fallos que pueden salir bien a la segunda (una sesión o un permiso denegado no se reintentan: no van a cambiar solos) y la vista de Tareas muestra cada estado en directo. Y un equipo solo se da por instalado cuando su agente da la primera señal al panel: que la copia termine no basta.",
@@ -213,6 +233,15 @@ export function SettingsTab() {
   const [apiInicial, setApiInicial] = useState<number | null>(null);
   const [unlockInicial, setUnlockInicial] = useState<UnlockSettings | null>(null);
 
+  // Paquete del agente: estado leído del panel y subida del zip.
+  const [paquete, setPaquete] = useState<EstadoPaquete | null>(null);
+  const [archivoPaquete, setArchivoPaquete] = useState<File | null>(null);
+  const [versionPaquete, setVersionPaquete] = useState("");
+  const [subiendoPaquete, setSubiendoPaquete] = useState(false);
+  const [mensajePaquete, setMensajePaquete] = useState<string | null>(null);
+  const [errorPaquete, setErrorPaquete] = useState<string | null>(null);
+  const inputPaqueteRef = useRef<HTMLInputElement>(null);
+
   const disposicion = useLayoutStore((state) => state.disposicion);
   const setDisposicion = useLayoutStore((state) => state.setDisposicion);
   const { isLiveSyncEnabled, toggleLiveSync } = useLiveSyncStore();
@@ -248,6 +277,64 @@ export function SettingsTab() {
       })
       .catch((err) => console.error("Failed to load settings", err));
   }, []);
+
+  useEffect(() => {
+    fetch("/api/admin/agent-package")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.ok) {
+          setPaquete({
+            version: data.version ?? null,
+            sha256: data.sha256 ?? null,
+            agente: data.agente ?? { presente: false, tamano: 0 },
+            empujador: data.empujador ?? { presente: false, tamano: 0 },
+          });
+        }
+      })
+      .catch((err) => console.error("Failed to load agent package", err));
+  }, []);
+
+  const subirPaquete = async () => {
+    if (!archivoPaquete) {
+      setErrorPaquete("Elige primero el zip de la Release del agente.");
+      setMensajePaquete(null);
+      return;
+    }
+    setSubiendoPaquete(true);
+    setErrorPaquete(null);
+    setMensajePaquete(null);
+    try {
+      const form = new FormData();
+      form.append("paquete", archivoPaquete);
+      if (versionPaquete.trim()) {
+        form.append("version", versionPaquete.trim());
+      }
+      const res = await fetch("/api/admin/agent-package", {
+        method: "POST",
+        body: form,
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setErrorPaquete(data?.error || "No se pudo colocar el paquete.");
+        return;
+      }
+      setPaquete(data.estado);
+      const avisos: string[] = Array.isArray(data.avisos) ? data.avisos : [];
+      setMensajePaquete(
+        [
+          `Paquete colocado: agente v${data.estado.version ?? "sin versión"}.`,
+          ...avisos,
+        ].join(" "),
+      );
+      setArchivoPaquete(null);
+      setVersionPaquete("");
+      if (inputPaqueteRef.current) inputPaqueteRef.current.value = "";
+    } catch {
+      setErrorPaquete("No se pudo conectar con el servidor.");
+    } finally {
+      setSubiendoPaquete(false);
+    }
+  };
 
   const saveSettings = async (
     sectionLabel: string,
@@ -610,6 +697,105 @@ export function SettingsTab() {
               Se aplica al momento y se recuerda en este navegador. En
               pantallas pequeñas se usa siempre la cabecera.
             </p>
+          </div>
+        </section>
+
+        <section
+          id="paquete-agente"
+          className="scroll-mt-24 border-t border-border py-12"
+        >
+          <h2 className="font-display flex items-center gap-2.5 text-[1.4rem] font-bold leading-tight text-foreground">
+            <Package className="size-5 shrink-0 text-[var(--acero)]" />
+            Paquete del agente
+          </h2>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+            Sube el zip de la Release del agente: trae el ejecutable y
+            el empujador. El panel los coloca en sus carpetas, listos
+            para las actualizaciones y las instalaciones en remoto, y
+            escribe el manifiesto con la versión.
+          </p>
+
+          <div className="mt-8 max-w-3xl border border-border/60 bg-muted/20 px-4 py-4">
+            <p className="text-sm font-semibold text-foreground">
+              {paquete?.version
+                ? `Paquete colocado: agente v${paquete.version}`
+                : "Sin paquete colocado"}
+            </p>
+            <dl className="mt-3 space-y-1.5 text-sm leading-relaxed text-muted-foreground">
+              <div className="flex flex-wrap gap-x-2">
+                <dt className="font-medium text-foreground">
+                  Ejecutable del agente:
+                </dt>
+                <dd>
+                  {paquete?.agente.presente
+                    ? `colocado (${formatoTamano(paquete.agente.tamano)})`
+                    : "no está"}
+                </dd>
+              </div>
+              <div className="flex flex-wrap gap-x-2">
+                <dt className="font-medium text-foreground">Empujador:</dt>
+                <dd>
+                  {paquete?.empujador.presente
+                    ? `colocado (${formatoTamano(paquete.empujador.tamano)})`
+                    : "no está"}
+                </dd>
+              </div>
+            </dl>
+            {paquete && !paquete.empujador.presente && (
+              <p className="mt-3 max-w-xl text-xs leading-relaxed text-muted-foreground">
+                Sin el empujador colocado, las tareas de instalación no
+                pueden llegar a los equipos que aún no tienen agente.
+              </p>
+            )}
+          </div>
+
+          <div className="mt-8 max-w-3xl">
+            <Label
+              htmlFor="paquete-zip"
+              className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground"
+            >
+              Zip de la Release del agente
+            </Label>
+            <Input
+              id="paquete-zip"
+              ref={inputPaqueteRef}
+              type="file"
+              accept=".zip"
+              className="mt-3"
+              onChange={(e) => {
+                setArchivoPaquete(e.target.files?.[0] ?? null);
+                setErrorPaquete(null);
+                setMensajePaquete(null);
+              }}
+            />
+            <Label
+              htmlFor="paquete-version"
+              className="mt-6 block text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground"
+            >
+              Versión
+            </Label>
+            <Input
+              id="paquete-version"
+              value={versionPaquete}
+              onChange={(e) => setVersionPaquete(e.target.value)}
+              placeholder="Versión (se deduce del nombre del zip)"
+              className="mt-3 max-w-xs"
+            />
+            <div className="mt-6">
+              <Button onClick={subirPaquete} disabled={subiendoPaquete}>
+                {subiendoPaquete ? "Subiendo y colocando…" : "Subir y colocar"}
+              </Button>
+            </div>
+            {mensajePaquete && (
+              <p className="mt-4 max-w-xl text-sm leading-relaxed text-emerald-700 dark:text-emerald-500">
+                {mensajePaquete}
+              </p>
+            )}
+            {errorPaquete && (
+              <p className="mt-4 max-w-xl text-sm leading-relaxed text-red-700 dark:text-red-500">
+                {errorPaquete}
+              </p>
+            )}
           </div>
         </section>
 
