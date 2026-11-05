@@ -25,6 +25,24 @@ public static class Pnp
     private const uint CmLocateDevnodeNormal = 0x00000000;
     private const uint CmLocateDevnodePhantom = 0x00000001;
     private const int CrSuccess = 0;
+    private const int CrNoSuchDevnode = 13;
+    private const int CrRemoveVetoed = 23;
+    private const int CrApmVetoed = 24;
+
+    /// <summary>
+    /// Nombre legible de un código CONFIGRET para el registro:
+    /// un «-> 23» a secas no dice nada; «-> 23 (CR_REMOVE_VETOED)»
+    /// cuenta que alguien vetó la operación (típico: el volumen
+    /// montado con ficheros abiertos, recién conectado).
+    /// </summary>
+    private static string NombreResultado(int resultado) => resultado switch
+    {
+        CrSuccess => "CR_SUCCESS",
+        CrNoSuchDevnode => "CR_NO_SUCH_DEVNODE",
+        CrRemoveVetoed => "CR_REMOVE_VETOED",
+        CrApmVetoed => "CR_APM_VETOED",
+        _ => "sin nombre conocido",
+    };
 
     [DllImport("cfgmgr32.dll", CharSet = CharSet.Unicode, EntryPoint = "CM_Locate_DevNodeW")]
     private static extern int CM_Locate_DevNodeW(out uint devInst, string deviceId, uint flags);
@@ -99,7 +117,7 @@ public static class Pnp
         if (EstaDeshabilitado(instancia) == true) return true;
         var resultado = CM_Disable_DevNode(devInst.Value, 0);
         if (resultado != CrSuccess)
-            Log.Advertencia($"CM_Disable_DevNode({instancia}) -> {resultado}");
+            Log.Advertencia($"CM_Disable_DevNode({instancia}) -> {resultado} ({NombreResultado(resultado)})");
         return EsperarEstado(instancia, deshabilitado: true, segundos);
     }
 
@@ -155,7 +173,7 @@ public static class Pnp
         if (EstaDeshabilitado(instancia) == false) return true;
         var resultado = CM_Enable_DevNode(devInst.Value, 0);
         if (resultado != CrSuccess)
-            Log.Advertencia($"CM_Enable_DevNode({instancia}) -> {resultado}");
+            Log.Advertencia($"CM_Enable_DevNode({instancia}) -> {resultado} ({NombreResultado(resultado)})");
         return EsperarEstado(instancia, deshabilitado: false);
     }
 

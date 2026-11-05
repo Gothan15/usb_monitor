@@ -175,10 +175,12 @@ public sealed class CompaneroWindow : Window
     /// Vigilante de pending_local.json: el servicio lo escribe en
     /// cuanto bloquea un dispositivo (temporal + renombrado), y la
     /// ventana tiene que salir en ese instante, no en el siguiente
-    /// sondeo. Cualquier toque al archivo o a su temporal dispara
-    /// una relectura; RevisarArchivoAsync compara la firma y sale
-    /// enseguida si nada cambió de verdad. Si el vigilante no puede
-    /// crearse, queda el sondeo de 1 s.
+    /// sondeo. Solo se vigila el archivo REAL: vigilar también el
+    /// temporal despertaba la relectura a mitad del reemplazo y
+    /// la lectura abierta le denegaba la escritura al servicio.
+    /// RevisarArchivoAsync compara la firma y sale enseguida si
+    /// nada cambió de verdad. Si el vigilante no puede crearse,
+    /// queda el sondeo de 1 s.
     /// </summary>
     private void IniciarVigilanteArchivo()
     {
@@ -186,7 +188,7 @@ public sealed class CompaneroWindow : Window
         {
             _vigilante = new FileSystemWatcher(Registro.DirectorioDatos)
             {
-                Filter = "pending_local.json*",
+                Filter = "pending_local.json",
                 NotifyFilter = NotifyFilters.LastWrite |
                                NotifyFilters.FileName |
                                NotifyFilters.Size,
@@ -305,6 +307,22 @@ public sealed class CompaneroWindow : Window
         _textoDueno.Foreground = Tema.Ambar;
     }
 
+    /// <summary>
+    /// Lectura que no bloquea al escritor: el servicio reemplaza
+    /// el archivo por renombrado y Windows deniega el reemplazo
+    /// si un lector lo tiene abierto sin FileShare.Delete. Con
+    /// este modo de apertura, la lectura del compañero nunca
+    /// puede tumbar la escritura del servicio.
+    /// </summary>
+    private static string LeerArchivoCompartido(string ruta)
+    {
+        if (!File.Exists(ruta)) return string.Empty;
+        using var flujo = new FileStream(ruta, FileMode.Open, FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete);
+        using var lector = new StreamReader(flujo);
+        return lector.ReadToEnd();
+    }
+
     private async Task RevisarArchivoAsync()
     {
         if (_leyendo || _cerrando)
@@ -316,8 +334,7 @@ public sealed class CompaneroWindow : Window
         try
         {
             string ruta = DatosVentanas.RutaBloqueosLocales;
-            string contenido = await Task.Run(() =>
-                File.Exists(ruta) ? File.ReadAllText(ruta) : string.Empty);
+            string contenido = await Task.Run(() => LeerArchivoCompartido(ruta));
 
             if (contenido == _firmaArchivo)
             {
