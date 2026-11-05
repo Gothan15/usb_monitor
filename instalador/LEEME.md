@@ -65,6 +65,36 @@ En el PC de desarrollo (Windows), desde esta carpeta:
 
 El script: instala WiX v5 si falta, descarga las versiones fijadas de `versiones.wxi` (Node portable, binarios de PostgreSQL, WinSW; la primera vez imprime sus SHA-256 para que puedas fijarlos en `$HashEsperado`), compila el panel (`npm ci`, `prisma generate`, `npm run build`, poda de devDependencies), prepara el árbol en `salida-instalador\preparado\` — **excluyendo siempre el `.env` local** — y compila `Panel.wxs` con la extensión de interfaz, en español. Resultado: `salida-instalador\USBMonitor-Panel-<versión>.msi` con su SHA-256.
 
+## Dos variantes: ligero y completo
+
+Cada Release del panel lleva **dos** instaladores de la misma versión:
+
+| Variante | Archivo | Qué lleva |
+|---|---|---|
+| Ligero | `USBMonitor-Panel-<versión>.msi` | El panel, como siempre. El paquete del agente se sube después desde Ajustes (sección «Paquete del agente») o se coloca a mano en `paquete-agente\` y `empujador\`. |
+| Completo | `USBMonitor-Panel-<versión>-completo.msi` | Lo mismo **más el paquete del agente dentro**: `USBMonitorService.exe` y `manifiesto.json` en `paquete-agente\`, y `USBMonitorEmpujador.exe` en `empujador\`, dentro de la carpeta de instalación. El panel nace listo para actualizar agentes e instalar en remoto, sin subir nada. |
+
+Son el mismo producto (mismo `UpgradeCode`): instalar uno sobre el otro es una actualización normal, y ambos comparten la carpeta de datos — cambiar de variante no toca la base de datos ni la configuración.
+
+### De dónde sale el paquete que va dentro
+
+El contenido de `-PaqueteDir` es el de la **Release vigente del agente**: su zip trae los dos ejecutables (`USBMonitorService.exe` y `USBMonitorEmpujador.exe`). Solo falta el manifiesto, que se genera con la versión de esa Release:
+
+```powershell
+Expand-Archive USBMonitorService-agente-v1.0.11.zip -DestinationPath paquete-1.0.11
+'{ "version": "1.0.11" }' | Set-Content paquete-1.0.11\manifiesto.json -Encoding utf8
+```
+
+### Construir la variante completo a mano
+
+```powershell
+.\Construir-Instalador.ps1 -Version 1.3.0 -Completo -PaqueteDir D:\paquete-1.0.11
+```
+
+Sin `-Completo`, el comportamiento y el nombre de salida son los de siempre. Con `-Completo`, el script comprueba el paquete **antes** de descargar o compilar nada y se detiene con el motivo claro si falta `-PaqueteDir` o alguno de los tres archivos.
+
+En GitHub no hay que preparar nada de esto: el workflow de la Release del panel descarga él solo la Release vigente del agente, genera el manifiesto, construye las dos variantes con este mismo script y publica **ambos .msi en la misma Release**.
+
 ## También sale por GitHub Actions (Releases)
 
 Igual que el agente: el workflow `.github/workflows/panel-instalador.yml` corre **el mismo** `Construir-Instalador.ps1` en una máquina Windows de GitHub.
