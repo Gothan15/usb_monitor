@@ -159,11 +159,21 @@ public sealed class MotorBloqueo
                 return reg;
             }
 
-            // Capa 2: candado de volumen sobre TODAS las letras.
-            // Un disco duro suele traer varias particiones: candar
-            // solo la primera dejaba las demás abiertas con el
-            // dispositivo «bloqueado». Si alguna letra se resiste,
-            // se suelta lo tomado y se pasa a la capa degradada.
+            // Capa 2, que además PREPARA otro intento de la 1:
+            // cuando la cadena PnP no cede, el veto suele venir del
+            // volumen montado (CM_Disable_DevNode devuelve 23,
+            // CR_REMOVE_VETOED, con el sistema de archivos y los
+            // ficheros abiertos de una unidad recién conectada).
+            // Se toman los candados de volumen — sobre TODAS las
+            // letras: candar solo la primera dejaba las demás
+            // particiones abiertas con el dispositivo «bloqueado» —
+            // y con el volumen ya bloqueado y desmontado se
+            // reintenta la cadena PnP una vez, con esperas cortas:
+            // si ahora cede, el bloqueo queda por la capa fuerte y
+            // los candados se sueltan; si no cede, los candados ya
+            // tomados SON la capa 2, sin repetir trabajo. Si alguna
+            // letra se resiste al candado, se suelta lo tomado y se
+            // pasa a la capa degradada, como antes.
             if (disp.Letras.Count > 0)
             {
                 var tomadas = new List<string>();
@@ -175,6 +185,19 @@ public sealed class MotorBloqueo
                 }
                 if (todas)
                 {
+                    var nodoTrasCandado = Pnp.DeshabilitarConCadena(
+                        disp.InstanciaPnP, segundosPropio: 2, segundosAncestro: 3);
+                    if (nodoTrasCandado is not null)
+                    {
+                        foreach (var l in tomadas) _candados.Soltar(l);
+                        _diario.AnotarDeshabilitado(nodoTrasCandado, disp.Serial);
+                        reg.NodoBloqueado = nodoTrasCandado;
+                        reg.Capa = CapaBloqueo.Pnp;
+                        reg.Degradado = false;
+                        reg.Estado = EstadoBloqueo.Bloqueado;
+                        Log.Info($"Bloqueado por PnP tras candar el volumen: {disp.Nombre} ({disp.Serial})");
+                        return reg;
+                    }
                     reg.Capa = CapaBloqueo.Volumen;
                     reg.Degradado = false;
                     reg.Estado = EstadoBloqueo.Bloqueado;

@@ -348,12 +348,34 @@ public sealed class AgenteWorker : BackgroundService
 
     private static void EscribirPendientesLocales(List<object> pendientes)
     {
+        // Escritura CON REINTENTOS: el compañero lee este archivo
+        // (vigilante + sondeo) y si su lectura coincide con el
+        // renombrado, Windows deniega el reemplazo («Access to
+        // the path is denied»: pasó dos veces en la prueba real
+        // del 2026-11-04, una justo al bloquear una memoria, y el
+        // bloqueo se quedaba sin ventana). La lectura es breve;
+        // reintentar unos pocos cientos de ms basta para colar la
+        // escritura sin perder el aviso.
         try
         {
-            Directory.CreateDirectory(Registro.DirectorioDatos);
-            var temporal = ArchivoPendientes + ".tmp";
-            File.WriteAllText(temporal, JsonSerializer.Serialize(pendientes));
-            File.Move(temporal, ArchivoPendientes, overwrite: true);
+            Exception? ultimo = null;
+            for (int intento = 0; intento < 6; intento++)
+            {
+                try
+                {
+                    Directory.CreateDirectory(Registro.DirectorioDatos);
+                    var temporal = ArchivoPendientes + ".tmp";
+                    File.WriteAllText(temporal, JsonSerializer.Serialize(pendientes));
+                    File.Move(temporal, ArchivoPendientes, overwrite: true);
+                    return;
+                }
+                catch (Exception exc) when (exc is IOException or UnauthorizedAccessException)
+                {
+                    ultimo = exc;
+                    Thread.Sleep(120);
+                }
+            }
+            Log.Error($"pending_local.json no se pudo escribir: {ultimo?.Message}");
         }
         catch (Exception exc)
         {

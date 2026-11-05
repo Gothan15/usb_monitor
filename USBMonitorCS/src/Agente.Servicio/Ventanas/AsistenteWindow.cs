@@ -66,7 +66,6 @@ public sealed class AsistenteWindow : Window
         MinHeight = 560;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Tema.AplicarVentana(this);
-        Tema.AnimarEntrada(this);
 
         var raiz = new StackPanel { Margin = new Thickness(18, 6, 18, 18) };
         raiz.Children.Add(Tema.TitularVentana(
