@@ -10,6 +10,12 @@
   <?ifndef PanelVersion ?>
     <?define PanelVersion  = "1.0.0" ?>
   <?endif ?>
+  <!-- Variante «completo»: 1 = el .msi lleva dentro el paquete del
+       agente (paquete-agente\ y empujador\); 0 = instalador ligero
+       de siempre. Construir-Instalador.ps1 lo pasa con -Completo. -->
+  <?ifndef IncluirPaquete ?>
+    <?define IncluirPaquete = "0" ?>
+  <?endif ?>
   <?define PgVersion     = "17.5" ?>
   <?define NodeVersion   = "22.14.0" ?>
   <?define WinSwVersion  = "2.12.0" ?>

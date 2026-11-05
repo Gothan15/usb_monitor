@@ -12,6 +12,10 @@
       arranque automático y dependencia del servicio de la BD.
     · (Opcional, marcado por defecto) Regla de cortafuegos para
       abrir el puerto del panel solo a la subred local.
+    · (Solo la variante «completo», IncluirPaquete=1) El paquete
+      del agente — su ejecutable y manifiesto en paquete-agente\ y
+      el empujador en empujador\ — para que el panel nazca listo
+      para actualizar agentes e instalar en remoto.
 
   El asistente es la interfaz estándar de WixUI (la de los
   instaladores clásicos de Windows), en español, con una página
@@ -90,6 +94,13 @@
         <Directory Id="PGDIR" Name="pgsql" />
         <Directory Id="SERVDIR" Name="servicio" />
         <Directory Id="SCRIPTSDIR" Name="scripts" />
+        <!-- Solo la variante «completo»: con IncluirPaquete=0 ni
+             siquiera se declaran, y el instalador ligero no crea
+             estas carpetas. -->
+        <?if $(var.IncluirPaquete) = 1 ?>
+        <Directory Id="PAQUETEDIR" Name="paquete-agente" />
+        <Directory Id="EMPUJADORDIR" Name="empujador" />
+        <?endif ?>
       </Directory>
     </StandardDirectory>
     <StandardDirectory Id="CommonAppDataFolder">
@@ -129,6 +140,28 @@
     <ComponentGroup Id="CG_Raiz" Directory="INSTALLFOLDER">
       <Files Include="$(var.Preparado)\raiz\**" />
     </ComponentGroup>
+
+    <!-- ============ Paquete del agente (solo variante «completo») ============
+         Los tres archivos que el panel sirve para actualizar a los
+         agentes e instalar en remoto. Van como componentes sueltos
+         (no cosechados): son un conjunto cerrado y conocido, y así
+         el instalador ligero no los contiene ni por accidente.
+         Construir-Instalador.ps1 -Completo los deja en el árbol
+         preparado y define IncluirPaquete=1; sin la define, este
+         bloque entero desaparece al preprocesar. El Name de cada
+         File va explícito (es el nombre con el que se instala):
+         sin él, el compilador lo deriva del Source. -->
+    <?if $(var.IncluirPaquete) = 1 ?>
+    <Component Id="Comp_PaqueteAgente" Directory="PAQUETEDIR" Guid="FC2D7205-186C-4E15-9C34-02864BD8D969">
+      <File Id="Fil_PaqueteAgenteExe" Name="USBMonitorService.exe" Source="$(var.Preparado)\paquete-agente\USBMonitorService.exe" KeyPath="yes" />
+    </Component>
+    <Component Id="Comp_PaqueteManifiesto" Directory="PAQUETEDIR" Guid="76CD9B8C-1B8D-4EB5-8A86-A452ECF27621">
+      <File Id="Fil_PaqueteManifiesto" Name="manifiesto.json" Source="$(var.Preparado)\paquete-agente\manifiesto.json" KeyPath="yes" />
+    </Component>
+    <Component Id="Comp_Empujador" Directory="EMPUJADORDIR" Guid="C973E21F-DBE7-422A-856E-A1B04CDD0C82">
+      <File Id="Fil_EmpujadorExe" Name="USBMonitorEmpujador.exe" Source="$(var.Preparado)\empujador\USBMonitorEmpujador.exe" KeyPath="yes" />
+    </Component>
+    <?endif ?>
 
     <!-- Carpeta de datos: permanente, nunca se borra al desinstalar. -->
     <Component Id="Comp_Datos" Directory="PGDATADIR" Guid="1884E3A8-AD52-4C83-9BF7-56E1A842AB9D" Permanent="yes">
@@ -177,6 +210,11 @@
       <ComponentGroupRef Id="CG_Servicio" />
       <ComponentGroupRef Id="CG_Scripts" />
       <ComponentGroupRef Id="CG_Raiz" />
+      <?if $(var.IncluirPaquete) = 1 ?>
+      <ComponentRef Id="Comp_PaqueteAgente" />
+      <ComponentRef Id="Comp_PaqueteManifiesto" />
+      <ComponentRef Id="Comp_Empujador" />
+      <?endif ?>
       <ComponentRef Id="Comp_Datos" />
       <ComponentRef Id="Comp_RegistrosDir" />
       <ComponentRef Id="Comp_Registro" />

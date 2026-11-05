@@ -14,6 +14,12 @@
 # Uso:
 #   .\Construir-Instalador.ps1                → versión 1.0.0
 #   .\Construir-Instalador.ps1 -Version 1.1.0
+#   .\Construir-Instalador.ps1 -Version 1.1.0 -Completo -PaqueteDir D:\paquete-agente-1.0.11
+#       → variante «completo»: el .msi lleva dentro el paquete del
+#         agente (su ejecutable + manifiesto y el empujador) y sale
+#         como USBMonitor-Panel-<versión>-completo.msi. -PaqueteDir
+#         es la carpeta con USBMonitorService.exe,
+#         USBMonitorEmpujador.exe y manifiesto.json (ver LEEME.md).
 #
 # Las versiones de PostgreSQL/Node/WinSW se leen de versiones.wxi
 # (única fuente). Si en $HashEsperado fijas los SHA-256, cada
@@ -21,7 +27,9 @@
 # que obtuvo para que puedas fijarlos.
 # ================================================================
 param(
-    [string]$Version = '1.0.0'
+    [string]$Version = '1.0.0',
+    [switch]$Completo,
+    [string]$PaqueteDir = ''
 )
 $ErrorActionPreference = 'Stop'
 # Que un comando nativo fallido (npm, npx) detenga el script: sin esto, una
@@ -39,6 +47,27 @@ $raiz = Split-Path $inst -Parent
 $salida = Join-Path $raiz 'salida-instalador'
 $prep = Join-Path $salida 'preparado'
 $descargas = Join-Path $salida 'descargas'
+
+# Variante «completo»: el paquete del agente se comprueba ANTES de
+# descargar nada y de compilar el panel. Si falta -PaqueteDir o
+# alguno de sus tres archivos, la construcción muere aquí con el
+# motivo claro, no a mitad del proceso con un error de WiX críptico
+# por un archivo que no está en el árbol preparado.
+$archivosPaquete = @('USBMonitorService.exe', 'USBMonitorEmpujador.exe', 'manifiesto.json')
+if ($Completo) {
+    if (-not $PaqueteDir) {
+        throw 'La variante -Completo necesita -PaqueteDir: la carpeta con el paquete del agente (USBMonitorService.exe, USBMonitorEmpujador.exe y manifiesto.json).'
+    }
+    if (-not (Test-Path -LiteralPath $PaqueteDir -PathType Container)) {
+        throw "No existe la carpeta del paquete del agente: $PaqueteDir"
+    }
+    foreach ($archivo in $archivosPaquete) {
+        if (-not (Test-Path -LiteralPath (Join-Path $PaqueteDir $archivo) -PathType Leaf)) {
+            throw "Falta $archivo en la carpeta del paquete del agente: $PaqueteDir"
+        }
+    }
+    Write-Host 'Variante COMPLETO: el paquete del agente viajará dentro del .msi.'
+}
 
 # Versiones fijadas (desde versiones.wxi).
 $wxi = Get-Content -LiteralPath (Join-Path $inst 'versiones.wxi') -Raw
@@ -157,17 +186,40 @@ Copy-Item $exeWinSw (Join-Path $prep 'servicio\USBMonitorPanel.exe')
 Copy-Item (Join-Path $inst 'servicio\USBMonitorPanel.xml') (Join-Path $prep 'servicio\')
 Copy-Item (Join-Path $inst 'scripts\*') (Join-Path $prep 'scripts\')
 Copy-Item (Join-Path $inst 'AbrirPanel.cmd') (Join-Path $prep 'raiz\')
+# Variante «completo»: el paquete del agente, tal cual llegó en
+# -PaqueteDir, a sus dos carpetas del árbol. Panel.wxs lo recoge de
+# ahí con componentes propios, solo cuando IncluirPaquete=1.
+if ($Completo) {
+    foreach ($carpeta in @('paquete-agente', 'empujador')) {
+        $destino = Join-Path $prep $carpeta
+        if (Test-Path $destino) { Remove-Item $destino -Recurse -Force }
+        New-Item -ItemType Directory -Force -Path $destino | Out-Null
+    }
+    Copy-Item (Join-Path $PaqueteDir 'USBMonitorService.exe') (Join-Path $prep 'paquete-agente\')
+    Copy-Item (Join-Path $PaqueteDir 'manifiesto.json')       (Join-Path $prep 'paquete-agente\')
+    Copy-Item (Join-Path $PaqueteDir 'USBMonitorEmpujador.exe') (Join-Path $prep 'empujador\')
+}
 
 Write-Host '== 5/5 Construir el .msi =='
-$msi = Join-Path $salida "USBMonitor-Panel-$Version.msi"
+# La variante completo se distingue en el nombre del archivo: en la
+# Release conviven los dos .msi de la misma versión del panel y
+# nadie debe tener que abrirlos para saber cuál es cuál.
+$nombreMsi = if ($Completo) { "USBMonitor-Panel-$Version-completo.msi" } else { "USBMonitor-Panel-$Version.msi" }
+$msi = Join-Path $salida $nombreMsi
 Push-Location $inst
 try {
     # -sw1163: el aviso de que VBScript está en retirada se acepta a
     # propósito: las dos acciones en VBScript llevan Return="ignore" y su
     # fallo degrada sin romper la instalación (ver «Problemas previstos»
     # del LEEME). Cualquier otro aviso sí debe verse.
-    wix build Panel.wxs -ext WixToolset.UI.wixext -culture es-es -arch x64 `
-        -d "Preparado=$prep" -d "PanelVersion=$Version" -sw1163 -o $msi
+    # La variante completo suma -d IncluirPaquete=1: es la define que
+    # enciende en Panel.wxs los directorios y componentes del paquete.
+    $argsWix = @('build', 'Panel.wxs', '-ext', 'WixToolset.UI.wixext',
+                 '-culture', 'es-es', '-arch', 'x64',
+                 '-d', "Preparado=$prep", '-d', "PanelVersion=$Version",
+                 '-sw1163', '-o', $msi)
+    if ($Completo) { $argsWix += @('-d', 'IncluirPaquete=1') }
+    wix @argsWix
     if ($LASTEXITCODE -ne 0) { throw 'wix build falló' }
 } finally { Pop-Location }
 
