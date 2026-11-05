@@ -461,6 +461,33 @@ public sealed class ClientePanel : IDisposable
         return datos is { Ok: true } ? datos.Id : null;
     }
 
+    /// <summary>
+    /// Sube la foto del momento de un bloqueo (POST
+    /// /api/usb-event/evidence). True solo si el panel la guardó:
+    /// ante cualquier fallo (sin red, bloqueo aún no registrado),
+    /// el paquete se queda en disco y se reintenta en otro ciclo.
+    /// </summary>
+    public async Task<bool> SubirEvidenciaAsync(
+        string pendingUnlockId, PaqueteEvidencia paquete)
+    {
+        var respuesta = await PeticionAsync("POST", "/api/usb-event/evidence",
+            new SolicitudEvidenciaPanel
+            {
+                PendingUnlockId = pendingUnlockId,
+                SerialNumber = paquete.Serial,
+                CapturedAt = paquete.CapturedAt,
+                ForegroundProcess = paquete.ForegroundProcess,
+                ForegroundTitle = paquete.ForegroundTitle,
+                Processes = paquete.Processes,
+                BrowserTabs = paquete.BrowserTabs,
+                TabsComplete = paquete.TabsComplete,
+                Nota = paquete.Nota,
+                ImagenBase64 = paquete.ImagenBase64,
+            }).ConfigureAwait(false);
+        return respuesta is { Estado: 200 } &&
+               IntentarJson<RespuestaBasica>(respuesta) is { Ok: true };
+    }
+
     public async Task<bool> CerrarBloqueoAsync(string? letra, string? serial)
     {
         var respuesta = await PeticionAsync("POST", "/api/usb-event/pending-close", new SolicitudCierre

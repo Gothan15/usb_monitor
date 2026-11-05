@@ -51,7 +51,7 @@ export async function POST(req: Request) {
     await fs.writeFile(SETTINGS_PATH, JSON.stringify(newSettings, null, 2), "utf-8");
 
     // Push new setting to active computers if startup_network_delay changed or provided
-    if (body.startup_network_delay !== undefined || body.lockSessionOnInsert !== undefined || body.shutdownOnNonWhitelisted !== undefined || body.shutdownCountdownSeconds !== undefined) {
+    if (body.startup_network_delay !== undefined || body.lockSessionOnInsert !== undefined || body.shutdownOnNonWhitelisted !== undefined || body.shutdownCountdownSeconds !== undefined || body.captureEvidenceOnNonWhitelisted !== undefined) {
       const computers = await prisma.computer.findMany({
         where: { isActive: true },
       });
@@ -84,6 +84,9 @@ export async function POST(req: Request) {
               600,
               Math.max(10, Number(body.shutdownCountdownSeconds) || 60),
             );
+          }
+          if (body.captureEvidenceOnNonWhitelisted !== undefined) {
+            payload.capture_evidence_on_non_whitelisted = Boolean(body.captureEvidenceOnNonWhitelisted);
           }
           await fetch(url, {
             method: "POST",

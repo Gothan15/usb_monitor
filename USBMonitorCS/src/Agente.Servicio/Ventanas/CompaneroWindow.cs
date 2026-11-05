@@ -37,6 +37,8 @@ public sealed class CompaneroWindow : Window
     private readonly TextBlock _textoDueno;
 
     private List<BloqueoLocal> _bloqueos = new();
+    private readonly object _lockEvidencias = new();
+    private readonly HashSet<string> _evidenciasTramitadas = new();
     private string _firmaArchivo = string.Empty;
     private string? _claveActual;
     private string? _claveMensaje;
@@ -140,7 +142,11 @@ public sealed class CompaneroWindow : Window
         {
             Interval = TimeSpan.FromSeconds(1)
         };
-        _temporizador.Tick += async (_, _) => await RevisarArchivoAsync();
+        _temporizador.Tick += async (_, _) =>
+        {
+            await RevisarArchivoAsync();
+            RevisarSolicitudesEvidencia();
+        };
 
         _latido = new DispatcherTimer
         {
@@ -154,6 +160,8 @@ public sealed class CompaneroWindow : Window
             await RevisarArchivoAsync();
             await ConsultarDuenoAsync();
             IniciarVigilanteArchivo();
+            IniciarVigilanteEvidencia();
+            RevisarSolicitudesEvidencia();
             _temporizador.Start();
             _latido.Start();
         };
@@ -164,6 +172,7 @@ public sealed class CompaneroWindow : Window
             _temporizador.Stop();
             _latido.Stop();
             _vigilante?.Dispose();
+            _vigilanteEvidencia?.Dispose();
             _cliente.Dispose();
             RegistroVentanas.Info("Ventana del compañero cerrada.");
         };
@@ -208,6 +217,126 @@ public sealed class CompaneroWindow : Window
     private void AlCambiarArchivo(object sender, FileSystemEventArgs e)
     {
         _ = Dispatcher.InvokeAsync(async () => await RevisarArchivoAsync());
+    }
+
+    private FileSystemWatcher? _vigilanteEvidencia;
+
+    /// <summary>
+    /// Vigilante de la carpeta `evidencia`: el servicio deja ahí la
+    /// solicitud de la foto del momento de un bloqueo no autorizado
+    /// y la captura no puede esperar al sondeo de 1 s (la pantalla
+    /// cambia). El sondeo del temporizador queda de respaldo, como
+    /// con pending_local.json.
+    /// </summary>
+    private void IniciarVigilanteEvidencia()
+    {
+        try
+        {
+            var carpeta = GestorEvidencia.Carpeta(Registro.DirectorioDatos);
+            Directory.CreateDirectory(carpeta);
+            _vigilanteEvidencia = new FileSystemWatcher(carpeta)
+            {
+                Filter = "*.solicitud.json",
+                NotifyFilter = NotifyFilters.LastWrite |
+                               NotifyFilters.FileName |
+                               NotifyFilters.Size,
+                EnableRaisingEvents = true,
+            };
+            _vigilanteEvidencia.Created += (_, _) =>
+                _ = Dispatcher.InvokeAsync(RevisarSolicitudesEvidencia);
+        }
+        catch (Exception ex)
+        {
+            RegistroVentanas.Error(
+                "Sin vigilante de la carpeta de evidencia; queda el sondeo.", ex);
+        }
+    }
+
+    /// <summary>
+    /// Recoge las solicitudes nuevas y captura cada una en su
+    /// propio hilo: la ventana de bloqueo no espera a la captura,
+    /// que tarda lo que tarde el escritorio en dejarse fotografiar.
+    /// </summary>
+    private void RevisarSolicitudesEvidencia()
+    {
+        try
+        {
+            var carpeta = GestorEvidencia.Carpeta(Registro.DirectorioDatos);
+            foreach (var solicitud in GestorEvidencia.ListarSolicitudes(carpeta))
+            {
+                var segura = GestorEvidencia.NombreSeguro(solicitud.Clave);
+                lock (_lockEvidencias)
+                {
+                    if (!_evidenciasTramitadas.Add(segura)) continue;
+                }
+                var pedida = solicitud;
+                _ = Task.Run(() => CapturarEvidencia(pedida));
+            }
+        }
+        catch (Exception ex)
+        {
+            RegistroVentanas.Error("No se pudo revisar la carpeta de evidencia.", ex);
+        }
+    }
+
+    /// <summary>
+    /// Captura la foto del momento de un bloqueo y deja el paquete
+    /// en la carpeta para que el servicio lo suba. Si esta ventana
+    /// está en pantalla, se retira un instante antes de la foto:
+    /// la evidencia es el escritorio del usuario, no el aviso. Si
+    /// la captura entera fallara, el paquete sale igual, sin imagen
+    /// y con la nota — el panel prefiere una evidencia parcial a
+    /// ninguna.
+    /// </summary>
+    private void CapturarEvidencia(SolicitudEvidencia solicitud)
+    {
+        var estabaVisible = false;
+        try
+        {
+            Dispatcher.Invoke(() =>
+            {
+                estabaVisible = IsVisible;
+                if (estabaVisible) Visibility = Visibility.Hidden;
+            });
+            if (estabaVisible) Thread.Sleep(120);
+
+            PaqueteEvidencia paquete;
+            try
+            {
+                paquete = CapturadorEvidencia.Capturar(solicitud);
+            }
+            catch (Exception ex)
+            {
+                RegistroVentanas.Error("La captura de evidencia falló.", ex);
+                paquete = new PaqueteEvidencia
+                {
+                    Clave = solicitud.Clave,
+                    Serial = solicitud.Serial,
+                    CapturedAt = DateTime.UtcNow.ToString("o"),
+                    Nota = $"La captura falló en el equipo: {ex.Message}",
+                };
+            }
+
+            var carpeta = GestorEvidencia.Carpeta(Registro.DirectorioDatos);
+            GestorEvidencia.GuardarPaquete(carpeta, paquete);
+            GestorEvidencia.BorrarSolicitud(carpeta, solicitud.Clave);
+            RegistroVentanas.Info(
+                $"Evidencia capturada para el bloqueo del serial {solicitud.Serial}.");
+        }
+        catch (Exception ex)
+        {
+            RegistroVentanas.Error("No se pudo completar la captura de evidencia.", ex);
+        }
+        finally
+        {
+            if (estabaVisible)
+            {
+                _ = Dispatcher.InvokeAsync(() =>
+                {
+                    if (_bloqueos.Count > 0) RefrescarVentana();
+                });
+            }
+        }
     }
 
     /// <summary>
