@@ -301,6 +301,7 @@ public sealed class Detector
             {
                 var instancia = Texto(entidad, "PNPDeviceID") ?? "";
                 if (instancia.Length == 0) continue;
+                if (!EstaPresente(entidad)) continue;
                 // Solo dispositivos WPD tras un bus USB (regla del
                 // agente Python): sin este filtro, los volúmenes de
                 // almacenamiento (STORAGE\Volume\{guid}#...) entran
@@ -331,6 +332,7 @@ public sealed class Detector
             foreach (ManagementObject entidad in buscador.Get())
             {
                 var instancia = Texto(entidad, "PNPDeviceID") ?? "";
+                if (!EstaPresente(entidad)) continue;
                 if (!EsImpresoraUsb(instancia)) continue;
                 var nombre = Texto(entidad, "Name") ?? "";
                 var disp = new Dispositivo
@@ -356,6 +358,7 @@ public sealed class Detector
             foreach (ManagementObject adaptador in buscador.Get())
             {
                 var instancia = Texto(adaptador, "PNPDeviceID") ?? "";
+                if (!EstaPresente(adaptador)) continue;
                 if (!instancia.ToUpperInvariant().StartsWith("USB\\")) continue;
                 var nombre = Texto(adaptador, "Name") ?? "";
                 var serial = LimpiarSerial(Texto(adaptador, "MACAddress"));
@@ -376,6 +379,33 @@ public sealed class Detector
         }
 
         return encontrados;
+    }
+
+    /// <summary>
+    /// ¿El dispositivo está enchufado AHORA? Win32_PnPEntity y
+    /// Win32_NetworkAdapter enumeran también los dispositivos
+    /// FANTASMA: nodos que Windows recuerda de conexiones pasadas
+    /// (código de error 45, «no conectado a este equipo»). Sin
+    /// este filtro, un teléfono, una impresora o un adaptador de
+    /// red USB seguían en la enumeración para siempre tras
+    /// desenchufarlos: el agente los reportaba como conectados
+    /// en cada latido y en el panel nunca desaparecían.
+    /// Presente = cualquier código que no sea 45; el 22
+    /// (deshabilitado) sigue contando como presente, que es como
+    /// se ven los discos bloqueados por PnP en Win32_DiskDrive.
+    /// Si el código no se puede leer, se asume presente.
+    /// </summary>
+    private static bool EstaPresente(ManagementObject entidad)
+    {
+        try
+        {
+            var codigo = entidad["ConfigManagerErrorCode"];
+            return codigo is null || Convert.ToUInt32(codigo) != 45;
+        }
+        catch
+        {
+            return true;
+        }
     }
 
     /// <summary>
