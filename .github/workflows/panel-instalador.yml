@@ -76,6 +76,19 @@ jobs:
           # dos ejecutables: se descomprime y se deja el PaqueteDir
           # (los dos exe + el manifiesto con la versión de esa
           # Release) que la variante completo espera.
+          #
+          # Defender pone en cuarentena el empujador al
+          # descomprimirlo (se comporta como las herramientas de
+          # administración remota que marca como «hacktool»: en la
+          # corrida de la v1.3.0 el archivo desapareció entre el
+          # Expand-Archive y el Copy-Item). Se excluye la zona de
+          # trabajo de esta máquina efímera antes de tocar el zip.
+          try {
+            Add-MpPreference -ExclusionPath "$env:RUNNER_TEMP" -ErrorAction Stop
+            Add-MpPreference -ExclusionPath "$env:GITHUB_WORKSPACE" -ErrorAction Stop
+          } catch {
+            Write-Warning "No se pudo excluir la zona de trabajo de Defender: $_"
+          }
           $rel = gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=30" | ConvertFrom-Json |
             Where-Object { $_.tag_name -like 'agente-v*' -and -not $_.draft -and -not $_.prerelease } |
             Select-Object -First 1
@@ -87,6 +100,12 @@ jobs:
           New-Item -ItemType Directory -Force $dir | Out-Null
           Copy-Item "$env:RUNNER_TEMP\paquete-desc\USBMonitorService.exe" $dir
           Copy-Item "$env:RUNNER_TEMP\paquete-desc\USBMonitorEmpujador.exe" $dir
+          # Si Defender (o lo que sea) se come un ejecutable por el
+          # camino, que el paso muera aquí con un mensaje claro y no
+          # más abajo disfrazado de otra cosa.
+          foreach ($exe in 'USBMonitorService.exe', 'USBMonitorEmpujador.exe') {
+            if (-not (Test-Path "$dir\$exe")) { throw "El paquete quedó incompleto: falta $exe tras copiarlo." }
+          }
           @{ version = $versionAgente } | ConvertTo-Json | Set-Content "$dir\manifiesto.json" -Encoding utf8
           "dir=$dir" >> $env:GITHUB_OUTPUT
 
