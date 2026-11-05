@@ -562,6 +562,17 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
 
                   {/* Acciones de texto */}
                   <div className="flex items-center gap-1 md:ml-auto md:shrink-0">
+                    <span
+                      className={`mr-1 inline-flex min-w-6 items-center justify-center border px-1.5 py-0.5 text-[11px] font-semibold tabular-nums ${
+                        (computer.usbConectados ?? 0) > 0
+                          ? "border-[var(--acero)]/60 text-[var(--acero)]"
+                          : "border-border text-muted-foreground"
+                      }`}
+                      title="USB conectados ahora"
+                      aria-label={`${computer.usbConectados ?? 0} USB conectados ahora`}
+                    >
+                      {computer.usbConectados ?? 0}
+                    </span>
                     <Button
                       type="button"
                       variant="ghost"
