@@ -86,8 +86,10 @@ jobs:
           try {
             Add-MpPreference -ExclusionPath "$env:RUNNER_TEMP" -ErrorAction Stop
             Add-MpPreference -ExclusionPath "$env:GITHUB_WORKSPACE" -ErrorAction Stop
+            Write-Host 'Exclusiones de Defender registradas:'
+            (Get-MpPreference).ExclusionPath | ForEach-Object { Write-Host "  $_" }
           } catch {
-            Write-Warning "No se pudo excluir la zona de trabajo de Defender: $_"
+            Write-Warning "No se pudieron registrar las exclusiones de Defender: $_"
           }
           $rel = gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=30" | ConvertFrom-Json |
             Where-Object { $_.tag_name -like 'agente-v*' -and -not $_.draft -and -not $_.prerelease } |
@@ -95,7 +97,17 @@ jobs:
           if (-not $rel) { throw 'No hay ninguna Release del agente publicada: la variante completo no se puede construir.' }
           $versionAgente = $rel.tag_name -replace '^agente-v', ''
           gh release download $rel.tag_name --pattern 'USBMonitorService-agente-v*.zip' --dir "$env:RUNNER_TEMP\paquete-zip"
-          Expand-Archive -Path "$env:RUNNER_TEMP\paquete-zip\USBMonitorService-agente-v$versionAgente.zip" -DestinationPath "$env:RUNNER_TEMP\paquete-desc" -Force
+          # Se descomprime con tar (el bsdtar de Windows) en vez de
+          # Expand-Archive, un motor distinto: en las corridas de la
+          # v1.3.0 y la v1.3.1 el empujador no apareció en la carpeta
+          # tras Expand-Archive pese a estar en el zip (comprobado
+          # descargándolo: CRC íntegro) y pese a las exclusiones.
+          # El listado que sigue deja en el registro qué salió
+          # realmente de la descompresión.
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\paquete-desc" | Out-Null
+          tar -xf "$env:RUNNER_TEMP\paquete-zip\USBMonitorService-agente-v$versionAgente.zip" -C "$env:RUNNER_TEMP\paquete-desc"
+          Write-Host 'Contenido descomprimido:'
+          Get-ChildItem "$env:RUNNER_TEMP\paquete-desc" | ForEach-Object { Write-Host "  $($_.Name) — $($_.Length) bytes" }
           $dir = 'salida-instalador\paquete'
           New-Item -ItemType Directory -Force $dir | Out-Null
           Copy-Item "$env:RUNNER_TEMP\paquete-desc\USBMonitorService.exe" $dir
@@ -104,7 +116,15 @@ jobs:
           # camino, que el paso muera aquí con un mensaje claro y no
           # más abajo disfrazado de otra cosa.
           foreach ($exe in 'USBMonitorService.exe', 'USBMonitorEmpujador.exe') {
-            if (-not (Test-Path "$dir\$exe")) { throw "El paquete quedó incompleto: falta $exe tras copiarlo." }
+            if (-not (Test-Path "$dir\$exe")) {
+              # Antes de morir, volcar lo que Defender tenga
+              # registrado: si fue una cuarentena, aquí se ve.
+              try {
+                Get-MpThreatDetection | Sort-Object InitialDetectionTime -Descending |
+                  Select-Object -First 3 | Format-List | Out-String | Write-Host
+              } catch { Write-Host "Sin acceso al historial de amenazas de Defender: $_" }
+              throw "El paquete quedó incompleto: falta $exe tras copiarlo."
+            }
           }
           @{ version = $versionAgente } | ConvertTo-Json | Set-Content "$dir\manifiesto.json" -Encoding utf8
           "dir=$dir" >> $env:GITHUB_OUTPUT
