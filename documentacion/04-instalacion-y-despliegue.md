@@ -22,25 +22,36 @@ Versión del sistema: noviembre de 2026 (panel 1.0.4)
 - Copia de seguridad semanal de la base (domingos 03:00 como SYSTEM, rotación de 8).
 - Actualización: instalar el .msi nuevo encima; los valores se leen del registro y los datos no se tocan.
 
-## Preparar un destino para instalación remota (WinRM)
+## Preparar un destino para la instalación remota (empuje SMB)
+
+La primera instalación en un equipo sin agente va por empuje SMB (el modelo de Kaspersky): el ayudante del panel, `USBMonitorEmpujador.exe`, entra al recurso `C$` del destino con la cuenta administradora de ese equipo, copia el ejecutable del agente a `C:\USBMonitor` y crea un servicio temporal por RPC que lo instala en su modo sin ventanas. En el destino no hace falta activar WinRM ni SSH: ese sistema se retiró.
 
 En la PC destino, una sola vez, como administrador local (grupo de trabajo, sin dominio):
 
-```powershell
-Enable-PSRemoting -SkipNetworkProfileCheck -Force
-winrm set winrm/config/service/Auth '@{Basic="true";Negotiate="true"}'
-winrm set winrm/config/service '@{AllowUnencrypted="true"}'
-```
+1. **Red en perfil Privado y compartición activa.** Con perfil Público, las reglas de cortafuegos de compartición no aplican en Windows cliente y el puerto 445 no responde; la compartición es además lo que mantiene vivo el recurso `C$`:
 
-- La cuenta administradora local debe tener contraseña.
-- El perfil de red «Público» es el gran bloqueador en Windows cliente: o la red se pone como Privada, o se usa `-SkipNetworkProfileCheck`.
-- Sin la política que permite a los administradores locales actuar por red con su token completo, la conexión entra recortada por UAC y da «Acceso denegado».
-- La autenticación Basic por HTTP va en claro: es la vía de las cuentas locales sin dominio. La alternativa seria es WinRM por HTTPS (5986).
-- Antes de instalar, usa el botón «Comprobar requisitos en el destino» del panel: verifica cada punto y dice el comando exacto que falta.
+   ```powershell
+   Set-NetConnectionProfile -NetworkCategory Private
+   Enable-NetFirewallRule -DisplayGroup 'Compartir archivos e impresoras'
+   Enable-NetFirewallRule -DisplayGroup 'Administración remota de servicios'
+   ```
+
+2. **Cuenta administradora local con contraseña.** Es la que se escribe al crear la tarea de instalación; en grupo de trabajo, una cuenta sin contraseña no puede abrir sesión remota. No sirven el PIN de Windows Hello ni una cuenta Microsoft.
+3. **El administrador, con su token completo en remoto.** Sin este valor, el administrador local entra recortado por UAC al acceder por red y el gestor de servicios remoto responde «acceso denegado» aunque la contraseña sea la correcta:
+
+   ```powershell
+   New-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -Name LocalAccountTokenFilterPolicy -Value 1 -PropertyType DWord -Force
+   ```
+
+Si el destino es una máquina virtual (VMware o VirtualBox), el adaptador de red va en modo puente: la máquina queda en la misma red que el panel, con su propia IP; con NAT no se llega. Para Windows 11 hacen falta firmware UEFI y TPM virtual. Con la máquina preparada y aún sin agente, una instantánea permite repetir la prueba siempre desde la máquina virgen.
+
+En el equipo del panel tienen que estar colocados los dos ejecutables, que salen del zip de la Release del agente: el vigente en `paquete-agente\USBMonitorService.exe` (con su `manifiesto.json`) y el empujador en `empujador\USBMonitorEmpujador.exe`. El agente ya instalado debe además poder volver al puerto del panel (3000): si la tarea instala pero el equipo nunca se confirma como instalado, lo que falla suele ser el cortafuegos del equipo del panel.
+
+Al crear la tarea, el propio panel comprueba en vivo cada requisito contra cada destino (puerto 445, sesión SMB, derecho a crear servicios, agente ya presente), y la lista de verificación de Ajustes → Preguntas frecuentes muestra el resultado paso a paso.
 
 ## Releases y versionado
 
-- **Agente**: etiquetas `agente-v*` (o disparo manual). La acción ejecuta las pruebas del núcleo, compila con el mismo `Build-All.ps1` de siempre y publica el zip del ejecutable más `Install-Service.ps1` en la Release (y como artefacto de 30 días).
+- **Agente**: etiquetas `agente-v*` (o disparo manual). La acción ejecuta las pruebas del núcleo, compila con el mismo `Build-All.ps1` de siempre, compila también el empujador del panel y publica el zip con el ejecutable, `Install-Service.ps1` y `USBMonitorEmpujador.exe` en la Release (y como artefacto de 30 días).
 - **Panel**: etiquetas `panel-v*` (o disparo manual con versión). La acción ejecuta el mismo `Construir-Instalador.ps1` que en local y publica el .msi en la Release.
 - Subir de versión = crear la etiqueta siguiente. Una etiqueta ya publicada no se reescribe: si el código cambia, toca número nuevo (así nacieron la 1.0.2, la 1.0.3 y la 1.0.4).
 

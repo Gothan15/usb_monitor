@@ -72,7 +72,7 @@ Detalles de implementación que me parecen importantes:
 - Los dispositivos se etiquetan por tipo en todas las listas: memoria/disco, teléfono, óptica USB, red USB o impresora, también cuando no tienen letra de unidad.
 - Gestión de usuarios y de equipos, asignación de cada usuario a su PC, y generación del token de agente de cada equipo desde la propia ficha del equipo.
 - Escáner de red para descubrir equipos y comprobar si tienen el agente instalado y corriendo.
-- Instalación remota del agente por SSH o por WinRM, con el progreso en vivo en pantalla, botón de «Comprobar requisitos en el destino» y la receta de preparación del equipo destino (hay que activar WinRM una vez en ese equipo; el diálogo lo explica paso a paso).
+- Tareas de instalación remota con el progreso en vivo: a los equipos que ya tienen agente, actualización por su propio canal con verificación SHA-256; a los que no, empuje SMB estilo Kaspersky (el ayudante del panel copia el ejecutable al recurso `C$` y un servicio temporal lo instala en su modo sin ventanas), con la comprobación de requisitos en vivo contra cada destino y la receta de preparación del equipo (red en perfil Privado, compartición activa, administrador local con contraseña y token completo en remoto).
 - **Guía interactiva** que recorre las pantallas del panel paso a paso y sección de **preguntas frecuentes**; se puede reactivar desde Ajustes.
 - Ajustes del desbloqueo por contraseña: interruptor general, emergencia sin red, modo solo administradores, apagado ante dispositivos desconocidos, bloqueo de la sesión al conectar y minutos de silencio para marcar un equipo como caído. Los cambios se empujan a los agentes conectados y, además, cada agente los pide él mismo al arrancar y periódicamente, para que un equipo apagado en el momento del cambio no se quede con los viejos.
 - Soporte de **Redis** para despliegues en producción (variable `REDIS_URL`).
@@ -151,6 +151,7 @@ INSPIRACION.md       Referencias de diseño de la interfaz
 - **Guía y preguntas frecuentes** (2 de noviembre): recorrido interactivo por las ocho vistas y 17 preguntas frecuentes.
 - **Discos, impresoras y red** (2 de noviembre): bloqueo de discos duros reforzado (cadena de nodos y todas las particiones), impresoras detectadas que nunca se bloquean y tipos de dispositivo visibles en todo el panel.
 - **Instalación remota WinRM corregida** (2 de noviembre): copia el agente de C# actual, en trozos grandes, con comprobación de requisitos en el destino y la receta completa en español.
+- **Instalación remota por empuje SMB** (4 de noviembre): WinRM y SSH desaparecen. El empujador del panel copia el agente al recurso `C$` del destino y un servicio temporal lo instala en su modo sin ventanas; las tareas llegan a varios equipos a la vez, con la contraseña solo en la memoria del servidor, y un equipo solo se da por instalado cuando su agente da la primera señal.
 - **Apagado ante desconocidos** (2 de noviembre): ajuste opcional, desactivado por defecto, con cuenta atrás de 60 segundos cancelable.
 - **Instalador del panel** (2–3 de noviembre): .msi con WiX v5 que instala PostgreSQL, Node y el panel como servicios; compilado y publicado automáticamente por GitHub Actions. La versión **1.0.4** es la primera que sale entera de la cadena automática.
 

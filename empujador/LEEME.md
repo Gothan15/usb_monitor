@@ -8,8 +8,9 @@ como proceso hijo; sin él, los destinos nuevos de una tarea
 terminan en error con este motivo explicado.
 
 El exe sale de compilar el proyecto `USBMonitorCS/empujador`
-del repositorio (junto a la Release del agente también puede
-viajar). La ruta se puede cambiar con la variable de entorno
+del repositorio y viaja en el zip de la Release del agente,
+junto al ejecutable: una sola descarga surte esta carpeta y
+la de `paquete-agente/`. La ruta se puede cambiar con la variable de entorno
 `EMPUJADOR_PATH`.
 
 El ejecutable del agente que empuja es el de la carpeta
