@@ -2,7 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLiveData } from "@/components/providers/LiveDataProvider";
-import { RefreshCw } from "lucide-react";
+import { Camera, RefreshCw } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 /**
  * Vista «Desbloqueos» (fase 5): bloqueos en curso, historial de
@@ -20,6 +27,19 @@ interface Pending {
   createdAt: string;
   unlockedAt: string | null;
   unlockedBy: { username: string; role: string } | null;
+  hasEvidence?: boolean;
+}
+
+interface EvidenceData {
+  id: string;
+  capturedAt: string;
+  foregroundProcess: string | null;
+  foregroundTitle: string | null;
+  processes: { proceso: string; titulo?: string }[];
+  browserTabs: { navegador: string; titulo: string; url?: string }[];
+  tabsComplete: boolean;
+  nota: string | null;
+  hasImage: boolean;
 }
 
 interface Attempt {
@@ -115,6 +135,29 @@ export function UnlocksTab() {
   const [loading, setLoading] = useState(true);
   const [resultFilter, setResultFilter] = useState("");
   const [pcFilter, setPcFilter] = useState("");
+  const [evidenciaDe, setEvidenciaDe] = useState<Pending | null>(null);
+  const [evidencia, setEvidencia] = useState<EvidenceData | null>(null);
+
+  // La evidencia se pide al abrir el diálogo: los metadatos por un
+  // lado y la captura como imagen aparte, para no moverla en JSON.
+  useEffect(() => {
+    if (!evidenciaDe) {
+      setEvidencia(null);
+      return;
+    }
+    let viva = true;
+    fetch(`/api/admin/evidence/${evidenciaDe.id}`, { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (viva) setEvidencia(json?.evidence ?? null);
+      })
+      .catch(() => {
+        if (viva) setEvidencia(null);
+      });
+    return () => {
+      viva = false;
+    };
+  }, [evidenciaDe]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -281,6 +324,7 @@ export function UnlocksTab() {
                     <th className={thClass}>Serial</th>
                     <th className={thClass}>Lista blanca</th>
                     <th className={thClass}>Desde</th>
+                    <th className={thClass}>Evidencia</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -299,6 +343,19 @@ export function UnlocksTab() {
                       </td>
                       <td className={`${tdClass} tabular-nums`}>
                         {fmt(p.createdAt)}
+                      </td>
+                      <td className={tdClass}>
+                        {p.hasEvidence ? (
+                          <button
+                            onClick={() => setEvidenciaDe(p)}
+                            className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-primary underline-offset-4 transition-colors hover:text-foreground hover:underline"
+                          >
+                            <Camera className="size-4" />
+                            Evidencia
+                          </button>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -337,9 +394,20 @@ export function UnlocksTab() {
                       {p.deviceLabel || ""}
                     </span>
                   </span>
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    desbloqueado por {p.unlockedBy?.username ?? "—"} ·{" "}
-                    {fmt(p.unlockedAt)}
+                  <span className="flex items-center gap-4">
+                    {p.hasEvidence && (
+                      <button
+                        onClick={() => setEvidenciaDe(p)}
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-primary underline-offset-4 transition-colors hover:text-foreground hover:underline"
+                      >
+                        <Camera className="size-4" />
+                        Evidencia
+                      </button>
+                    )}
+                    <span className="text-xs text-muted-foreground tabular-nums">
+                      desbloqueado por {p.unlockedBy?.username ?? "—"} ·{" "}
+                      {fmt(p.unlockedAt)}
+                    </span>
                   </span>
                 </li>
               ))}
@@ -445,6 +513,135 @@ export function UnlocksTab() {
           </table>
         </div>
       </section>
+
+      {/* ── Diálogo de evidencia: la foto del momento del bloqueo ── */}
+      <Dialog
+        open={evidenciaDe !== null}
+        onOpenChange={(abierto) => {
+          if (!abierto) setEvidenciaDe(null);
+        }}
+      >
+        <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="font-display">
+              Evidencia del bloqueo
+            </DialogTitle>
+            <DialogDescription>
+              {evidenciaDe
+                ? `${evidenciaDe.pcName} · ${evidenciaDe.deviceLabel || evidenciaDe.serialNumber || "Dispositivo"} · capturada el ${evidencia ? fmt(evidencia.capturedAt) : "…"}`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+
+          {!evidencia ? (
+            <p className="text-sm text-muted-foreground">
+              Cargando la evidencia…
+            </p>
+          ) : (
+            <div className="space-y-6">
+              {evidencia.hasImage && evidenciaDe ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={`/api/admin/evidence/${evidenciaDe.id}/image`}
+                  alt="Captura de pantalla en el momento del bloqueo"
+                  className="w-full border border-border"
+                />
+              ) : (
+                <p className="border border-border/60 bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+                  Este bloqueo no tiene captura de pantalla
+                  {evidencia.nota ? `: ${evidencia.nota}` : "."}
+                </p>
+              )}
+
+              <div>
+                <p className="smallcaps text-muted-foreground">
+                  Ventana en primer plano
+                </p>
+                <p className="mt-1.5 text-sm">
+                  {evidencia.foregroundProcess ? (
+                    <>
+                      <span className="font-medium">
+                        {evidencia.foregroundProcess}
+                      </span>
+                      {evidencia.foregroundTitle && (
+                        <span className="text-muted-foreground">
+                          {" "}
+                          — {evidencia.foregroundTitle}
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    "—"
+                  )}
+                </p>
+              </div>
+
+              <div>
+                <p className="smallcaps text-muted-foreground">
+                  Procesos en la sesión · {evidencia.processes.length}
+                </p>
+                {evidencia.processes.length === 0 ? (
+                  <p className="mt-1.5 text-sm text-muted-foreground">
+                    Sin procesos en el paquete.
+                  </p>
+                ) : (
+                  <ul className="mt-1.5 max-h-52 divide-y divide-border overflow-y-auto border-y border-border">
+                    {evidencia.processes.map((proc, i) => (
+                      <li key={i} className="py-1.5 text-sm">
+                        <span className="font-mono text-xs">{proc.proceso}</span>
+                        {proc.titulo && (
+                          <span className="text-muted-foreground">
+                            {" "}
+                            — {proc.titulo}
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div>
+                <p className="smallcaps text-muted-foreground">
+                  Pestañas del navegador
+                  {!evidencia.tabsComplete && (
+                    <span className="ml-2 text-warning">
+                      lista parcial: solo la activa de cada ventana
+                    </span>
+                  )}
+                </p>
+                {evidencia.browserTabs.length === 0 ? (
+                  <p className="mt-1.5 text-sm text-muted-foreground">
+                    Ningún navegador abierto en ese momento.
+                  </p>
+                ) : (
+                  <ul className="mt-1.5 divide-y divide-border border-y border-border">
+                    {evidencia.browserTabs.map((tab, i) => (
+                      <li key={i} className="py-1.5 text-sm">
+                        <span className="smallcaps text-muted-foreground">
+                          {tab.navegador}
+                        </span>
+                        <span className="ml-2">{tab.titulo}</span>
+                        {tab.url && (
+                          <span className="block truncate font-mono text-xs text-muted-foreground">
+                            {tab.url}
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              {evidencia.hasImage && evidencia.nota && (
+                <p className="text-xs text-muted-foreground">
+                  Nota del agente: {evidencia.nota}
+                </p>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

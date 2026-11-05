@@ -45,6 +45,7 @@ interface UnlockSettings {
   lockSessionOnInsert: boolean;
   shutdownOnNonWhitelisted: boolean;
   shutdownCountdownSeconds: number;
+  captureEvidenceOnNonWhitelisted: boolean;
   silenceThresholdMinutes: number;
 }
 
@@ -107,6 +108,12 @@ const PREGUNTAS_FRECUENTES: { pregunta: string; respuesta: string }[] = [
     pregunta: "¿Qué hace el ajuste «Apagar el equipo si el dispositivo no está en la lista blanca»?",
     respuesta:
       "Si está activado, al insertar un dispositivo fuera de la lista blanca el equipo cliente inicia la cuenta atrás configurada (entre 10 y 600 segundos) y se apaga. La cuenta se cancela si el dispositivo se extrae o se desbloquea a tiempo, si el ajuste se desactiva o si el servicio se detiene; y no se aplica a lo que ya estaba conectado al arrancar el servicio, para que el equipo no entre en un bucle de apagados.",
+  },
+  {
+    pregunta:
+      "¿Qué es la captura de evidencia al bloquear un dispositivo no autorizado?",
+    respuesta:
+      "Con el ajuste «Capturar evidencia al bloquear un dispositivo no autorizado» activado, cuando el agente bloquea un dispositivo que no está en la lista blanca, el compañero guarda una foto de ese momento: la captura de pantalla de todos los monitores, qué ventana estaba en primer plano, la lista de procesos de la sesión con el título de sus ventanas (que revela los documentos abiertos) y las pestañas del navegador. Todo sube al panel pegado a ese bloqueo y se consulta con el botón «Evidencia» de la vista de Desbloqueos. Tiene límites claros: sin una sesión de Windows abierta y desbloqueada no hay escritorio que capturar y la evidencia llega sin imagen, con la nota de por qué; y de las pestañas, la garantizada es la activa de cada ventana del navegador — la lista completa se intenta por automatización de la ventana y, si el navegador no la expone, la evidencia lo dice marcando la lista como parcial. Está desactivada por defecto.",
   },
   {
     pregunta: "¿Cómo sé si el agente de un equipo está funcionando?",
@@ -199,6 +206,7 @@ export function SettingsTab() {
     lockSessionOnInsert: false,
     shutdownOnNonWhitelisted: false,
     shutdownCountdownSeconds: 60,
+    captureEvidenceOnNonWhitelisted: false,
     silenceThresholdMinutes: 5,
   });
 
@@ -231,6 +239,8 @@ export function SettingsTab() {
           lockSessionOnInsert: data.lockSessionOnInsert ?? false,
           shutdownOnNonWhitelisted: data.shutdownOnNonWhitelisted ?? false,
           shutdownCountdownSeconds: data.shutdownCountdownSeconds ?? 60,
+          captureEvidenceOnNonWhitelisted:
+            data.captureEvidenceOnNonWhitelisted ?? false,
           silenceThresholdMinutes: data.silenceThresholdMinutes ?? 5,
         };
         setUnlock(unlockCargado);
@@ -452,6 +462,24 @@ export function SettingsTab() {
               <Switch
                 checked={unlock.shutdownOnNonWhitelisted}
                 onCheckedChange={(v) => setUnlock({ ...unlock, shutdownOnNonWhitelisted: v })}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-4 py-5">
+              <div>
+                <Label>Capturar evidencia al bloquear un dispositivo no autorizado</Label>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  Al bloquear un dispositivo que no está en la lista
+                  blanca, el equipo guarda una foto del momento: captura
+                  de pantalla, la ventana en primer plano, los procesos
+                  en marcha y las pestañas del navegador. La evidencia
+                  queda en el panel, junto al bloqueo, en la vista de
+                  Desbloqueos. Solo hay captura si la sesión de Windows
+                  está abierta y desbloqueada. Desactivado por defecto.
+                </p>
+              </div>
+              <Switch
+                checked={unlock.captureEvidenceOnNonWhitelisted}
+                onCheckedChange={(v) => setUnlock({ ...unlock, captureEvidenceOnNonWhitelisted: v })}
               />
             </div>
             <div className="py-5 pl-0">
