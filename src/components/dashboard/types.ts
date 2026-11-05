@@ -29,6 +29,8 @@ export interface Computer {
   versionPaquete?: string | null;
   /** El agente va por detrás del paquete: hay actualización. */
   actualizacionDisponible?: boolean;
+  /** USB conectados ahora mismo (misma frescura que la hoja de «Ver USB»). */
+  usbConectados?: number;
 }
 
 export interface WhitelistEntry {
