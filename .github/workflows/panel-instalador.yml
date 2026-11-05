@@ -92,7 +92,7 @@ jobs:
           Write-Host "Release del agente elegida: $($rel.tag_name)"
           $versionAgente = $rel.tag_name -replace '^agente-v', ''
           gh release download $rel.tag_name --pattern 'USBMonitorService-agente-v*.zip' --dir "$env:RUNNER_TEMP\paquete-zip"
-          Expand-Archive -Path "$env:RUNNER_TEMP\paquete-desc\USBMonitorService-agente-v$versionAgente.zip" -DestinationPath "$env:RUNNER_TEMP\paquete-desc" -Force
+          Expand-Archive -Path "$env:RUNNER_TEMP\paquete-zip\USBMonitorService-agente-v$versionAgente.zip" -DestinationPath "$env:RUNNER_TEMP\paquete-desc" -Force
           $dir = 'salida-instalador\paquete'
           New-Item -ItemType Directory -Force $dir | Out-Null
           Copy-Item "$env:RUNNER_TEMP\paquete-desc\USBMonitorService.exe" $dir
