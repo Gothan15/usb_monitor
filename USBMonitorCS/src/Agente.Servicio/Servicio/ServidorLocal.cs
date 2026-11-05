@@ -235,6 +235,10 @@ public sealed class ServidorLocal : IDisposable
             _compartida.ShutdownCountdownSeconds = cuenta;
         else if (ObtenerEntero(datos, "shutdownCountdownSeconds") is { } cuenta2)
             _compartida.ShutdownCountdownSeconds = cuenta2;
+        if (ObtenerBool(datos, "capture_evidence_on_non_whitelisted") is { } evidencia)
+            _compartida.CaptureEvidenceOnNonWhitelisted = evidencia;
+        else if (ObtenerBool(datos, "captureEvidenceOnNonWhitelisted") is { } evidencia2)
+            _compartida.CaptureEvidenceOnNonWhitelisted = evidencia2;
         Log.Info($"Config local actualizada: {cuerpo}");
         await ResponderJsonAsync(ctx, new { ok = true }).ConfigureAwait(false);
     }

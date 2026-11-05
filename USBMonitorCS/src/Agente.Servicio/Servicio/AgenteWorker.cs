@@ -56,6 +56,13 @@ public sealed class AgenteWorker : BackgroundService
     private Dictionary<string, Dispositivo> _conocidos = new();
     private HashSet<string> _baseRed = new();
     private readonly HashSet<string> _pendientesRegistrados = new();
+
+    // Captura de evidencia: el id del bloqueo en el panel por clave
+    // (la subida del paquete lo necesita, también tras la extracción)
+    // y las claves con la foto ya solicitada en este arranque.
+    private readonly object _lockEvidencia = new();
+    private readonly Dictionary<string, string> _idsBloqueoPanel = new();
+    private readonly HashSet<string> _evidenciaSolicitada = new();
     private readonly HashSet<string> _desbloqueosEjecutados = new();
     private readonly Dictionary<string, (bool Valor, DateTime Marca)> _cacheWhitelist = new();
 
@@ -469,7 +476,12 @@ public sealed class AgenteWorker : BackgroundService
         // Veredicto confirmado de fuera de la lista: si el ajuste
         // está activo, se arma el apagado (idempotente por equipo
         // y dispositivo; ArmarApagado filtra tipos y línea base).
-        if (enWl == false) ArmarApagado(disp);
+        // Y con su ajuste propio, se pide la foto del momento.
+        if (enWl == false)
+        {
+            ArmarApagado(disp);
+            SolicitarEvidencia(disp);
+        }
         RefrescarPendientesLocales();
     }
 
@@ -478,7 +490,43 @@ public sealed class AgenteWorker : BackgroundService
         if (_pendientesRegistrados.Contains(disp.Clave)) return;
         var pid = await _cliente.RegistrarBloqueoAsync(
             disp.Letra, disp.Serial, disp.NombreVisible, enWl).ConfigureAwait(false);
-        if (!string.IsNullOrEmpty(pid)) _pendientesRegistrados.Add(disp.Clave);
+        if (!string.IsNullOrEmpty(pid))
+        {
+            _pendientesRegistrados.Add(disp.Clave);
+            // El id se guarda también tras la extracción: el
+            // paquete de evidencia puede tardar más que el bloqueo.
+            lock (_lockEvidencia) _idsBloqueoPanel[disp.Clave] = pid;
+        }
+    }
+
+    /// <summary>
+    /// Deja al compañero la solicitud de la foto del momento de un
+    /// bloqueo fuera de la lista blanca (ajuste del panel, apagado
+    /// por defecto). El servicio no puede capturar nada — sesión 0,
+    /// sin escritorio —: escribe la solicitud en la carpeta
+    /// `evidencia` y el compañero, que vive en la sesión del
+    /// usuario, captura y deja el paquete. Una por bloqueo: la
+    /// deduplicación vive aquí (memoria) y en la carpeta
+    /// (GestorEvidencia no crea la segunda).
+    /// </summary>
+    private void SolicitarEvidencia(Dispositivo disp)
+    {
+        if (!_compartida.CaptureEvidenceOnNonWhitelisted) return;
+        lock (_lockEvidencia)
+        {
+            if (!_evidenciaSolicitada.Add(disp.Clave)) return;
+        }
+        try
+        {
+            var carpeta = GestorEvidencia.Carpeta(Registro.DirectorioDatos);
+            var instante = DateTime.UtcNow.ToString("o");
+            if (GestorEvidencia.Solicitar(carpeta, disp.Clave, disp.Serial, instante))
+                Log.Info($"Evidencia solicitada al compañero: {disp.Nombre} ({disp.Serial})");
+        }
+        catch (Exception exc)
+        {
+            Log.Error($"No se pudo solicitar la evidencia de {disp.Nombre}: {exc.Message}");
+        }
     }
 
     private async Task AlExtraerAsync(string clave, Dispositivo disp)
@@ -494,6 +542,9 @@ public sealed class AgenteWorker : BackgroundService
         await _cliente.CerrarBloqueoAsync(disp.Letra, disp.Serial).ConfigureAwait(false);
         _cliente.Evento(EvDesconectado, disp.Letra, disp.Serial);
         _pendientesRegistrados.Remove(clave);
+        // El bloqueo terminó: si el dispositivo vuelve a entrar,
+        // su foto del momento se pide de nuevo.
+        lock (_lockEvidencia) _evidenciaSolicitada.Remove(clave);
         RefrescarPendientesLocales();
     }
 
@@ -706,7 +757,11 @@ public sealed class AgenteWorker : BackgroundService
                             .ConfigureAwait(false);
                         if (enWl is null) continue;
                         reg.EnWhitelist = enWl;
-                        if (enWl == false) ArmarApagado(reg.Dispositivo);
+                        if (enWl == false)
+                        {
+                            ArmarApagado(reg.Dispositivo);
+                            SolicitarEvidencia(reg.Dispositivo);
+                        }
                         RefrescarPendientesLocales();
                     }
                     // No-op si ya está registrado.
@@ -805,6 +860,39 @@ public sealed class AgenteWorker : BackgroundService
         RefrescarPendientesLocales();
     }
 
+    /// <summary>
+    /// Sube al panel los paquetes de evidencia que el compañero
+    /// dejó capturados en la carpeta. Solo cuando consta el id del
+    /// bloqueo en el panel: sin id (el registro aún no salió o no
+    /// hubo red al bloquear) el paquete espera al siguiente ciclo,
+    /// con la misma filosofía que la cola de eventos. Subido =
+    /// borrado. El tope de 20 paquetes protege el disco de una PC
+    /// que pasa mucho tiempo sin red.
+    /// </summary>
+    private async Task SubirEvidenciasPendientesAsync()
+    {
+        var carpeta = GestorEvidencia.Carpeta(Registro.DirectorioDatos);
+        var borradas = GestorEvidencia.AplicarTopePaquetes(carpeta, 20);
+        if (borradas.Count > 0)
+        {
+            Log.Advertencia(
+                "Evidencia: tope de 20 paquetes sin subir alcanzado; " +
+                $"borrados los más antiguos ({borradas.Count}).");
+        }
+        foreach (var paquete in GestorEvidencia.ListarPaquetes(carpeta))
+        {
+            string? id;
+            lock (_lockEvidencia) _idsBloqueoPanel.TryGetValue(paquete.Clave, out id);
+            if (string.IsNullOrEmpty(id)) continue;
+            if (await _cliente.SubirEvidenciaAsync(id, paquete).ConfigureAwait(false))
+            {
+                GestorEvidencia.BorrarPaquete(carpeta, paquete.Clave);
+                Log.Info(
+                    $"Evidencia subida al panel: bloqueo {id}, serial {paquete.Serial}.");
+            }
+        }
+    }
+
     private async Task BucleLatidoAsync(CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
@@ -817,6 +905,7 @@ public sealed class AgenteWorker : BackgroundService
                     actuales = new Dictionary<string, Dispositivo>(_conocidos);
                 await _cliente.EstadoConectadosAsync(
                     Detector.UnidadesParaEstado(actuales.Values)).ConfigureAwait(false);
+                await SubirEvidenciasPendientesAsync().ConfigureAwait(false);
                 var intentos = _emergencia.IntentosPendientes();
                 if (intentos.Count > 0 &&
                     await _cliente.SubirIntentosOfflineAsync(intentos).ConfigureAwait(false))

@@ -81,6 +81,7 @@ public sealed class ConfigRemota
     [JsonPropertyName("lockSessionOnInsert")] public bool LockSessionOnInsert { get; set; }
     [JsonPropertyName("shutdownOnNonWhitelisted")] public bool ShutdownOnNonWhitelisted { get; set; }
     [JsonPropertyName("shutdownCountdownSeconds")] public int? ShutdownCountdownSeconds { get; set; }
+    [JsonPropertyName("captureEvidenceOnNonWhitelisted")] public bool CaptureEvidenceOnNonWhitelisted { get; set; }
     [JsonPropertyName("comandos")] public List<OrdenAgente>? Comandos { get; set; }
 }
 
@@ -214,6 +215,25 @@ internal sealed class SolicitudBloqueo
     [JsonPropertyName("serialNumber")] public string? SerialNumber { get; set; }
     [JsonPropertyName("deviceLabel")] public string? DeviceLabel { get; set; }
     [JsonPropertyName("whitelisted")] public bool Whitelisted { get; set; }
+}
+
+/// <summary>Cuerpo de POST /api/usb-event/evidence (la foto del momento de un bloqueo).</summary>
+internal sealed class SolicitudEvidenciaPanel
+{
+    [JsonPropertyName("pendingUnlockId")] public string PendingUnlockId { get; set; } = "";
+    [JsonPropertyName("serialNumber")] public string? SerialNumber { get; set; }
+    [JsonPropertyName("capturedAt")] public string CapturedAt { get; set; } = "";
+    [JsonPropertyName("foregroundProcess")] public string? ForegroundProcess { get; set; }
+    [JsonPropertyName("foregroundTitle")] public string? ForegroundTitle { get; set; }
+    [JsonPropertyName("processes")] public List<ProcesoEvidencia> Processes { get; set; } = new();
+    [JsonPropertyName("browserTabs")] public List<PestanaNavegador> BrowserTabs { get; set; } = new();
+    [JsonPropertyName("tabsComplete")] public bool TabsComplete { get; set; }
+    [JsonPropertyName("nota")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Nota { get; set; }
+    [JsonPropertyName("imagenBase64")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ImagenBase64 { get; set; }
 }
 
 internal sealed class SolicitudCierre

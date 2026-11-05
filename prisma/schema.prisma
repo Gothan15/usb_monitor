@@ -240,3 +240,31 @@ model InstallTaskTarget {
   @@index([pcName])
   @@map("install_task_targets")
 }
+
+// ─── Captura de evidencia al bloquear un dispositivo no autorizado ───
+// Foto del momento en que el agente bloquea un dispositivo fuera de
+// la lista blanca (ajuste captureEvidenceOnNonWhitelisted, apagado
+// por defecto): captura de pantalla, ventana en primer plano,
+// procesos de la sesión y pestañas del navegador. Se cuelga del
+// bloqueo (PendingUnlock) por id, sin relación dura: la evidencia
+// puede llegar cuando el bloqueo ya cambió de estado, y borrar un
+// bloqueo no debe arrastrarla sin querer.
+model BlockEvidence {
+  id                String   @id @default(cuid())
+  pendingUnlockId   String
+  computerName      String
+  serialNumber      String?
+  capturedAt        DateTime
+  foregroundProcess String?
+  foregroundTitle   String?
+  processes         Json // [{ proceso, titulo? }]
+  browserTabs       Json // [{ navegador, titulo, url? }]
+  tabsComplete      Boolean  @default(false) // false: solo la pestaña activa de cada ventana
+  nota              String? // p. ej. por qué falta la captura de pantalla
+  image             Bytes?
+  imageMime         String?
+  createdAt         DateTime @default(now())
+
+  @@index([pendingUnlockId])
+  @@map("block_evidences")
+}

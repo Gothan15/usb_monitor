@@ -16,6 +16,7 @@ public sealed class ConfigCompartida
     private readonly object _lock = new();
     private bool _lockSessionOnInsert;
     private bool _shutdownOnNonWhitelisted;
+    private bool _captureEvidenceOnNonWhitelisted;
     private int _startupNetworkDelay;
 
     /// <summary>Bloquear la sesión de Windows al insertar un USB bloqueado.</summary>
@@ -45,6 +46,17 @@ public sealed class ConfigCompartida
         set { lock (_lock) _shutdownCountdownSeconds = Math.Clamp(value, 10, 600); }
     }
 
+    /// <summary>
+    /// Capturar la foto del momento al bloquear un dispositivo
+    /// fuera de la lista blanca (captura de pantalla, procesos y
+    /// pestañas, a través del compañero). Apagado por defecto.
+    /// </summary>
+    public bool CaptureEvidenceOnNonWhitelisted
+    {
+        get { lock (_lock) return _captureEvidenceOnNonWhitelisted; }
+        set { lock (_lock) _captureEvidenceOnNonWhitelisted = value; }
+    }
+
     /// <summary>Espera de red al arrancar el servicio, en segundos.</summary>
     public int StartupNetworkDelay
     {
@@ -63,6 +75,7 @@ public sealed class ConfigCompartida
             // tal cual viene.
             _lockSessionOnInsert = remota.LockSessionOnInsert;
             _shutdownOnNonWhitelisted = remota.ShutdownOnNonWhitelisted;
+            _captureEvidenceOnNonWhitelisted = remota.CaptureEvidenceOnNonWhitelisted;
             // La cuenta atrás es anulable: un panel sin el campo
             // (versión anterior) no pisa el valor vigente.
             if (remota.ShutdownCountdownSeconds is { } segundos)

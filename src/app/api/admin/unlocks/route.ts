@@ -49,6 +49,20 @@ export async function GET(req: NextRequest) {
         readAppSettings(),
       ]);
 
+    // Captura de evidencia: qué bloqueos tienen foto del momento,
+    // para que la vista enseñe el botón «Evidencia» solo en ellos.
+    const idsBloqueos = [...blockedNow, ...activeUnlocked].map((p) => p.id);
+    const conEvidencia = idsBloqueos.length
+      ? await db.blockEvidence.findMany({
+          where: { pendingUnlockId: { in: idsBloqueos } },
+          select: { pendingUnlockId: true },
+          distinct: ["pendingUnlockId"],
+        })
+      : [];
+    const idsConEvidencia = new Set(conEvidencia.map((e) => e.pendingUnlockId));
+    const marcarEvidencia = <T extends { id: string }>(filas: T[]) =>
+      filas.map((f) => ({ ...f, hasEvidence: idsConEvidencia.has(f.id) }));
+
     // Método 3: silencio = sin señales desde hace más del umbral.
     // Si TODOS los equipos están en silencio, lo probable es que el
     // servidor estuviera caído, no que todos los agentes cayeran a la
@@ -78,8 +92,8 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      blockedNow,
-      activeUnlocked,
+      blockedNow: marcarEvidencia(blockedNow),
+      activeUnlocked: marcarEvidencia(activeUnlocked),
       attempts: attempts.map((a) => ({
         ...a,
         // Destacar en la vista los desbloqueos hechos con cuenta admin.

@@ -106,6 +106,8 @@ export async function GET(req: Request) {
       lockSessionOnInsert: settings.lockSessionOnInsert,
       shutdownOnNonWhitelisted: settings.shutdownOnNonWhitelisted,
       shutdownCountdownSeconds,
+      captureEvidenceOnNonWhitelisted:
+        settings.captureEvidenceOnNonWhitelisted,
       comandos,
     });
     res.headers.set("Cache-Control", "no-store");
