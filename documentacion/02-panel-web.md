@@ -64,14 +64,12 @@ Los cambios se empujan a los agentes conectados y, además, cada agente los pide
 
 ## Instalación remota del agente
 
-Desde Equipos se puede instalar el agente en otra PC por WinRM o SSH, con el progreso en vivo. Antes de lanzarla, el botón **«Comprobar requisitos en el destino»** verifica: WinRM accesible, sesión válida, token de administrador completo, la política que permite a los administradores locales actuar por red, la autenticación necesaria y el perfil de red. Si algo falla, el propio diálogo da el comando exacto para corregirlo. En el destino hay que activar WinRM una sola vez como administrador local:
+Desde el escáner de red o desde Equipos se crean **tareas de instalación** contra uno o varios equipos, con el progreso en vivo en la vista Tareas. Para cada destino el panel elige el método: si el equipo ya tiene un agente que da señales, se actualiza por su propio canal — descarga el paquete del panel y verifica su SHA-256 — sin credenciales; si no, va por **empuje SMB**: el ayudante `USBMonitorEmpujador.exe` copia el ejecutable a `C:\USBMonitor` del destino por el recurso `C$` y un servicio temporal lo instala en su modo sin ventanas, con la dirección de este panel y un token recién provisionado para ese equipo. La contraseña de administrador de los destinos se da una sola vez al crear la tarea y vive solo en la memoria del servidor.
 
-```powershell
-Enable-PSRemoting -SkipNetworkProfileCheck -Force
-```
+Antes de empujar, el panel comprueba en vivo los requisitos de cada destino: puerto 445 alcanzable, sesión SMB con las credenciales, derecho a crear servicios y si el agente ya está presente. El destino se prepara una sola vez: red en perfil Privado, «Compartir archivos e impresoras» activo, cuenta administradora local con contraseña y el valor `LocalAccountTokenFilterPolicy = 1`, para que ese administrador entre por red con su token completo. La receta completa, también para máquinas virtuales, está en la documentación de despliegue (04) y, dentro del propio panel, en Ajustes → Preguntas frecuentes, donde la misma lista se marca sola con el resultado de la comprobación.
 
-La instalación copia el agente actual en C# (`USBMonitorService.exe` y su `Install-Service.ps1`) a `C:\USBMonitor` del destino y lo deja instalado y arrancado.
+El ejecutable que se empuja es el que el panel guarda en su carpeta `paquete-agente` (con el empujador en su carpeta `empujador`): ambos salen del zip de la Release del agente, y durante la instalación no se descarga nada de internet. Un equipo solo se da por instalado cuando su agente da la primera señal al panel: que la copia termine no basta.
 
 ## Guía y preguntas frecuentes
 
-El panel incluye una guía interactiva que recorre las ocho vistas paso a paso (navega sola, resalta cada zona y explica qué se hace ahí) y una sección de preguntas frecuentes con 17 preguntas. La guía se puede volver a lanzar desde Ajustes.
+El panel incluye una guía interactiva que recorre las ocho vistas paso a paso (navega sola, resalta cada zona y explica qué se hace ahí) y una sección de preguntas frecuentes que crece con el sistema. La guía se puede volver a lanzar desde Ajustes.
