@@ -15,6 +15,13 @@
 # de aquí es el mismo procedimiento de siempre, en una máquina
 # Windows de GitHub. Las etiquetas del agente son «agente-v*» y
 # las del panel «panel-v*»: no se pisan.
+#
+# Cada Release del panel lleva DOS instaladores: el ligero de
+# siempre y el «completo», que trae dentro el paquete del agente
+# vigente (su ejecutable, el empujador y el manifiesto, colocados
+# en las carpetas del panel). El paso de preparación descarga la
+# Release del agente más reciente y deja el PaqueteDir que la
+# variante -Completo de Construir-Instalador.ps1 espera.
 name: Panel — instalador MSI
 
 on:
@@ -59,20 +66,54 @@ jobs:
           }
           "version=$version" >> $env:GITHUB_OUTPUT
 
-      - name: Construir el instalador
+      - name: Preparar el paquete del agente (para la variante completo)
+        id: paquete
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # La Release del agente más reciente trae el zip con los
+          # dos ejecutables: se descomprime y se deja el PaqueteDir
+          # (los dos exe + el manifiesto con la versión de esa
+          # Release) que la variante completo espera.
+          $rel = gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=30" | ConvertFrom-Json |
+            Where-Object { $_.tag_name -like 'agente-v*' -and -not $_.draft -and -not $_.prerelease } |
+            Select-Object -First 1
+          if (-not $rel) { throw 'No hay ninguna Release del agente publicada: la variante completo no se puede construir.' }
+          $versionAgente = $rel.tag_name -replace '^agente-v', ''
+          gh release download $rel.tag_name --pattern 'USBMonitorService-agente-v*.zip' --dir "$env:RUNNER_TEMP\paquete-zip"
+          Expand-Archive -Path "$env:RUNNER_TEMP\paquete-zip\USBMonitorService-agente-v$versionAgente.zip" -DestinationPath "$env:RUNNER_TEMP\paquete-desc" -Force
+          $dir = 'salida-instalador\paquete'
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          Copy-Item "$env:RUNNER_TEMP\paquete-desc\USBMonitorService.exe" $dir
+          Copy-Item "$env:RUNNER_TEMP\paquete-desc\USBMonitorEmpujador.exe" $dir
+          @{ version = $versionAgente } | ConvertTo-Json | Set-Content "$dir\manifiesto.json" -Encoding utf8
+          "dir=$dir" >> $env:GITHUB_OUTPUT
+
+      # Primero el ligero: su .msi se compila antes de que la
+      # variante completo copie el paquete al árbol preparado.
+      - name: Construir el instalador (ligero)
         shell: pwsh
         run: ./instalador/Construir-Instalador.ps1 -Version ${{ steps.version.outputs.version }}
 
-      - name: Guardar el .msi como artefacto de la ejecución
+      - name: Construir el instalador (completo, con el paquete del agente)
+        shell: pwsh
+        run: ./instalador/Construir-Instalador.ps1 -Version ${{ steps.version.outputs.version }} -Completo -PaqueteDir ${{ steps.paquete.outputs.dir }}
+
+      - name: Guardar los .msi como artefacto de la ejecución
         uses: actions/upload-artifact@v6
         with:
-          name: USBMonitor-Panel-${{ steps.version.outputs.version }}.msi
-          path: salida-instalador/USBMonitor-Panel-${{ steps.version.outputs.version }}.msi
+          name: USBMonitor-Panel-${{ steps.version.outputs.version }}
+          path: |
+            salida-instalador/USBMonitor-Panel-${{ steps.version.outputs.version }}.msi
+            salida-instalador/USBMonitor-Panel-${{ steps.version.outputs.version }}-completo.msi
           retention-days: 30
 
-      - name: Publicar el .msi en la Release de la etiqueta
+      - name: Publicar los .msi en la Release de la etiqueta
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: salida-instalador/USBMonitor-Panel-${{ steps.version.outputs.version }}.msi
+          files: |
+            salida-instalador/USBMonitor-Panel-${{ steps.version.outputs.version }}.msi
+            salida-instalador/USBMonitor-Panel-${{ steps.version.outputs.version }}-completo.msi
           generate_release_notes: true
