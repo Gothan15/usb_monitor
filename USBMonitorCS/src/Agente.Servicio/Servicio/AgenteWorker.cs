@@ -811,6 +811,24 @@ public sealed class AgenteWorker : BackgroundService
         {
             try
             {
+                // Ping periódico: la versión del agente SOLO viaja
+                // en esta llamada (el panel la guarda como
+                // agentVersion al recibirla) y el servicio no la
+                // hacía nunca: solo salía al pulsar «Probar
+                // conexión» en la caja de herramientas. Sin esto,
+                // Equipos enseñaba «Sin anunciar» aunque el latido
+                // de conectados renovara lastSeen y el servicio
+                // constara como corriendo. Con su propio try para
+                // que un fallo de red del ping no se salte el resto
+                // del latido.
+                try
+                {
+                    await _cliente.PingAsync().ConfigureAwait(false);
+                }
+                catch (Exception excPing)
+                {
+                    Log.Error($"Latido: ping al panel: {excPing.Message}");
+                }
                 await _cliente.VaciarColaAsync().ConfigureAwait(false);
                 Dictionary<string, Dispositivo> actuales;
                 lock (_lockConocidos)
