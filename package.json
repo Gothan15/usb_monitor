@@ -99,5 +99,13 @@
     "tw-animate-css": "^1.3.5",
     "typescript": "^5",
     "vitest": "^3.2.7"
+  },
+  "allowScripts": {
+    "@prisma/engines@7.10.1": true,
+    "argon2@0.45.2": true,
+    "esbuild@0.28.2": true,
+    "prisma@7.10.1": true,
+    "sharp@0.35.5": true,
+    "sharp@0.34.5": true
   }
 }
