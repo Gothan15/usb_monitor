@@ -11,7 +11,7 @@ Convierte el panel de USB Monitor en **una aplicación que se instala como cualq
 | Base de datos | **PostgreSQL integrado y privado**: clúster propio creado con `initdb`, servicio `USBMonitorPostgreSQL`, puerto propio (def. 5433), solo escucha en localhost |
 | Servicio del panel | `USBMonitorPanel` (WinSW), automático, se reinicia si cae, depende del servicio de la BD |
 | Accesos directos | Escritorio y menú Inicio: «Abrir el panel» (lee el puerto real del registro) |
-| Cortafuegos (opcional) | Regla de entrada para el puerto del panel, limitada a la **subred local** |
+| Cortafuegos (opcional) | Regla de entrada para el puerto del panel, limitada a la **subred local** y a los perfiles de red **Privado** y **Dominio** |
 | Copia de seguridad | Tarea programada semanal (domingos 03:00): `pg_dump` completo en `Datos\Copias\`, conserva las 8 últimas |
 | Ficha del programa | Icono propio (el favicon del panel) y datos en «Aplicaciones instaladas» |
 
@@ -120,6 +120,7 @@ La primera corrida de este workflow es, además, la primera compilación real de
 - **`initdb` o Prisma fallan con errores de DLL:** falta el *Microsoft Visual C++ Redistributable* 2015-2022 (x64) en ese equipo; se instala una vez y se reintenta (la instalación del panel se puede reparar/repetir sin perder datos).
 - **Puerto ocupado:** el asistente avisa al configurar si el puerto del panel o el de la BD ya están en uso. Si se continúa de todos modos, el servicio del panel no arrancará; queda en `Registros\instalacion.log` y en el registro del servicio. Solución: liberar el puerto o desinstalar y reinstalar eligiendo otro.
 - **La IP del servidor cambia (DHCP):** los orígenes permitidos se fijaron al instalar. Acceder por el **nombre del equipo** (estable) evita el problema; si se cambia de IP de forma permanente, editar `ALLOWED_ORIGINS` en `app\.env` y reiniciar el servicio `USBMonitorPanel`.
+- **El panel abre en el propio equipo pero no desde otro ordenador de la red:** el panel escucha en todas las interfaces por defecto, así que casi siempre es el cortafuegos de Windows. Dos cosas a revisar: (1) que la casilla del cortafuegos quedara marcada al instalar — la regla «USB Monitor — Panel» se crea al instalar y al actualizar; y (2) el **perfil de red** del servidor: la regla solo cubre los perfiles **Privado** y **Dominio**. Si Windows trata esa red como **Pública** (pasa a menudo con Ethernet recién conectada), el tráfico de la LAN no entra: se cambia en Configuración → Red e Internet → Propiedades de la red → «Privada».
 - **La BD corre como LocalSystem** (igual que el agente y el panel): decisión deliberada de la v1 para que el servicio funcione igual en Windows en cualquier idioma (las cuentas con nombre, como «Servicio de red», cambian según el idioma). Endurecerlo a una cuenta de servicio dedicada es posible más adelante.
 
 ## Qué NO hace esta versión

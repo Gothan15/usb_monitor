@@ -23,9 +23,18 @@ export async function POST(req: NextRequest) {
     const force = !!body.force;
     // Un solo motor de escaneo: el síncrono. El antiguo modo por
     // «trabajos» (async) no lo llamaba nadie y divergía de este.
-    const { results, cached } = await scanNetwork(cidr, { force });
+    const { results, cached, limitado, cidrEscaneado } = await scanNetwork(
+      cidr,
+      { force }
+    );
     const res = NextResponse.json({
-      cidr: cidr || "auto",
+      // El CIDR efectivamente escaneado: si la red pedida era mayor
+      // que el tope, es la ventana /24 alrededor de la IP propia y
+      // «limitado» va a true para que la interfaz lo avise (no es un
+      // error: el escaneo se hizo, sobre un tramo).
+      cidr: cidrEscaneado,
+      redSolicitada: cidr || "auto",
+      limitado,
       cached,
       count: results.length,
       results,

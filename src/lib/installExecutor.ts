@@ -1,4 +1,3 @@
-import os from "os";
 
 import { db } from "@/lib/db";
 import { generateAgentToken, hashAgentToken } from "@/lib/auth";
@@ -7,6 +6,7 @@ import { getCurrentDate } from "@/lib/time";
 import { logError, logInfo } from "@/lib/logger";
 import { broadcastInstallChange } from "@/lib/socket";
 import { ejecutarEmpujador, type ResultadoEmpujador } from "@/lib/empujador";
+import { getAllLocalNetworks } from "@/lib/networkScanner";
 import {
   manifiestoPaquete,
   rutaExePaquete,
@@ -100,15 +100,11 @@ export function hostServidorParaAgente(): string {
   const envHost = (process.env.APP_HOST || "").trim();
   let host = envHost && envHost !== "0.0.0.0" && envHost !== "::" ? envHost : "";
   if (!host) {
-    for (const entradas of Object.values(os.networkInterfaces())) {
-      const externa = (entradas ?? []).find(
-        (d) => d.family === "IPv4" && !d.internal,
-      );
-      if (externa) {
-        host = externa.address;
-        break;
-      }
-    }
+    // La lista del escáner ya viene ordenada por preferencia
+    // (interfaz física primero, virtuales al final): un agente de
+    // otro PC debe recibir la IP real de la LAN, no la de un
+    // adaptador de VMware/Hyper-V que nadie más puede alcanzar.
+    host = getAllLocalNetworks()[0]?.address ?? "";
   }
   const puerto = Number(process.env.PORT) || 3000;
   return `${host || "localhost"}:${puerto}`;

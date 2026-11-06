@@ -29,12 +29,22 @@ interface BuildContentSecurityPolicyOptions {
   allowedOrigins: string[];
   development: boolean;
   nonce?: string;
+  /**
+   * Añadir `upgrade-insecure-requests` (por defecto sí). Debe
+   * desactivarse cuando el panel se sirve por HTTP en la red
+   * local: la directiva haría que el navegador subiera a HTTPS
+   * todas las llamadas de una página abierta por la IP de la LAN
+   * (localhost está exento por ser origen de confianza; una IP
+   * 192.168.x.x no) y el panel quedaría inusable desde otro PC.
+   */
+  upgradeInsecureRequests?: boolean;
 }
 
 export function buildContentSecurityPolicy({
   allowedOrigins,
   development,
   nonce,
+  upgradeInsecureRequests = true,
 }: BuildContentSecurityPolicyOptions): string {
   const scriptSrc = new Set(["'self'"]);
   if (nonce) {
@@ -73,7 +83,7 @@ export function buildContentSecurityPolicy({
     "worker-src 'self' blob:",
   ];
 
-  if (!development) {
+  if (!development && upgradeInsecureRequests) {
     directives.push("upgrade-insecure-requests");
   }
 

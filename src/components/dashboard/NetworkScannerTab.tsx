@@ -165,6 +165,7 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
   const [scanning, setScanning] = useState(false);
   const [scanResults, setScanResults] = useState<ScanResult[]>([]);
   const [scanError, setScanError] = useState<string | null>(null);
+  const [scanNotice, setScanNotice] = useState<string | null>(null);
   const [lastScanAt, setLastScanAt] = useState<string | null>(null);
   const [installDialogOpen, setInstallDialogOpen] = useState(false);
   const [destinosDialog, setDestinosDialog] = useState<DestinoTarea[]>([]);
@@ -237,6 +238,7 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
     try {
       setScanning(true);
       setScanError(null);
+      setScanNotice(null);
       const csrfToken = getCsrfTokenFromDocument();
       if (!csrfToken) {
         throw new Error(
@@ -273,6 +275,14 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
 
       setScanResults(normalized);
       setLastScanAt(getCurrentIsoString());
+      if (data?.limitado) {
+        // La red era mayor que el tope (pasa con las Ethernet /16):
+        // el escaneo se hizo sobre la ventana que devuelve la API.
+        // Es un aviso, no un error.
+        setScanNotice(
+          `La red es demasiado grande para escanearla entera: se ha escaneado solo el tramo ${data.cidr} (las 254 direcciones alrededor de la IP de este equipo).`,
+        );
+      }
       onRefreshComputers();
       void cargarVersiones();
     } catch (error: any) {
@@ -375,6 +385,12 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
       {scanError && (
         <Alert className="mt-6 border-destructive/40 bg-transparent text-destructive">
           <AlertDescription>{scanError}</AlertDescription>
+        </Alert>
+      )}
+
+      {scanNotice && !scanError && (
+        <Alert className="mt-6 bg-transparent">
+          <AlertDescription>{scanNotice}</AlertDescription>
         </Alert>
       )}
 
