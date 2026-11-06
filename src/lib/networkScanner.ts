@@ -26,6 +26,57 @@ function guessInterfaceType(name: string): NetworkInterfaceInfo["type"] {
   return "other";
 }
 
+/**
+ * Adaptadores virtuales (VMware, VirtualBox, Hyper-V, Docker/WSL…):
+ * suelen traer subredes enormes o ajenas a la LAN real. No se
+ * descartan —pueden ser la única red—, pero quedan los últimos al
+ * elegir interfaz automáticamente.
+ */
+function nombrePareceVirtual(name: string): boolean {
+  const lower = name.toLowerCase();
+  return (
+    lower.includes("vmware") ||
+    lower.includes("virtualbox") ||
+    lower.includes("virtual") ||
+    lower.includes("hyper-v") ||
+    lower.includes("vethernet") ||
+    lower.includes("docker") ||
+    lower.includes("wsl") ||
+    lower.includes("loopback") ||
+    lower.includes("npcap")
+  );
+}
+
+const RANGO_TIPO_INTERFAZ: Record<NetworkInterfaceInfo["type"], number> = {
+  ethernet: 0,
+  wifi: 1,
+  other: 2,
+  vpn: 3,
+};
+
+/**
+ * Orden de preferencia al elegir interfaz sin que el usuario diga
+ * cuál: primero la Ethernet/Wi-Fi física, después el resto y al
+ * final VPN y adaptadores virtuales. Orden estable: a igual rango
+ * se conserva el orden del sistema.
+ */
+export function ordenarRedesPorPreferencia(
+  redes: NetworkInterfaceInfo[]
+): NetworkInterfaceInfo[] {
+  return redes
+    .map((red, indice) => ({ red, indice }))
+    .sort((a, b) => {
+      const rangoA =
+        (nombrePareceVirtual(a.red.name) ? 10 : 0) +
+        RANGO_TIPO_INTERFAZ[a.red.type];
+      const rangoB =
+        (nombrePareceVirtual(b.red.name) ? 10 : 0) +
+        RANGO_TIPO_INTERFAZ[b.red.type];
+      return rangoA - rangoB || a.indice - b.indice;
+    })
+    .map(({ red }) => red);
+}
+
 function cidrFromAddressNetmask(address: string, netmask: string): string {
   const ones = netmask
     .split(".")
@@ -57,7 +108,10 @@ export function getAllLocalNetworks(): NetworkInterfaceInfo[] {
       });
     }
   }
-  return results;
+  // La lista sale ordenada por preferencia: quien tome la primera
+  // (red automática, selector de interfaces) coge la interfaz real
+  // y no un adaptador virtual con una subred enorme.
+  return ordenarRedesPorPreferencia(results);
 }
 
 export interface HostScanResult {
@@ -77,13 +131,37 @@ export interface HostScanResult {
 
 function getLocalCIDR(): string | null {
   // Única fuente de verdad: la misma lista que ve el selector de
-  // interfaces (salta internas y link-local, usa la máscara real).
+  // interfaces (salta internas y link-local, usa la máscara real y
+  // viene ordenada por preferencia: la primera es la interfaz real).
   return getAllLocalNetworks()[0]?.cidr ?? null;
 }
 
 const MAX_SCAN_HOSTS = 1024;
 
-export function ipRangeFromCIDR(cidr: string): string[] {
+export interface ScanRange {
+  ips: string[];
+  /** true si la red pedida era mayor que el tope y se escaneó solo una ventana. */
+  limitado: boolean;
+  /** Direcciones útiles que tiene la red pedida (antes de limitar). */
+  totalDirecciones: number;
+  /** CIDR efectivamente escaneado (la ventana /24 si se limitó). */
+  cidrEscaneado: string;
+}
+
+function numeroAIp(n: number): string {
+  return `${(n >>> 24) & 255}.${(n >>> 16) & 255}.${(n >>> 8) & 255}.${n & 255}`;
+}
+
+/**
+ * Rango a escanear para un CIDR. Una red mayor que el tope ya NO es
+ * un error: las Ethernet de empresa suelen ser /16 y rechazarlas
+ * dejaba el escáner inútil con el cable puesto. En ese caso se
+ * escanea la ventana /24 que contiene la dirección base (en las
+ * interfaces es la IP propia del equipo) y el llamante avisa de que
+ * el rango se limitó. El tope sigue protegiendo: nunca se escanean
+ * más de MAX_SCAN_HOSTS direcciones de una vez.
+ */
+export function scanRangeFromCIDR(cidr: string): ScanRange {
   const [base, maskStr] = cidr.split("/");
   const mask = parseInt(maskStr, 10);
   const octets = base.split(".").map(Number);
@@ -93,19 +171,34 @@ export function ipRangeFromCIDR(cidr: string): string[] {
   const ipNum = ((octets[0] << 24) >>> 0) + (octets[1] << 16) + (octets[2] << 8) + octets[3];
   const hostBits = 32 - mask;
   const total = mask >= 31 ? Math.pow(2, hostBits) : Math.pow(2, hostBits) - 2;
-  if (total > MAX_SCAN_HOSTS) {
-    throw new Error(
-      `La red ${cidr} tiene ${total} direcciones: demasiado grande para un escaneo (máximo ${MAX_SCAN_HOSTS}). Elige una subred más pequeña.`
-    );
-  }
   const network = hostBits === 32 ? ipNum : (ipNum >>> hostBits) << hostBits;
+
+  if (total > MAX_SCAN_HOSTS) {
+    // Ventana /24 alrededor de la dirección base: sus 254 útiles.
+    const ventana = ipNum & 0xffffff00;
+    const ips: string[] = [];
+    for (let i = 1; i <= 254; i++) ips.push(numeroAIp(ventana + i));
+    return {
+      ips,
+      limitado: true,
+      totalDirecciones: total,
+      cidrEscaneado: `${numeroAIp(ventana)}/24`,
+    };
+  }
+
   const first = mask >= 31 ? network : network + 1;
   const ips: string[] = [];
-  for (let i = 0; i < total; i++) {
-    const n = first + i;
-    ips.push(`${(n >>> 24) & 255}.${(n >>> 16) & 255}.${(n >>> 8) & 255}.${n & 255}`);
-  }
-  return ips;
+  for (let i = 0; i < total; i++) ips.push(numeroAIp(first + i));
+  return {
+    ips,
+    limitado: false,
+    totalDirecciones: total,
+    cidrEscaneado: `${numeroAIp(network)}/${mask}`,
+  };
+}
+
+export function ipRangeFromCIDR(cidr: string): string[] {
+  return scanRangeFromCIDR(cidr).ips;
 }
 
 async function pingHost(ip: string, timeoutMs = 800): Promise<boolean> {
@@ -205,6 +298,8 @@ let lastScan: {
   cidr: string;
   timestamp: number;
   results: HostScanResult[];
+  limitado: boolean;
+  cidrEscaneado: string;
 } | null = null;
 const CACHE_TTL_MS = 60_000; // 60s
 
@@ -244,7 +339,12 @@ async function persistComputers(entries: ComputerUpsertPayload[]) {
 export async function scanNetwork(
   cidr?: string,
   options?: { force?: boolean }
-): Promise<{ results: HostScanResult[]; cached: boolean }> {
+): Promise<{
+  results: HostScanResult[];
+  cached: boolean;
+  limitado: boolean;
+  cidrEscaneado: string;
+}> {
   const net = cidr || getLocalCIDR();
   if (!net) throw new Error("No se pudo determinar la red local");
   if (
@@ -253,9 +353,15 @@ export async function scanNetwork(
     lastScan.cidr === net &&
     getCurrentTimestamp() - lastScan.timestamp < CACHE_TTL_MS
   ) {
-    return { results: lastScan.results, cached: true };
+    return {
+      results: lastScan.results,
+      cached: true,
+      limitado: lastScan.limitado,
+      cidrEscaneado: lastScan.cidrEscaneado,
+    };
   }
-  const ips = ipRangeFromCIDR(net);
+  const rango = scanRangeFromCIDR(net);
+  const ips = rango.ips;
   const concurrency = 30;
   const results: HostScanResult[] = [];
   const persistQueue: ComputerUpsertPayload[] = [];
@@ -350,6 +456,17 @@ export async function scanNetwork(
   const workers = Array.from({ length: concurrency }, () => worker());
   await Promise.all(workers);
   await persistComputers(persistQueue);
-  lastScan = { cidr: net, timestamp: getCurrentTimestamp(), results };
-  return { results, cached: false };
+  lastScan = {
+    cidr: net,
+    timestamp: getCurrentTimestamp(),
+    results,
+    limitado: rango.limitado,
+    cidrEscaneado: rango.cidrEscaneado,
+  };
+  return {
+    results,
+    cached: false,
+    limitado: rango.limitado,
+    cidrEscaneado: rango.cidrEscaneado,
+  };
 }

@@ -15,7 +15,11 @@ import { setupSocket } from "@/lib/socket";
 
 const dev = process.env.NODE_ENV !== "production";
 const currentPort = Number(process.env.PORT);
-const hostname = process.env.APP_HOST;
+// Sin APP_HOST expreso, el panel escucha en TODAS las interfaces:
+// es un panel de red local y tiene que responder también por la IP
+// de la LAN (otros ordenadores y los agentes de otros PCs). Fijar
+// APP_HOST=127.0.0.1 o localhost lo encerraría en el propio equipo.
+const hostname = (process.env.APP_HOST || "").trim() || "0.0.0.0";
 const nextVersion = (nextPackage as { version?: string }).version ?? "dev";
 
 // Orígenes por defecto del socket: localhost y el nombre interno.
