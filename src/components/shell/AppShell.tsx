@@ -116,7 +116,7 @@ export function AppShell({
               {/* Marca */}
               <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-border px-[22px]">
                 <Image
-                  src="/favicon.svg"
+                  src="/favicon-claro.png"
                   alt="USB Monitor"
                   width={24}
                   height={24}
@@ -321,7 +321,7 @@ export function AppShell({
                 <div className="flex h-12 items-center gap-1 px-4 lg:px-6">
                   <span className="flex items-center gap-2 lg:hidden">
                     <Image
-                      src="/favicon.svg"
+                      src="/favicon-claro.png"
                       alt="USB Monitor"
                       width={22}
                       height={22}
@@ -448,7 +448,7 @@ export function AppShell({
                     className="flex shrink-0 items-center gap-2.5"
                   >
                     <Image
-                      src="/favicon.svg"
+                      src="/favicon-claro.png"
                       alt="USB Monitor"
                       width={24}
                       height={24}

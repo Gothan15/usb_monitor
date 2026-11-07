@@ -51,7 +51,21 @@ export const metadata: Metadata = {
     "CLI",
   ],
   authors: [{ name: "Monitor USB Team" }],
-  icons: [{ rel: "icon", url: "/favicon.svg" }],
+  icons: [
+    { rel: "icon", url: "/favicon.svg", type: "image/svg+xml" },
+    {
+      rel: "icon",
+      url: "/favicon-claro.png",
+      type: "image/png",
+      media: "(prefers-color-scheme: light)",
+    },
+    {
+      rel: "icon",
+      url: "/favicon-oscuro.png",
+      type: "image/png",
+      media: "(prefers-color-scheme: dark)",
+    },
+  ],
   openGraph: {
     title: "Monitor USB - Seguridad y Control",
     description:
@@ -66,6 +80,13 @@ export const metadata: Metadata = {
     description:
       "Panel moderno para monitoreo y control de eventos USB en red.",
   },
+};
+
+export const viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#F5F3EF" },
+    { media: "(prefers-color-scheme: dark)", color: "#14120F" },
+  ],
 };
 
 export default function RootLayout({
