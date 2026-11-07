@@ -45,7 +45,7 @@ export async function GET(req: Request) {
       }
     }
     if (!rotated && auth.sessionNeedsRotation) {
-      const freshToken = createSessionToken(auth.userId, auth.apiKey);
+      const freshToken = createSessionToken(auth.userId, auth.apiKey, undefined, auth.sessionVersion ?? 1);
       cookiesToSet.push(buildSessionCookie(freshToken, undefined, requestIsSecure(req)));
       rotated = true;
     }

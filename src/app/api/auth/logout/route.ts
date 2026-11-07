@@ -1,14 +1,21 @@
 import { NextResponse } from "next/server";
-import { expireCsrfCookie, expireSessionCookie, requestIsSecure, requireAuth } from "@/lib/auth";
+import { expireCsrfCookie, expireSessionCookie, requestIsSecure, requireAuth, subirVersionSesion } from "@/lib/auth";
 
 export async function POST(req: Request) {
+  let auth;
   try {
-    await requireAuth(req);
+    auth = await requireAuth(req);
   } catch (error: any) {
     return NextResponse.json(
       { ok: false, error: "No autorizado" },
       { status: error?.message === "FORBIDDEN" ? 403 : 401 }
     );
+  }
+
+  // Cerrar sesión de verdad: subir la versión deja el token
+  // inservible aunque alguien conserve la cookie.
+  if (auth?.type === "user") {
+    await subirVersionSesion(auth.userId).catch(() => {});
   }
 
   const res = NextResponse.json({ ok: true });

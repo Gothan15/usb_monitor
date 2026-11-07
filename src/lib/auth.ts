@@ -57,6 +57,7 @@ type CachedUser = {
   apiKey: string | null;
   computerId: string | null;
   computerName: string | null;
+  sessionVersion: number;
 };
 
 // Keeps hot user lookups in-memory so high-frequency endpoints avoid repetitive SQL hits.
@@ -100,6 +101,8 @@ function normalizeUserRecord(user: any): CachedUser {
     apiKey: user.apiKey ?? null,
     computerId: user.computerId ?? null,
     computerName: user.computer?.name ?? null,
+    sessionVersion:
+      typeof user.sessionVersion === "number" ? user.sessionVersion : 1,
   };
 }
 
@@ -122,6 +125,7 @@ function toUserAuthIdentity(
     apiKey: user.apiKey,
     computerId: user.computerId,
     computerName: user.computerName,
+    sessionVersion: user.sessionVersion,
     sessionNeedsRotation,
   };
 }
@@ -136,6 +140,7 @@ export interface UserAuthIdentity {
   apiKey: string | null;
   computerId: string | null;
   computerName?: string | null;
+  sessionVersion?: number;
   sessionNeedsRotation?: boolean;
 }
 
@@ -329,6 +334,7 @@ interface SessionPayload {
   ak?: string | null;
   exp: number; // epoch seconds (expiration)
   la?: number; // last activity epoch seconds
+  sv?: number; // versión de sesión: sesión única por cuenta
 }
 
 interface SessionVerificationResult {
@@ -394,6 +400,7 @@ export function createSessionToken(
   userId: string,
   apiKey: string | null,
   ttlSeconds = SESSION_TTL_SECONDS,
+  sessionVersion = 1,
 ) {
   const now = Math.floor(getCurrentTimestamp() / 1000);
   return signSession({
@@ -401,7 +408,60 @@ export function createSessionToken(
     ak: apiKey,
     exp: now + ttlSeconds,
     la: now,
+    sv: sessionVersion,
   });
+}
+
+/**
+ * Sesión única por cuenta: sube la versión de sesión del usuario
+ * y devuelve la nueva. Todo token emitido con una versión
+ * anterior deja de valer en su siguiente comprobación — el login
+ * nuevo cierra el anterior, esté abierto donde esté. Refresca
+ * también la caché de usuarios para que el corte sea inmediato
+ * y no espere a que caduque la entrada (2 min).
+ */
+export async function subirVersionSesion(userId: string): Promise<number> {
+  const actualizado = await (db as any).user.update({
+    where: { id: userId },
+    data: { sessionVersion: { increment: 1 } },
+    select: {
+      id: true,
+      apiKey: true,
+      username: true,
+      role: true,
+      computerId: true,
+      sessionVersion: true,
+      computer: { select: { name: true } },
+    },
+  });
+  if (actualizado) cacheUserRecord(normalizeUserRecord(actualizado));
+  return actualizado?.sessionVersion ?? 1;
+}
+
+/** Normaliza una IP para comparar (minúsculas, sin prefijo IPv4-mapeado). */
+export function normalizarIp(ip: string): string {
+  let v = (ip || "").trim().toLowerCase();
+  if (v.startsWith("::ffff:")) v = v.slice(7);
+  return v;
+}
+
+/**
+ * IP real del cliente tal como la ve el servidor. server.ts anota
+ * la IP del socket en x-client-ip (el navegador no puede
+ * falsificarla); x-forwarded-for solo se cree cuando quien llama
+ * es el propio localhost (un proxy inverso local, p. ej. Caddy),
+ * porque fuera de ese caso cualquiera puede inventársela.
+ */
+export function ipClienteDe(req: Request): string {
+  const delSocket = normalizarIp(req.headers.get("x-client-ip") || "");
+  const esLocal = delSocket === "127.0.0.1" || delSocket === "::1";
+  if (esLocal || !delSocket) {
+    const reenviada = normalizarIp(
+      (req.headers.get("x-forwarded-for") || "").split(",")[0],
+    );
+    if (reenviada) return reenviada;
+  }
+  return delSocket;
 }
 
 export function renewSessionToken(token: string): string | null {
@@ -417,6 +477,7 @@ export function renewSessionToken(token: string): string | null {
     ak: payload.ak ?? null,
     exp: now + SESSION_TTL_SECONDS,
     la: now,
+    sv: payload.sv,
   });
 }
 
@@ -439,6 +500,7 @@ export async function authenticateRequest(
             username: true,
             role: true,
             computerId: true,
+            sessionVersion: true,
             computer: { select: { name: true } },
           },
         });
@@ -448,7 +510,12 @@ export async function authenticateRequest(
         }
       }
       if (user) {
-        return toUserAuthIdentity(user, verification.needsRotation);
+        // Sesión única por cuenta: si el token trae una versión
+        // anterior a la vigente, esa sesión ya fue desplazada por
+        // un login posterior (o por un cierre) y no vale.
+        if ((verification.payload.sv ?? 0) === (user.sessionVersion ?? 1)) {
+          return toUserAuthIdentity(user, verification.needsRotation);
+        }
       }
     }
   }
@@ -480,6 +547,7 @@ export async function authenticateRequest(
           username: true,
           role: true,
           computerId: true,
+          sessionVersion: true,
           computer: { select: { name: true } },
         },
       });
@@ -549,10 +617,16 @@ export async function verifySessionFromRequest(
 
   const user = await (db as any).user.findUnique({
     where: { id: verification.payload.uid },
-    select: { username: true, role: true },
+    select: { username: true, role: true, sessionVersion: true },
   });
 
   if (!user) return null;
+
+  // Sesión única: una versión desplazada tampoco vale aquí
+  // (esta función es la que comprueba el handshake del socket).
+  if ((verification.payload.sv ?? 0) !== (user.sessionVersion ?? 1)) {
+    return null;
+  }
 
   return {
     username: user.username,
@@ -655,6 +729,7 @@ export const authTesting = {
       apiKey: seed.apiKey,
       computerId: seed.computerId ?? null,
       computerName: seed.computerName ?? null,
+      sessionVersion: 1,
     };
     cacheUserRecord(cached);
   },

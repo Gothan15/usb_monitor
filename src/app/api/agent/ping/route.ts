@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireServiceAuth } from "@/lib/auth";
+import { requireServiceAuth, ipClienteDe, normalizarIp } from "@/lib/auth";
 import { getCurrentDate, getCurrentIsoString } from "@/lib/time";
 import { normalizeComputerName } from "@/lib/utils";
 import { registrarContactoAgente } from "@/lib/agentDebug";
@@ -35,7 +35,7 @@ export async function GET(req: Request) {
     if (pcName) {
       const computer = await db.computer.findUnique({
         where: { name: pcName },
-        select: { id: true, name: true },
+        select: { id: true, name: true, ipAddress: true },
       });
       if (computer) {
         pc = computer.name;
@@ -45,6 +45,15 @@ export async function GET(req: Request) {
             lastSeen: getCurrentDate(),
             isActive: true,
             ...(agentVersion ? { agentVersion } : {}),
+            // La IP del equipo se mantiene al día con la de la
+            // propia llamada: el login de los usuarios normales
+            // se comprueba contra esta IP (solo puede entrar
+            // desde su PC asignada), y tiene que seguir a la PC
+            // aunque el DHCP le cambie la dirección.
+            ...(ipClienteDe(req) &&
+            ipClienteDe(req) !== normalizarIp(computer.ipAddress || "")
+              ? { ipAddress: ipClienteDe(req) }
+              : {}),
           },
         });
         // Misma señal, en Redis: la presencia con expiración igual al

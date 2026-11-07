@@ -24,7 +24,7 @@ export async function POST(req: Request) {
     const DEFAULT_TTL = 60 * 60; // 1h
     const MAX_TTL = 4 * 60 * 60; // 4h
     const ttl = Math.min(Math.max(requestedTtl || DEFAULT_TTL, 300), MAX_TTL);
-    const token = createSessionToken(auth.userId, auth.apiKey, ttl);
+    const token = createSessionToken(auth.userId, auth.apiKey, ttl, auth.sessionVersion ?? 1);
     const csrfToken = issueCsrfToken();
     const now = Math.floor(getCurrentTimestamp() / 1000);
     const res = NextResponse.json({ ok: true, expiresAt: now + ttl });

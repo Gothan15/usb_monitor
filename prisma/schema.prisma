@@ -68,6 +68,7 @@ model User {
   updatedAt        DateTime       @updatedAt
   failedAttempts   Int            @default(0)
   lockedUntil      DateTime?
+  sessionVersion   Int            @default(1) // Sesión única por cuenta: sube en cada login y los tokens con otra versión dejan de valer
   whitelistEntries USBWhitelist[]
   unlockedPendings PendingUnlock[] @relation("UnlockedBy")
   unlockAttempts   UnlockAttempt[]
