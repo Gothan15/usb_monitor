@@ -4,8 +4,9 @@ import { useTheme } from "next-themes";
 import { useSyncExternalStore } from "react";
 import { Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
-export function ThemeToggle() {
+export function ThemeToggle({ className }: { className?: string }) {
   const { theme, setTheme } = useTheme();
   const mounted = useSyncExternalStore(
     () => () => {},
@@ -21,7 +22,7 @@ export function ThemeToggle() {
       variant="ghost"
       size="icon"
       aria-label="Cambiar tema"
-      className="size-9"
+      className={cn("size-9", className)}
       onClick={() => setTheme(isDark ? "light" : "dark")}
     >
       <span className="sr-only">Cambiar tema</span>
