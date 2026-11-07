@@ -5,13 +5,11 @@ const nextConfig: NextConfig = {
   // Ajustes (POST /api/admin/agent-package): el proxy de Next
   // almacena el cuerpo de cada petición con un tope de 10 MB y lo
   // recortaba en silencio, dejando la subida inservible. Se sube
-  // el tope a 200 MB. Van las dos claves (la actual y la antigua)
-  // porque el runtime las ha nombrado de las dos maneras según la
-  // versión; la que no reconozca solo produce un aviso al arrancar.
+  // el tope a 200 MB. SOLO la clave actual: Next 16.4.5 rechaza
+  // el arranque si conviven las dos (la antigua y la nueva).
   experimental: {
     proxyClientMaxBodySize: "200mb",
-    middlewareClientMaxBodySize: "200mb",
-  } as Record<string, unknown>,
+  },
   serverExternalPackages: ["ssh2"],
   turbopack: {},
   typescript: {
