@@ -120,7 +120,15 @@ export function AppShell({
                   alt="USB Monitor"
                   width={24}
                   height={24}
-                  className="size-6 shrink-0 rounded-[4px]"
+                  className="size-6 shrink-0 rounded-[4px] dark:hidden"
+                />
+                <Image
+                  src="/favicon-oscuro.png"
+                  alt=""
+                  aria-hidden
+                  width={24}
+                  height={24}
+                  className="hidden size-6 shrink-0 rounded-[4px] dark:block"
                 />
                 <AnimatePresence>
                   {lateralAbierta && (
@@ -325,7 +333,15 @@ export function AppShell({
                       alt="USB Monitor"
                       width={22}
                       height={22}
-                      className="size-[22px] rounded-[4px]"
+                      className="size-[22px] rounded-[4px] dark:hidden"
+                    />
+                    <Image
+                      src="/favicon-oscuro.png"
+                      alt=""
+                      aria-hidden
+                      width={22}
+                      height={22}
+                      className="hidden size-[22px] rounded-[4px] dark:block"
                     />
                     <span className="font-display text-[15px] font-bold tracking-tight">
                       USB Monitor
@@ -452,7 +468,15 @@ export function AppShell({
                       alt="USB Monitor"
                       width={24}
                       height={24}
-                      className="size-6 rounded-[4px]"
+                      className="size-6 rounded-[4px] dark:hidden"
+                    />
+                    <Image
+                      src="/favicon-oscuro.png"
+                      alt=""
+                      aria-hidden
+                      width={24}
+                      height={24}
+                      className="hidden size-6 rounded-[4px] dark:block"
                     />
                     <span className="font-display text-base font-bold tracking-tight">
                       USB Monitor

@@ -54,6 +54,14 @@ public sealed class AgenteWorker : BackgroundService
 
     private readonly object _lockConocidos = new();
     private Dictionary<string, Dispositivo> _conocidos = new();
+
+    // Firma (serial|letra) del último conjunto conectado que ya
+    // consta en el panel: el bucle de detección avisa AL INSTANTE
+    // cuando cambia, sin esperar al latido de 30 s — así «Ver USB»
+    // enseña el momento exacto, como hacía el agente antiguo, que
+    // sondeaba el conjunto y reportaba en cuanto cambiaba la foto.
+    private string _firmaConectados = "";
+    private readonly object _lockFirmaConectados = new();
     private HashSet<string> _baseRed = new();
     private readonly HashSet<string> _pendientesRegistrados = new();
 
@@ -703,6 +711,7 @@ public sealed class AgenteWorker : BackgroundService
                         await AlExtraerAsync(clave, disp).ConfigureAwait(false);
                 }
                 lock (_lockConocidos) _conocidos = actuales;
+                AvisarConectadosSiCambio(actuales);
             }
             catch (Exception exc)
             {
@@ -893,6 +902,48 @@ public sealed class AgenteWorker : BackgroundService
         }
     }
 
+    /// <summary>Firma comparable de un conjunto conectado.</summary>
+    private static string FirmaConectados(List<UnidadConectada> unidades) =>
+        string.Join("\n", unidades
+            .Select(u => $"{u.SerialNumber}|{u.DriveLetter ?? ""}")
+            .OrderBy(f => f, StringComparer.Ordinal));
+
+    /// <summary>
+    /// Si el conjunto conectado cambió respecto a lo último que
+    /// consta en el panel, lo envía a connected-status EN EL
+    /// MOMENTO, en segundo plano para no frenar la detección. El
+    /// latido de 30 s sigue mandándolo como siempre: renueva el
+    /// lastSeen que mantiene vivas las filas entre cambios.
+    /// </summary>
+    private void AvisarConectadosSiCambio(Dictionary<string, Dispositivo> actuales)
+    {
+        var unidades = Detector.UnidadesParaEstado(actuales.Values);
+        var firma = FirmaConectados(unidades);
+        lock (_lockFirmaConectados)
+        {
+            if (firma == _firmaConectados) return;
+            _firmaConectados = firma;
+        }
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                if (!await _cliente.EstadoConectadosAsync(unidades).ConfigureAwait(false))
+                    throw new InvalidOperationException("el panel no aceptó el estado");
+            }
+            catch (Exception exc)
+            {
+                Log.Error($"Aviso de conectados al cambiar: {exc.Message}");
+                // Envío fallido: se olvida la firma para reintentarlo
+                // en el próximo cambio; el latido también reconcilia.
+                lock (_lockFirmaConectados)
+                {
+                    if (_firmaConectados == firma) _firmaConectados = "";
+                }
+            }
+        });
+    }
+
     private async Task BucleLatidoAsync(CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
@@ -921,8 +972,15 @@ public sealed class AgenteWorker : BackgroundService
                 Dictionary<string, Dispositivo> actuales;
                 lock (_lockConocidos)
                     actuales = new Dictionary<string, Dispositivo>(_conocidos);
-                await _cliente.EstadoConectadosAsync(
-                    Detector.UnidadesParaEstado(actuales.Values)).ConfigureAwait(false);
+                var unidadesLatido = Detector.UnidadesParaEstado(actuales.Values);
+                if (await _cliente.EstadoConectadosAsync(unidadesLatido).ConfigureAwait(false))
+                {
+                    // El latido también deja constancia de la firma:
+                    // el aviso al instante no repite el mismo
+                    // conjunto que el latido acaba de mandar.
+                    lock (_lockFirmaConectados)
+                        _firmaConectados = FirmaConectados(unidadesLatido);
+                }
                 await SubirEvidenciasPendientesAsync().ConfigureAwait(false);
                 var intentos = _emergencia.IntentosPendientes();
                 if (intentos.Count > 0 &&
