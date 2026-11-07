@@ -106,14 +106,24 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
   const canFetch = Boolean(computer?.id);
 
   const fetchDevices = useCallback(
-    async (type: "connected" | "history", signal?: AbortSignal) => {
+    async (
+      type: "connected" | "history",
+      signal?: AbortSignal,
+      opciones?: { silencioso?: boolean }
+    ) => {
       if (!canFetch) return;
       const isHistory = type === "history";
+      // silencioso: recarga sin cambiar la lista por el spinner ni
+      // tocar los avisos — para el empuje en vivo y el sondeo, que
+      // ocurren sin que nadie haya pedido nada.
+      const silencioso = opciones?.silencioso === true;
       try {
-        if (isHistory) setLoadingHistory(true);
-        else setLoadingConnected(true);
-        if (isHistory) setErrorHistory(null);
-        else setErrorConnected(null);
+        if (!silencioso) {
+          if (isHistory) setLoadingHistory(true);
+          else setLoadingConnected(true);
+          if (isHistory) setErrorHistory(null);
+          else setErrorConnected(null);
+        }
         const res = await fetch(
           `/api/computers/${encodeURIComponent(
             computer!.id
@@ -132,12 +142,15 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
         else setConnected(data.items as ConnectedUSBDevice[]);
       } catch (err: any) {
         if (err?.name === "AbortError") return;
+        if (silencioso) return;
         const msg = err?.message || "No se pudo obtener información";
         if (type === "history") setErrorHistory(msg);
         else setErrorConnected(msg);
       } finally {
-        if (type === "history") setLoadingHistory(false);
-        else setLoadingConnected(false);
+        if (!silencioso) {
+          if (type === "history") setLoadingHistory(false);
+          else setLoadingConnected(false);
+        }
       }
     },
     [canFetch, computer, historyRange]
@@ -149,8 +162,8 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
     try {
       const signal = abortRef.current?.signal;
       await Promise.all([
-        fetchDevices("connected", signal),
-        fetchDevices("history", signal),
+        fetchDevices("connected", signal, { silencioso: true }),
+        fetchDevices("history", signal, { silencioso: true }),
       ]);
     } finally {
       setIsRefreshing(false);
@@ -207,10 +220,29 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
     }
     const signal = abortRef.current?.signal;
     void Promise.all([
-      fetchDevices("connected", signal),
-      fetchDevices("history", signal),
+      fetchDevices("connected", signal, { silencioso: true }),
+      fetchDevices("history", signal, { silencioso: true }),
     ]);
   }, [devicesVersion, devicesPcName, open, computer, fetchDevices]);
+
+  // Sondeo de respaldo mientras la hoja está abierta: cada 4 s se
+  // vuelve a pedir la foto del equipo. El empuje por socket es el
+  // camino rápido, pero si el WebSocket no llega (red local,
+  // «Tiempo real» en pausa…), la lista converge igual a lo que el
+  // agente reporta — un USB que se desconecta desaparece solo,
+  // sin tocar el botón de actualizar.
+  useEffect(() => {
+    if (!open) return;
+    const id = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      const signal = abortRef.current?.signal;
+      void Promise.all([
+        fetchDevices("connected", signal, { silencioso: true }),
+        fetchDevices("history", signal, { silencioso: true }),
+      ]);
+    }, 4000);
+    return () => clearInterval(id);
+  }, [open, fetchDevices]);
 
   const headerSubtitle = useMemo(() => {
     if (!computer) return "";

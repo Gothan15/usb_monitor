@@ -21,18 +21,18 @@ export function ThemeToggle() {
       variant="ghost"
       size="icon"
       aria-label="Cambiar tema"
-      className="relative h-10 w-10 rounded-full border border-border/40 bg-card/80 text-muted-foreground backdrop-blur transition hover:bg-muted/60"
+      className="size-9"
       onClick={() => setTheme(isDark ? "light" : "dark")}
     >
       <span className="sr-only">Cambiar tema</span>
       {mounted ? (
         isDark ? (
-          <Sun className="h-4 w-4" />
+          <Sun className="size-4" />
         ) : (
-          <Moon className="h-4 w-4" />
+          <Moon className="size-4" />
         )
       ) : (
-        <Sun className="h-4 w-4" />
+        <Sun className="size-4" />
       )}
     </Button>
   );
