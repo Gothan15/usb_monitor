@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { expireCsrfCookie, expireSessionCookie, requireAuth } from "@/lib/auth";
+import { expireCsrfCookie, expireSessionCookie, requestIsSecure, requireAuth } from "@/lib/auth";
 
 export async function POST(req: Request) {
   try {
@@ -12,8 +12,8 @@ export async function POST(req: Request) {
   }
 
   const res = NextResponse.json({ ok: true });
-  res.headers.append("Set-Cookie", expireSessionCookie());
-  res.headers.append("Set-Cookie", expireCsrfCookie());
+  res.headers.append("Set-Cookie", expireSessionCookie(requestIsSecure(req)));
+  res.headers.append("Set-Cookie", expireCsrfCookie(requestIsSecure(req)));
   res.headers.set("Cache-Control", "no-store");
   return res;
 }

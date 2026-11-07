@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   buildCsrfCookie,
   buildSessionCookie,
+  requestIsSecure,
   createSessionToken,
   issueCsrfToken,
   requireAuth,
@@ -27,8 +28,8 @@ export async function POST(req: Request) {
     const csrfToken = issueCsrfToken();
     const now = Math.floor(getCurrentTimestamp() / 1000);
     const res = NextResponse.json({ ok: true, expiresAt: now + ttl });
-    res.headers.append("Set-Cookie", buildSessionCookie(token, ttl));
-    res.headers.append("Set-Cookie", buildCsrfCookie(csrfToken, ttl));
+    res.headers.append("Set-Cookie", buildSessionCookie(token, ttl, requestIsSecure(req)));
+    res.headers.append("Set-Cookie", buildCsrfCookie(csrfToken, ttl, requestIsSecure(req)));
     res.headers.set("X-CSRF-Token", csrfToken);
     res.headers.set("Cache-Control", "no-store");
     return res;

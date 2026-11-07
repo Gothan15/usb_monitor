@@ -7,6 +7,7 @@ import {
   hashPassword,
   buildSessionCookie,
   buildCsrfCookie,
+  requestIsSecure,
   issueCsrfToken,
 } from "@/lib/auth";
 import { hit } from "@/lib/rateLimit";
@@ -162,8 +163,8 @@ export async function POST(req: Request) {
       },
       // Frontend ya no necesita guardar nada; token sólo en cookie
     });
-    response.headers.append("Set-Cookie", buildSessionCookie(token));
-    response.headers.append("Set-Cookie", buildCsrfCookie(csrfToken));
+    response.headers.append("Set-Cookie", buildSessionCookie(token, undefined, requestIsSecure(req)));
+    response.headers.append("Set-Cookie", buildCsrfCookie(csrfToken, undefined, requestIsSecure(req)));
     response.headers.set("Cache-Control", "no-store");
     response.headers.set("X-CSRF-Token", csrfToken);
     return response;
