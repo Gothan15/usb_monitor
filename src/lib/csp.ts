@@ -22,7 +22,9 @@ export function parseAllowedOrigins(raw: string | undefined): string[] {
     return DEFAULT_ALLOWED_ORIGINS;
   }
 
-  return Array.from(new Set(entries));
+  // Igual que en el servidor del socket: ALLOWED_ORIGINS añade
+  // orígenes a los de por defecto, no los sustituye.
+  return Array.from(new Set([...DEFAULT_ALLOWED_ORIGINS, ...entries]));
 }
 
 interface BuildContentSecurityPolicyOptions {
@@ -59,10 +61,13 @@ export function buildContentSecurityPolicy({
 
   const styleSrc = new Set(["'self'", "'unsafe-inline'", "https:"]);
 
-  const connectSrc = new Set(["'self'", "https:", "wss:"]);
+  // ws: también en producción: sirviendo el panel por HTTP en la
+  // red local, el WebSocket viaja por ws://, y sin la directiva
+  // explícita algunos navegadores lo bloquean y el canal en vivo
+  // degrada a sondeo sin que nada lo explique.
+  const connectSrc = new Set(["'self'", "https:", "ws:", "wss:"]);
   if (development) {
     connectSrc.add("http:");
-    connectSrc.add("ws:");
   }
   for (const origin of allowedOrigins) {
     connectSrc.add(origin);

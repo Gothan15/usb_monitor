@@ -1,5 +1,6 @@
 import { Server } from "socket.io";
-import { getCurrentIsoString } from "./time";
+import { verifySessionFromRequest } from "./auth";
+import { logInfo } from "./logger";
 
 /* ── Singleton reference ──
    La instancia vive en globalThis: el servidor personalizado (server.ts)
@@ -100,24 +101,33 @@ export function broadcastUsbDevices(pcName: string): void {
 export const setupSocket = (io: Server) => {
   setIO(io);
 
-  io.on("connection", (socket) => {
-    console.log("Client connected:", socket.id);
-
-    socket.on("message", (msg: { text: string; senderId: string }) => {
-      socket.emit("message", {
-        text: `Echo: ${msg.text}`,
-        senderId: "system",
-        timestamp: getCurrentIsoString(),
+  // El canal en vivo también exige sesión: sin esta comprobación,
+  // cualquier cliente que alcanzara el puerto recibía todos los
+  // eventos (qué USB se conecta en qué PC, bloqueos, estados) sin
+  // haber iniciado sesión. Se verifica la misma cookie «session»
+  // del panel, con la misma función que usan las rutas de la API.
+  io.use(async (socket, next) => {
+    try {
+      const cookie = socket.handshake.headers.cookie ?? "";
+      const req = new Request("http://localhost", {
+        headers: { cookie },
       });
-    });
+      const sesion = await verifySessionFromRequest(req);
+      if (!sesion) {
+        return next(new Error("Sesión no válida"));
+      }
+      socket.data.usuario = sesion.username;
+      return next();
+    } catch {
+      return next(new Error("Sesión no válida"));
+    }
+  });
+
+  io.on("connection", (socket) => {
+    logInfo("Cliente conectado al canal en vivo", { id: socket.id });
 
     socket.on("disconnect", () => {
-      console.log("Client disconnected:", socket.id);
-    });
-
-    socket.emit("welcome", {
-      message: "Conectado al centro de control",
-      timestamp: getCurrentIsoString(),
+      logInfo("Cliente desconectado del canal en vivo", { id: socket.id });
     });
   });
 };

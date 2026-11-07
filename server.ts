@@ -51,7 +51,10 @@ function parseSocketOrigins() {
   if (entries.length === 0) {
     return DEFAULT_SOCKET_ORIGINS;
   }
-  return Array.from(new Set(entries));
+  // ALLOWED_ORIGINS AÑADE orígenes a los de por defecto, no los
+  // sustituye: sustituirlos dejaba fuera hasta localhost y el
+  // canal en vivo se caía desde el propio servidor sin aviso.
+  return Array.from(new Set([...DEFAULT_SOCKET_ORIGINS, ...entries]));
 }
 
 function readFileMaybe(filePath: string | undefined) {
