@@ -55,13 +55,13 @@ export const metadata: Metadata = {
     { rel: "icon", url: "/favicon.ico", sizes: "any" },
     {
       rel: "icon",
-      url: "/favicon-claro.png",
+      url: "/brujula-claro.png",
       type: "image/png",
       media: "(prefers-color-scheme: light)",
     },
     {
       rel: "icon",
-      url: "/favicon-oscuro.png",
+      url: "/brujula-oscura.png",
       type: "image/png",
       media: "(prefers-color-scheme: dark)",
     },

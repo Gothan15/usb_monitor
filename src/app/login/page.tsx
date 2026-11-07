@@ -107,7 +107,7 @@ export default function LoginPage() {
         />
         <div className="relative flex items-center gap-3">
           <Image
-            src="/favicon-claro.png"
+            src="/brujula-claro.png"
             alt="USB Monitor"
             width={44}
             height={44}
@@ -156,14 +156,14 @@ export default function LoginPage() {
         >
           <div className="mb-7 flex items-center gap-3 lg:hidden">
             <Image
-              src="/favicon-claro.png"
+              src="/brujula-claro.png"
               alt="USB Monitor"
               width={40}
               height={40}
               className="size-10 shrink-0 rounded-sm dark:hidden"
             />
             <Image
-              src="/favicon-oscuro.png"
+              src="/brujula-oscura.png"
               alt=""
               aria-hidden
               width={40}

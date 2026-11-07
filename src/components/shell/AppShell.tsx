@@ -116,14 +116,14 @@ export function AppShell({
               {/* Marca */}
               <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-border px-[22px]">
                 <Image
-                  src="/favicon-claro.png"
+                  src="/brujula-claro.png"
                   alt="USB Monitor"
                   width={24}
                   height={24}
                   className="size-6 shrink-0 rounded-[4px] dark:hidden"
                 />
                 <Image
-                  src="/favicon-oscuro.png"
+                  src="/brujula-oscura.png"
                   alt=""
                   aria-hidden
                   width={24}
@@ -329,14 +329,14 @@ export function AppShell({
                 <div className="flex h-12 items-center gap-1 px-4 lg:px-6">
                   <span className="flex items-center gap-2 lg:hidden">
                     <Image
-                      src="/favicon-claro.png"
+                      src="/brujula-claro.png"
                       alt="USB Monitor"
                       width={22}
                       height={22}
                       className="size-[22px] rounded-[4px] dark:hidden"
                     />
                     <Image
-                      src="/favicon-oscuro.png"
+                      src="/brujula-oscura.png"
                       alt=""
                       aria-hidden
                       width={22}
@@ -395,7 +395,7 @@ export function AppShell({
                     <div data-tour="notifications">
                       <NotificationCenter />
                     </div>
-                    <ThemeToggle className="size-8" />
+                    <ThemeToggle />
                     <span className="flex items-center gap-0.5 lg:hidden">
                       <span className="mx-1 h-5 w-px bg-border" />
                       <span className="flex size-7 items-center justify-center rounded-full border border-[var(--acero)]/70 font-display text-[11px] font-bold text-[var(--acero)]">
@@ -464,14 +464,14 @@ export function AppShell({
                     className="flex shrink-0 items-center gap-2.5"
                   >
                     <Image
-                      src="/favicon-claro.png"
+                      src="/brujula-claro.png"
                       alt="USB Monitor"
                       width={24}
                       height={24}
                       className="size-6 rounded-[4px] dark:hidden"
                     />
                     <Image
-                      src="/favicon-oscuro.png"
+                      src="/brujula-oscura.png"
                       alt=""
                       aria-hidden
                       width={24}
