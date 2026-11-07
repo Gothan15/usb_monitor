@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth";
 import { logError } from "@/lib/logger";
 import { readAppSettings } from "@/lib/appSettings";
+import { leerPresencias } from "@/lib/agentPresence";
 import { getCurrentDate } from "@/lib/time";
 import { manifiestoPaquete } from "@/lib/paqueteAgente";
 import { necesitaActualizacion } from "@/lib/versionesAgente";
@@ -55,10 +56,21 @@ export async function GET(req: Request) {
       conteosUsb.map((c) => [c.pcName, c._count._all]),
     );
 
+    // Presencia en Redis (la refresca el latido del agente y expira
+    // con este mismo umbral): una señal viva más, leída de una vez
+    // para todos los equipos. Si Redis no responde, leerPresencias
+    // devuelve null y manda solo el lastSeen de la BD, como siempre.
+    // Se combina con OR y nunca resta: un Redis vacío o recién
+    // reiniciado no puede marcar como apagado un equipo que está
+    // dando señales por la BD; sus claves vuelven en el siguiente
+    // latido (≤30 s).
+    const presencias = await leerPresencias(computers.map((c) => c.id));
+
     const conEstadoReal = computers.map((computer) => {
       const activo =
-        computer.lastSeen != null &&
-        ahora - new Date(computer.lastSeen).getTime() <= umbralMs;
+        (computer.lastSeen != null &&
+          ahora - new Date(computer.lastSeen).getTime() <= umbralMs) ||
+        presencias?.get(computer.id) === true;
       return {
         ...computer,
         isActive: activo,
