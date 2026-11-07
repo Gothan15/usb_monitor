@@ -4,7 +4,9 @@ using System.Text.Json.Serialization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Documents;
 using System.Windows.Media;
+using System.Windows.Shapes;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using USBMonitor.Agente.Core;
@@ -27,8 +29,14 @@ public sealed class CompaneroWindow : Window
     private readonly DispatcherTimer _temporizador;
     private readonly DispatcherTimer _latido;
     private readonly ComboBox _selector;
-    private readonly TextBlock _detalle;
+    private readonly TextBlock _nombreDispositivo;
+    private readonly TextBlock _datosDispositivo;
+    private readonly Border _bandaAviso;
     private readonly TextBlock _aviso;
+    private readonly Border _bandaMensaje;
+    private Border _bordeBandaMensaje = null!;
+    private Ellipse _puntoPastilla = null!;
+    private TextBlock _textoPastilla = null!;
     private readonly StackPanel _formulario;
     private readonly TextBox _usuario;
     private readonly PasswordBox _contrasena;
@@ -60,74 +68,133 @@ public sealed class CompaneroWindow : Window
         Visibility = Visibility.Hidden;
         ShowInTaskbar = true;
         Tema.AplicarVentana(this);
+        // Blanco cálido en vez del papel frío del tema: a petición
+        // de Gothan, esta ventana va en tonos de blanco, sin azul.
+        Background = new SolidColorBrush(Color.FromRgb(0xF5, 0xF3, 0xEF));
 
-        var raiz = new StackPanel { Margin = new Thickness(18, 6, 18, 18) };
-        raiz.Children.Add(Tema.TitularVentana("Dispositivo bloqueado"));
+        // ── Presentación (remodelada el 2026-11-07 a petición de
+        // Gothan: la ventana se veía demasiado simple) ──
+        // Cabecera en blanco roto con filete dorado y pastilla de
+        // estado, tarjeta blanca con el dispositivo como bloque de
+        // identidad (nombre en semibold, serial en Consolas), el
+        // dueño tras un filete de acero, y los avisos como bandas
+        // con tinte y barra lateral en vez de texto suelto. La
+        // lógica no cambia: mismos campos, mismos estados.
+        var raiz = new StackPanel { Margin = new Thickness(0) };
+        raiz.Children.Add(CrearCabecera());
 
         var contenido = new StackPanel();
 
-        _detalle = Tema.TextoDatos("", 12.5);
-        _detalle.Foreground = Tema.TintaAtenuada;
-        _detalle.Margin = new Thickness(0, 0, 0, 10);
-        contenido.Children.Add(_detalle);
+        _nombreDispositivo = new TextBlock
+        {
+            FontFamily = Tema.FuenteTexto,
+            FontSize = 15,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = Tema.Tinta,
+            TextWrapping = TextWrapping.Wrap
+        };
+        contenido.Children.Add(_nombreDispositivo);
+
+        _datosDispositivo = Tema.TextoDatos("", 12);
+        _datosDispositivo.Foreground = Tema.TintaAtenuada;
+        _datosDispositivo.Margin = new Thickness(0, 3, 0, 0);
+        contenido.Children.Add(_datosDispositivo);
+
+        contenido.Children.Add(new Border
+        {
+            Height = 1,
+            Background = Tema.Borde,
+            Margin = new Thickness(0, 14, 0, 12)
+        });
 
         // De quién es la contraseña que vale en esta PC (o el aviso
         // de que no hay dueño asignado): lo rellena ConsultarDueno.
+        // Va tras un filete de acero, como un dato de registro.
         _textoDueno = new TextBlock
         {
             FontFamily = Tema.FuenteTexto,
             FontSize = 12.5,
             Foreground = Tema.TintaAtenuada,
-            TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 0, 0, 10)
+            TextWrapping = TextWrapping.Wrap
         };
-        contenido.Children.Add(_textoDueno);
+        contenido.Children.Add(new Border
+        {
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0xB9, 0xB4, 0xA8)),
+            BorderThickness = new Thickness(2, 0, 0, 0),
+            Padding = new Thickness(10, 2, 0, 2),
+            Child = _textoDueno
+        });
 
         _selector = Tema.Selector();
-        _selector.Margin = new Thickness(0, 0, 0, 10);
+        _selector.Margin = new Thickness(0, 12, 0, 0);
         _selector.Visibility = Visibility.Collapsed;
         _selector.SelectionChanged += (_, _) => ActualizarSeleccion();
         contenido.Children.Add(_selector);
 
+        // Aviso de «no listado»: banda ámbar con barra lateral, no
+        // un renglón de texto suelto sobre la tarjeta.
         _aviso = new TextBlock
         {
             FontFamily = Tema.FuenteTexto,
             FontSize = 13,
-            Foreground = Tema.Ambar,
-            TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 0, 0, 10),
-            Visibility = Visibility.Collapsed
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(Color.FromRgb(0x7A, 0x55, 0x10)),
+            TextWrapping = TextWrapping.Wrap
         };
-        contenido.Children.Add(_aviso);
+        _bandaAviso = CrearBanda(
+            _aviso,
+            new SolidColorBrush(Color.FromRgb(0xFA, 0xF1, 0xDC)),
+            Tema.Ambar);
+        _bandaAviso.Margin = new Thickness(0, 12, 0, 0);
+        _bandaAviso.Visibility = Visibility.Collapsed;
+        contenido.Children.Add(_bandaAviso);
 
-        _formulario = new StackPanel();
+        _formulario = new StackPanel { Margin = new Thickness(0, 14, 0, 0) };
         _formulario.Children.Add(Tema.EtiquetaCampo("Usuario"));
         _usuario = Tema.CampoTexto();
-        _usuario.Margin = new Thickness(0, 0, 0, 9);
+        _usuario.Padding = new Thickness(10, 7, 10, 7);
+        _usuario.MinHeight = 36;
+        _usuario.Margin = new Thickness(0, 0, 0, 10);
+        ResaltarAlEnfocar(_usuario);
         _formulario.Children.Add(_usuario);
 
         _formulario.Children.Add(Tema.EtiquetaCampo("Contraseña"));
         _contrasena = Tema.CampoContrasena();
-        _contrasena.Margin = new Thickness(0, 0, 0, 12);
+        _contrasena.Padding = new Thickness(10, 7, 10, 7);
+        _contrasena.MinHeight = 36;
+        _contrasena.Margin = new Thickness(0, 0, 0, 14);
+        ResaltarAlEnfocar(_contrasena);
         _formulario.Children.Add(_contrasena);
 
         _boton = Tema.BotonPrimario("Desbloquear");
-        _boton.HorizontalAlignment = HorizontalAlignment.Left;
+        _boton.Background = Carbon;
+        _boton.BorderBrush = Carbon;
+        _boton.HorizontalAlignment = HorizontalAlignment.Stretch;
+        _boton.Margin = new Thickness(0);
+        _boton.Padding = new Thickness(16, 9, 16, 9);
         _boton.Click += async (_, _) => await EnviarAsync();
         _formulario.Children.Add(_boton);
         contenido.Children.Add(_formulario);
 
+        // Mensajes (error, «Autorizado»): también banda con tinte
+        // según el tono, la pinta PintarMensaje.
         _mensaje = new TextBlock
         {
             FontFamily = Tema.FuenteTexto,
-            FontSize = 13,
+            FontSize = 12.5,
             Foreground = Tema.TintaAtenuada,
-            TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 12, 0, 0)
+            TextWrapping = TextWrapping.Wrap
         };
-        contenido.Children.Add(_mensaje);
+        _bandaMensaje = CrearBanda(_mensaje, Tema.SuperficieAtenuada, Tema.Acero);
+        _bandaMensaje.Margin = new Thickness(0, 12, 0, 0);
+        _bandaMensaje.Visibility = Visibility.Collapsed;
+        contenido.Children.Add(_bandaMensaje);
 
-        raiz.Children.Add(Tema.Tarjeta(contenido, new Thickness(0, 4, 0, 0), new Thickness(16)));
+        var cuerpo = new StackPanel { Margin = new Thickness(20, 16, 20, 18) };
+        var tarjeta = Tema.Tarjeta(contenido, new Thickness(0), new Thickness(18));
+        tarjeta.BorderBrush = new SolidColorBrush(Color.FromRgb(0xD8, 0xD3, 0xC8));
+        cuerpo.Children.Add(tarjeta);
+        raiz.Children.Add(cuerpo);
         Content = raiz;
 
         KeyDown += async (_, e) =>
@@ -499,7 +566,7 @@ public sealed class CompaneroWindow : Window
         {
             _claveActual = null;
             _claveMensaje = null;
-            _mensaje.Text = string.Empty;
+            BorrarMensaje();
             OcultarConAnimacion();
             return;
         }
@@ -564,7 +631,7 @@ public sealed class CompaneroWindow : Window
             // El mensaje pintado (p. ej. un «Autorizado») era de
             // OTRO dispositivo: no puede seguir en pantalla para
             // este, ni su contraseña a medio escribir.
-            _mensaje.Text = string.Empty;
+            BorrarMensaje();
             _claveMensaje = null;
             _contrasena.Clear();
         }
@@ -578,19 +645,25 @@ public sealed class CompaneroWindow : Window
             ? "Dispositivo"
             : actual.Nombre;
 
-        _detalle.Text = $"{nombre}{Environment.NewLine}serial {serial} · unidad {letra}";
+        _nombreDispositivo.Text = nombre;
+        _datosDispositivo.Text = $"serial {serial} · unidad {letra}";
 
         if (actual.EnWhitelist == false)
         {
             _aviso.Text = "USB no listado en la lista blanca: será bloqueado.";
-            _aviso.Visibility = Visibility.Visible;
+            _bandaAviso.Visibility = Visibility.Visible;
             _formulario.Visibility = Visibility.Collapsed;
+            PintarPastilla("No autorizado", Tema.Ambar,
+                new SolidColorBrush(Color.FromRgb(0x7A, 0x55, 0x10)));
         }
         else
         {
             _aviso.Text = string.Empty;
-            _aviso.Visibility = Visibility.Collapsed;
+            _bandaAviso.Visibility = Visibility.Collapsed;
             _formulario.Visibility = Visibility.Visible;
+            PintarPastilla("Bloqueado",
+                new SolidColorBrush(Color.FromRgb(0xC4, 0x45, 0x3A)),
+                new SolidColorBrush(Color.FromRgb(0x8E, 0x2F, 0x28)));
         }
     }
 
@@ -691,9 +764,46 @@ public sealed class CompaneroWindow : Window
     {
         _mensaje.Text = texto;
         _mensaje.Foreground = color;
+        // La banda toma el tinte del tono: verde al autorizar,
+        // rojo al fallar, acero para lo neutro. Se compara por el
+        // VALOR del color: Tema.Verde y demás crean una brocha
+        // nueva en cada acceso, así que por referencia no casan.
+        Color valor = (color as SolidColorBrush)?.Color ?? Colors.Transparent;
+        if (valor == Tema.Verde.Color)
+        {
+            _bandaMensaje.Background =
+                new SolidColorBrush(Color.FromRgb(0xE7, 0xF2, 0xEA));
+            _bordeBandaMensaje.Background = Tema.Verde;
+        }
+        else if (valor == Tema.Rojo.Color)
+        {
+            _bandaMensaje.Background =
+                new SolidColorBrush(Color.FromRgb(0xF9, 0xE9, 0xE7));
+            _bordeBandaMensaje.Background = Tema.Rojo;
+        }
+        else if (valor == Tema.Ambar.Color)
+        {
+            _bandaMensaje.Background =
+                new SolidColorBrush(Color.FromRgb(0xFA, 0xF1, 0xDC));
+            _bordeBandaMensaje.Background = Tema.Ambar;
+        }
+        else
+        {
+            _bandaMensaje.Background = Tema.SuperficieAtenuada;
+            _bordeBandaMensaje.Background = Tema.Acero;
+        }
+        _bandaMensaje.Visibility = string.IsNullOrWhiteSpace(texto)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
         // El mensaje pertenece al dispositivo en pantalla: si el
         // seleccionado cambia, ActualizarSeleccion lo borra.
         _claveMensaje = _claveActual;
+    }
+
+    private void BorrarMensaje()
+    {
+        _mensaje.Text = string.Empty;
+        _bandaMensaje.Visibility = Visibility.Collapsed;
     }
 
     /// <summary>
@@ -764,6 +874,211 @@ public sealed class CompaneroWindow : Window
         {
             RegistroVentanas.Depurar($"latido del compañero falló: {ex.Message}");
         }
+    }
+
+    // ── Piezas de la presentación remodelada ──────────────────
+
+    private static readonly Brush Dorado =
+        new SolidColorBrush(Color.FromRgb(0xC0, 0x9A, 0x3B));
+
+    /// <summary>Carbón neutro del botón principal (sin azul).</summary>
+    private static readonly Brush Carbon =
+        new SolidColorBrush(Color.FromRgb(0x26, 0x26, 0x2B));
+
+    /// <summary>
+    /// Cabecera de la ventana: banda en blanco roto en degradado con
+    /// la marca de la página, su nombre en versalitas, el título
+    /// del estado y la pastilla con el estado a la derecha.
+    /// Debajo, el filete dorado de 2 px que separa del cuerpo.
+    /// </summary>
+    private Border CrearCabecera()
+    {
+        var marcaIcono = CrearIconoMarca();
+
+        var marca = new TextBlock
+        {
+            Text = "USBMONITOR",
+            FontFamily = Tema.FuenteTexto,
+            FontSize = 10.5,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(Color.FromRgb(0x8A, 0x8F, 0x98))
+        };
+        marca.SetValue(Typography.CapitalsProperty, FontCapitals.SmallCaps);
+        var titulo = new TextBlock
+        {
+            Text = "Dispositivo bloqueado",
+            FontFamily = new FontFamily("Segoe UI Light"),
+            FontSize = 20,
+            Foreground = new SolidColorBrush(Color.FromRgb(0x22, 0x25, 0x2A)),
+            Margin = new Thickness(0, 1, 0, 0)
+        };
+        var textos = new StackPanel
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(12, 0, 0, 0)
+        };
+        textos.Children.Add(marca);
+        textos.Children.Add(titulo);
+
+        _puntoPastilla = new Ellipse
+        {
+            Width = 7,
+            Height = 7,
+            Fill = Tema.Blanco,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 6, 0)
+        };
+        _textoPastilla = new TextBlock
+        {
+            FontFamily = Tema.FuenteTexto,
+            FontSize = 10.5,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(Color.FromRgb(0x3A, 0x3D, 0x42)),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        _textoPastilla.SetValue(Typography.CapitalsProperty, FontCapitals.SmallCaps);
+        var filaPastilla = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        filaPastilla.Children.Add(_puntoPastilla);
+        filaPastilla.Children.Add(_textoPastilla);
+        var pastilla = new Border
+        {
+            Background = new SolidColorBrush(Color.FromRgb(0xE9, 0xE7, 0xE0)),
+            CornerRadius = new CornerRadius(9),
+            Padding = new Thickness(9, 3, 9, 3),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = filaPastilla
+        };
+
+        var fila = new Grid();
+        fila.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        fila.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        fila.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Grid.SetColumn(marcaIcono, 0);
+        Grid.SetColumn(textos, 1);
+        Grid.SetColumn(pastilla, 2);
+        fila.Children.Add(marcaIcono);
+        fila.Children.Add(textos);
+        fila.Children.Add(pastilla);
+
+        var degradado = new LinearGradientBrush
+        {
+            StartPoint = new Point(0, 0),
+            EndPoint = new Point(0, 1)
+        };
+        degradado.GradientStops.Add(new GradientStop(Color.FromRgb(0xFC, 0xFC, 0xFA), 0));
+        degradado.GradientStops.Add(new GradientStop(Color.FromRgb(0xEF, 0xED, 0xE6), 1));
+
+        var pila = new StackPanel();
+        pila.Children.Add(new Border
+        {
+            Background = degradado,
+            Padding = new Thickness(20, 14, 20, 13),
+            Child = fila
+        });
+        pila.Children.Add(new Border { Height = 2, Background = Dorado });
+        return new Border { Child = pila };
+    }
+
+    /// <summary>
+    /// La marca de la casa: el MISMO icono que usa la página
+    /// (favicon.svg del panel y su cabecera), un conector USB
+    /// estilizado negro sobre baldosa blanca redondeada. Se dibuja
+    /// como vector desde la geometría del SVG (lienzo de 64
+    /// unidades) para que quede nítido sin cargar imágenes.
+    /// </summary>
+    private static Border CrearIconoMarca()
+    {
+        var negro = new SolidColorBrush(Color.FromRgb(0x11, 0x11, 0x11));
+        var lienzo = new Canvas { Width = 64, Height = 64 };
+        lienzo.Children.Add(RectMarca(22, 12, 20, 32, 8, negro, null, 0));
+        lienzo.Children.Add(RectMarca(26, 20, 12, 8, 2, Tema.Blanco, negro, 1.5));
+        lienzo.Children.Add(RectMarca(31, 30, 2, 10, 1, Tema.Blanco, negro, 1.2));
+        lienzo.Children.Add(RectMarca(28, 44, 8, 6, 2, negro, null, 0));
+        lienzo.Children.Add(RectMarca(30, 50, 4, 6, 1.2,
+            new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44)), null, 0));
+        lienzo.Children.Add(RectMarca(30.8, 8, 2.4, 4, 1.2, negro, null, 0));
+        lienzo.Children.Add(RectMarca(30.8, 52, 2.4, 4, 1.2, negro, null, 0));
+        return new Border
+        {
+            Width = 36,
+            Height = 36,
+            CornerRadius = new CornerRadius(9),
+            Background = Tema.Blanco,
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0xD9, 0xD7, 0xD0)),
+            BorderThickness = new Thickness(1),
+            ClipToBounds = true,
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new Viewbox
+            {
+                Child = lienzo,
+                Stretch = Stretch.Uniform
+            }
+        };
+    }
+
+    private static Rectangle RectMarca(
+        double x, double y, double ancho, double alto, double radio,
+        Brush relleno, Brush? borde, double grosorBorde)
+    {
+        var rect = new Rectangle
+        {
+            Width = ancho,
+            Height = alto,
+            RadiusX = radio,
+            RadiusY = radio,
+            Fill = relleno
+        };
+        if (borde is not null)
+        {
+            rect.Stroke = borde;
+            rect.StrokeThickness = grosorBorde;
+        }
+        Canvas.SetLeft(rect, x);
+        Canvas.SetTop(rect, y);
+        return rect;
+    }
+
+    private void PintarPastilla(string texto, Brush punto, Brush textoColor)
+    {
+        _textoPastilla.Text = texto;
+        _textoPastilla.Foreground = textoColor;
+        _puntoPastilla.Fill = punto;
+    }
+
+    /// <summary>
+    /// Banda de aviso o de mensaje: tinte de fondo y barra lateral
+    /// de 3 px en el color del tono, con el texto dentro. La barra
+    /// de la banda de mensaje se guarda aparte porque su color
+    /// cambia con cada mensaje (verde/rojo/acero).
+    /// </summary>
+    private Border CrearBanda(TextBlock texto, Brush fondo, Brush barra)
+    {
+        var lateral = new Border { Width = 3, Background = barra };
+        if (ReferenceEquals(texto, _mensaje))
+        {
+            _bordeBandaMensaje = lateral;
+        }
+        texto.Margin = new Thickness(10, 8, 10, 8);
+        var fila = new Grid();
+        fila.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        fila.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        Grid.SetColumn(lateral, 0);
+        Grid.SetColumn(texto, 1);
+        fila.Children.Add(lateral);
+        fila.Children.Add(texto);
+        return new Border { Background = fondo, Child = fila };
+    }
+
+    /// <summary>Al enfocar un campo, su borde pasa a dorado oscuro.</summary>
+    private static void ResaltarAlEnfocar(Control campo)
+    {
+        campo.GotFocus += (_, _) =>
+            campo.BorderBrush = new SolidColorBrush(Color.FromRgb(0xA8, 0x82, 0x2F));
+        campo.LostFocus += (_, _) => campo.BorderBrush = Tema.Borde;
     }
 
     private sealed class ElementoSelector
