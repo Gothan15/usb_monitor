@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import { db as prisma } from "@/lib/db";
 import { requireAuth } from "@/lib/auth";
-import { DEFAULT_SETTINGS } from "@/lib/appSettings";
+import { DEFAULT_SETTINGS, invalidarCacheAjustes } from "@/lib/appSettings";
 
 const SETTINGS_PATH = path.join(process.cwd(), "config", "app_settings.json");
 
@@ -49,6 +49,10 @@ export async function POST(req: Request) {
     
     await fs.mkdir(path.dirname(SETTINGS_PATH), { recursive: true });
     await fs.writeFile(SETTINGS_PATH, JSON.stringify(newSettings, null, 2), "utf-8");
+
+    // El archivo ya es la nueva verdad: fuera la caché de ajustes en
+    // Redis, para que la siguiente lectura no sirva los valores viejos.
+    await invalidarCacheAjustes();
 
     // Push new setting to active computers if startup_network_delay changed or provided
     if (body.startup_network_delay !== undefined || body.lockSessionOnInsert !== undefined || body.shutdownOnNonWhitelisted !== undefined || body.shutdownCountdownSeconds !== undefined || body.captureEvidenceOnNonWhitelisted !== undefined) {
