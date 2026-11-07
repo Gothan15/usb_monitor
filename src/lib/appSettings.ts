@@ -31,6 +31,13 @@ export interface AppSettings {
   shutdownOnNonWhitelisted: boolean;
   /** Segundos de cuenta atrás antes del apagado (10–600). */
   shutdownCountdownSeconds: number;
+  /**
+   * Captura de evidencia al bloquear un dispositivo que NO está en
+   * la lista blanca: foto del momento (captura de pantalla, ventana
+   * en primer plano, procesos y pestañas del navegador) que queda
+   * guardada en el panel junto al bloqueo. Apagado por defecto.
+   */
+  captureEvidenceOnNonWhitelisted: boolean;
   /** Fase 5 (método 3): minutos sin señales para marcar un equipo. */
   silenceThresholdMinutes: number;
   [key: string]: unknown;
@@ -43,6 +50,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   lockSessionOnInsert: false,
   shutdownOnNonWhitelisted: false,
   shutdownCountdownSeconds: 60,
+  captureEvidenceOnNonWhitelisted: false,
   silenceThresholdMinutes: 5,
 };
 

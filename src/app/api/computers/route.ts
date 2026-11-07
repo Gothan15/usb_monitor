@@ -5,6 +5,9 @@ import { logError } from "@/lib/logger";
 import { readAppSettings } from "@/lib/appSettings";
 import { leerPresencias } from "@/lib/agentPresence";
 import { getCurrentDate } from "@/lib/time";
+import { manifiestoPaquete } from "@/lib/paqueteAgente";
+import { necesitaActualizacion } from "@/lib/versionesAgente";
+import { normalizeComputerName } from "@/lib/utils";
 
 export async function GET(req: Request) {
   try {
@@ -30,6 +33,29 @@ export async function GET(req: Request) {
       Math.max(2, settings.silenceThresholdMinutes || 5) * 60_000;
     const ahora = getCurrentDate().getTime();
 
+    // Versión del paquete que sirve el panel: contra ella se
+    // sabe si el agente de cada equipo (agentVersion, la que el
+    // ping guarda desde la fase B) va por detrás y necesita
+    // actualizarse por el canal.
+    const manifiesto = await manifiestoPaquete();
+    const versionPaquete = manifiesto?.version ?? null;
+
+    // Cuántos USB tiene conectados cada equipo AHORA, con la
+    // misma regla de frescura que la hoja de «Ver USB»
+    // (isConnected y lastSeen dentro del umbral): el distintivo
+    // de Equipos enseña el número sin abrir la hoja y nunca
+    // cuenta filas viejas que la hoja ya no enseñaría. Las
+    // conexiones se guardan con el nombre normalizado.
+    const senalReciente = new Date(ahora - umbralMs);
+    const conteosUsb = await db.uSBConnection.groupBy({
+      by: ["pcName"],
+      where: { isConnected: true, lastSeen: { gte: senalReciente } },
+      _count: { _all: true },
+    });
+    const usbPorPc = new Map(
+      conteosUsb.map((c) => [c.pcName, c._count._all]),
+    );
+
     // Presencia en Redis (la refresca el latido del agente y expira
     // con este mismo umbral): una señal viva más, leída de una vez
     // para todos los equipos. Si Redis no responde, leerPresencias
@@ -45,7 +71,18 @@ export async function GET(req: Request) {
         (computer.lastSeen != null &&
           ahora - new Date(computer.lastSeen).getTime() <= umbralMs) ||
         presencias?.get(computer.id) === true;
-      return { ...computer, isActive: activo, serviceRunning: activo };
+      return {
+        ...computer,
+        isActive: activo,
+        serviceRunning: activo,
+        usbConectados:
+          usbPorPc.get(normalizeComputerName(computer.name)) ?? 0,
+        versionPaquete,
+        actualizacionDisponible: necesitaActualizacion(
+          computer.agentVersion,
+          versionPaquete,
+        ),
+      };
     });
 
     return NextResponse.json(conEstadoReal);
