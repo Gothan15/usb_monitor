@@ -84,6 +84,17 @@ export function broadcastInstallChange(): void {
   ioActual()?.emit("install:change");
 }
 
+/**
+ * Aviso de que el conjunto de USB conectados de un equipo cambió
+ * (el agente lo reporta por connected-status y el servidor compara
+ * antes de guardar). La hoja de «Ver USB» y el distintivo de
+ * Equipos se refrescan con este empuje, como los eventos, en vez
+ * de quedarse con la foto del momento en que se abrieron.
+ */
+export function broadcastUsbDevices(pcName: string): void {
+  ioActual()?.emit("usb:devices", { pcName });
+}
+
 /* ── Setup ── */
 
 export const setupSocket = (io: Server) => {

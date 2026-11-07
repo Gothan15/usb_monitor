@@ -32,6 +32,10 @@ interface LiveDataContextValue {
   unlockVersion: number;
   /** Bumps on every install-task change pushed by the server */
   installVersion: number;
+  /** Bumps when a computer's connected-USB set changes */
+  devicesVersion: number;
+  /** Name of the computer whose USB set changed last */
+  devicesPcName: string;
   /** Clear the live events buffer */
   clearLiveEvents: () => void;
 }
@@ -75,6 +79,8 @@ export function LiveDataProvider({
   const [liveEventCount, setLiveEventCount] = useState(0);
   const [unlockVersion, setUnlockVersion] = useState(0);
   const [installVersion, setInstallVersion] = useState(0);
+  const [devicesVersion, setDevicesVersion] = useState(0);
+  const [devicesPcName, setDevicesPcName] = useState("");
 
   const notificadosRef = useRef<Set<string>>(new Set());
 
@@ -168,6 +174,21 @@ export function LiveDataProvider({
     setInstallVersion((v) => v + 1);
   }, []);
 
+  const onUsbDevices = useCallback(
+    (payload: { pcName: string }) => {
+      // La hoja de «Ver USB» no vive en React Query: consume este
+      // contador y el nombre del equipo, y recarga si es el suyo.
+      // El distintivo de Equipos sí es React Query: se invalida
+      // la lista para que el contador de USB se ponga al día.
+      setDevicesPcName(payload?.pcName ?? "");
+      setDevicesVersion((v) => v + 1);
+      if (useLiveSyncStore.getState().isLiveSyncEnabled) {
+        debouncedInvalidate(["computers"]);
+      }
+    },
+    [debouncedInvalidate],
+  );
+
   const { status } = useSocketEvents({
     onUSBEvent,
     onComputerStatus,
@@ -175,6 +196,7 @@ export function LiveDataProvider({
     onUserChange,
     onUnlockChange,
     onInstallChange,
+    onUsbDevices,
     enabled,
   });
 
@@ -191,9 +213,11 @@ export function LiveDataProvider({
       liveEventCount,
       unlockVersion,
       installVersion,
+      devicesVersion,
+      devicesPcName,
       clearLiveEvents,
     }),
-    [status, liveEvents, liveEventCount, unlockVersion, installVersion, clearLiveEvents],
+    [status, liveEvents, liveEventCount, unlockVersion, installVersion, devicesVersion, devicesPcName, clearLiveEvents],
   );
 
   return (

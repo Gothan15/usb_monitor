@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useSyncExternalStore } from "react";
+import { getCsrfTokenFromDocument } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -309,8 +310,18 @@ export function SettingsTab() {
       if (versionPaquete.trim()) {
         form.append("version", versionPaquete.trim());
       }
+      const csrfToken = getCsrfTokenFromDocument();
+      if (!csrfToken) {
+        setErrorPaquete(
+          "La sesión no trae el token de seguridad: vuelve a iniciar sesión e inténtalo de nuevo.",
+        );
+        setSubiendoPaquete(false);
+        return;
+      }
       const res = await fetch("/api/admin/agent-package", {
         method: "POST",
+        credentials: "include",
+        headers: { "x-csrf-token": csrfToken },
         body: form,
       });
       const data = await res.json().catch(() => null);
