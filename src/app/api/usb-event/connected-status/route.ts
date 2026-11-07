@@ -6,6 +6,7 @@ import { hit } from "@/lib/rateLimit";
 import { registrarContactoAgente } from "@/lib/agentDebug";
 import { logError } from "@/lib/logger";
 import { normalizeComputerName } from "@/lib/utils";
+import { broadcastUsbDevices } from "@/lib/socket";
 
 /**
  * POST /api/usb-event/connected-status
@@ -109,6 +110,27 @@ export async function POST(req: NextRequest) {
     }
     const sanitizedDrives = Array.from(porSerial.values());
 
+    // Foto del conjunto ANTES de tocar nada (serial + letra): si
+    // el reporte trae un conjunto distinto del que consta, al
+    // final se avisa por socket para que «Ver USB» y Equipos se
+    // refresquen en vivo. Comparar aquí evita emitir en cada
+    // latido (cada 30 s) cuando nada cambió.
+    const previos = await (db as any).uSBConnection.findMany({
+      where: { pcName: normalizedPcName, isConnected: true },
+      select: { serialNumber: true, driveLetter: true },
+    });
+    const firmaPrevia = new Set(
+      (previos as any[]).map(
+        (c) => `${c.serialNumber}|${c.driveLetter ?? ""}`,
+      ),
+    );
+    const firmaNueva = new Set(
+      sanitizedDrives.map((d) => `${d.serialNumber}|${d.driveLetter ?? ""}`),
+    );
+    const cambioDispositivos =
+      firmaPrevia.size !== firmaNueva.size ||
+      [...firmaNueva].some((f) => !firmaPrevia.has(f));
+
     const serials = sanitizedDrives
       .map((drive) => drive.serialNumber)
       .filter((serial): serial is string => Boolean(serial));
@@ -192,6 +214,10 @@ export async function POST(req: NextRequest) {
 
     if (operations.length) {
       await (db as any).$transaction(operations);
+    }
+
+    if (cambioDispositivos) {
+      broadcastUsbDevices(normalizedPcName);
     }
 
     registrarContactoAgente(

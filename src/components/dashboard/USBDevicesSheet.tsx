@@ -14,7 +14,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
-import { cn } from "@/lib/utils";
+import { cn, normalizeComputerName } from "@/lib/utils";
+import { useLiveData } from "@/components/providers/LiveDataProvider";
 import {
   Usb,
   RefreshCw,
@@ -181,6 +182,35 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
       void fetchDevices("history", signal);
     });
   }, [historyRange, open, fetchDevices]);
+
+  // En vivo, como los eventos: si el agente reporta un cambio en
+  // los USB de ESTE equipo mientras la hoja está abierta, se
+  // recarga sola (conectados e historial) en vez de enseñar la
+  // foto del momento en que se abrió hasta cerrarla y reabrirla.
+  const { devicesVersion, devicesPcName } = useLiveData();
+  const versionDispositivosRef = useRef(0);
+  useEffect(() => {
+    if (!open || !computer) return;
+    if (
+      devicesVersion === 0 ||
+      devicesVersion === versionDispositivosRef.current
+    ) {
+      return;
+    }
+    versionDispositivosRef.current = devicesVersion;
+    if (!devicesPcName) return;
+    if (
+      normalizeComputerName(devicesPcName) !==
+      normalizeComputerName(computer.name)
+    ) {
+      return;
+    }
+    const signal = abortRef.current?.signal;
+    void Promise.all([
+      fetchDevices("connected", signal),
+      fetchDevices("history", signal),
+    ]);
+  }, [devicesVersion, devicesPcName, open, computer, fetchDevices]);
 
   const headerSubtitle = useMemo(() => {
     if (!computer) return "";

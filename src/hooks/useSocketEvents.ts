@@ -41,6 +41,8 @@ interface UseSocketEventsOptions {
   onUnlockChange?: () => void;
   /** Callback fired when an install task changes. */
   onInstallChange?: () => void;
+  /** Callback fired when a computer's connected-USB set changes. */
+  onUsbDevices?: (payload: { pcName: string }) => void;
   /** Disable the connection entirely. */
   enabled?: boolean;
 }
@@ -54,6 +56,7 @@ export function useSocketEvents({
   onUserChange,
   onUnlockChange,
   onInstallChange,
+  onUsbDevices,
   enabled = true,
 }: UseSocketEventsOptions = {}) {
   const [statusInterno, setStatus] = useState<ConnectionStatus>("disconnected");
@@ -69,6 +72,7 @@ export function useSocketEvents({
   const onUserChangeRef = useRef(onUserChange);
   const onUnlockChangeRef = useRef(onUnlockChange);
   const onInstallChangeRef = useRef(onInstallChange);
+  const onUsbDevicesRef = useRef(onUsbDevices);
 
   useEffect(() => {
     onUSBEventRef.current = onUSBEvent;
@@ -89,6 +93,10 @@ export function useSocketEvents({
   useEffect(() => {
     onInstallChangeRef.current = onInstallChange;
   }, [onInstallChange]);
+
+  useEffect(() => {
+    onUsbDevicesRef.current = onUsbDevices;
+  }, [onUsbDevices]);
 
   useEffect(() => {
     if (!enabled) {
@@ -137,6 +145,10 @@ export function useSocketEvents({
 
     socket.on("install:change", () => {
       onInstallChangeRef.current?.();
+    });
+
+    socket.on("usb:devices", (data: { pcName: string }) => {
+      onUsbDevicesRef.current?.(data);
     });
 
     return () => {
