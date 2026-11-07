@@ -18,6 +18,8 @@ import { logWarn } from "@/lib/logger";
 
 let cliente: Redis | null = null;
 let ultimoFalloMs = 0;
+let ultimoAvisoErrorMs = 0;
+const AVISO_ERROR_CADA_MS = 30_000;
 
 // El estado se lee por esta vía porque los tipos de ioredis estrechan
 // `status` tras cada llamada y no reflejan los cambios asíncronos de
@@ -48,6 +50,13 @@ export async function obtenerRedis(): Promise<Redis | null> {
       enableOfflineQueue: false,
     });
     cliente.on("error", (error) => {
+      // Con freno: si Redis está caído, ioredis reintenta en
+      // segundo plano y emite un error por intento; sin freno el
+      // log se llena de la misma línea (pasó con el cliente del
+      // rate limiting). El aviso importa una vez, no cien.
+      const ahora = Date.now();
+      if (ahora - ultimoAvisoErrorMs < AVISO_ERROR_CADA_MS) return;
+      ultimoAvisoErrorMs = ahora;
       logWarn("Error en cliente Redis compartido", {
         message: error instanceof Error ? error.message : String(error),
       });
