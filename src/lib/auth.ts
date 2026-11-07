@@ -560,28 +560,55 @@ export async function verifySessionFromRequest(
   };
 }
 
+/**
+ * ¿La petición llegó por HTTPS? Directamente o detrás de un proxy
+ * que lo indique (x-forwarded-proto, p. ej. Caddy). Decide si las
+ * cookies llevan la marca Secure: con Secure, el navegador NO
+ * devuelve la cookie en peticiones HTTP, así que marcarla siempre
+ * en producción dejaba el panel inusable al entrar por la IP de
+ * la LAN (la sesión «se perdía»: /api/auth/session 401 y todo lo
+ * demás 401/403, mientras por localhost funcionaba porque
+ * localhost sí es un origen de confianza para el navegador).
+ * Sin marcarla nunca, una sesión servida por HTTPS de verdad
+ * perdería esa protección: por eso depende del protocolo real
+ * de cada petición, no del entorno.
+ */
+export function requestIsSecure(req: Request): boolean {
+  const forwarded = req.headers.get("x-forwarded-proto");
+  if (forwarded) {
+    return forwarded.split(",")[0].trim().toLowerCase() === "https";
+  }
+  try {
+    return new URL(req.url).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export function buildSessionCookie(
   token: string,
   ttlSeconds = SESSION_TTL_SECONDS,
+  secure?: boolean,
 ) {
-  const isProd = process.env.NODE_ENV === "production";
+  const isSecure = secure ?? process.env.NODE_ENV === "production";
   const cookieFlags = [
     "Path=/",
     "HttpOnly",
     "SameSite=Strict",
     `Max-Age=${ttlSeconds}`,
   ];
-  if (isProd) cookieFlags.push("Secure");
+  if (isSecure) cookieFlags.push("Secure");
   return `session=${token}; ${cookieFlags.join("; ")}`;
 }
 
 export function buildCsrfCookie(
   token: string,
   ttlSeconds = SESSION_TTL_SECONDS,
+  secure?: boolean,
 ) {
-  const isProd = process.env.NODE_ENV === "production";
+  const isSecure = secure ?? process.env.NODE_ENV === "production";
   const cookieFlags = ["Path=/", "SameSite=Strict", `Max-Age=${ttlSeconds}`];
-  if (isProd) cookieFlags.push("Secure");
+  if (isSecure) cookieFlags.push("Secure");
   return `${CSRF_COOKIE_NAME}=${token}; ${cookieFlags.join("; ")}`;
 }
 
@@ -589,17 +616,17 @@ export function issueCsrfToken(): string {
   return safeRandomCsrfToken();
 }
 
-export function expireSessionCookie() {
-  const isProd = process.env.NODE_ENV === "production";
+export function expireSessionCookie(secure?: boolean) {
+  const isSecure = secure ?? process.env.NODE_ENV === "production";
   const cookieFlags = ["Path=/", "HttpOnly", "SameSite=Strict", "Max-Age=0"];
-  if (isProd) cookieFlags.push("Secure");
+  if (isSecure) cookieFlags.push("Secure");
   return `session=; ${cookieFlags.join("; ")}`;
 }
 
-export function expireCsrfCookie() {
-  const isProd = process.env.NODE_ENV === "production";
+export function expireCsrfCookie(secure?: boolean) {
+  const isSecure = secure ?? process.env.NODE_ENV === "production";
   const cookieFlags = ["Path=/", "SameSite=Strict", "Max-Age=0"];
-  if (isProd) cookieFlags.push("Secure");
+  if (isSecure) cookieFlags.push("Secure");
   return `${CSRF_COOKIE_NAME}=; ${cookieFlags.join("; ")}`;
 }
 

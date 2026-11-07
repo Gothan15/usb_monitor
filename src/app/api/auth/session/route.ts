@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   buildCsrfCookie,
   buildSessionCookie,
+  requestIsSecure,
   createSessionToken,
   renewSessionToken,
   requireAuth,
@@ -39,13 +40,13 @@ export async function GET(req: Request) {
     if (existingSession) {
       const renewed = renewSessionToken(existingSession);
       if (renewed && renewed !== existingSession) {
-        cookiesToSet.push(buildSessionCookie(renewed));
+        cookiesToSet.push(buildSessionCookie(renewed, undefined, requestIsSecure(req)));
         rotated = true;
       }
     }
     if (!rotated && auth.sessionNeedsRotation) {
       const freshToken = createSessionToken(auth.userId, auth.apiKey);
-      cookiesToSet.push(buildSessionCookie(freshToken));
+      cookiesToSet.push(buildSessionCookie(freshToken, undefined, requestIsSecure(req)));
       rotated = true;
     }
     const payload = {
@@ -60,7 +61,7 @@ export async function GET(req: Request) {
     const res = NextResponse.json(payload);
     if (rotated) {
       const csrfToken = issueCsrfToken();
-      cookiesToSet.push(buildCsrfCookie(csrfToken));
+      cookiesToSet.push(buildCsrfCookie(csrfToken, undefined, requestIsSecure(req)));
       res.headers.set("X-CSRF-Token", csrfToken);
     }
     for (const cookie of cookiesToSet) {
