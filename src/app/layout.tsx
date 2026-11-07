@@ -52,7 +52,7 @@ export const metadata: Metadata = {
   ],
   authors: [{ name: "Monitor USB Team" }],
   icons: [
-    { rel: "icon", url: "/favicon.svg", type: "image/svg+xml" },
+    { rel: "icon", url: "/favicon.ico", sizes: "any" },
     {
       rel: "icon",
       url: "/favicon-claro.png",
