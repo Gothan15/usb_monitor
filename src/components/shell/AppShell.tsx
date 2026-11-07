@@ -395,7 +395,7 @@ export function AppShell({
                     <div data-tour="notifications">
                       <NotificationCenter />
                     </div>
-                    <ThemeToggle />
+                    <ThemeToggle className="size-8" />
                     <span className="flex items-center gap-0.5 lg:hidden">
                       <span className="mx-1 h-5 w-px bg-border" />
                       <span className="flex size-7 items-center justify-center rounded-full border border-[var(--acero)]/70 font-display text-[11px] font-bold text-[var(--acero)]">
