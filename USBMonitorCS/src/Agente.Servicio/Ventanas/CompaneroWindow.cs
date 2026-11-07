@@ -1,4 +1,5 @@
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Windows;
@@ -993,10 +994,20 @@ public sealed class CompaneroWindow : Window
     {
         try
         {
+            // Del .ico se toma su marco MAYOR (256 px): con
+            // BitmapFrame.Create(uri) WPF se quedaba el primer
+            // marco (16 px) y al estirarlo a los 36 de la
+            // cabecera la marca salía borrosa. Reduciendo desde
+            // 256 queda nítida.
+            var decodificador = new System.Windows.Media.Imaging.IconBitmapDecoder(
+                new Uri("pack://application:,,,/" + "usb_prompt.ico", UriKind.Absolute),
+                System.Windows.Media.Imaging.BitmapCreateOptions.PreservePixelFormat,
+                System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);
             var imagen = new Image
             {
-                Source = System.Windows.Media.Imaging.BitmapFrame.Create(
-                    new Uri("pack://application:,,,/" + "usb_prompt.ico", UriKind.Absolute)),
+                Source = decodificador.Frames
+                    .OrderByDescending(m => m.PixelWidth)
+                    .First(),
                 Width = 36,
                 Height = 36,
                 Stretch = Stretch.Uniform
