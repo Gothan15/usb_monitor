@@ -119,7 +119,11 @@ export function useSocketEvents({
 
     socket.on("disconnect", () => setStatus("disconnected"));
 
-    socket.on("reconnect_attempt", () => setStatus("reconnecting"));
+    // «reconnect_attempt» vive en el Manager (socket.io), no en el
+    // Socket: escuchándolo en el socket nunca saltaba y el estado
+    // «reconectando» no se llegaba a enseñar.
+    const alReintentar = () => setStatus("reconnecting");
+    socket.io.on("reconnect_attempt", alReintentar);
 
     socket.on("reconnect", () => setStatus("connected"));
 
@@ -152,6 +156,7 @@ export function useSocketEvents({
     });
 
     return () => {
+      socket.io.off("reconnect_attempt", alReintentar);
       socket.disconnect();
       socketRef.current = null;
     };
