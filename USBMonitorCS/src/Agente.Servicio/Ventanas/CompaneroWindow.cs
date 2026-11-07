@@ -984,62 +984,39 @@ public sealed class CompaneroWindow : Window
     }
 
     /// <summary>
-    /// La marca de la casa: el MISMO icono que usa la página
-    /// (favicon.svg del panel y su cabecera), un conector USB
-    /// estilizado negro sobre baldosa blanca redondeada. Se dibuja
-    /// como vector desde la geometría del SVG (lienzo de 64
-    /// unidades) para que quede nítido sin cargar imágenes.
+    /// La marca de la casa: el emblema NORTHSTAR, leído del propio
+    /// icono de la ventana (el recurso .ico incrustado) para que
+    /// la cabecera enseñe EXACTAMENTE el mismo arte que el icono
+    /// del programa, sin dibujos paralelos que puedan divergir.
     /// </summary>
-    private static Border CrearIconoMarca()
+    private static UIElement CrearIconoMarca()
     {
-        var negro = new SolidColorBrush(Color.FromRgb(0x11, 0x11, 0x11));
-        var lienzo = new Canvas { Width = 64, Height = 64 };
-        lienzo.Children.Add(RectMarca(22, 12, 20, 32, 8, negro, null, 0));
-        lienzo.Children.Add(RectMarca(26, 20, 12, 8, 2, Tema.Blanco, negro, 1.5));
-        lienzo.Children.Add(RectMarca(31, 30, 2, 10, 1, Tema.Blanco, negro, 1.2));
-        lienzo.Children.Add(RectMarca(28, 44, 8, 6, 2, negro, null, 0));
-        lienzo.Children.Add(RectMarca(30, 50, 4, 6, 1.2,
-            new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44)), null, 0));
-        lienzo.Children.Add(RectMarca(30.8, 8, 2.4, 4, 1.2, negro, null, 0));
-        lienzo.Children.Add(RectMarca(30.8, 52, 2.4, 4, 1.2, negro, null, 0));
-        return new Border
+        try
         {
-            Width = 36,
-            Height = 36,
-            CornerRadius = new CornerRadius(9),
-            Background = Tema.Blanco,
-            BorderBrush = new SolidColorBrush(Color.FromRgb(0xD9, 0xD7, 0xD0)),
-            BorderThickness = new Thickness(1),
-            ClipToBounds = true,
-            VerticalAlignment = VerticalAlignment.Center,
-            Child = new Viewbox
+            var imagen = new Image
             {
-                Child = lienzo,
+                Source = System.Windows.Media.Imaging.BitmapFrame.Create(
+                    new Uri("pack://application:,,,/" + "usb_prompt.ico", UriKind.Absolute)),
+                Width = 36,
+                Height = 36,
                 Stretch = Stretch.Uniform
-            }
-        };
-    }
-
-    private static Rectangle RectMarca(
-        double x, double y, double ancho, double alto, double radio,
-        Brush relleno, Brush? borde, double grosorBorde)
-    {
-        var rect = new Rectangle
-        {
-            Width = ancho,
-            Height = alto,
-            RadiusX = radio,
-            RadiusY = radio,
-            Fill = relleno
-        };
-        if (borde is not null)
-        {
-            rect.Stroke = borde;
-            rect.StrokeThickness = grosorBorde;
+            };
+            RenderOptions.SetBitmapScalingMode(
+                imagen, BitmapScalingMode.HighQuality);
+            return imagen;
         }
-        Canvas.SetLeft(rect, x);
-        Canvas.SetTop(rect, y);
-        return rect;
+        catch
+        {
+            // Si el recurso fallara, una baldosa oscura mantiene
+            // la cabecera compuesta; la ventana no depende de esto.
+            return new Border
+            {
+                Width = 36,
+                Height = 36,
+                CornerRadius = new CornerRadius(9),
+                Background = new SolidColorBrush(Color.FromRgb(0x17, 0x18, 0x1A))
+            };
+        }
     }
 
     private void PintarPastilla(string texto, Brush punto, Brush textoColor)
