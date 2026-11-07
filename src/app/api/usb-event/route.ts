@@ -7,6 +7,7 @@ import { usbEventPayloadSchema } from "@/lib/validators";
 import { getCurrentDate } from "@/lib/time";
 import { normalizeComputerName } from "@/lib/utils";
 import { registrarContactoAgente } from "@/lib/agentDebug";
+import { normalizeSerial } from "../whitelist/_helpers";
 import { broadcastUSBEvent, broadcastComputerStatus } from "@/lib/socket";
 
 const prisma = resolve<PrismaClient>(TOKENS.prisma);
@@ -64,7 +65,29 @@ export async function POST(request: NextRequest) {
     const normalizedDrive = drive_letter ?? null;
     const normalizedSerial = serial_number ?? null;
     const normalizedReadonly = readonly_status ?? null;
-    const whitelistedFlag = Boolean(whitelisted);
+    // El «¿está en la lista blanca?» de un evento lo decide el
+    // PANEL, no el agente: el agente solo incluye su veredicto en
+    // el evento BLOCKED (y a veces desde su caché, o ni eso), así
+    // que Conectado/Desconectado/Desbloqueado llegaban sin el dato
+    // y el panel de eventos pintaba «Fuera de la lista blanca» en
+    // TODOS los eventos, también los de dispositivos listados.
+    // Con serial presente, se resuelve aquí contra la lista real;
+    // si la consulta fallara, se conserva el valor del agente.
+    let whitelistedFlag = Boolean(whitelisted);
+    if (normalizedSerial) {
+      const serialNorm = normalizeSerial(normalizedSerial);
+      if (serialNorm) {
+        try {
+          const entry = await prisma.uSBWhitelist.findUnique({
+            where: { serialNumber: serialNorm },
+            select: { id: true },
+          });
+          whitelistedFlag = Boolean(entry);
+        } catch {
+          // La ingesta no puede caer por esta consulta.
+        }
+      }
+    }
 
     // Guardar el evento USB en la base de datos
     const occurredAt = getCurrentDate();
@@ -167,6 +190,36 @@ export async function GET(req: Request) {
       orderBy: { createdAt: "desc" },
       take: 50, // Limitar a los últimos 50 eventos
     });
+
+    // El sello guardado puede venir vacío o de la caché del agente
+    // (ver la nota en el POST): al LEER se recalcula contra la
+    // lista blanca actual, para que también el historial ya
+    // guardado se pinte bien sin tocar la base de datos.
+    const seriales = Array.from(
+      new Set(
+        events
+          .map((e) => (e.serialNumber ? normalizeSerial(e.serialNumber) : ""))
+          .filter(Boolean),
+      ),
+    );
+    if (seriales.length > 0) {
+      try {
+        const entries = await prisma.uSBWhitelist.findMany({
+          where: { serialNumber: { in: seriales } },
+          select: { serialNumber: true },
+        });
+        const enLista = new Set(entries.map((e) => e.serialNumber));
+        return NextResponse.json(
+          events.map((e) =>
+            e.serialNumber
+              ? { ...e, whitelisted: enLista.has(normalizeSerial(e.serialNumber)) }
+              : e,
+          ),
+        );
+      } catch {
+        // Si la lista no se puede leer, se sirve lo guardado.
+      }
+    }
 
     return NextResponse.json(events);
   } catch (error) {
