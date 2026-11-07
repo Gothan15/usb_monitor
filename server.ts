@@ -127,6 +127,12 @@ async function createCustomServer() {
       if (req.url?.startsWith("/api/socketio")) {
         return;
       }
+      // La IP verdadera del cliente, tomada del socket: las rutas
+      // la leen como x-client-ip (el login la usa para comprobar
+      // la PC asignada). Una cabecera puesta por el navegador no
+      // serviría: cualquiera podría decir que viene de otra PC.
+      const ipSocket = req.socket?.remoteAddress;
+      if (ipSocket) req.headers["x-client-ip"] = ipSocket;
       handle(req, res);
     };
 

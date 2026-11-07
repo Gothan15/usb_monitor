@@ -4,6 +4,9 @@ import {
   verifyPasswordFast,
   simulatePasswordCheckDelay,
   createSessionToken,
+  subirVersionSesion,
+  ipClienteDe,
+  normalizarIp,
   hashPassword,
   buildSessionCookie,
   buildCsrfCookie,
@@ -13,6 +16,8 @@ import {
 import { hit } from "@/lib/rateLimit";
 import { addMillisecondsToNow, getCurrentTimestamp } from "@/lib/time";
 import { logError } from "@/lib/logger";
+import { normalizeComputerName } from "@/lib/utils";
+import os from "node:os";
 
 export async function POST(req: Request) {
   try {
@@ -65,19 +70,26 @@ export async function POST(req: Request) {
 
     // Rol 'agent' eliminado: solo 'admin' y 'user'.
 
-    // Validar que usuarios normales solo puedan iniciar sesión desde su PC asignada
     const normalizedRole =
       typeof user.role === "string" ? user.role.toLowerCase() : user.role;
 
+    // Usuarios normales: solo desde su PC asignada. La identidad
+    // de la PC es su IP tal como la ve el servidor, comparada con
+    // la que el agente de ese equipo mantiene al día (la refresca
+    // con su ping cada 30 s): así la comprobación sigue a la PC
+    // aunque el DHCP le cambie la dirección. (La versión anterior
+    // miraba una cabecera x-client-hostname que los navegadores
+    // no envían nunca: la regla existía pero no se aplicaba.)
     if (normalizedRole === "user" && user.computer) {
-      // Obtener el hostname de la computadora cliente
-      const clientHostname = req.headers.get("x-client-hostname");
-
-      // Validar que el hostname coincida (case-insensitive)
-      if (
-        clientHostname &&
-        clientHostname.toUpperCase() !== user.computer.name.toUpperCase()
-      ) {
+      const ipCliente = ipClienteDe(req);
+      const ipAsignada = normalizarIp(user.computer.ipAddress || "");
+      // Caso borde: el panel corre EN la PC asignada y el usuario
+      // entra desde ella misma (la IP que se ve es la local).
+      const desdeLaPropiaPc =
+        (ipCliente === "127.0.0.1" || ipCliente === "::1") &&
+        normalizeComputerName(os.hostname()) ===
+          normalizeComputerName(user.computer.name);
+      if (!desdeLaPropiaPc && ipCliente !== ipAsignada) {
         await simulatePasswordCheckDelay();
         return NextResponse.json(
           {
@@ -87,7 +99,7 @@ export async function POST(req: Request) {
               message: `Solo puede iniciar sesión desde la computadora asignada: ${user.computer.name}`,
               details: {
                 assignedComputer: user.computer.name,
-                attemptedComputer: clientHostname,
+                attemptedIp: ipCliente || null,
               },
             },
           },
@@ -151,8 +163,10 @@ export async function POST(req: Request) {
         console.warn("No se pudo rehash password", e);
       }
     }
-    // Emitir cookie de sesión simple
-    const token = createSessionToken(user.id, user.apiKey);
+    // Sesión única por cuenta: este login sube la versión y la
+    // sesión anterior de la cuenta queda muerta, esté donde esté.
+    const version = await subirVersionSesion(user.id);
+    const token = createSessionToken(user.id, user.apiKey, undefined, version);
     const csrfToken = issueCsrfToken();
     const response = NextResponse.json({
       ok: true,
