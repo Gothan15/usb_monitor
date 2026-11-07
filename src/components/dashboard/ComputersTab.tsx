@@ -50,7 +50,47 @@ import { USBDevicesSheet } from "./USBDevicesSheet";
 import { Spinner } from "@/components/ui/spinner";
 import { InstallTaskDialog } from "./InstallTaskDialog";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Rocket } from "lucide-react";
+
+/**
+ * Copia texto al portapapeles devolviendo si lo logró. La API
+ * moderna solo existe en contextos seguros (HTTPS o localhost):
+ * entrando al panel por la IP de la LAN en HTTP no está disponible
+ * y el botón quedaba muerto; en ese caso se usa el método clásico
+ * con un textarea temporal, que funciona en cualquier contexto.
+ */
+async function copiarAlPortapapeles(texto: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(texto);
+      return true;
+    }
+  } catch {
+    // Se intenta el método clásico.
+  }
+  try {
+    const area = document.createElement("textarea");
+    area.value = texto;
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.focus();
+    area.select();
+    const ok = document.execCommand("copy");
+    area.remove();
+    return ok;
+  } catch {
+    return false;
+  }
+}
 
 interface Props {
   computers: Computer[];
@@ -107,6 +147,7 @@ function PalabraEstado({
 export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Props) {
   const { toast } = useToast();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [instalarAbierto, setInstalarAbierto] = useState(false);
   const [actualizandoId, setActualizandoId] = useState<string | null>(null);
   const [ordenesCreadas, setOrdenesCreadas] = useState<ReadonlySet<string>>(
@@ -168,6 +209,32 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
   const [tokenAbierto, setTokenAbierto] = useState(false);
   const [tokenPc, setTokenPc] = useState("");
   const [tokenValor, setTokenValor] = useState<string | null>(null);
+  const [tokenUsuarioId, setTokenUsuarioId] = useState("");
+  const [usuariosToken, setUsuariosToken] = useState<
+    { id: string; username: string }[]
+  >([]);
+
+  // La lista de usuarios para el selector de dueño se pide al
+  // abrir el diálogo: no hace falta tenerla cargada en la pestaña.
+  useEffect(() => {
+    if (!tokenAbierto) return;
+    let cancelado = false;
+    void fetch("/api/users?page=1&pageSize=100")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((datos) => {
+        if (cancelado || !datos?.items) return;
+        setUsuariosToken(
+          (datos.items as any[]).map((u) => ({
+            id: String(u.id),
+            username: String(u.username),
+          })),
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelado = true;
+    };
+  }, [tokenAbierto]);
   const [tokenOcupado, setTokenOcupado] = useState(false);
 
   const llamarProvision = useCallback(
@@ -206,6 +273,42 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
           setTokenValor(null);
           toast({ title: `Token revocado para ${datos.pcName}` });
         }
+        // Provisionar crea el equipo en el servidor (y revocar
+        // cambia su estado): sin invalidar la consulta, la lista
+        // de Equipos no enseñaba el alta hasta recargar la página.
+        await queryClient.invalidateQueries({ queryKey: ["computers"] });
+        // Dueño elegido en el propio diálogo: con el token ya
+        // generado, el usuario queda asignado a este equipo sin
+        // tener que ir a la pestaña de Usuarios a enlazarlo.
+        if (metodo === "POST" && tokenUsuarioId && datos.computerId) {
+          const elegido = usuariosToken.find((u) => u.id === tokenUsuarioId);
+          try {
+            const r = await fetch(`/api/users/${tokenUsuarioId}`, {
+              method: "PATCH",
+              headers: {
+                "Content-Type": "application/json",
+                "x-csrf-token": csrfToken,
+              },
+              credentials: "include",
+              body: JSON.stringify({ computerId: datos.computerId }),
+            });
+            const d = await r.json().catch(() => null);
+            if (!r.ok || !d?.ok) {
+              throw new Error(d?.error || "El servidor no respondió bien");
+            }
+            toast({
+              title: `Dueño asignado: ${elegido?.username ?? "usuario"}`,
+              description: `${datos.pcName} queda a su nombre para los desbloqueos.`,
+            });
+            await queryClient.invalidateQueries({ queryKey: ["users"] });
+          } catch {
+            toast({
+              title: "El token se generó, pero el dueño no se asignó",
+              description: "Puedes asignarlo desde la pestaña Usuarios.",
+              variant: "destructive",
+            });
+          }
+        }
       } catch (error: any) {
         toast({
           title: "No se pudo completar",
@@ -216,7 +319,7 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
         setTokenOcupado(false);
       }
     },
-    [tokenPc, toast],
+    [tokenPc, toast, queryClient, tokenUsuarioId, usuariosToken],
   );
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -720,9 +823,35 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
                 <option key={c.id} value={c.name} />
               ))}
             </datalist>
+            <label className="smallcaps mt-2 text-muted-foreground">
+              Usuario dueño (opcional)
+            </label>
+            <Select
+              value={tokenUsuarioId || "ninguno"}
+              onValueChange={(v) =>
+                setTokenUsuarioId(v === "ninguno" ? "" : v)
+              }
+            >
+              <SelectTrigger className="rounded-none">
+                <SelectValue placeholder="Sin asignar" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ninguno">Sin asignar</SelectItem>
+                {usuariosToken.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.username}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
+              Si eliges uno, al generar el token ese usuario queda como
+              dueño de este equipo: podrá desbloquear sus dispositivos
+              con su contraseña, sin pasar por la pestaña Usuarios.
+            </p>
             {tokenValor && (
               <div className="mt-2 flex items-center gap-2 border border-border bg-muted/30 p-3">
-                <code className="flex-1 break-all font-mono text-xs">
+                <code className="flex-1 select-all break-all font-mono text-xs">
                   {tokenValor}
                 </code>
                 <Button
@@ -731,8 +860,18 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
                   variant="outline"
                   className="rounded-none"
                   onClick={() => {
-                    void navigator.clipboard.writeText(tokenValor);
-                    toast({ title: "Token copiado" });
+                    void copiarAlPortapapeles(tokenValor).then((ok) => {
+                      toast(
+                        ok
+                          ? { title: "Token copiado" }
+                          : {
+                              title: "No se pudo copiar",
+                              description:
+                                "Toca el token para seleccionarlo entero y cópialo a mano.",
+                              variant: "destructive",
+                            },
+                      );
+                    });
                   }}
                 >
                   <Copy className="mr-1 size-3.5" />
@@ -742,6 +881,14 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
             )}
           </div>
           <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              className="rounded-none"
+              onClick={() => setTokenAbierto(false)}
+            >
+              Cerrar
+            </Button>
             <Button
               type="button"
               variant="outline"

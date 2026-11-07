@@ -67,6 +67,7 @@ export async function POST(req: Request) {
     const res = NextResponse.json({
       ok: true,
       pcName: computer.name,
+      computerId: computer.id,
       token,
       message:
         "Token generado. Se muestra una sola vez: cópialo ahora en la caja de herramientas del agente de ese equipo.",
