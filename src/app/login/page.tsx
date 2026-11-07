@@ -3,10 +3,10 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { motion } from "framer-motion";
+import Image from "next/image";
 import {
   Eye,
   EyeOff,
-  Usb,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Spinner } from "@/components/ui/spinner";
@@ -106,9 +106,13 @@ export default function LoginPage() {
           className="dot-grid absolute inset-0 text-[#E9EDF3] opacity-30"
         />
         <div className="relative flex items-center gap-3">
-          <div className="flex size-11 items-center justify-center rounded-sm bg-[#E9EDF3] text-[#152238]">
-            <Usb className="size-6" />
-          </div>
+          <Image
+            src="/favicon-claro.png"
+            alt="USB Monitor"
+            width={44}
+            height={44}
+            className="size-11 shrink-0 rounded-sm"
+          />
           <div className="flex flex-col">
             <span className="font-display text-lg font-bold leading-none tracking-tight">
               USB Monitor
@@ -151,9 +155,21 @@ export default function LoginPage() {
           className="frame-double relative w-full max-w-sm bg-card p-8"
         >
           <div className="mb-7 flex items-center gap-3 lg:hidden">
-            <div className="bg-aurora flex size-10 items-center justify-center rounded-sm text-[#E9EDF3]">
-              <Usb className="size-5" />
-            </div>
+            <Image
+              src="/favicon-claro.png"
+              alt="USB Monitor"
+              width={40}
+              height={40}
+              className="size-10 shrink-0 rounded-sm dark:hidden"
+            />
+            <Image
+              src="/favicon-oscuro.png"
+              alt=""
+              aria-hidden
+              width={40}
+              height={40}
+              className="hidden size-10 shrink-0 rounded-sm dark:block"
+            />
             <span className="font-display text-lg font-bold tracking-tight">
               USB Monitor
             </span>
