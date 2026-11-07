@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Documents;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Threading;
@@ -66,6 +67,9 @@ public sealed class ToolboxWindow : Window
         MinHeight = 660;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Tema.AplicarVentana(this);
+        // Misma presentación que el compañero remodelado: tonos de
+        // blanco, sin azul (pedido de Gothan el 2026-11-07).
+        Background = new SolidColorBrush(Color.FromRgb(0xF5, 0xF3, 0xEF));
 
         // ── Distribución en UNA sola pantalla, sin desplazamiento ──
         // Inspiración (diseños humanos, ver DISENO-UI.md): los
@@ -77,7 +81,7 @@ public sealed class ToolboxWindow : Window
         // derecha) y el registro como cinta inferior de alto fijo.
         // Antes las secciones iban apiladas en una columna con
         // ScrollViewer y había que bajar para llegar al registro.
-        var raiz = new Grid { Margin = new Thickness(18, 10, 18, 14) };
+        var raiz = new Grid { Margin = new Thickness(0) };
         raiz.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         raiz.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         raiz.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
@@ -86,10 +90,11 @@ public sealed class ToolboxWindow : Window
         raiz.Children.Add(ConstruirCabecera());
 
         var estado = ConstruirFranjaEstado(out _puntoEstado, out _textoEstado, out _textoResumen, out _textoDueno);
+        estado.Margin = new Thickness(20, 12, 20, 0);
         Grid.SetRow(estado, 1);
         raiz.Children.Add(estado);
 
-        var columnas = new Grid { Margin = new Thickness(0, 12, 0, 12) };
+        var columnas = new Grid { Margin = new Thickness(20, 12, 20, 12) };
         columnas.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         columnas.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(12) });
         columnas.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -109,6 +114,7 @@ public sealed class ToolboxWindow : Window
         columnas.Children.Add(derecha);
 
         var registro = ConstruirSeccionRegistro(out _registro);
+        registro.Margin = new Thickness(20, 0, 20, 16);
         Grid.SetRow(registro, 3);
         raiz.Children.Add(registro);
 
@@ -139,32 +145,70 @@ public sealed class ToolboxWindow : Window
 
     private static Border ConstruirCabecera()
     {
-        var textos = new StackPanel();
-        textos.Children.Add(new TextBlock
+        var marca = new TextBlock
         {
-            Text = "USBMonitor · Gestión del agente",
+            Text = "USBMONITOR",
             FontFamily = Tema.FuenteTexto,
-            FontSize = 18,
+            FontSize = 10.5,
             FontWeight = FontWeights.SemiBold,
-            Foreground = Tema.Tinta
-        });
-        textos.Children.Add(new TextBlock
+            Foreground = new SolidColorBrush(Color.FromRgb(0x8A, 0x8F, 0x98))
+        };
+        marca.SetValue(Typography.CapitalsProperty, FontCapitals.SmallCaps);
+        var titulo = new TextBlock
+        {
+            Text = "Gestión del agente",
+            FontFamily = new FontFamily("Segoe UI Light"),
+            FontSize = 20,
+            Foreground = new SolidColorBrush(Color.FromRgb(0x22, 0x25, 0x2A)),
+            Margin = new Thickness(0, 1, 0, 0)
+        };
+        var subtitulo = new TextBlock
         {
             Text = "Herramienta interna del equipo — todo en una pantalla, sin desplazarse.",
             FontFamily = Tema.FuenteTexto,
             FontSize = 12,
             Foreground = Tema.TintaAtenuada,
-            Margin = new Thickness(0, 1, 0, 0)
-        });
-
-        return new Border
-        {
-            Background = Tema.FondoVentana,
-            BorderBrush = Tema.Acero,
-            BorderThickness = new Thickness(0, 2, 0, 0),
-            Padding = new Thickness(0, 8, 0, 6),
-            Child = textos
+            Margin = new Thickness(0, 2, 0, 0)
         };
+        var textos = new StackPanel
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(12, 0, 0, 0)
+        };
+        textos.Children.Add(marca);
+        textos.Children.Add(titulo);
+        textos.Children.Add(subtitulo);
+
+        var fila = new Grid();
+        fila.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        fila.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var icono = CrearIconoMarca();
+        Grid.SetColumn(icono, 0);
+        Grid.SetColumn(textos, 1);
+        fila.Children.Add(icono);
+        fila.Children.Add(textos);
+
+        var degradado = new LinearGradientBrush
+        {
+            StartPoint = new Point(0, 0),
+            EndPoint = new Point(0, 1)
+        };
+        degradado.GradientStops.Add(new GradientStop(Color.FromRgb(0xFC, 0xFC, 0xFA), 0));
+        degradado.GradientStops.Add(new GradientStop(Color.FromRgb(0xEF, 0xED, 0xE6), 1));
+
+        var pila = new StackPanel();
+        pila.Children.Add(new Border
+        {
+            Background = degradado,
+            Padding = new Thickness(20, 13, 20, 12),
+            Child = fila
+        });
+        pila.Children.Add(new Border
+        {
+            Height = 2,
+            Background = new SolidColorBrush(Color.FromRgb(0xC0, 0x9A, 0x3B))
+        });
+        return new Border { Child = pila };
     }
 
     private static Border ConstruirFranjaEstado(
@@ -205,7 +249,7 @@ public sealed class ToolboxWindow : Window
         textoDueno.TextWrapping = TextWrapping.Wrap;
         contenido.Children.Add(textoDueno);
 
-        return Tema.Tarjeta(contenido, new Thickness(0, 8, 0, 0), new Thickness(12, 9, 12, 9));
+        return TarjetaCalida(contenido, new Thickness(0), new Thickness(16, 12, 16, 12));
     }
 
     private Border ConstruirSeccionServicio(out TextBlock textoServicio)
@@ -227,6 +271,8 @@ public sealed class ToolboxWindow : Window
 
         var filaInstalacion = new UniformGrid { Columns = 2, Margin = new Thickness(0, 8, 0, 0) };
         var instalar = Tema.BotonPrimario("Instalar servicio");
+        instalar.Background = Carbon;
+        instalar.BorderBrush = Carbon;
         instalar.Click += async (_, _) => await InstalarAsync(instalar);
         _botonesServicio.Add(instalar);
         filaInstalacion.Children.Add(instalar);
@@ -238,7 +284,7 @@ public sealed class ToolboxWindow : Window
         filaInstalacion.Children.Add(desinstalar);
         contenido.Children.Add(filaInstalacion);
 
-        return Tema.Tarjeta(contenido, new Thickness(0, 0, 0, 12), new Thickness(12));
+        return TarjetaCalida(contenido, new Thickness(0, 0, 0, 12), new Thickness(16));
     }
 
     private Button BotonServicio(string texto, string accion, string gerundio)
@@ -259,6 +305,7 @@ public sealed class ToolboxWindow : Window
         contenido.Children.Add(Tema.EtiquetaSeccion("Servidor"));
 
         contenido.Children.Add(FilaCampo("Host / IP", host = Tema.CampoTexto(datos: true)));
+        ResaltarAlEnfocar(host);
         _host.Text = _config.HostServidor;
 
         // Puerto y esquema comparten fila: son los dos datos cortos
@@ -272,6 +319,7 @@ public sealed class ToolboxWindow : Window
         etiquetaPuerto.Margin = new Thickness(0, 5, 0, 0);
         filaDoble.Children.Add(etiquetaPuerto);
         puerto = Tema.CampoTexto(datos: true);
+        ResaltarAlEnfocar(puerto);
         Grid.SetColumn(puerto, 1);
         filaDoble.Children.Add(puerto);
         _puerto.Text = _config.PuertoServidor.ToString(System.Globalization.CultureInfo.InvariantCulture);
@@ -294,6 +342,8 @@ public sealed class ToolboxWindow : Window
             Margin = new Thickness(0, 8, 0, 0)
         };
         var guardar = Tema.BotonPrimario("Guardar servidor");
+        guardar.Background = Carbon;
+        guardar.BorderBrush = Carbon;
         guardar.Click += (_, _) => GuardarServidor();
         botones.Children.Add(guardar);
 
@@ -303,7 +353,7 @@ public sealed class ToolboxWindow : Window
         botones.Children.Add(botonProbar);
         contenido.Children.Add(botones);
 
-        return Tema.Tarjeta(contenido, new Thickness(0, 0, 0, 12), new Thickness(12));
+        return TarjetaCalida(contenido, new Thickness(0, 0, 0, 12), new Thickness(16));
     }
 
     private static Grid FilaCampo(string etiqueta, Control campo)
@@ -327,6 +377,7 @@ public sealed class ToolboxWindow : Window
         contenido.Children.Add(Tema.EtiquetaCampo("Token del equipo"));
 
         token = Tema.CampoContrasena();
+        ResaltarAlEnfocar(token);
         token.Margin = new Thickness(0, 0, 0, 9);
         contenido.Children.Add(token);
 
@@ -334,6 +385,8 @@ public sealed class ToolboxWindow : Window
         fila.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         fila.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         var guardar = Tema.BotonPrimario("Guardar credencial");
+        guardar.Background = Carbon;
+        guardar.BorderBrush = Carbon;
         guardar.Margin = new Thickness(0);
         guardar.Click += (_, _) => GuardarCredencial();
         fila.Children.Add(guardar);
@@ -351,7 +404,7 @@ public sealed class ToolboxWindow : Window
         fila.Children.Add(ayuda);
         contenido.Children.Add(fila);
 
-        return Tema.Tarjeta(contenido, new Thickness(0), new Thickness(12));
+        return TarjetaCalida(contenido, new Thickness(0), new Thickness(16));
     }
 
     private Border ConstruirSeccionAcciones()
@@ -380,7 +433,7 @@ public sealed class ToolboxWindow : Window
         rejilla.Children.Add(visor);
 
         contenido.Children.Add(rejilla);
-        return Tema.Tarjeta(contenido, new Thickness(0), new Thickness(12));
+        return TarjetaCalida(contenido, new Thickness(0), new Thickness(16));
     }
 
     private Border ConstruirSeccionRegistro(out TextBox registro)
@@ -413,16 +466,98 @@ public sealed class ToolboxWindow : Window
             TextWrapping = TextWrapping.NoWrap,
             VerticalScrollBarVisibility = ScrollBarVisibility.Hidden,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden,
-            Background = Tema.SuperficieAtenuada,
+            Background = new SolidColorBrush(Color.FromRgb(0xEF, 0xEE, 0xE9)),
             Foreground = Tema.Tinta,
-            BorderBrush = Tema.Borde,
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0xD8, 0xD3, 0xC8)),
             BorderThickness = new Thickness(1),
             Padding = new Thickness(8),
             FontFamily = Tema.FuenteDatos,
             FontSize = 11.5
         };
         contenido.Children.Add(registro);
-        return Tema.Tarjeta(contenido, new Thickness(0), new Thickness(12, 10, 12, 10));
+        return TarjetaCalida(contenido, new Thickness(0), new Thickness(16, 12, 16, 12));
+    }
+
+    // ── Piezas de la presentación remodelada (como el compañero) ──
+
+    /// <summary>Carbón neutro de los botones principales (sin azul).</summary>
+    private static readonly Brush Carbon =
+        new SolidColorBrush(Color.FromRgb(0x26, 0x26, 0x2B));
+
+    /// <summary>Tarjeta del tema con el borde en gris cálido.</summary>
+    private static Border TarjetaCalida(
+        UIElement contenido, Thickness margen, Thickness relleno)
+    {
+        var tarjeta = Tema.Tarjeta(contenido, margen, relleno);
+        tarjeta.BorderBrush =
+            new SolidColorBrush(Color.FromRgb(0xD8, 0xD3, 0xC8));
+        return tarjeta;
+    }
+
+    /// <summary>Al enfocar un campo, su borde pasa a dorado oscuro.</summary>
+    private static void ResaltarAlEnfocar(Control campo)
+    {
+        campo.GotFocus += (_, _) =>
+            campo.BorderBrush = new SolidColorBrush(Color.FromRgb(0xA8, 0x82, 0x2F));
+        campo.LostFocus += (_, _) => campo.BorderBrush = Tema.Borde;
+    }
+
+    /// <summary>
+    /// La marca de la casa: el MISMO icono que usa la página
+    /// (favicon.svg del panel y su cabecera), un conector USB
+    /// estilizado negro sobre baldosa blanca redondeada, dibujado
+    /// como vector desde la geometría del SVG (lienzo de 64).
+    /// </summary>
+    private static Border CrearIconoMarca()
+    {
+        var negro = new SolidColorBrush(Color.FromRgb(0x11, 0x11, 0x11));
+        var lienzo = new Canvas { Width = 64, Height = 64 };
+        lienzo.Children.Add(RectMarca(22, 12, 20, 32, 8, negro, null, 0));
+        lienzo.Children.Add(RectMarca(26, 20, 12, 8, 2, Tema.Blanco, negro, 1.5));
+        lienzo.Children.Add(RectMarca(31, 30, 2, 10, 1, Tema.Blanco, negro, 1.2));
+        lienzo.Children.Add(RectMarca(28, 44, 8, 6, 2, negro, null, 0));
+        lienzo.Children.Add(RectMarca(30, 50, 4, 6, 1.2,
+            new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44)), null, 0));
+        lienzo.Children.Add(RectMarca(30.8, 8, 2.4, 4, 1.2, negro, null, 0));
+        lienzo.Children.Add(RectMarca(30.8, 52, 2.4, 4, 1.2, negro, null, 0));
+        return new Border
+        {
+            Width = 36,
+            Height = 36,
+            CornerRadius = new CornerRadius(9),
+            Background = Tema.Blanco,
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0xD9, 0xD7, 0xD0)),
+            BorderThickness = new Thickness(1),
+            ClipToBounds = true,
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new Viewbox
+            {
+                Child = lienzo,
+                Stretch = Stretch.Uniform
+            }
+        };
+    }
+
+    private static Rectangle RectMarca(
+        double x, double y, double ancho, double alto, double radio,
+        Brush relleno, Brush? borde, double grosorBorde)
+    {
+        var rect = new Rectangle
+        {
+            Width = ancho,
+            Height = alto,
+            RadiusX = radio,
+            RadiusY = radio,
+            Fill = relleno
+        };
+        if (borde is not null)
+        {
+            rect.Stroke = borde;
+            rect.StrokeThickness = grosorBorde;
+        }
+        Canvas.SetLeft(rect, x);
+        Canvas.SetTop(rect, y);
+        return rect;
     }
 
     private void AbrirRegistroCompleto()
