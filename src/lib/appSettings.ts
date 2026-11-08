@@ -24,6 +24,8 @@ export interface AppSettings {
   offlineEmergencyEnabled: boolean;
   /** Fase 5: bloquear la sesión de Windows al insertar un USB. */
   lockSessionOnInsert: boolean;
+  /** Los agentes se actualizan solos cuando el panel sirve una versión mayor. */
+  agentAutoUpdate: boolean;
   /**
    * Apagar el equipo cliente cuando se inserta un dispositivo que
    * NO está en la lista blanca (cuenta atrás cancelable del agente).
@@ -48,6 +50,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   passwordUnlockEnabled: true,
   offlineEmergencyEnabled: true,
   lockSessionOnInsert: false,
+  agentAutoUpdate: false,
   shutdownOnNonWhitelisted: false,
   shutdownCountdownSeconds: 60,
   captureEvidenceOnNonWhitelisted: false,

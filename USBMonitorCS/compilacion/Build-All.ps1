@@ -36,7 +36,9 @@ if (-not $Version -and $env:GITHUB_REF_NAME) {
 }
 $propsVersion = @()
 if ($Version -match '^\d+\.\d+\.\d+$') {
-    $propsVersion = @("-p:Version=$Version", "-p:InformationalVersion=$Version", "-p:AssemblyVersion=$Version")
+    # FileVersion incluida: es la que el recurso VERSIONINFO del
+    # PE enseña como versión de archivo, y el panel la lee de ahí.
+    $propsVersion = @("-p:Version=$Version", "-p:InformationalVersion=$Version", "-p:AssemblyVersion=$Version", "-p:FileVersion=$Version")
     Write-Host "Versión del ejecutable: $Version"
 }
 

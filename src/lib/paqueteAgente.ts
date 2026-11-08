@@ -1,4 +1,6 @@
 import { createHash } from "crypto";
+
+import { versionPeDesdeArchivo } from "@/lib/peVersion";
 import { promises as fs, createReadStream } from "fs";
 import path from "path";
 
@@ -82,8 +84,13 @@ export async function manifiestoPaquete(): Promise<ManifiestoPaquete | null> {
       version = parsed.version.trim().slice(0, 32);
     }
   } catch {
-    // Sin manifiesto.json: la versión viaja igualmente en el ping
-    // del agente ya actualizado; el hash es lo imprescindible.
+    // Sin manifiesto.json se sigue con la reserva del PE.
+  }
+  if (!version) {
+    // Reserva: la versión que el propio exe declara en su PE.
+    // Cubre los paquetes colocados a mano sin manifiesto: el
+    // panel ya no depende de que nadie escriba la versión.
+    version = await versionPeDesdeArchivo(ruta);
   }
 
   const manifiesto: ManifiestoPaquete = {

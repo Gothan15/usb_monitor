@@ -37,6 +37,8 @@ public sealed class ToolboxWindow : Window
     private readonly Ellipse _puntoEstado;
     private readonly TextBlock _textoEstado;
     private readonly TextBlock _textoServicio;
+    private readonly TextBlock _textoActualizacion;
+    private readonly Button _botonActualizar;
     private readonly TextBlock _textoResumen;
     private readonly TextBlock _textoDueno;
     private readonly List<Button> _botonesServicio = new();
@@ -104,6 +106,7 @@ public sealed class ToolboxWindow : Window
 
         var izquierda = new StackPanel();
         izquierda.Children.Add(ConstruirSeccionServicio(out _textoServicio));
+        izquierda.Children.Add(ConstruirSeccionActualizacion(out _textoActualizacion, out _botonActualizar));
         izquierda.Children.Add(ConstruirSeccionAcciones());
         Grid.SetColumn(izquierda, 0);
         columnas.Children.Add(izquierda);
@@ -130,6 +133,7 @@ public sealed class ToolboxWindow : Window
         {
             await RefrescarEstadoAsync();
             await RefrescarRegistroAsync();
+            await BuscarActualizacionesAsync(silencioso: true);
             _temporizadorEstado.Start();
             _temporizadorRegistro.Start();
         };
@@ -286,6 +290,118 @@ public sealed class ToolboxWindow : Window
         contenido.Children.Add(filaInstalacion);
 
         return TarjetaCalida(contenido, new Thickness(0, 0, 0, 12), new Thickness(16));
+    }
+
+    private Border ConstruirSeccionActualizacion(
+        out TextBlock textoActualizacion, out Button botonActualizar)
+    {
+        var contenido = new StackPanel();
+        contenido.Children.Add(Tema.EtiquetaSeccion("Actualización"));
+
+        var instalada = Tema.TextoDatos(
+            $"Versión instalada en este equipo: {ClientePanel.VersionAgente}", 12.5);
+        instalada.Margin = new Thickness(0, 0, 0, 6);
+        contenido.Children.Add(instalada);
+
+        textoActualizacion = Tema.TextoDatos(
+            "Comprobando si el panel tiene una versión más nueva…", 12.5);
+        textoActualizacion.TextWrapping = TextWrapping.Wrap;
+        textoActualizacion.Margin = new Thickness(0, 0, 0, 10);
+        contenido.Children.Add(textoActualizacion);
+
+        var fila = new UniformGrid { Columns = 2 };
+        var buscar = Tema.BotonSecundario("Buscar actualizaciones");
+        buscar.Click += async (_, _) => await BuscarActualizacionesAsync(silencioso: false);
+        fila.Children.Add(buscar);
+
+        botonActualizar = Tema.BotonPrimario("Actualizar ahora");
+        botonActualizar.Background = Carbon;
+        botonActualizar.BorderBrush = Carbon;
+        botonActualizar.IsEnabled = false;
+        botonActualizar.Margin = new Thickness(0);
+        botonActualizar.Click += async (_, _) => await ActualizarAhoraAsync();
+        fila.Children.Add(botonActualizar);
+        contenido.Children.Add(fila);
+
+        return TarjetaCalida(contenido, new Thickness(0, 0, 0, 12), new Thickness(16));
+    }
+
+    private async Task BuscarActualizacionesAsync(bool silencioso)
+    {
+        try
+        {
+            var datos = await _cliente.ConsultarActualizacionAsync();
+            if (datos is null || !datos.Ok)
+            {
+                if (!silencioso)
+                    _textoActualizacion.Text =
+                        "No se pudo comprobar: el panel no responde o este " +
+                        "equipo aún no tiene token.";
+                return;
+            }
+            if (datos.OrdenActiva)
+            {
+                _textoActualizacion.Text =
+                    "Ya hay una actualización en marcha para este equipo: " +
+                    "el servicio la está aplicando.";
+                _botonActualizar.IsEnabled = false;
+            }
+            else if (datos.HayActualizacion)
+            {
+                _textoActualizacion.Text =
+                    $"Hay una actualización: el panel tiene la " +
+                    $"v{datos.VersionDisponible} y este equipo corre la " +
+                    $"v{datos.VersionEquipo ?? ClientePanel.VersionAgente}.";
+                _botonActualizar.IsEnabled = true;
+            }
+            else if (datos.VersionDisponible is null)
+            {
+                _textoActualizacion.Text =
+                    "El panel no tiene ningún paquete de actualización colocado.";
+                _botonActualizar.IsEnabled = false;
+            }
+            else
+            {
+                _textoActualizacion.Text =
+                    $"Este equipo está al día (v{datos.VersionEquipo ?? ClientePanel.VersionAgente}).";
+                _botonActualizar.IsEnabled = false;
+            }
+        }
+        catch (Exception exc)
+        {
+            _log.Error($"Buscar actualizaciones: {exc.Message}");
+            if (!silencioso)
+                _textoActualizacion.Text = "No se pudo comprobar la actualización.";
+        }
+    }
+
+    private async Task ActualizarAhoraAsync()
+    {
+        _botonActualizar.IsEnabled = false;
+        _textoActualizacion.Text = "Pidiendo la actualización al panel…";
+        try
+        {
+            var datos = await _cliente.SolicitarActualizacionAsync();
+            if (datos is { Ok: true })
+            {
+                _textoActualizacion.Text =
+                    $"Orden creada: el servicio aplicará la " +
+                    $"v{datos.VersionObjetivo} en unos segundos y se " +
+                    $"reiniciará solo. Puedes cerrar esta ventana.";
+            }
+            else
+            {
+                _textoActualizacion.Text =
+                    datos?.Error ?? "El panel no aceptó la actualización.";
+                await BuscarActualizacionesAsync(silencioso: true);
+            }
+        }
+        catch (Exception exc)
+        {
+            _log.Error($"Actualizar ahora: {exc.Message}");
+            _textoActualizacion.Text = "No se pudo pedir la actualización.";
+            _botonActualizar.IsEnabled = true;
+        }
     }
 
     private Button BotonServicio(string texto, string accion, string gerundio)
