@@ -100,54 +100,55 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-background lg:grid lg:grid-cols-[1.15fr_1fr]">
       {/* Panel de la casa — azul marino, serif editorial */}
-      <div className="relative hidden overflow-hidden bg-[#152238] text-[#E9EDF3] lg:flex lg:flex-col lg:justify-between lg:p-12">
+      <div className="relative hidden overflow-hidden bg-primary text-primary-foreground lg:flex lg:flex-col lg:justify-between lg:p-12">
         <div
           aria-hidden
-          className="dot-grid absolute inset-0 text-[#E9EDF3] opacity-30"
+          className="dot-grid absolute inset-0 text-primary-foreground opacity-30"
         />
         <div className="relative flex items-center gap-3">
           <Image
             src="/brujula-claro.png"
             alt="USB Monitor"
-            width={44}
-            height={44}
+            width={176}
+            height={176}
+            quality={100}
             className="size-11 shrink-0 rounded-sm"
           />
           <div className="flex flex-col">
             <span className="font-display text-lg font-bold leading-none tracking-tight">
               USB Monitor
             </span>
-            <span className="smallcaps mt-1.5 text-[#E9EDF3]/50">
+            <span className="smallcaps mt-1.5 text-primary-foreground/50">
               Centro de control
             </span>
           </div>
-          <span className="ml-auto inline-flex items-center gap-2 rounded-full border border-[#E9EDF3]/25 px-3 py-1.5 text-[11px] font-medium text-[#E9EDF3]/85">
+          <span className="ml-auto inline-flex items-center gap-2 rounded-full border border-primary-foreground/25 px-3 py-1.5 text-[11px] font-medium text-primary-foreground/85">
             <span className="dot-pulse size-1.5 rounded-full bg-emerald-300" />
             Sistema activo
           </span>
         </div>
 
         <div className="relative max-w-md">
-          <p className="smallcaps text-[var(--acero)]">
+          <p className="smallcaps text-[#C09A3B]">
             Sistema interno
           </p>
           <h1 className="font-display mt-5 text-[2.75rem] font-bold leading-[1.08] tracking-tight">
             Monitoreo de dispositivos USB
           </h1>
-          <p className="mt-8 border-t border-[#E9EDF3]/15 pt-6 text-sm leading-relaxed text-[#E9EDF3]/75">
+          <p className="mt-8 border-t border-primary-foreground/15 pt-6 text-sm leading-relaxed text-primary-foreground/75">
             Panel central de los agentes instalados en los equipos.
             Acceso solo para el personal autorizado: las conexiones de
             dispositivos y los intentos de acceso quedan registrados.
           </p>
         </div>
 
-        <p className="smallcaps relative text-[#E9EDF3]/40">
+        <p className="smallcaps relative text-primary-foreground/40">
           Panel central · Agentes Windows · Tiempo real
         </p>
       </div>
 
       {/* Formulario — papel enmarcado */}
-      <div className="aurora-scene relative flex min-h-screen items-center justify-center p-4 lg:min-h-0">
+      <div className="relative flex min-h-screen items-center justify-center bg-background p-4 lg:min-h-0">
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
@@ -158,16 +159,18 @@ export default function LoginPage() {
             <Image
               src="/brujula-claro.png"
               alt="USB Monitor"
-              width={40}
-              height={40}
+              width={160}
+              height={160}
+              quality={100}
               className="size-10 shrink-0 rounded-sm dark:hidden"
             />
             <Image
               src="/brujula-oscura.png"
               alt=""
               aria-hidden
-              width={40}
-              height={40}
+              width={160}
+              height={160}
+              quality={100}
               className="hidden size-10 shrink-0 rounded-sm dark:block"
             />
             <span className="font-display text-lg font-bold tracking-tight">
