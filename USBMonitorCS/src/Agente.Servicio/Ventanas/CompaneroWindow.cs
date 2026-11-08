@@ -985,29 +985,21 @@ public sealed class CompaneroWindow : Window
     }
 
     /// <summary>
-    /// La marca de la casa: el emblema NORTHSTAR, leído del propio
-    /// icono de la ventana (el recurso .ico incrustado) para que
-    /// la cabecera enseñe EXACTAMENTE el mismo arte que el icono
-    /// del programa, sin dibujos paralelos que puedan divergir.
+    /// La marca de la casa: la brújula NORTHSTAR del tema claro,
+    /// desde su PNG propio incrustado. Antes se decodificaba el
+    /// .ico del programa y, si esa decodificación fallaba, la
+    /// reserva era una baldosa carbón lisa: en la práctica, un
+    /// «icono negro» que parecía la marca rota. El PNG no tiene
+    /// ese modo de fallo y la reserva nueva es la inicial dorada.
     /// </summary>
     private static UIElement CrearIconoMarca()
     {
         try
         {
-            // Del .ico se toma su marco MAYOR (256 px): con
-            // BitmapFrame.Create(uri) WPF se quedaba el primer
-            // marco (16 px) y al estirarlo a los 36 de la
-            // cabecera la marca salía borrosa. Reduciendo desde
-            // 256 queda nítida.
-            var decodificador = new System.Windows.Media.Imaging.IconBitmapDecoder(
-                new Uri("pack://application:,,,/" + "usb_prompt.ico", UriKind.Absolute),
-                System.Windows.Media.Imaging.BitmapCreateOptions.PreservePixelFormat,
-                System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);
             var imagen = new Image
             {
-                Source = decodificador.Frames
-                    .OrderByDescending(m => m.PixelWidth)
-                    .First(),
+                Source = new System.Windows.Media.Imaging.BitmapImage(
+                    new Uri("pack://application:,,,/brujula-clara-256.png", UriKind.Absolute)),
                 Width = 36,
                 Height = 36,
                 Stretch = Stretch.Uniform
@@ -1018,15 +1010,27 @@ public sealed class CompaneroWindow : Window
         }
         catch
         {
-            // Si el recurso fallara, una baldosa oscura mantiene
-            // la cabecera compuesta; la ventana no depende de esto.
-            return new Border
+            // Reserva: la inicial de la marca en dorado, jamás una
+            // baldosa negra.
+            var borde = new Border
             {
                 Width = 36,
                 Height = 36,
                 CornerRadius = new CornerRadius(9),
-                Background = new SolidColorBrush(Color.FromRgb(0x17, 0x18, 0x1A))
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0xC0, 0x9A, 0x3B)),
+                BorderThickness = new Thickness(1.5)
             };
+            borde.Child = new TextBlock
+            {
+                Text = "N",
+                FontFamily = Tema.FuenteTexto,
+                FontSize = 18,
+                FontWeight = FontWeights.Bold,
+                Foreground = new SolidColorBrush(Color.FromRgb(0xC0, 0x9A, 0x3B)),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            return borde;
         }
     }
 

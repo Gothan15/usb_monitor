@@ -38,7 +38,11 @@ public sealed class ToolboxWindow : Window
     private readonly TextBlock _textoEstado;
     private readonly TextBlock _textoServicio;
     private readonly TextBlock _textoActualizacion;
-    private readonly Button _botonActualizar;
+    private readonly Button _botonUpdate;
+    private readonly Button _botonCancelarUpdate;
+    private InfoRelease? _releaseNueva;
+    private CancellationTokenSource? _ctsUpdate;
+    private bool _descargandoUpdate;
     private readonly TextBlock _textoResumen;
     private readonly TextBlock _textoDueno;
     private readonly List<Button> _botonesServicio = new();
@@ -106,7 +110,7 @@ public sealed class ToolboxWindow : Window
 
         var izquierda = new StackPanel();
         izquierda.Children.Add(ConstruirSeccionServicio(out _textoServicio));
-        izquierda.Children.Add(ConstruirSeccionActualizacion(out _textoActualizacion, out _botonActualizar));
+        izquierda.Children.Add(ConstruirSeccionActualizacion(out _textoActualizacion, out _botonUpdate, out _botonCancelarUpdate));
         izquierda.Children.Add(ConstruirSeccionAcciones());
         Grid.SetColumn(izquierda, 0);
         columnas.Children.Add(izquierda);
@@ -133,7 +137,7 @@ public sealed class ToolboxWindow : Window
         {
             await RefrescarEstadoAsync();
             await RefrescarRegistroAsync();
-            await BuscarActualizacionesAsync(silencioso: true);
+            await ComprobarUpdateGitHubAsync(silencioso: true);
             _temporizadorEstado.Start();
             _temporizadorRegistro.Start();
         };
@@ -293,115 +297,256 @@ public sealed class ToolboxWindow : Window
     }
 
     private Border ConstruirSeccionActualizacion(
-        out TextBlock textoActualizacion, out Button botonActualizar)
+        out TextBlock textoActualizacion, out Button botonUpdate,
+        out Button botonCancelar)
     {
         var contenido = new StackPanel();
         contenido.Children.Add(Tema.EtiquetaSeccion("Actualización"));
 
+        // La versión DEL ARCHIVO: la que el ejecutable declara en
+        // su propio recurso de versión (la misma que el panel lee
+        // del paquete), no una cadena escrita a mano en el código.
         var instalada = Tema.TextoDatos(
-            $"Versión instalada en este equipo: {ClientePanel.VersionAgente}", 12.5);
+            $"Versión del archivo: {ClienteGitHub.VersionArchivoActual() ?? ClientePanel.VersionAgente}",
+            12.5);
         instalada.Margin = new Thickness(0, 0, 0, 6);
         contenido.Children.Add(instalada);
 
         textoActualizacion = Tema.TextoDatos(
-            "Comprobando si el panel tiene una versión más nueva…", 12.5);
+            "Pulsa «Buscar actualizaciones» para ver si GitHub " +
+            "tiene una versión más nueva que la de este archivo.", 12.5);
         textoActualizacion.TextWrapping = TextWrapping.Wrap;
         textoActualizacion.Margin = new Thickness(0, 0, 0, 10);
         contenido.Children.Add(textoActualizacion);
 
         var fila = new UniformGrid { Columns = 2 };
-        var buscar = Tema.BotonSecundario("Buscar actualizaciones");
-        buscar.Click += async (_, _) => await BuscarActualizacionesAsync(silencioso: false);
-        fila.Children.Add(buscar);
+        botonUpdate = Tema.BotonPrimario("Buscar actualizaciones");
+        botonUpdate.Background = Carbon;
+        botonUpdate.BorderBrush = Carbon;
+        botonUpdate.Click += async (_, _) => await AlPulsarBotonUpdateAsync();
+        fila.Children.Add(botonUpdate);
 
-        botonActualizar = Tema.BotonPrimario("Actualizar ahora");
-        botonActualizar.Background = Carbon;
-        botonActualizar.BorderBrush = Carbon;
-        botonActualizar.IsEnabled = false;
-        botonActualizar.Margin = new Thickness(0);
-        botonActualizar.Click += async (_, _) => await ActualizarAhoraAsync();
-        fila.Children.Add(botonActualizar);
+        botonCancelar = Tema.BotonSecundario("Cancelar");
+        botonCancelar.Margin = new Thickness(0);
+        botonCancelar.Visibility = Visibility.Collapsed;
+        botonCancelar.Click += (_, _) => _ctsUpdate?.Cancel();
+        fila.Children.Add(botonCancelar);
         contenido.Children.Add(fila);
 
         return TarjetaCalida(contenido, new Thickness(0, 0, 0, 12), new Thickness(16));
     }
 
-    private async Task BuscarActualizacionesAsync(bool silencioso)
+    /// <summary>
+    /// El único botón de la sección cambia con el estado: primero
+    /// busca; si hay versión nueva, SE SUSTITUYE por el de
+    /// actualizar; si una descarga quedó a medias, por el de
+    /// reanudar (lo bajado se conserva en el temporal).
+    /// </summary>
+    private async Task AlPulsarBotonUpdateAsync()
     {
+        if (_descargandoUpdate) return;
+        if (_releaseNueva is null)
+            await ComprobarUpdateGitHubAsync(silencioso: false);
+        else
+            await DescargarYAplicarUpdateAsync();
+    }
+
+    private async Task ComprobarUpdateGitHubAsync(bool silencioso)
+    {
+        _botonUpdate.IsEnabled = false;
+        if (!silencioso)
+            _textoActualizacion.Text = "Comprobando en GitHub…";
         try
         {
-            var datos = await _cliente.ConsultarActualizacionAsync();
-            if (datos is null || !datos.Ok)
+            var release = await ClienteGitHub.UltimaReleaseAsync();
+            var actual = ClienteGitHub.VersionArchivoActual();
+            if (release is null)
             {
                 if (!silencioso)
                     _textoActualizacion.Text =
-                        "No se pudo comprobar: el panel no responde o este " +
-                        "equipo aún no tiene token.";
+                        "No se pudo comprobar: GitHub no responde. " +
+                        "¿Tiene internet esta PC?";
                 return;
             }
-            if (datos.OrdenActiva)
+            if (ClienteGitHub.CompararVersiones(release.Version, actual) > 0)
             {
+                _releaseNueva = release;
+                var parcial = RutaZipParcial(release);
+                var avisoParcial = File.Exists(parcial)
+                    ? " Ya hay una descarga empezada: se reanudará."
+                    : "";
                 _textoActualizacion.Text =
-                    "Ya hay una actualización en marcha para este equipo: " +
-                    "el servicio la está aplicando.";
-                _botonActualizar.IsEnabled = false;
-            }
-            else if (datos.HayActualizacion)
-            {
-                _textoActualizacion.Text =
-                    $"Hay una actualización: el panel tiene la " +
-                    $"v{datos.VersionDisponible} y este equipo corre la " +
-                    $"v{datos.VersionEquipo ?? ClientePanel.VersionAgente}.";
-                _botonActualizar.IsEnabled = true;
-            }
-            else if (datos.VersionDisponible is null)
-            {
-                _textoActualizacion.Text =
-                    "El panel no tiene ningún paquete de actualización colocado.";
-                _botonActualizar.IsEnabled = false;
+                    $"Hay una versión más nueva: la v{release.Version} " +
+                    $"(este archivo es la v{actual ?? "?"}).{avisoParcial}";
+                _botonUpdate.Content = $"Actualizar a v{release.Version}";
             }
             else
             {
                 _textoActualizacion.Text =
-                    $"Este equipo está al día (v{datos.VersionEquipo ?? ClientePanel.VersionAgente}).";
-                _botonActualizar.IsEnabled = false;
+                    $"Este equipo está al día: la última Release es " +
+                    $"la v{release.Version}.";
             }
         }
         catch (Exception exc)
         {
-            _log.Error($"Buscar actualizaciones: {exc.Message}");
+            _log.Error($"Comprobar actualización en GitHub: {exc.Message}");
             if (!silencioso)
                 _textoActualizacion.Text = "No se pudo comprobar la actualización.";
         }
+        finally
+        {
+            _botonUpdate.IsEnabled = true;
+        }
     }
 
-    private async Task ActualizarAhoraAsync()
+    private static string CarpetaUpdate() =>
+        System.IO.Path.Combine(System.IO.Path.GetTempPath(), "USBMonitorActualizacion");
+
+    private static string RutaZipParcial(InfoRelease release) =>
+        System.IO.Path.Combine(CarpetaUpdate(),
+            $"USBMonitorService-{release.Etiqueta}.zip.parcial");
+
+    private async Task DescargarYAplicarUpdateAsync()
     {
-        _botonActualizar.IsEnabled = false;
-        _textoActualizacion.Text = "Pidiendo la actualización al panel…";
+        var release = _releaseNueva!;
+        _descargandoUpdate = true;
+        _ctsUpdate = new CancellationTokenSource();
+        _botonUpdate.IsEnabled = false;
+        _botonUpdate.Content = "Descargando…";
+        _botonCancelarUpdate.Visibility = Visibility.Visible;
+        var parcial = RutaZipParcial(release);
         try
         {
-            var datos = await _cliente.SolicitarActualizacionAsync();
-            if (datos is { Ok: true })
+            var progreso = new Progress<double>(p =>
+                _textoActualizacion.Text =
+                    $"Descargando la v{release.Version} de GitHub… {p:P0} " +
+                    $"({p * release.TamanoZip / 1048576:0} de {release.TamanoZip / 1048576:0} MB). " +
+                    "Si la red corta, lo bajado se conserva y se reanuda.");
+            var ok = await ClienteGitHub.DescargarZipAsync(
+                release, parcial, progreso, _ctsUpdate.Token);
+            if (!ok)
             {
                 _textoActualizacion.Text =
-                    $"Orden creada: el servicio aplicará la " +
-                    $"v{datos.VersionObjetivo} en unos segundos y se " +
-                    $"reiniciará solo. Puedes cerrar esta ventana.";
+                    "La descarga no se pudo completar tras varios " +
+                    "intentos. Lo bajado se conserva en esta PC: " +
+                    "pulsa «Reanudar descarga» para seguir desde ahí.";
+                _botonUpdate.Content = "Reanudar descarga";
+                return;
             }
-            else
+
+            _textoActualizacion.Text =
+                "Descarga completa. Comprobando el archivo…";
+            var carpeta = CarpetaUpdate();
+            var rutaNuevo = System.IO.Path.Combine(carpeta, "USBMonitorService.exe.nuevo");
+            using (var zip = System.IO.Compression.ZipFile.OpenRead(parcial))
+            {
+                var entrada = zip.Entries.FirstOrDefault(e =>
+                    e.Name.Equals("USBMonitorService.exe",
+                        StringComparison.OrdinalIgnoreCase))
+                    ?? throw new InvalidOperationException(
+                        "El zip de la Release no trae USBMonitorService.exe.");
+                using var origen = entrada.Open();
+                using var destino = File.Create(rutaNuevo);
+                await origen.CopyToAsync(destino, _ctsUpdate.Token);
+            }
+            try { File.Delete(parcial); } catch { /* el zip ya cumplió */ }
+
+            // La prueba de que bajó EL archivo correcto: el exe
+            // descargado declara en su PE la versión de la Release.
+            var versionLeida = ClienteGitHub.VersionDeArchivo(rutaNuevo);
+            if (ClienteGitHub.CompararVersiones(versionLeida, release.Version) != 0)
             {
                 _textoActualizacion.Text =
-                    datos?.Error ?? "El panel no aceptó la actualización.";
-                await BuscarActualizacionesAsync(silencioso: true);
+                    $"El archivo descargado dice ser la versión " +
+                    $"{versionLeida ?? "desconocida"} y no la " +
+                    $"v{release.Version}: no se aplica.";
+                _botonUpdate.Content = $"Actualizar a v{release.Version}";
+                return;
             }
+
+            await AplicarUpdateAsync(rutaNuevo, release);
+        }
+        catch (OperationCanceledException)
+        {
+            _textoActualizacion.Text =
+                "Descarga cancelada: lo bajado se queda guardado y " +
+                "se reanudará la próxima vez.";
+            _botonUpdate.Content = "Reanudar descarga";
         }
         catch (Exception exc)
         {
-            _log.Error($"Actualizar ahora: {exc.Message}");
-            _textoActualizacion.Text = "No se pudo pedir la actualización.";
-            _botonActualizar.IsEnabled = true;
+            _log.Error($"Descargar/aplicar actualización: {exc.Message}");
+            _textoActualizacion.Text =
+                $"No se pudo completar la actualización: {exc.Message}";
+            _botonUpdate.Content = $"Actualizar a v{release.Version}";
         }
+        finally
+        {
+            _descargandoUpdate = false;
+            _botonCancelarUpdate.Visibility = Visibility.Collapsed;
+            _botonUpdate.IsEnabled = true;
+            _ctsUpdate?.Dispose();
+            _ctsUpdate = null;
+        }
+    }
+
+    /// <summary>
+    /// Lanza la copia aplicadora (el modo «aplicar-actualizacion»
+    /// del propio programa, el mismo que usa el servicio cuando
+    /// el panel manda la orden) con elevación, porque parar el
+    /// servicio y sustituir el ejecutable la exige. La aplicadora
+    /// cierra los procesos del exe instalado — esta ventana
+    /// incluida —, así que la caja se despide y se cierra sola.
+    /// </summary>
+    private async Task AplicarUpdateAsync(string rutaNuevo, InfoRelease release)
+    {
+        string instalado;
+        try
+        {
+            instalado = Instalador.RutaExeInstalado();
+        }
+        catch (Exception exc)
+        {
+            _textoActualizacion.Text =
+                $"No se localizó el ejecutable instalado: {exc.Message}";
+            _botonUpdate.Content = $"Actualizar a v{release.Version}";
+            return;
+        }
+
+        var carpeta = CarpetaUpdate();
+        var aplicador = System.IO.Path.Combine(carpeta, "USBMonitorAplicador.exe");
+        File.Copy(instalado, aplicador, overwrite: true);
+        try
+        {
+            var proceso = Process.Start(new ProcessStartInfo
+            {
+                FileName = aplicador,
+                Arguments = $"aplicar-actualizacion \"{rutaNuevo}\"",
+                UseShellExecute = true,
+                Verb = "runas",
+                WorkingDirectory = carpeta,
+            });
+            if (proceso is null)
+                throw new InvalidOperationException("Process.Start devolvió null.");
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            _textoActualizacion.Text =
+                "Se necesitan permisos de administrador para aplicar " +
+                "la actualización (acepta el aviso de Windows).";
+            _botonUpdate.Content = $"Actualizar a v{release.Version}";
+            return;
+        }
+
+        _textoActualizacion.Text =
+            $"Aplicando la v{release.Version}: el servicio se " +
+            "reiniciará con la versión nueva y esta ventana se " +
+            "cerrará. Vuelve a abrirla para comprobar la versión " +
+            "del archivo.";
+        _botonUpdate.Content = "Aplicando…";
+        _botonUpdate.IsEnabled = false;
+        await Task.Delay(1800);
+        Close();
     }
 
     private Button BotonServicio(string texto, string accion, string gerundio)
@@ -620,29 +765,21 @@ public sealed class ToolboxWindow : Window
     }
 
     /// <summary>
-    /// La marca de la casa: el emblema NORTHSTAR, leído del propio
-    /// icono de la ventana (el recurso .ico incrustado) para que
-    /// la cabecera enseñe EXACTAMENTE el mismo arte que el icono
-    /// del programa, sin dibujos paralelos que puedan divergir.
+    /// La marca de la casa: la brújula NORTHSTAR del tema claro,
+    /// desde su PNG propio incrustado. Antes se decodificaba el
+    /// .ico del programa y, si esa decodificación fallaba, la
+    /// reserva era una baldosa carbón lisa: en la práctica, un
+    /// «icono negro» que parecía la marca rota. El PNG no tiene
+    /// ese modo de fallo y la reserva nueva es la inicial dorada.
     /// </summary>
     private static UIElement CrearIconoMarca()
     {
         try
         {
-            // Del .ico se toma su marco MAYOR (256 px): con
-            // BitmapFrame.Create(uri) WPF se quedaba el primer
-            // marco (16 px) y al estirarlo a los 36 de la
-            // cabecera la marca salía borrosa. Reduciendo desde
-            // 256 queda nítida.
-            var decodificador = new System.Windows.Media.Imaging.IconBitmapDecoder(
-                new Uri("pack://application:,,,/" + "usb_monitor_service.ico", UriKind.Absolute),
-                System.Windows.Media.Imaging.BitmapCreateOptions.PreservePixelFormat,
-                System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);
             var imagen = new Image
             {
-                Source = decodificador.Frames
-                    .OrderByDescending(m => m.PixelWidth)
-                    .First(),
+                Source = new System.Windows.Media.Imaging.BitmapImage(
+                    new Uri("pack://application:,,,/brujula-clara-256.png", UriKind.Absolute)),
                 Width = 36,
                 Height = 36,
                 Stretch = Stretch.Uniform
@@ -653,15 +790,27 @@ public sealed class ToolboxWindow : Window
         }
         catch
         {
-            // Si el recurso fallara, una baldosa oscura mantiene
-            // la cabecera compuesta; la ventana no depende de esto.
-            return new Border
+            // Reserva: la inicial de la marca en dorado, jamás una
+            // baldosa negra.
+            var borde = new Border
             {
                 Width = 36,
                 Height = 36,
                 CornerRadius = new CornerRadius(9),
-                Background = new SolidColorBrush(Color.FromRgb(0x17, 0x18, 0x1A))
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0xC0, 0x9A, 0x3B)),
+                BorderThickness = new Thickness(1.5)
             };
+            borde.Child = new TextBlock
+            {
+                Text = "N",
+                FontFamily = Tema.FuenteTexto,
+                FontSize = 18,
+                FontWeight = FontWeights.Bold,
+                Foreground = new SolidColorBrush(Color.FromRgb(0xC0, 0x9A, 0x3B)),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            return borde;
         }
     }
 

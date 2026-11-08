@@ -31,6 +31,9 @@
          (el compañero usa el suyo, usb_prompt.ico). -->
     <Resource Include="..\..\..\USBMonitor\usb_monitor_service.ico" Link="usb_monitor_service.ico" />
     <Resource Include="..\..\..\USBMonitor\usb_prompt.ico" Link="usb_prompt.ico" />
+    <!-- La brújula del tema claro como PNG: emblema de las
+         cabeceras sin pasar por la decodificación del .ico. -->
+    <Resource Include="..\..\..\USBMonitor\brujula-clara-256.png" Link="brujula-clara-256.png" />
   </ItemGroup>
 
   <ItemGroup>
