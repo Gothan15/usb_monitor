@@ -43,6 +43,11 @@ model Computer {
   // Desbloqueo por contraseña (2FA): credencial propia del agente y modo por equipo
   agentTokenHash   String?
   agentTokenAt     DateTime?
+  // Rotación sin corte: el token nuevo convive como «en espera»
+  // hasta que el agente lo usa por primera vez; en ese momento se
+  // promueve a principal y el viejo muere. Si nunca se usa, caduca.
+  agentTokenPendingHash String?   @unique
+  agentTokenPendingAt   DateTime?
   unlockMode       String    @default("OWNER_OR_ADMIN") // OWNER_OR_ADMIN | ADMIN_ONLY (PCs compartidas)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt

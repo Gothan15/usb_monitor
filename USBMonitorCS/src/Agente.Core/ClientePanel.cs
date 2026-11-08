@@ -499,6 +499,37 @@ public sealed class ClientePanel : IDisposable
         return IntentarJson<RespuestaBasica>(respuesta) is { Ok: true };
     }
 
+    /// <summary>
+    /// Enrolamiento con la clave de la flota: el panel emite el
+    /// token propio de ESTE equipo y lo devuelve una sola vez.
+    /// Null si el panel no lo acepta (clave mala, sin clave
+    /// configurada o sin respuesta).
+    /// </summary>
+    public async Task<string?> EnrolarAsync(string claveEnrolamiento)
+    {
+        var respuesta = await PeticionAsync("POST", "/api/agent/enroll", new SolicitudEnrolamiento
+        {
+            PcName = Configuracion.NombrePc,
+            Key = claveEnrolamiento,
+        }).ConfigureAwait(false);
+        var datos = IntentarJson<RespuestaTokenAgente>(respuesta);
+        return datos is { Ok: true, Token: { Length: > 0 } } ? datos.Token : null;
+    }
+
+    /// <summary>
+    /// Pide un token nuevo para este equipo (rotación sin corte):
+    /// el panel lo deja EN ESPERA y el actual sigue valiendo hasta
+    /// que el nuevo se usa por primera vez. Quien llama guarda el
+    /// devuelto y pasa a usarlo: ese primer uso lo promueve.
+    /// </summary>
+    public async Task<string?> RotarTokenAsync()
+    {
+        var respuesta = await PeticionAsync("POST", "/api/agent/rotate-token")
+            .ConfigureAwait(false);
+        var datos = IntentarJson<RespuestaTokenAgente>(respuesta);
+        return datos is { Ok: true, Token: { Length: > 0 } } ? datos.Token : null;
+    }
+
     /// <summary>Bloqueos ya autorizados esperando ejecución (reclamados).</summary>
     public async Task<List<PendienteDesbloqueo>> SondearDesbloqueosAsync()
     {

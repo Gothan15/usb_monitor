@@ -199,10 +199,39 @@ async function authenticateAgentToken(
   if (cached && cached.expiresAt > Date.now()) {
     return cached.identity;
   }
-  const computer = await (db as any).computer.findFirst({
-    where: { agentTokenHash: hashAgentToken(token) },
+  const hash = hashAgentToken(token);
+  let computer = await (db as any).computer.findFirst({
+    where: { agentTokenHash: hash },
     select: { id: true, name: true },
   });
+  if (!computer) {
+    // ¿Es el token EN ESPERA de una rotación? La rotación del
+    // agente guarda el token nuevo como pendiente y el viejo
+    // sigue valiendo; el primer uso del nuevo lo promueve a
+    // principal (y el viejo muere en ese instante). Ventana de
+    // validez del pendiente: 24 h desde su emisión.
+    const pendiente = await (db as any).computer.findFirst({
+      where: { agentTokenPendingHash: hash },
+      select: { id: true, name: true, agentTokenPendingAt: true },
+    });
+    if (
+      pendiente &&
+      pendiente.agentTokenPendingAt &&
+      Date.now() - new Date(pendiente.agentTokenPendingAt).getTime() <
+        24 * 60 * 60 * 1000
+    ) {
+      await (db as any).computer.update({
+        where: { id: pendiente.id },
+        data: {
+          agentTokenHash: hash,
+          agentTokenAt: new Date(),
+          agentTokenPendingHash: null,
+          agentTokenPendingAt: null,
+        },
+      });
+      computer = { id: pendiente.id, name: pendiente.name };
+    }
+  }
   if (!computer) {
     return null;
   }
