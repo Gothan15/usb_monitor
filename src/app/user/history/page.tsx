@@ -1,7 +1,6 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { UserWelcomeCard } from "../_components/UserWelcomeCard";
 import { useUserDashboard } from "../_providers/UserDashboardProvider";
 
 // Se utiliza carga diferida para mostrar el historial solo cuando se visita la vista.
@@ -26,7 +25,6 @@ export default function UserHistoryPage() {
 
   return (
     <>
-      <UserWelcomeCard username={user.username} />
       <section className="flex flex-1 flex-col">
         <EventHistory userId={user.id} />
       </section>
