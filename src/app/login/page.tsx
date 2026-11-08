@@ -234,7 +234,7 @@ export default function LoginPage() {
                   </button>
                 </div>
               </div>
-              <Button type="submit" className="w-full bg-[#C09A3B] text-[#FFFDF7] hover:bg-[#A8822F]" disabled={loading}>
+              <Button type="submit" className="w-full bg-[#26262B] text-[#F5F3EF] hover:bg-[#17181A]" disabled={loading}>
                 {loading ? (
                   <span className="inline-flex items-center gap-2">
                     <Spinner size={16} /> Verificando…

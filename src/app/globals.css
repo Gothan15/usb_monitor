@@ -96,7 +96,7 @@
   --surface-3: oklch(0.905 0.011 252);
 
   /* Marca — azul marino */
-  --primary: oklch(0.684 0.112 82);
+  --primary: oklch(0.27 0.006 262);
   --primary-foreground: oklch(0.99 0.008 95);
 
   /* Acero pulido */
@@ -184,8 +184,8 @@
   --surface-3: oklch(0.254 0.021 258);
 
   /* Marca — azul acero luminoso */
-  --primary: oklch(0.723 0.108 84);
-  --primary-foreground: oklch(0.22 0.02 80);
+  --primary: oklch(0.27 0.006 262);
+  --primary-foreground: oklch(0.99 0.008 95);
 
   /* Acero */
   --acero: oklch(0.74 0.034 250);
