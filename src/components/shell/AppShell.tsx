@@ -262,14 +262,14 @@ export function AppShell({
                 {lateralAbierta ? (
                   <div className="rounded-lg border border-border border-t-2 border-t-[#C09A3B]/70 bg-card/70 px-3 py-3 shadow-sm">
                     <div className="flex items-center gap-2.5">
-                      <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#152238] font-display text-[13px] font-bold text-[#E9EDF3] ring-1 ring-[#C09A3B]/70">
+                      <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#23211D] font-display text-[13px] font-bold text-[#F5F3EF] ring-1 ring-[#C09A3B]/70">
                         {initials}
                       </span>
                       <div className="min-w-0 flex-1 leading-tight">
                         <span className="block truncate font-display text-[15px] font-semibold text-foreground">
                           {user?.name ?? "Usuario"}
                         </span>
-                        <span className="smallcaps mt-0.5 block text-[10px] text-[var(--acero)]">
+                        <span className="smallcaps mt-0.5 block text-[10px] text-[#A8822F] dark:text-[#C9A44A]">
                           {user?.role?.toUpperCase() === "ADMIN"
                             ? "Administrador"
                             : "Usuario"}
@@ -311,7 +311,7 @@ export function AppShell({
                 ) : (
                   <div className="flex flex-col items-center gap-2">
                     <span
-                      className="relative flex size-10 shrink-0 items-center justify-center rounded-full bg-[#152238] font-display text-[13px] font-bold text-[#E9EDF3] ring-1 ring-[#C09A3B]/70"
+                      className="relative flex size-10 shrink-0 items-center justify-center rounded-full bg-[#23211D] font-display text-[13px] font-bold text-[#F5F3EF] ring-1 ring-[#C09A3B]/70"
                       title={user?.name ?? "Usuario"}
                     >
                       {initials}
@@ -415,7 +415,7 @@ export function AppShell({
                     <ThemeToggle className="size-8" />
                     <span className="flex items-center gap-0.5 lg:hidden">
                       <span className="mx-1 h-5 w-px bg-border" />
-                      <span className="flex size-8 items-center justify-center rounded-full bg-[#152238] font-display text-[11px] font-bold text-[#E9EDF3] ring-1 ring-[#C09A3B]/70">
+                      <span className="flex size-8 items-center justify-center rounded-full bg-[#23211D] font-display text-[11px] font-bold text-[#F5F3EF] ring-1 ring-[#C09A3B]/70">
                         {initials}
                       </span>
                       <LogoutButton
@@ -571,7 +571,7 @@ export function AppShell({
 
                     <div className="flex items-center gap-2.5">
                       <span
-                        className="hidden size-9 items-center justify-center rounded-full bg-[#152238] font-display text-[12px] font-bold text-[#E9EDF3] ring-1 ring-[#C09A3B]/70 sm:flex"
+                        className="hidden size-9 items-center justify-center rounded-full bg-[#23211D] font-display text-[12px] font-bold text-[#F5F3EF] ring-1 ring-[#C09A3B]/70 sm:flex"
                         title={user?.name ?? "Usuario"}
                       >
                         {initials}
@@ -580,7 +580,7 @@ export function AppShell({
                         <span className="block max-w-[140px] truncate font-display text-[14px] font-semibold text-foreground">
                           {user?.name ?? "Usuario"}
                         </span>
-                        <span className="smallcaps block text-[9.5px] text-[var(--acero)]">
+                        <span className="smallcaps block text-[9.5px] text-[#A8822F] dark:text-[#C9A44A]">
                           {user?.role?.toUpperCase() === "ADMIN"
                             ? "Administrador"
                             : "Usuario"}

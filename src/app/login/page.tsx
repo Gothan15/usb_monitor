@@ -100,10 +100,10 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-background lg:grid lg:grid-cols-[1.15fr_1fr]">
       {/* Panel de la casa — azul marino, serif editorial */}
-      <div className="relative hidden overflow-hidden bg-primary text-primary-foreground lg:flex lg:flex-col lg:justify-between lg:p-12">
+      <div className="relative hidden overflow-hidden bg-[#17181A] text-[#F5F3EF] lg:flex lg:flex-col lg:justify-between lg:p-12">
         <div
           aria-hidden
-          className="dot-grid absolute inset-0 text-primary-foreground opacity-30"
+          className="dot-grid absolute inset-0 text-[#F5F3EF] opacity-30"
         />
         <div className="relative flex items-center gap-3">
           <Image
@@ -118,11 +118,11 @@ export default function LoginPage() {
             <span className="font-display text-lg font-bold leading-none tracking-tight">
               USB Monitor
             </span>
-            <span className="smallcaps mt-1.5 text-primary-foreground/50">
+            <span className="smallcaps mt-1.5 text-[#F5F3EF]/50">
               Centro de control
             </span>
           </div>
-          <span className="ml-auto inline-flex items-center gap-2 rounded-full border border-primary-foreground/25 px-3 py-1.5 text-[11px] font-medium text-primary-foreground/85">
+          <span className="ml-auto inline-flex items-center gap-2 rounded-full border border-[#F5F3EF]/25 px-3 py-1.5 text-[11px] font-medium text-[#F5F3EF]/85">
             <span className="dot-pulse size-1.5 rounded-full bg-emerald-300" />
             Sistema activo
           </span>
@@ -135,25 +135,25 @@ export default function LoginPage() {
           <h1 className="font-display mt-5 text-[2.75rem] font-bold leading-[1.08] tracking-tight">
             Monitoreo de dispositivos USB
           </h1>
-          <p className="mt-8 border-t border-primary-foreground/15 pt-6 text-sm leading-relaxed text-primary-foreground/75">
+          <p className="mt-8 border-t border-[#F5F3EF]/15 pt-6 text-sm leading-relaxed text-[#F5F3EF]/75">
             Panel central de los agentes instalados en los equipos.
             Acceso solo para el personal autorizado: las conexiones de
             dispositivos y los intentos de acceso quedan registrados.
           </p>
         </div>
 
-        <p className="smallcaps relative text-primary-foreground/40">
+        <p className="smallcaps relative text-[#F5F3EF]/40">
           Panel central · Agentes Windows · Tiempo real
         </p>
       </div>
 
       {/* Formulario — papel enmarcado */}
-      <div className="relative flex min-h-screen items-center justify-center bg-background p-4 lg:min-h-0">
+      <div className="relative flex min-h-screen items-center justify-center bg-[#F5F3EF] p-4 text-[#22252A] dark:bg-[#131211] dark:text-[#EFEDE6] lg:min-h-0">
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-          className="frame-double relative w-full max-w-sm bg-card p-8"
+          className="relative w-full max-w-sm rounded-md border border-[#D8D3C8] border-t-2 border-t-[#C09A3B] bg-[#FCFCFA] p-8 shadow-xl dark:border-[#3A372F] dark:border-t-[#C09A3B] dark:bg-[#1E1D1B]"
         >
           <div className="mb-7 flex items-center gap-3 lg:hidden">
             <Image
@@ -178,13 +178,13 @@ export default function LoginPage() {
             </span>
           </div>
 
-          <p className="smallcaps text-[var(--acero)]">
+          <p className="smallcaps text-[#A8822F] dark:text-[#C9A44A]">
             {pcName ? "Desbloquear dispositivo USB" : "Acceso seguro al panel"}
           </p>
           <h2 className="font-display mt-2 text-[1.8rem] font-bold tracking-tight">
             Monitoreo USB
           </h2>
-          <div className="rule-acero mt-4 w-16" />
+          <div className="mt-4 h-[2px] w-16 bg-[#C09A3B]" />
 
           <div className="mt-7">
             {error && (
@@ -194,11 +194,11 @@ export default function LoginPage() {
             )}
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="space-y-2">
-                <label className="smallcaps text-muted-foreground">
+                <label className="smallcaps text-[#8A8F98]">
                   Usuario
                 </label>
                 <input
-                  className="w-full rounded border border-input bg-background px-3.5 py-2.5 text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--acero)]/50"
+                  className="w-full rounded border border-[#D8D3C8] bg-white dark:border-[#3A372F] dark:bg-[#26241F] px-3.5 py-2.5 text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C09A3B]/50"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="admin"
@@ -207,13 +207,13 @@ export default function LoginPage() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="smallcaps text-muted-foreground">
+                <label className="smallcaps text-[#8A8F98]">
                   Contraseña
                 </label>
                 <div className="relative">
                   <input
                     type={showPassword ? "text" : "password"}
-                    className="w-full rounded border border-input bg-background px-3.5 py-2.5 pr-10 text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--acero)]/50"
+                    className="w-full rounded border border-[#D8D3C8] bg-white dark:border-[#3A372F] dark:bg-[#26241F] px-3.5 py-2.5 pr-10 text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C09A3B]/50"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
@@ -223,7 +223,7 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() => setShowPassword((s) => !s)}
-                    className="absolute inset-y-0 right-2 flex items-center justify-center rounded-full p-2 text-muted-foreground transition-colors hover:text-primary focus:outline-none"
+                    className="absolute inset-y-0 right-2 flex items-center justify-center rounded-full p-2 text-muted-foreground transition-colors hover:text-[#A8822F] focus:outline-none"
                     aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
                   >
                     {showPassword ? (
@@ -234,7 +234,7 @@ export default function LoginPage() {
                   </button>
                 </div>
               </div>
-              <Button type="submit" className="w-full" disabled={loading}>
+              <Button type="submit" className="w-full bg-[#C09A3B] text-[#FFFDF7] hover:bg-[#A8822F]" disabled={loading}>
                 {loading ? (
                   <span className="inline-flex items-center gap-2">
                     <Spinner size={16} /> Verificando…
