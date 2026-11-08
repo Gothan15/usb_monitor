@@ -96,8 +96,8 @@
   --surface-3: oklch(0.905 0.011 252);
 
   /* Marca — azul marino */
-  --primary: oklch(0.36 0.075 262);
-  --primary-foreground: oklch(0.97 0.008 252);
+  --primary: oklch(0.684 0.112 82);
+  --primary-foreground: oklch(0.99 0.008 95);
 
   /* Acero pulido */
   --acero: oklch(0.52 0.032 252);
@@ -122,7 +122,7 @@
   /* Borders & interactive */
   --border: oklch(0.868 0.01 252);
   --input: oklch(0.84 0.011 252);
-  --ring: oklch(0.52 0.032 252);
+  --ring: oklch(0.684 0.112 82);
 
   /* Charts — paleta clásica */
   --chart-1: oklch(0.45 0.08 262);
@@ -184,8 +184,8 @@
   --surface-3: oklch(0.254 0.021 258);
 
   /* Marca — azul acero luminoso */
-  --primary: oklch(0.71 0.075 258);
-  --primary-foreground: oklch(0.16 0.03 262);
+  --primary: oklch(0.723 0.108 84);
+  --primary-foreground: oklch(0.22 0.02 80);
 
   /* Acero */
   --acero: oklch(0.74 0.034 250);
@@ -210,7 +210,7 @@
   /* Borders & interactive */
   --border: oklch(0.288 0.02 257);
   --input: oklch(0.303 0.02 257);
-  --ring: oklch(0.74 0.034 250);
+  --ring: oklch(0.723 0.108 84);
 
   /* Charts */
   --chart-1: oklch(0.68 0.08 260);
