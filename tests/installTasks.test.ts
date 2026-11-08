@@ -22,7 +22,7 @@ describe("resolverMetodo", () => {
     expect(
       resolverMetodo({
         lastSeen: new Date(AHORA - 60_000),
-        tieneToken: true,
+        tieneCredencial: true,
         ahora: AHORA,
         umbralMs: UMBRAL,
       }),
@@ -33,7 +33,7 @@ describe("resolverMetodo", () => {
     expect(
       resolverMetodo({
         lastSeen: new Date(AHORA - UMBRAL - 1),
-        tieneToken: true,
+        tieneCredencial: true,
         ahora: AHORA,
         umbralMs: UMBRAL,
       }),
@@ -44,7 +44,7 @@ describe("resolverMetodo", () => {
     expect(
       resolverMetodo({
         lastSeen: new Date(AHORA),
-        tieneToken: false,
+        tieneCredencial: false,
         ahora: AHORA,
         umbralMs: UMBRAL,
       }),
@@ -52,7 +52,7 @@ describe("resolverMetodo", () => {
     expect(
       resolverMetodo({
         lastSeen: null,
-        tieneToken: true,
+        tieneCredencial: true,
         ahora: AHORA,
         umbralMs: UMBRAL,
       }),

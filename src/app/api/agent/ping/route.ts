@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireServiceAuth, ipClienteDe, normalizarIp } from "@/lib/auth";
+import { ipClienteDe, normalizarIp } from "@/lib/auth";
+import { requireAgentAuth } from "@/lib/agentAuth";
 import { getCurrentDate, getCurrentIsoString } from "@/lib/time";
 import { normalizeComputerName } from "@/lib/utils";
 import { registrarContactoAgente } from "@/lib/agentDebug";
@@ -25,7 +26,7 @@ export async function GET(req: Request) {
   const versionRaw = (searchParams.get("version") || "").trim();
   const agentVersion = versionRaw ? versionRaw.slice(0, 32) : null;
   try {
-    const serviceAuth = await requireServiceAuth(req);
+    const serviceAuth = await requireAgentAuth(req);
 
     const pcName = normalizeComputerName(
       pcNameRaw || serviceAuth.serviceId || ""

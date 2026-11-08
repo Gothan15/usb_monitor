@@ -236,6 +236,32 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
     };
   }, [tokenAbierto]);
   const [tokenOcupado, setTokenOcupado] = useState(false);
+  const [credencialEstado, setCredencialEstado] = useState<any>(null);
+
+  // El estado de la credencial del nombre escrito: se consulta al
+  // abrir el diálogo y al cambiar el nombre (con un respiro).
+  useEffect(() => {
+    if (!tokenAbierto) return;
+    const nombre = tokenPc.trim();
+    if (!nombre) {
+      setCredencialEstado(null);
+      return;
+    }
+    const temporizador = setTimeout(() => {
+      void (async () => {
+        try {
+          const r = await fetch(
+            `/api/agent/codigo-enrolamiento?pcName=${encodeURIComponent(nombre)}`,
+          );
+          const d = await r.json().catch(() => null);
+          setCredencialEstado(r.ok && d?.ok ? d : null);
+        } catch {
+          setCredencialEstado(null);
+        }
+      })();
+    }, 400);
+    return () => clearTimeout(temporizador);
+  }, [tokenAbierto, tokenPc]);
 
   const llamarProvision = useCallback(
     async (metodo: "POST" | "DELETE") => {
@@ -254,7 +280,7 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
       }
       setTokenOcupado(true);
       try {
-        const respuesta = await fetch("/api/agent/provision-token", {
+        const respuesta = await fetch("/api/agent/codigo-enrolamiento", {
           method: metodo,
           headers: {
             "Content-Type": "application/json",
@@ -267,15 +293,15 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
           throw new Error(datos?.error || "El servidor no respondió bien");
         }
         if (metodo === "POST") {
-          setTokenValor(datos.token);
-          toast({ title: `Token generado para ${datos.pcName}` });
+          setTokenValor(datos.codigo);
+          toast({ title: `Código generado para ${datos.pcName}` });
         } else {
           setTokenValor(null);
-          toast({ title: `Token revocado para ${datos.pcName}` });
+          toast({ title: `Credencial revocada para ${nombre}` });
         }
-        // Provisionar crea el equipo en el servidor (y revocar
-        // cambia su estado): sin invalidar la consulta, la lista
-        // de Equipos no enseñaba el alta hasta recargar la página.
+        // Generar el código crea el equipo en el servidor si no
+        // existía (y revocar cambia su estado): sin invalidar la
+        // consulta, la lista no enseñaba el cambio hasta recargar.
         await queryClient.invalidateQueries({ queryKey: ["computers"] });
         // Dueño elegido en el propio diálogo: con el token ya
         // generado, el usuario queda asignado a este equipo sin
@@ -303,7 +329,7 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
             await queryClient.invalidateQueries({ queryKey: ["users"] });
           } catch {
             toast({
-              title: "El token se generó, pero el dueño no se asignó",
+              title: "El código se generó, pero el dueño no se asignó",
               description: "Puedes asignarlo desde la pestaña Usuarios.",
               variant: "destructive",
             });
@@ -447,7 +473,7 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
       }}
     >
       <KeyRound className="mr-2 size-4" />
-      Token del agente
+      Credencial del equipo
     </Button>
   );
 
@@ -799,12 +825,15 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Token del agente</DialogTitle>
+            <DialogTitle>Credencial del equipo</DialogTitle>
             <DialogDescription>
-              Cada equipo se acredita ante el panel con su propio token.
-              Genera uno y cópialo en la caja de herramientas del agente
-              de ese equipo: se muestra una sola vez y generar otro
-              invalida el anterior.
+              Cada equipo se acredita con un par de claves propio: la
+              privada nace en la PC y nunca sale de ella; el panel solo
+              guarda la pública. Para dar de alta (o recuperar) un
+              equipo, genera un código de un solo uso y escríbelo en el
+              asistente de su agente: el código se muestra una vez,
+              caduca a los 30 minutos y generar otro invalida el
+              anterior.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-2">
@@ -823,6 +852,51 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
                 <option key={c.id} value={c.name} />
               ))}
             </datalist>
+            {credencialEstado && (
+              <div className="mt-1 flex flex-col gap-1 border border-border bg-muted/30 p-3 text-xs leading-relaxed">
+                {credencialEstado.tieneClave ? (
+                  <p>
+                    <strong>Clave registrada</strong>
+                    {credencialEstado.credencialAt
+                      ? ` desde el ${new Date(credencialEstado.credencialAt).toLocaleString()}`
+                      : ""}
+                    {credencialEstado.huella
+                      ? ` · huella ${String(credencialEstado.huella).slice(0, 12)}…`
+                      : ""}
+                  </p>
+                ) : credencialEstado.tieneTokenLegado ? (
+                  <p>
+                    <strong>Token antiguo:</strong> este equipo aún se
+                    acredita con el sistema anterior. Al actualizar su
+                    agente se migrará solo a la clave; no hay que tocar
+                    nada en la PC.
+                  </p>
+                ) : (
+                  <p>
+                    <strong>Sin credencial:</strong> este equipo no puede
+                    hablar con el panel hasta enrolarse con un código.
+                  </p>
+                )}
+                {credencialEstado.codigoExpira &&
+                  new Date(credencialEstado.codigoExpira).getTime() > Date.now() && (
+                    <p className="text-muted-foreground">
+                      Hay un código de enrolamiento vivo hasta el{" "}
+                      {new Date(credencialEstado.codigoExpira).toLocaleString()}.
+                    </p>
+                  )}
+                {credencialEstado.intentosFallidos > 0 && (
+                  <p className="text-muted-foreground">
+                    Intentos de firma fallidos acumulados:{" "}
+                    {credencialEstado.intentosFallidos}.
+                  </p>
+                )}
+                {credencialEstado.alertaCredencial && (
+                  <p className="font-medium text-destructive">
+                    {credencialEstado.alertaCredencial}
+                  </p>
+                )}
+              </div>
+            )}
             <label className="smallcaps mt-2 text-muted-foreground">
               Usuario dueño (opcional)
             </label>
@@ -845,7 +919,7 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
               </SelectContent>
             </Select>
             <p className="text-[11px] leading-relaxed text-muted-foreground">
-              Si eliges uno, al generar el token ese usuario queda como
+              Si eliges uno, al generar el código ese usuario queda como
               dueño de este equipo: podrá desbloquear sus dispositivos
               con su contraseña, sin pasar por la pestaña Usuarios.
             </p>
@@ -867,7 +941,7 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
                           : {
                               title: "No se pudo copiar",
                               description:
-                                "Toca el token para seleccionarlo entero y cópialo a mano.",
+                                "Toca el código para seleccionarlo entero y cópialo a mano.",
                               variant: "destructive",
                             },
                       );
@@ -896,7 +970,7 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
               disabled={tokenOcupado}
               onClick={() => void llamarProvision("DELETE")}
             >
-              Revocar
+              Revocar credencial
             </Button>
             <Button
               type="button"
@@ -904,7 +978,7 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
               disabled={tokenOcupado}
               onClick={() => void llamarProvision("POST")}
             >
-              {tokenOcupado ? "Trabajando..." : "Generar token"}
+              {tokenOcupado ? "Trabajando..." : "Generar código"}
             </Button>
           </DialogFooter>
         </DialogContent>

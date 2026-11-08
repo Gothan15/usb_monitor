@@ -1,6 +1,6 @@
 
 import { db } from "@/lib/db";
-import { generateAgentToken, hashAgentToken } from "@/lib/auth";
+import { generarCodigoEnrolamiento } from "@/lib/credenciales";
 import { readAppSettings } from "@/lib/appSettings";
 import { getCurrentDate } from "@/lib/time";
 import { logError, logInfo } from "@/lib/logger";
@@ -277,14 +277,14 @@ async function intentoInstalacion(
     select: {
       id: true,
       lastSeen: true,
-      agentTokenHash: true,
+      clavePublica: true,
       agentVersion: true,
     },
   });
   const metodo = computer
     ? resolverMetodo({
         lastSeen: computer.lastSeen,
-        tieneToken: !!computer.agentTokenHash,
+        tieneCredencial: !!computer.clavePublica,
         ahora: Date.now(),
         umbralMs,
       })
@@ -322,7 +322,7 @@ async function intentoInstalacion(
     };
   }
   if (comprobacion.yaInstalado && !task.omitIfInstalled) {
-    if (computer?.agentTokenHash) {
+    if (computer?.clavePublica) {
       await actualizarDestino(destino.id, {
         method: METODO.AGENTE,
         status: ESTADO_DESTINO.INSTALANDO,
@@ -334,7 +334,7 @@ async function intentoInstalacion(
     return {
       estado: ESTADO_DESTINO.ERROR,
       message:
-        "El agente ya está instalado en el destino, pero el panel no tiene su token: genera el token en Equipos y cópialo en su caja de herramientas, o desinstálalo allí para poder empujar de nuevo.",
+        "El agente ya está instalado en el destino, pero el panel no tiene su credencial: genera un código de enrolamiento en Equipos y escríbelo en el asistente de esa PC, o desinstálalo allí para poder empujar de nuevo.",
       reintentable: false,
     };
   }
@@ -353,25 +353,20 @@ async function intentoInstalacion(
     };
   }
 
-  // Token propio para el agente que va a nacer: el panel guarda
-  // solo su huella y el claro viaja en el comando del empujón.
-  const token = generateAgentToken();
+  // Código de enrolamiento de un solo uso para el agente que va
+  // a nacer (overhaul de credenciales): viaja en el comando del
+  // empujón, el agente lo presenta al arrancar junto con la
+  // clave que genera en la propia PC, y muere en ese acto. Su
+  // ventana es larga (12 h) porque copiar el paquete por SMB
+  // puede tardar; sigue siendo de un solo uso.
   const equipo = await db.computer.upsert({
     where: { name: destino.pcName },
-    update: {
-      ipAddress: destino.ipAddress,
-      agentTokenHash: hashAgentToken(token),
-      agentTokenAt: getCurrentDate(),
-    },
-    create: {
-      name: destino.pcName,
-      ipAddress: destino.ipAddress,
-      agentTokenHash: hashAgentToken(token),
-      agentTokenAt: getCurrentDate(),
-    },
+    update: { ipAddress: destino.ipAddress },
+    create: { name: destino.pcName, ipAddress: destino.ipAddress },
     select: { id: true },
   });
   await actualizarDestino(destino.id, { computerId: equipo.id });
+  const { codigo } = await generarCodigoEnrolamiento(equipo.id, 12 * 60);
 
   const manifiesto = await manifiestoPaquete();
   const inicio = Date.now();
@@ -381,7 +376,7 @@ async function intentoInstalacion(
       ip: destino.ipAddress,
       usuario: task.username,
       clave,
-      token,
+      codigo,
       servidor: hostServidorParaAgente(),
       exeAgente: manifiesto ? rutaExePaquete() : undefined,
     },

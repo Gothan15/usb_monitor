@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireServiceAuth } from "@/lib/auth";
+import { requireAgentAuth } from "@/lib/agentAuth";
 import { readAppSettings } from "@/lib/appSettings";
 import { normalizeComputerName } from "@/lib/utils";
 import { registrarContactoAgente } from "@/lib/agentDebug";
@@ -19,7 +19,7 @@ export async function GET(req: Request) {
   // también cuando la autenticación falla (401).
   const pcNameQuery = new URL(req.url).searchParams.get("pcName");
   try {
-    const serviceAuth = await requireServiceAuth(req);
+    const serviceAuth = await requireAgentAuth(req);
 
     const settings = await readAppSettings();
     if (!settings.offlineEmergencyEnabled) {

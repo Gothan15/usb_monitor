@@ -46,7 +46,6 @@ const ARGON2_OPTS = {
 const SESSION_INACTIVITY_LIMIT = 30 * 60; // 30 min
 const SESSION_CACHE_TTL_MS = 2 * 60 * 1000; // cache lookups for 2 minutos
 const SESSION_CACHE_MAX = 1000;
-const AGENT_CACHE_TTL_MS = 60 * 1000;
 
 type UserRole = "admin" | "user";
 
@@ -157,96 +156,7 @@ const CSRF_HEADER_NAME = "x-csrf-token";
 const SAFE_HTTP_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const AUTHORIZATION_HEADER_PATTERN = /^ApiKey\s+(\S+)$/i;
 
-const SERVICE_API_KEYS = (() => {
-  const raw = process.env.SERVICE_API_KEYS || "";
-  const entries = raw
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
-  const map = new Map<string, string>();
-  for (const entry of entries) {
-    const [id, token] = entry.split(":");
-    if (id && token) {
-      map.set(token.trim(), id.trim());
-    }
-  }
-  return map;
-})();
 
-/**
- * Credencial por equipo (fase 3 del plan de desbloqueo): cada PC tiene
- * un token propio; el servidor guarda solo su hash SHA-256 en
- * Computer.agentTokenHash y el agente lo presenta como
- * `Authorization: AgentToken <token>`.
- */
-export function hashAgentToken(token: string): string {
-  return createHash("sha256").update(token, "utf8").digest("hex");
-}
-
-export function generateAgentToken(): string {
-  return randomBytes(32).toString("hex");
-}
-
-const computerTokenCache = new Map<
-  string,
-  { identity: ServiceAuthIdentity; expiresAt: number }
->();
-
-async function authenticateAgentToken(
-  token: string,
-): Promise<ServiceAuthIdentity | null> {
-  const cached = computerTokenCache.get(token);
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.identity;
-  }
-  const hash = hashAgentToken(token);
-  let computer = await (db as any).computer.findFirst({
-    where: { agentTokenHash: hash },
-    select: { id: true, name: true },
-  });
-  if (!computer) {
-    // ¿Es el token EN ESPERA de una rotación? La rotación del
-    // agente guarda el token nuevo como pendiente y el viejo
-    // sigue valiendo; el primer uso del nuevo lo promueve a
-    // principal (y el viejo muere en ese instante). Ventana de
-    // validez del pendiente: 24 h desde su emisión.
-    const pendiente = await (db as any).computer.findFirst({
-      where: { agentTokenPendingHash: hash },
-      select: { id: true, name: true, agentTokenPendingAt: true },
-    });
-    if (
-      pendiente &&
-      pendiente.agentTokenPendingAt &&
-      Date.now() - new Date(pendiente.agentTokenPendingAt).getTime() <
-        24 * 60 * 60 * 1000
-    ) {
-      await (db as any).computer.update({
-        where: { id: pendiente.id },
-        data: {
-          agentTokenHash: hash,
-          agentTokenAt: new Date(),
-          agentTokenPendingHash: null,
-          agentTokenPendingAt: null,
-        },
-      });
-      computer = { id: pendiente.id, name: pendiente.name };
-    }
-  }
-  if (!computer) {
-    return null;
-  }
-  const identity: ServiceAuthIdentity = {
-    type: "service",
-    serviceId: computer.name,
-    token,
-    computerId: computer.id,
-  };
-  computerTokenCache.set(token, {
-    identity,
-    expiresAt: Date.now() + AGENT_CACHE_TTL_MS,
-  });
-  return identity;
-}
 
 function parseCookies(headerValue: string | null): Record<string, string> {
   if (!headerValue) return {};
@@ -548,24 +458,11 @@ export async function authenticateRequest(
       }
     }
   }
-  // 1b) Token por equipo (agente): Authorization: AgentToken <token>
-  const authHeader = req.headers.get("authorization") || "";
-  const agentTokenMatch = authHeader.match(/^AgentToken\s+(\S+)$/i);
-  if (agentTokenMatch) {
-    return authenticateAgentToken(agentTokenMatch[1]);
-  }
-
   // 2) API Key fallback
+  const authHeader = req.headers.get("authorization") || "";
   const apiKeyMatch = authHeader.match(AUTHORIZATION_HEADER_PATTERN);
   if (apiKeyMatch) {
     const apiKey = apiKeyMatch[1];
-    if (SERVICE_API_KEYS.has(apiKey)) {
-      return {
-        type: "service",
-        serviceId: SERVICE_API_KEYS.get(apiKey) as string,
-        token: apiKey,
-      };
-    }
     let user = getCachedUser(cacheKeyApiKey(apiKey));
     if (!user) {
       const record = await (db as any).user.findUnique({
@@ -610,22 +507,6 @@ export async function requireAuth(
     validateCsrfToken(req, auth);
   }
   return auth;
-}
-
-export async function requireServiceAuth(
-  req: Request,
-): Promise<ServiceAuthIdentity> {
-  // Solo identidades de servicio: el token propio del equipo
-  // (Authorization: AgentToken ...) o las claves de servicio del
-  // operador. La clave API personal de un usuario YA NO autentica
-  // al agente (2026-11-01): era una credencial del usuario con
-  // alcance de servicio sobre cualquiera de sus equipos; el agente
-  // se acredita únicamente con el token de su equipo.
-  const auth = await authenticateRequest(req);
-  if (auth && auth.type === "service") {
-    return auth;
-  }
-  throw new Error("UNAUTHORIZED");
 }
 
 export async function simulatePasswordCheckDelay() {

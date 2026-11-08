@@ -174,7 +174,7 @@ internal static class Program
 
     private static int Instalar(Opciones o)
     {
-        if (!o.ValidaBasica() || string.IsNullOrWhiteSpace(o.Token) || string.IsNullOrWhiteSpace(o.Servidor))
+        if (!o.ValidaBasica() || string.IsNullOrWhiteSpace(o.Codigo) || string.IsNullOrWhiteSpace(o.Servidor))
             return Uso();
         var rutaExeOrigen = o.Exe ?? Path.Combine(AppContext.BaseDirectory, NombreExe);
         if (!File.Exists(rutaExeOrigen))
@@ -227,7 +227,7 @@ internal static class Program
             BorrarServicioSiExiste(scm, NombreServicioTemporal);
 
             var orden = $"\"{RutaDestinoLocal}\\{NombreExe}\" instalar-remoto " +
-                        $"--servidor {o.Servidor} --token {o.Token}";
+                        $"--servidor {o.Servidor} --codigo {o.Codigo}";
             var svc = CreateService(
                 scm, NombreServicioTemporal, "USB Monitor — instalador remoto",
                 ServiceAllAccess, ServiceWin32OwnProcess, ServiceDemandStart,
@@ -564,7 +564,7 @@ internal static class Program
         public string Ip => Leer("--ip") ?? "";
         public string Usuario => Leer("--usuario") ?? "";
         public string Clave => Leer("--clave") ?? "";
-        public string? Token => Leer("--token");
+        public string? Codigo => Leer("--codigo");
         public string? Servidor => Leer("--servidor");
         public string? Exe => Leer("--exe");
 

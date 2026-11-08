@@ -19,6 +19,25 @@ public sealed class AsistenteWindow : Window
 {
     private const int TotalPasos = 5;
 
+    // La paleta cálida de la caja de herramientas y el compañero
+    // (papel, tarjeta crema, borde cálido, carbón y dorado): el
+    // asistente habla el mismo idioma visual que el resto del
+    // agente, no el tema frío antiguo de Tema.
+    private static readonly SolidColorBrush Papel =
+        new(Color.FromRgb(0xF5, 0xF3, 0xEF));
+    private static readonly SolidColorBrush TarjetaFondo =
+        new(Color.FromRgb(0xFC, 0xFC, 0xFA));
+    private static readonly SolidColorBrush BordeCalido =
+        new(Color.FromRgb(0xD8, 0xD3, 0xC8));
+    private static readonly SolidColorBrush Carbon =
+        new(Color.FromRgb(0x26, 0x26, 0x2B));
+    private static readonly SolidColorBrush Dorado =
+        new(Color.FromRgb(0xC0, 0x9A, 0x3B));
+    private static readonly SolidColorBrush TintaCalida =
+        new(Color.FromRgb(0x22, 0x25, 0x2A));
+    private static readonly SolidColorBrush GrisCalido =
+        new(Color.FromRgb(0x8A, 0x8F, 0x98));
+
     private readonly Configuracion _config = new();
     private readonly Registrador _log = Registro.Obtener("gui");
 
@@ -41,8 +60,7 @@ public sealed class AsistenteWindow : Window
     private bool? _ultimaPruebaOk;
 
     // Paso 3 · Credencial
-    private readonly PasswordBox _token;
-    private readonly PasswordBox _claveEnroll;
+    private readonly PasswordBox _codigoEnroll;
     private readonly TextBlock _avisoToken;
 
     // Paso 4 · Servicio
@@ -67,11 +85,12 @@ public sealed class AsistenteWindow : Window
         MinHeight = 560;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Tema.AplicarVentana(this);
+        Background = Papel;
 
-        var raiz = new StackPanel { Margin = new Thickness(18, 6, 18, 18) };
-        raiz.Children.Add(Tema.TitularVentana(
-            "USBMonitor · Configuración de este equipo",
-            "Asistente de primera vez"));
+        var raiz = new StackPanel();
+        raiz.Children.Add(ConstruirCabecera());
+        var cuerpo = new StackPanel { Margin = new Thickness(18, 10, 18, 18) };
+        raiz.Children.Add(cuerpo);
 
         // Indicador de progreso: «Paso N de 5» y cinco segmentos.
         _indicadorPaso = new TextBlock
@@ -85,7 +104,7 @@ public sealed class AsistenteWindow : Window
         _indicadorPaso.SetValue(
             System.Windows.Documents.Typography.CapitalsProperty,
             FontCapitals.SmallCaps);
-        raiz.Children.Add(_indicadorPaso);
+        cuerpo.Children.Add(_indicadorPaso);
 
         var filaSegmentos = new StackPanel
         {
@@ -104,14 +123,14 @@ public sealed class AsistenteWindow : Window
             _segmentos.Add(segmento);
             filaSegmentos.Children.Add(segmento);
         }
-        raiz.Children.Add(filaSegmentos);
+        cuerpo.Children.Add(filaSegmentos);
 
         // Zona de pasos: los cinco paneles conviven y solo se ve uno.
         var zona = new Grid();
         _pasos.Add(ConstruirPasoBienvenida());
         _pasos.Add(ConstruirPasoServidor(out _host, out _puerto, out _esquema,
             out _botonProbar, out _resultadosPrueba, out _avisoConexion));
-        _pasos.Add(ConstruirPasoCredencial(out _token, out _claveEnroll, out _avisoToken));
+        _pasos.Add(ConstruirPasoCredencial(out _codigoEnroll, out _avisoToken));
         _pasos.Add(ConstruirPasoServicio(out _textoEstadoServicio,
             out _botonInstalarServicio, out _avisoAdmin));
         _pasos.Add(ConstruirPasoListo(out _resumen));
@@ -119,8 +138,15 @@ public sealed class AsistenteWindow : Window
         {
             zona.Children.Add(paso);
         }
-        raiz.Children.Add(Tema.Tarjeta(zona, new Thickness(0, 0, 0, 14),
-            new Thickness(16)));
+        cuerpo.Children.Add(new Border
+        {
+            Background = TarjetaFondo,
+            BorderBrush = BordeCalido,
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(16),
+            Margin = new Thickness(0, 0, 0, 14),
+            Child = zona
+        });
 
         // Navegación: Atrás y Saltar a la izquierda, Continuar a la derecha.
         _filaNavegacion = new StackPanel
@@ -135,9 +161,15 @@ public sealed class AsistenteWindow : Window
 
         var izquierda = new StackPanel { Orientation = Orientation.Horizontal };
         _botonAtras = Tema.BotonSecundario("Atrás");
+        _botonAtras.Background = TarjetaFondo;
+        _botonAtras.BorderBrush = BordeCalido;
+        _botonAtras.Foreground = TintaCalida;
         _botonAtras.Click += (_, _) => MostrarPaso(_pasoActual - 1);
         izquierda.Children.Add(_botonAtras);
         _botonSaltar = Tema.BotonSecundario("Saltar por ahora");
+        _botonSaltar.Background = TarjetaFondo;
+        _botonSaltar.BorderBrush = BordeCalido;
+        _botonSaltar.Foreground = TintaCalida;
         _botonSaltar.Margin = new Thickness(0);
         _botonSaltar.Click += (_, _) => MostrarPaso(_pasoActual + 1);
         izquierda.Children.Add(_botonSaltar);
@@ -145,12 +177,14 @@ public sealed class AsistenteWindow : Window
         rejillaNav.Children.Add(izquierda);
 
         _botonContinuar = Tema.BotonPrimario("Continuar");
+        _botonContinuar.Background = Carbon;
+        _botonContinuar.BorderBrush = Carbon;
         _botonContinuar.Margin = new Thickness(0);
         _botonContinuar.Click += async (_, _) => await ContinuarAsync();
         Grid.SetColumn(_botonContinuar, 1);
         rejillaNav.Children.Add(_botonContinuar);
         _filaNavegacion.Children.Add(rejillaNav);
-        raiz.Children.Add(_filaNavegacion);
+        cuerpo.Children.Add(_filaNavegacion);
 
         Content = new ScrollViewer
         {
@@ -165,6 +199,119 @@ public sealed class AsistenteWindow : Window
             MostrarPaso(1);
         };
         Closed += (_, _) => _log.Info("Asistente de configuración cerrado");
+    }
+
+    // ── Cabecera cálida (la misma receta que la caja de
+    //    herramientas: banda crema en degradado, emblema de la
+    //    brújula, rótulo en versalitas, título claro y el filete
+    //    dorado debajo) ───────────────────────────────────────────
+
+    private Border ConstruirCabecera()
+    {
+        var marca = new TextBlock
+        {
+            Text = "USBMONITOR",
+            FontFamily = Tema.FuenteTexto,
+            FontSize = 10.5,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = GrisCalido
+        };
+        marca.SetValue(
+            System.Windows.Documents.Typography.CapitalsProperty,
+            FontCapitals.SmallCaps);
+        var titulo = new TextBlock
+        {
+            Text = "Configuración de este equipo",
+            FontFamily = new FontFamily("Segoe UI Light"),
+            FontSize = 20,
+            Foreground = TintaCalida,
+            Margin = new Thickness(0, 1, 0, 0)
+        };
+        var subtitulo = new TextBlock
+        {
+            Text = "Asistente de primera vez — deja este equipo listo y enrolado en el panel.",
+            FontFamily = Tema.FuenteTexto,
+            FontSize = 12,
+            Foreground = Tema.TintaAtenuada,
+            Margin = new Thickness(0, 2, 0, 0)
+        };
+        var textos = new StackPanel
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(12, 0, 0, 0)
+        };
+        textos.Children.Add(marca);
+        textos.Children.Add(titulo);
+        textos.Children.Add(subtitulo);
+
+        var fila = new Grid();
+        fila.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        fila.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var icono = CrearIconoMarca();
+        Grid.SetColumn(icono, 0);
+        Grid.SetColumn(textos, 1);
+        fila.Children.Add(icono);
+        fila.Children.Add(textos);
+
+        var degradado = new LinearGradientBrush
+        {
+            StartPoint = new Point(0, 0),
+            EndPoint = new Point(0, 1)
+        };
+        degradado.GradientStops.Add(new GradientStop(Color.FromRgb(0xFC, 0xFC, 0xFA), 0));
+        degradado.GradientStops.Add(new GradientStop(Color.FromRgb(0xEF, 0xED, 0xE6), 1));
+
+        var pila = new StackPanel();
+        pila.Children.Add(new Border
+        {
+            Background = degradado,
+            Padding = new Thickness(20, 13, 20, 12),
+            Child = fila
+        });
+        pila.Children.Add(new Border { Height = 2, Background = Dorado });
+
+        return new Border { Child = pila };
+    }
+
+    /// <summary>El emblema: la brújula clara desde su PNG, como en la caja.</summary>
+    private static UIElement CrearIconoMarca()
+    {
+        try
+        {
+            var imagen = new Image
+            {
+                Source = new System.Windows.Media.Imaging.BitmapImage(
+                    new Uri("pack://application:,,,/brujula-clara-256.png", UriKind.Absolute)),
+                Width = 36,
+                Height = 36,
+                Stretch = Stretch.Uniform
+            };
+            RenderOptions.SetBitmapScalingMode(
+                imagen, BitmapScalingMode.HighQuality);
+            return imagen;
+        }
+        catch
+        {
+            var borde = new Border
+            {
+                Width = 36,
+                Height = 36,
+                CornerRadius = new CornerRadius(9),
+                BorderBrush = Dorado,
+                BorderThickness = new Thickness(1.5)
+            };
+            borde.Child = new TextBlock
+            {
+                Text = "N",
+                FontFamily = Tema.FuenteTexto,
+                FontSize = 18,
+                FontWeight = FontWeights.Bold,
+                Foreground = Dorado,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            return borde;
+        }
     }
 
     // ── Navegación ───────────────────────────────────────────────
@@ -185,7 +332,9 @@ public sealed class AsistenteWindow : Window
         }
         for (int i = 0; i < _segmentos.Count; i++)
         {
-            _segmentos[i].Fill = i < _pasoActual ? Tema.Acero : Tema.Borde;
+            _segmentos[i].Fill = i < _pasoActual - 1
+                ? Dorado
+                : i == _pasoActual - 1 ? Carbon : BordeCalido;
         }
         _indicadorPaso.Text =
             $"Paso {_pasoActual} de {TotalPasos} · {NombresPasos[_pasoActual - 1]}";
@@ -223,7 +372,7 @@ public sealed class AsistenteWindow : Window
                 }
                 break;
             case 3:
-                if (await GuardarTokenDesdeCampoAsync())
+                if (await GuardarCredencialDesdeCampoAsync())
                 {
                     MostrarPaso(4);
                 }
@@ -455,52 +604,35 @@ public sealed class AsistenteWindow : Window
     // ── Paso 3 · Credencial del equipo ───────────────────────────
 
     private UIElement ConstruirPasoCredencial(
-        out PasswordBox token, out PasswordBox claveEnroll, out TextBlock avisoToken)
+        out PasswordBox codigo, out TextBlock avisoToken)
     {
         var contenido = new StackPanel();
         contenido.Children.Add(Tema.EtiquetaSeccion("Credencial del equipo"));
         contenido.Children.Add(TextoExplicacion(
-            "Cada equipo se presenta al panel con su propio token, " +
-            "como una contraseña de la máquina. El camino rápido: si " +
-            "el administrador generó la clave de enrolamiento de la " +
-            "flota (Ajustes → Enrolamiento de agentes), escríbela " +
-            "abajo y el panel emite el token de este equipo al " +
-            "instante, sin generar ni copiar tokens equipo a " +
-            "equipo. El camino de siempre también vale: un token " +
-            "generado para este equipo en Equipos → «Token del " +
-            "agente»."));
+            "Este equipo se acredita ante el panel con un par de " +
+            "claves propio: la clave privada nace en esta PC y nunca " +
+            "sale de ella, y el panel guarda solo la pública. Para " +
+            "registrarla, escribe el código de enrolamiento de un " +
+            "solo uso que el administrador genera en el panel " +
+            "(Equipos → Credencial del equipo). Si este equipo ya " +
+            "tenía el token del sistema anterior, no escribas nada: " +
+            "el agente se migra solo a la clave al arrancar."));
 
         var nombrePc = Tema.TextoDatos(
             $"El nombre de este equipo es {Configuracion.NombrePc}.");
         nombrePc.Margin = new Thickness(0, 0, 0, 10);
         contenido.Children.Add(nombrePc);
 
-        contenido.Children.Add(Tema.EtiquetaCampo("Token del equipo"));
-        token = Tema.CampoContrasena();
-        token.Margin = new Thickness(0, 0, 0, 4);
-        contenido.Children.Add(token);
-
-        var separador = new TextBlock
-        {
-            Text = "— o, con la clave de enrolamiento de la flota —",
-            FontFamily = Tema.FuenteTexto,
-            FontSize = 11.5,
-            Foreground = Tema.TintaAtenuada,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            Margin = new Thickness(0, 12, 0, 8)
-        };
-        contenido.Children.Add(separador);
-
-        contenido.Children.Add(Tema.EtiquetaCampo("Clave de enrolamiento (flota)"));
-        claveEnroll = Tema.CampoContrasena();
-        claveEnroll.Margin = new Thickness(0, 0, 0, 4);
-        contenido.Children.Add(claveEnroll);
+        contenido.Children.Add(Tema.EtiquetaCampo("Código de enrolamiento"));
+        codigo = Tema.CampoContrasena();
+        codigo.Margin = new Thickness(0, 0, 0, 4);
+        contenido.Children.Add(codigo);
 
         contenido.Children.Add(new TextBlock
         {
-            Text = "Se guarda cifrado en esta PC. Si ahora no tienes el " +
-                   "token, pulsa «Saltar por ahora» y pégalo después en " +
-                   "la caja de herramientas, sección Credencial.",
+            Text = "El código vale 30 minutos y se gasta al usarlo. " +
+                   "Si ahora no lo tienes, pulsa «Saltar por ahora» y " +
+                   "enrola después desde la caja de herramientas.",
             FontFamily = Tema.FuenteTexto,
             FontSize = 11.5,
             Foreground = Tema.TintaAtenuada,
@@ -509,59 +641,47 @@ public sealed class AsistenteWindow : Window
         });
 
         avisoToken = TextoAviso(
-            "Escribe el token del equipo o la clave de enrolamiento, " +
-            "o pulsa «Saltar por ahora» para dejarlo para después.");
+            "Escribe el código de enrolamiento, o pulsa «Saltar por " +
+            "ahora» para dejarlo para después.");
         contenido.Children.Add(avisoToken);
 
         return contenido;
     }
 
-    private async Task<bool> GuardarTokenDesdeCampoAsync()
+    private async Task<bool> GuardarCredencialDesdeCampoAsync()
     {
-        // Con clave de enrolamiento escrita, manda ella: se pide
-        // el token propio al panel y se guarda el que devuelva.
-        string claveEnroll = _claveEnroll.Password.Trim();
-        if (!string.IsNullOrWhiteSpace(claveEnroll))
+        // Ya acreditado (clave registrada o token antiguo que se
+        // migrará solo): el paso no tiene nada que guardar.
+        if (_config.TieneClave || _config.TokenLegado is not null)
         {
             _avisoToken.Visibility = Visibility.Collapsed;
-            string? emitido;
-            using (var cliente = new ClientePanel(_config))
-            {
-                emitido = await cliente.EnrolarAsync(claveEnroll);
-            }
-            _claveEnroll.Clear();
-            if (emitido is null)
-            {
-                Tema.AvisarError(
-                    "El panel no aceptó la clave de enrolamiento. " +
-                    "Comprueba el servidor del paso anterior y que la " +
-                    "clave sea la vigente.", "Credencial");
-                return false;
-            }
-            if (!_config.GuardarTokenAgente(emitido))
-            {
-                Tema.AvisarError("No se pudo guardar la credencial.", "Credencial");
-                return false;
-            }
-            _log.Info("Asistente: equipo enrolado; token propio guardado");
             return true;
         }
 
-        string token = _token.Password.Trim();
-        if (string.IsNullOrWhiteSpace(token))
+        string codigo = _codigoEnroll.Password.Trim();
+        if (string.IsNullOrWhiteSpace(codigo))
         {
             _avisoToken.Visibility = Visibility.Visible;
             return false;
         }
         _avisoToken.Visibility = Visibility.Collapsed;
 
-        if (!_config.GuardarTokenAgente(token))
+        bool enrolado;
+        using (var cliente = new ClientePanel(_config))
         {
-            Tema.AvisarError("No se pudo guardar la credencial.", "Credencial");
+            enrolado = await cliente.EnrolarConCodigoAsync(codigo);
+        }
+        _codigoEnroll.Clear();
+        if (!enrolado)
+        {
+            Tema.AvisarError(
+                "El panel no aceptó el código de enrolamiento. " +
+                "Comprueba el servidor del paso anterior y que el " +
+                "código sea el vigente para este equipo (caduca a " +
+                "los 30 minutos y se gasta al primer uso).", "Credencial");
             return false;
         }
-        _token.Clear();
-        _log.Info("Asistente: token del equipo guardado");
+        _log.Info("Asistente: equipo enrolado; clave registrada en el panel");
         return true;
     }
 
@@ -757,13 +877,15 @@ public sealed class AsistenteWindow : Window
         }
 
         // Credencial: se lee el estado real, no lo que el usuario dijo.
-        bool hayToken = !string.IsNullOrWhiteSpace(_config.TokenAgente);
-        _resumen.Children.Add(hayToken
-            ? LineaResumen(true, "Credencial: token del equipo guardado.")
+        bool hayCredencial = _config.TieneClave ||
+            _config.TokenLegado is not null ||
+            _config.CodigoEnrolamiento is not null;
+        _resumen.Children.Add(hayCredencial
+            ? LineaResumen(true, "Credencial: este equipo puede presentarse al panel.")
             : LineaResumen(false,
-                "Credencial: token del equipo sin guardar. Este equipo aún " +
-                "no puede presentarse al panel: pégalo en la caja de " +
-                "herramientas, sección Credencial."));
+                "Credencial: sin registrar. Este equipo aún no puede " +
+                "presentarse al panel: enrola con un código desde la " +
+                "caja de herramientas, sección Credencial."));
 
         // Servicio: línea con marcador; el estado real se consulta
         // en segundo plano al mostrar el paso (RefrescarResumenServicioAsync).

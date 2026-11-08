@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireServiceAuth } from "@/lib/auth";
+import { requireAgentAuth } from "@/lib/agentAuth";
 import { registrarContactoAgente } from "@/lib/agentDebug";
 import { logError } from "@/lib/logger";
 import { broadcastUnlockChange } from "@/lib/socket";
@@ -15,7 +15,7 @@ import { broadcastUnlockChange } from "@/lib/socket";
  */
 export async function POST(req: Request) {
   try {
-    await requireServiceAuth(req);
+    await requireAgentAuth(req);
 
     const body = await req.json();
     const pcName = typeof body?.pcName === "string" ? body.pcName.trim() : "";

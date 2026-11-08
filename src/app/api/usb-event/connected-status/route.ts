@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireServiceAuth } from "@/lib/auth";
+import { requireAgentAuth } from "@/lib/agentAuth";
 import { getCurrentDate } from "@/lib/time";
 import { hit } from "@/lib/rateLimit";
 import { registrarContactoAgente } from "@/lib/agentDebug";
@@ -14,7 +14,7 @@ import { broadcastUsbDevices } from "@/lib/socket";
  */
 export async function POST(req: NextRequest) {
   try {
-    const serviceAuth = await requireServiceAuth(req);
+    const serviceAuth = await requireAgentAuth(req);
 
     const body = (await req.json().catch(() => null)) as any;
 

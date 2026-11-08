@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentDate } from "@/lib/time";
-import { requireServiceAuth } from "@/lib/auth";
+import { requireAgentAuth } from "@/lib/agentAuth";
 import { hit } from "@/lib/rateLimit";
 import { registrarContactoAgente } from "@/lib/agentDebug";
 import { logError } from "@/lib/logger";
@@ -23,7 +23,7 @@ export async function GET(req: Request) {
   // cuando la autenticación falla (401).
   const pcNameQuery = new URL(req.url).searchParams.get("pcName");
   try {
-    const auth = await requireServiceAuth(req);
+    const auth = await requireAgentAuth(req);
     const { searchParams } = new URL(req.url);
     const pcName = searchParams.get("pcName");
     const checkInterval = searchParams.get("check") === "true";

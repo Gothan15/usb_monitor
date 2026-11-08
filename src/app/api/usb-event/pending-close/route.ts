@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireServiceAuth } from "@/lib/auth";
+import { requireAgentAuth } from "@/lib/agentAuth";
 import { hit } from "@/lib/rateLimit";
 import { registrarContactoAgente } from "@/lib/agentDebug";
 import { logError } from "@/lib/logger";
@@ -15,7 +15,7 @@ import { broadcastUnlockChange } from "@/lib/socket";
  */
 export async function POST(req: Request) {
   try {
-    const serviceAuth = await requireServiceAuth(req);
+    const serviceAuth = await requireAgentAuth(req);
 
     const clientIp =
       (req.headers.get("x-forwarded-for") || "").split(",")[0].trim() ||

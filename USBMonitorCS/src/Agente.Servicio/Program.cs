@@ -6,7 +6,7 @@
 //                herramientas si se lanza a mano con doble clic)
 //   gui          la caja de herramientas del administrador (o el
 //                asistente de configuración, si es la primera vez:
-//                el equipo aún no tiene token)
+//                el equipo aún no tiene credencial)
 //   configurar   el asistente de configuración, siempre
 //   prompt       el compañero (la ventana de la contraseña); lo
 //                arranca la tarea de inicio de sesión
@@ -18,11 +18,11 @@
 //   restaurar    revierte todo lo del diario y sale (lo usa el
 //                desinstalador antes de quitar el servicio)
 //   debug        el agente en consola, para depurar
-//   fijar-token  guarda el token del equipo cifrado y sale (lo usa
+//   fijar-codigo guarda el código de enrolamiento cifrado y sale (lo usa
 //                Install-Service.ps1 tras escribir server.json)
 //   instalar-remoto
 //                instalación sin asistente para el empujón del panel
-//                (SMB+RPC): escribe server.json y el token que trae
+//                (SMB+RPC): escribe server.json y el código que trae
 //                en los argumentos e instala, sin abrir ventanas
 //   aplicar-actualizacion
 //                sustituye el ejecutable instalado por otro ya
@@ -73,19 +73,19 @@ internal static class Program
                 AppVentanas.EjecutarVisor();
                 return 0;
 
-            case "fijar-token":
+            case "fijar-codigo":
                 Registro.Configurar("agente.log");
                 if (args.Length < 2 || string.IsNullOrWhiteSpace(args[1]))
                 {
-                    Console.WriteLine("Falta el token: USBMonitorService.exe fijar-token <valor>");
+                    Console.WriteLine("Falta el código: USBMonitorService.exe fijar-codigo <valor>");
                     return 1;
                 }
-                if (new Configuracion().GuardarTokenAgente(args[1].Trim()))
+                if (new Configuracion().GuardarCodigoEnrolamiento(args[1].Trim()))
                 {
-                    Console.WriteLine("Token del equipo guardado (cifrado).");
+                    Console.WriteLine("Código de enrolamiento guardado (cifrado): el servicio lo gastará al arrancar.");
                     return 0;
                 }
-                Console.WriteLine("No se pudo guardar el token.");
+                Console.WriteLine("No se pudo guardar el código.");
                 return 1;
 
             case "instalar":
@@ -196,19 +196,19 @@ internal static class Program
     /// <summary>
     /// Instalación sin asistente para el empujón del panel
     /// (modelo Kaspersky: SMB + servicio temporal). Sintaxis:
-    ///   instalar-remoto --servidor <host>[:<puerto>] --token <valor>
-    /// Escribe la configuración del panel y el token del equipo y
+    ///   instalar-remoto --servidor <host>[:<puerto>] --codigo <valor>
+    /// Escribe la configuración del panel y el código de enrolamiento y
     /// después instala como el modo `instalar`, sin abrir ninguna
     /// ventana: quien lo lanza es un servicio temporal en sesión 0.
     /// </summary>
     private static int InstalarRemoto(string[] args)
     {
         var servidor = LeerOpcion(args, "--servidor");
-        var token = LeerOpcion(args, "--token");
-        if (string.IsNullOrWhiteSpace(servidor) || string.IsNullOrWhiteSpace(token))
+        var codigo = LeerOpcion(args, "--codigo");
+        if (string.IsNullOrWhiteSpace(servidor) || string.IsNullOrWhiteSpace(codigo))
         {
             Console.WriteLine(
-                "Uso: USBMonitorService.exe instalar-remoto --servidor <host>[:<puerto>] --token <valor>");
+                "Uso: USBMonitorService.exe instalar-remoto --servidor <host>[:<puerto>] --codigo <valor>");
             return 2;
         }
 
@@ -231,9 +231,9 @@ internal static class Program
             Console.WriteLine("No se pudo escribir server.json.");
             return 1;
         }
-        if (!configuracion.GuardarTokenAgente(token.Trim()))
+        if (!configuracion.GuardarCodigoEnrolamiento(codigo.Trim()))
         {
-            Console.WriteLine("No se pudo guardar el token del equipo.");
+            Console.WriteLine("No se pudo guardar el código de enrolamiento.");
             return 1;
         }
 
@@ -261,16 +261,20 @@ internal static class Program
     }
 
     /// <summary>
-    /// Primera vez en este equipo: aún no hay token guardado, así
-    /// que el equipo no está dado de alta en el panel y toca pasar
-    /// por el asistente de configuración. Si la configuración no se
-    /// puede ni leer, también se considera primera vez.
+    /// Primera vez en este equipo: no hay credencial de ninguna
+    /// clase (ni clave, ni código pendiente, ni token antiguo que
+    /// migrar), así que el equipo no está dado de alta en el panel
+    /// y toca pasar por el asistente de configuración. Si la
+    /// configuración no se puede ni leer, también es primera vez.
     /// </summary>
     private static bool EsPrimeraVez()
     {
         try
         {
-            return string.IsNullOrWhiteSpace(new Configuracion().TokenAgente);
+            var config = new Configuracion();
+            return !config.TieneClave &&
+                   config.TokenLegado is null &&
+                   config.CodigoEnrolamiento is null;
         }
         catch
         {

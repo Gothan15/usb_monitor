@@ -2,7 +2,7 @@ import { createReadStream } from "fs";
 import { stat } from "fs/promises";
 import { Readable } from "stream";
 
-import { requireServiceAuth } from "@/lib/auth";
+import { requireAgentAuthOPuente } from "@/lib/agentAuth";
 import { logError } from "@/lib/logger";
 import { rutaExePaquete } from "@/lib/paqueteAgente";
 
@@ -15,7 +15,7 @@ import { rutaExePaquete } from "@/lib/paqueteAgente";
  */
 export async function GET(req: Request) {
   try {
-    await requireServiceAuth(req);
+    await requireAgentAuthOPuente(req);
     const ruta = rutaExePaquete();
     let info;
     try {

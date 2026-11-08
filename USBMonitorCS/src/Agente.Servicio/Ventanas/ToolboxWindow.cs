@@ -50,7 +50,8 @@ public sealed class ToolboxWindow : Window
     private readonly TextBox _host;
     private readonly TextBox _puerto;
     private readonly ComboBox _esquema;
-    private readonly PasswordBox _token;
+    private readonly PasswordBox _codigoEnroll;
+    private readonly TextBlock _textoCredencial;
     private readonly TextBox _registro;
 
     private bool _refrescandoEstado;
@@ -117,7 +118,7 @@ public sealed class ToolboxWindow : Window
 
         var derecha = new StackPanel();
         derecha.Children.Add(ConstruirSeccionServidor(out _host, out _puerto, out _esquema, out _botonProbar));
-        derecha.Children.Add(ConstruirSeccionCredencial(out _token));
+        derecha.Children.Add(ConstruirSeccionCredencial(out _codigoEnroll, out _textoCredencial));
         Grid.SetColumn(derecha, 2);
         columnas.Children.Add(derecha);
 
@@ -136,6 +137,7 @@ public sealed class ToolboxWindow : Window
         Loaded += async (_, _) =>
         {
             await RefrescarEstadoAsync();
+            await RefrescarCredencialAsync();
             await RefrescarRegistroAsync();
             await ComprobarUpdateGitHubAsync(silencioso: true);
             _temporizadorEstado.Start();
@@ -632,41 +634,116 @@ public sealed class ToolboxWindow : Window
         return fila;
     }
 
-    private Border ConstruirSeccionCredencial(out PasswordBox token)
+    private Border ConstruirSeccionCredencial(
+        out PasswordBox codigo, out TextBlock textoCredencial)
     {
         var contenido = new StackPanel();
-        contenido.Children.Add(Tema.EtiquetaSeccion("Credencial del agente"));
-        contenido.Children.Add(Tema.EtiquetaCampo("Token del equipo"));
+        contenido.Children.Add(Tema.EtiquetaSeccion("Credencial del equipo"));
 
-        token = Tema.CampoContrasena();
-        ResaltarAlEnfocar(token);
-        token.Margin = new Thickness(0, 0, 0, 9);
-        contenido.Children.Add(token);
+        textoCredencial = Tema.TextoDatos(TextoEstadoCredencial(), 12.5);
+        textoCredencial.TextWrapping = TextWrapping.Wrap;
+        textoCredencial.Margin = new Thickness(0, 0, 0, 8);
+        contenido.Children.Add(textoCredencial);
 
-        var fila = new Grid();
-        fila.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        fila.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        var guardar = Tema.BotonPrimario("Guardar credencial");
-        guardar.Background = Carbon;
-        guardar.BorderBrush = Carbon;
-        guardar.Margin = new Thickness(0);
-        guardar.Click += (_, _) => GuardarCredencial();
-        fila.Children.Add(guardar);
-        var ayuda = new TextBlock
+        contenido.Children.Add(Tema.EtiquetaCampo("Código de enrolamiento (para dar de alta o recuperar)"));
+        codigo = Tema.CampoContrasena();
+        codigo.Margin = new Thickness(0, 0, 0, 8);
+        contenido.Children.Add(codigo);
+
+        var enrolar = Tema.BotonPrimario("Enrolar con el código");
+        enrolar.Background = Carbon;
+        enrolar.BorderBrush = Carbon;
+        enrolar.Click += async (_, _) => await EnrolarDesdeCajaAsync();
+        contenido.Children.Add(enrolar);
+
+        var nota = Tema.TextoDatos(
+            "El código lo genera el administrador en Equipos → " +
+            "Credencial del equipo; vale 30 minutos y se gasta al " +
+            "usarlo. La clave de este equipo nace aquí y nunca sale " +
+            "de la PC. Revocar la credencial se hace en el panel.",
+            11.5);
+        nota.TextWrapping = TextWrapping.Wrap;
+        nota.Margin = new Thickness(0, 8, 0, 0);
+        contenido.Children.Add(nota);
+
+        return TarjetaCalida(contenido, new Thickness(0, 0, 0, 12), new Thickness(16));
+    }
+
+    /// <summary>Con qué se acredita hoy este equipo, en una frase.</summary>
+    private string TextoEstadoCredencial()
+    {
+        if (_config.TieneClave)
         {
-            Text = "Lo genera un administrador en el panel: Equipos, botón «Token del agente».",
-            FontFamily = Tema.FuenteTexto,
-            FontSize = 11.5,
-            Foreground = Tema.TintaAtenuada,
-            TextWrapping = TextWrapping.Wrap,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(12, 0, 0, 0)
-        };
-        Grid.SetColumn(ayuda, 1);
-        fila.Children.Add(ayuda);
-        contenido.Children.Add(fila);
+            var huella = _cliente.Identidad?.Huella;
+            return huella is not null
+                ? $"Clave registrada en el panel (huella {huella[..12]}…). Este equipo firma sus peticiones."
+                : "Clave presente en esta PC.";
+        }
+        if (_config.CodigoEnrolamiento is not null)
+            return "Hay un código de enrolamiento pendiente: el servicio lo gastará al arrancar para registrar la clave.";
+        if (_config.TokenLegado is not null)
+            return "Este equipo aún guarda el token del sistema anterior: se migrará solo a la clave en cuanto el servicio hable con el panel.";
+        return "Sin credencial: este equipo no puede hablar con el panel. Enrola con un código.";
+    }
 
-        return TarjetaCalida(contenido, new Thickness(0), new Thickness(16));
+    /// <summary>
+    /// El feedback de enrolamiento: no basta con tener la clave en
+    /// disco, se comprueba CONTRA el panel y el texto de la
+    /// sección dice el resultado con claridad (verificado,
+    /// rechazado o sin respuesta). Sin clave, el texto es el de
+    /// estado de siempre.
+    /// </summary>
+    private async Task RefrescarCredencialAsync()
+    {
+        if (!_config.TieneClave)
+        {
+            _textoCredencial.Text = TextoEstadoCredencial();
+            return;
+        }
+        var huella = _cliente.Identidad?.Huella;
+        var huellaCorta = huella is not null ? huella[..12] : "…";
+        _textoCredencial.Text =
+            $"Clave registrada en esta PC (huella {huellaCorta}…). Comprobando con el panel…";
+        var resultado = await _cliente.ProbarCredencialAsync();
+        _textoCredencial.Text = resultado switch
+        {
+            ClientePanel.ResultadoPruebaCredencial.Verificada =>
+                $"✓ Enrolado y verificado: el panel acepta la firma de este equipo (huella {huellaCorta}…).",
+            ClientePanel.ResultadoPruebaCredencial.Rechazada =>
+                "✗ El panel RECHAZA la firma de este equipo: la credencial pudo ser " +
+                "revocada o la clave registrada en el panel no es esta. Genera un código " +
+                "nuevo en Equipos → Credencial del equipo y vuelve a enrolar abajo.",
+            _ =>
+                $"Clave registrada en esta PC (huella {huellaCorta}…); el panel no " +
+                "respondió, así que la verificación queda para cuando vuelva la conexión.",
+        };
+    }
+
+    private async Task EnrolarDesdeCajaAsync()
+    {
+        string codigo = _codigoEnroll.Password.Trim();
+        if (string.IsNullOrWhiteSpace(codigo))
+        {
+            Tema.AvisarError("Escribe el código de enrolamiento.", "Vacío");
+            return;
+        }
+        var ok = await _cliente.EnrolarConCodigoAsync(codigo);
+        _codigoEnroll.Clear();
+        if (ok)
+        {
+            Tema.Avisar(
+                "El panel registró la clave de este equipo. Reinicia el servicio para que firme ya con ella.",
+                "Equipo enrolado");
+            await RefrescarCredencialAsync();
+        }
+        else
+        {
+            Tema.AvisarError(
+                "El panel no aceptó el código. Comprueba que sea el " +
+                "vigente para este equipo (caduca a los 30 minutos y " +
+                "se gasta al primer uso) y que el panel responda.",
+                "Credencial");
+        }
     }
 
     private Border ConstruirSeccionAcciones()
@@ -1256,28 +1333,6 @@ public sealed class ToolboxWindow : Window
             _botonProbar.IsEnabled = true;
             Tema.RestaurarBoton(_botonProbar, previo);
             await RefrescarEstadoAsync();
-        }
-    }
-
-    private void GuardarCredencial()
-    {
-        string token = _token.Password.Trim();
-        if (string.IsNullOrWhiteSpace(token))
-        {
-            Tema.AvisarError("Escribe el token del equipo.", "Vacío");
-            return;
-        }
-
-        if (_config.GuardarTokenAgente(token))
-        {
-            _token.Clear();
-            Tema.Avisar(
-                "Se guardó cifrada en server.json. Reinicia el servicio.",
-                "Credencial guardada");
-        }
-        else
-        {
-            Tema.AvisarError("No se pudo guardar la credencial.", "Credencial");
         }
     }
 

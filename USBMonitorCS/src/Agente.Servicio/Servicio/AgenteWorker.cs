@@ -96,7 +96,7 @@ public sealed class AgenteWorker : BackgroundService
 
     private DateTime _inicio = DateTime.UtcNow;
     private DateTime _ultimoHash = DateTime.MinValue;
-    private DateTime _ultimaRotacionToken = DateTime.UtcNow;
+    private DateTime _ultimoIntentoCredencial = DateTime.UtcNow;
     private DateTime _ultimaConfig = DateTime.MinValue;
 
     // Transiciones del compañero para el latido de depuración.
@@ -1039,24 +1039,36 @@ public sealed class AgenteWorker : BackgroundService
                     if (datos is { Username: { } usuario, PasswordHash: { } hash })
                         _emergencia.GuardarHash(usuario, hash);
                 }
-                // Rotación automática del token del equipo, una
-                // vez al día: sin corte (el nuevo queda en espera
-                // en el panel y se promueve en su primer uso, que
-                // es la siguiente petición tras guardarlo). Si el
-                // intento falla, se reintenta a la hora en vez de
-                // esperar otro día entero.
-                if (ahora - _ultimaRotacionToken >= TimeSpan.FromHours(24))
+                // Credencial por clave (overhaul 2026-11-08): si
+                // este equipo aún no está registrado en el panel,
+                // se acredita solo en cuanto puede, sin que nadie
+                // visite la PC: con el código de enrolamiento que
+                // dejó la instalación (un solo uso) o migrando el
+                // token antiguo (se presenta una última vez y se
+                // borra). Reintento cada 5 minutos si el panel no
+                // responde; una vez registrado, este bloque no
+                // vuelve a hacer nada.
+                if (_configuracion.EquipoId is null &&
+                    ahora - _ultimoIntentoCredencial >= TimeSpan.FromMinutes(5))
                 {
-                    var nuevoToken = await _cliente.RotarTokenAsync().ConfigureAwait(false);
-                    if (nuevoToken is not null && _configuracion.GuardarTokenAgente(nuevoToken))
+                    _ultimoIntentoCredencial = ahora;
+                    var codigoPendiente = _configuracion.CodigoEnrolamiento;
+                    if (codigoPendiente is not null)
                     {
-                        _ultimaRotacionToken = ahora;
-                        Log.Info("Token del equipo rotado automáticamente (sin corte)");
+                        if (await _cliente.EnrolarConCodigoAsync(codigoPendiente).ConfigureAwait(false))
+                        {
+                            _configuracion.BorrarCodigoEnrolamiento();
+                            Log.Info("Equipo enrolado con el código de la instalación.");
+                        }
+                        else
+                        {
+                            Log.Advertencia("El enrolamiento con código falló; se reintenta en unos minutos (si el código caducó o ya se gastó, genera otro en Equipos).");
+                        }
                     }
-                    else
+                    else if (_configuracion.TokenLegado is not null)
                     {
-                        _ultimaRotacionToken = ahora - TimeSpan.FromHours(23);
-                        Log.Advertencia("La rotación automática del token falló; se reintenta en una hora");
+                        if (!await _cliente.MigrarCredencialAsync().ConfigureAwait(false))
+                            Log.Advertencia("La migración de la credencial falló; se reintenta en unos minutos.");
                     }
                 }
                 if (ahora - _ultimaConfig >= TimeSpan.FromSeconds(600))

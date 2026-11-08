@@ -113,9 +113,95 @@ public sealed class Configuracion
         }
     }
 
-    /// <summary>Guarda el token del equipo ya cifrado (DPAPI/ENC:).</summary>
-    public bool GuardarTokenAgente(string tokenPlano) =>
-        Guardar(new Dictionary<string, object?> { ["agentToken"] = CifradoValores.Cifrar(tokenPlano) });
+    /// <summary>Quita una clave de server.json (borrado de verdad, no un nulo).</summary>
+    public bool Quitar(string clave)
+    {
+        var destino = Path.Combine(_directorioApp, "server.json");
+        lock (_cerrojo)
+        {
+            var datos = new Dictionary<string, JsonElement>();
+            if (File.Exists(destino))
+            {
+                try
+                {
+                    datos = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(
+                        File.ReadAllText(destino)) ?? datos;
+                }
+                catch { datos = new Dictionary<string, JsonElement>(); }
+            }
+            if (!datos.Remove(clave)) return true;
+            try
+            {
+                ArchivoJson.EscribirAtomico(destino, datos);
+                _rutaCache = null;
+                _datosCache = new Dictionary<string, JsonElement>();
+                return true;
+            }
+            catch (Exception exc)
+            {
+                Log.Error($"No se pudo escribir server.json: {exc.Message}");
+                return false;
+            }
+        }
+    }
+
+    // ── Credencial por clave (overhaul 2026-11-08) ─────────────
+
+    /// <summary>
+    /// La clave privada del equipo (PKCS#8 en base64) descifrada;
+    /// null si aún no hay identidad. Nunca sale de esta PC.
+    /// </summary>
+    public string? LeerClavePrivadaPkcs8B64()
+    {
+        var bruto = Texto("clavePrivada");
+        if (bruto.Length == 0) return null;
+        var limpio = CifradoValores.Descifrar(bruto).Trim();
+        return limpio.Length > 0 ? limpio : null;
+    }
+
+    /// <summary>Guarda la clave privada cifrada con DPAPI.</summary>
+    public bool GuardarClavePrivadaPkcs8B64(string pkcs8B64) =>
+        Guardar(new Dictionary<string, object?> { ["clavePrivada"] = CifradoValores.Cifrar(pkcs8B64) });
+
+    /// <summary>¿Este equipo ya tiene identidad (clave privada guardada)?</summary>
+    public bool TieneClave => LeerClavePrivadaPkcs8B64() is not null;
+
+    /// <summary>El id que el panel asignó a este equipo al enrolar o migrar.</summary>
+    public string? EquipoId
+    {
+        get
+        {
+            var id = Texto("equipoId");
+            return id.Length > 0 ? id : null;
+        }
+    }
+
+    public bool GuardarEquipoId(string equipoId) =>
+        Guardar(new Dictionary<string, object?> { ["equipoId"] = equipoId });
+
+    /// <summary>
+    /// Código de enrolamiento de un solo uso aún sin gastar (lo
+    /// deja la instalación remota o se escribe a mano): el servicio
+    /// lo presenta al arrancar y lo borra en cuanto enrola.
+    /// </summary>
+    public string? CodigoEnrolamiento
+    {
+        get
+        {
+            var bruto = Texto("codigoEnrolamiento");
+            if (bruto.Length == 0) return null;
+            var limpio = CifradoValores.Descifrar(bruto).Trim();
+            return limpio.Length > 0 ? limpio : null;
+        }
+    }
+
+    public bool GuardarCodigoEnrolamiento(string codigoPlano) =>
+        Guardar(new Dictionary<string, object?> { ["codigoEnrolamiento"] = CifradoValores.Cifrar(codigoPlano) });
+
+    public bool BorrarCodigoEnrolamiento() => Quitar("codigoEnrolamiento");
+
+    /// <summary>Al migrar, el token antiguo se borra de server.json.</summary>
+    public bool BorrarTokenLegado() => Quitar("agentToken");
 
     private string Texto(string clave, string defecto = "")
     {
@@ -186,8 +272,12 @@ public sealed class Configuracion
         }
     }
 
-    /// <summary>Token del equipo descifrado; null si no hay o no se pudo abrir.</summary>
-    public string? TokenAgente
+    /// <summary>
+    /// El token del sistema ANTERIOR, descifrado. Tras el overhaul
+    /// solo sirve para una cosa: presentarlo una última vez en la
+    /// migración y borrarlo. Nada más debe leerlo.
+    /// </summary>
+    public string? TokenLegado
     {
         get
         {
@@ -197,15 +287,6 @@ public sealed class Configuracion
             var limpio = CifradoValores.Descifrar(bruto).Trim();
             return limpio.Length > 0 ? limpio : null;
         }
-    }
-
-    /// <summary>La única credencial del agente: el token propio del equipo.</summary>
-    public Dictionary<string, string> CabecerasAuth()
-    {
-        var token = TokenAgente;
-        return token is null
-            ? new Dictionary<string, string>()
-            : new Dictionary<string, string> { ["Authorization"] = $"AgentToken {token}" };
     }
 
     // ── Identidad de la máquina ──────────────────────────────────
