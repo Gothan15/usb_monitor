@@ -1,4 +1,4 @@
-# Build-All.ps1 — compila el agente en C# a un solo ejecutable.
+﻿# Build-All.ps1 — compila el agente en C# a un solo ejecutable.
 #
 # Uso:
 #   .\Build-All.ps1           - publica en dist\
@@ -10,7 +10,8 @@
 # publicación fallan, el script se detiene con error y NO anuncia
 # un ejecutable que no existe.
 param(
-    [switch]$Clean
+    [switch]$Clean,
+    [string]$Version
 )
 
 $ErrorActionPreference = "Stop"
@@ -23,8 +24,25 @@ if ($Clean -and (Test-Path $dist)) {
     Remove-Item $dist -Recurse -Force
 }
 
+# La versión del ejecutable: la manda la etiqueta de la Release
+# (el workflow corre este script y GITHUB_REF_NAME trae p. ej.
+# «agente-v1.0.18»); en local se puede pasar -Version a mano. Sin
+# una versión X.Y.Z clara no se estampa nada y manda el <Version>
+# del .csproj. Antes el exe salía SIEMPRE con el 1.0.11 fijo del
+# proyecto y el agente se anunciaba al panel con esa versión
+# falsa, además de no poder confirmar sus propias actualizaciones.
+if (-not $Version -and $env:GITHUB_REF_NAME) {
+    $Version = $env:GITHUB_REF_NAME -replace '^agente-v', '' -replace '^v', ''
+}
+$propsVersion = @()
+if ($Version -match '^\d+\.\d+\.\d+$') {
+    $propsVersion = @("-p:Version=$Version", "-p:InformationalVersion=$Version", "-p:AssemblyVersion=$Version")
+    Write-Host "Versión del ejecutable: $Version"
+}
+
 dotnet publish $proyecto -c Release -r win-x64 --self-contained true `
     -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
+    @propsVersion `
     -o $dist
 
 if ($LASTEXITCODE -ne 0) {

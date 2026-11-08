@@ -208,6 +208,20 @@ public sealed class SaludConexion
 
 // ── Cuerpos de petición ─────────────────────────────────────────
 
+/// <summary>Solicitud de enrolamiento: el equipo se presenta con la clave de la flota.</summary>
+internal sealed class SolicitudEnrolamiento
+{
+    [JsonPropertyName("pcName")] public string PcName { get; set; } = "";
+    [JsonPropertyName("key")] public string Key { get; set; } = "";
+}
+
+/// <summary>Respuesta con el token propio recién emitido (enrolar/rotar).</summary>
+internal sealed class RespuestaTokenAgente
+{
+    [JsonPropertyName("ok")] public bool Ok { get; set; }
+    [JsonPropertyName("token")] public string? Token { get; set; }
+}
+
 internal sealed class SolicitudBloqueo
 {
     [JsonPropertyName("pcName")] public string PcName { get; set; } = "";

@@ -56,6 +56,14 @@ public sealed class RegistroBloqueo
     /// actúan sobre ESTE nodo, no sobre el de siempre.
     /// </summary>
     public string? NodoBloqueado { get; set; }
+
+    /// <summary>
+    /// Letras a las que la capa degradada puso solo lectura: en
+    /// una memoria de VARIAS particiones hay que ponerlas TODAS
+    /// (antes solo la primera y las demás quedaban escribibles) y
+    /// al liberar hay que quitarlo de las mismas.
+    /// </summary>
+    public List<string> LetrasSoloLectura { get; set; } = new();
 }
 
 /// <summary>Motor de bloqueo en capas con vigía y restauración sin huella.</summary>
@@ -207,15 +215,26 @@ public sealed class MotorBloqueo
                 foreach (var l in tomadas) _candados.Soltar(l);
             }
 
-            // Capa 3: solo lectura, degradado y declarado.
-            var letra = disp.Letra;
-            if (letra is not null && _ponerSoloLectura is not null && _ponerSoloLectura(letra))
+            // Capa 3: solo lectura, degradado y declarado. En
+            // TODAS las particiones: poner solo la primera dejaba
+            // las demás particiones de la memoria escribibles con
+            // el dispositivo «bloqueado».
+            if (_ponerSoloLectura is not null)
             {
-                reg.Capa = CapaBloqueo.SoloLectura;
-                reg.Degradado = true;
-                reg.Estado = EstadoBloqueo.Bloqueado;
-                Log.Advertencia($"Bloqueo DEGRADADO (solo lectura) para {disp.Nombre} en {letra}");
-                return reg;
+                var puestas = new List<string>();
+                foreach (var l in disp.Letras)
+                    if (_ponerSoloLectura(l)) puestas.Add(l);
+                if (puestas.Count > 0)
+                {
+                    reg.LetrasSoloLectura = puestas;
+                    reg.Capa = CapaBloqueo.SoloLectura;
+                    reg.Degradado = true;
+                    reg.Estado = EstadoBloqueo.Bloqueado;
+                    Log.Advertencia(
+                        $"Bloqueo DEGRADADO (solo lectura) para {disp.Nombre} " +
+                        $"en {string.Join(", ", puestas)}");
+                    return reg;
+                }
             }
 
             Log.Error($"No se pudo bloquear {disp.Nombre} por ninguna capa");
@@ -252,8 +271,14 @@ public sealed class MotorBloqueo
             }
             else if (reg.Capa == CapaBloqueo.SoloLectura)
             {
-                if (_quitarSoloLectura is not null && disp.Letra is not null)
-                    _quitarSoloLectura(disp.Letra);
+                if (_quitarSoloLectura is not null)
+                {
+                    var letras = reg.LetrasSoloLectura.Count > 0
+                        ? reg.LetrasSoloLectura
+                        : disp.Letras;
+                    foreach (var l in letras) _quitarSoloLectura(l);
+                }
+                reg.LetrasSoloLectura = new List<string>();
             }
             if (ok)
             {
@@ -299,6 +324,14 @@ public sealed class MotorBloqueo
             }
             var disp = reg.Dispositivo;
             foreach (var letra in disp.Letras) _candados.Soltar(letra);
+            if (reg.Capa == CapaBloqueo.SoloLectura && _quitarSoloLectura is not null)
+            {
+                // El atributo vive en el volumen: si la extracción
+                // fue real, la llamada falla en silencio y no pasa
+                // nada; si fue un parpadeo, la memoria no puede
+                // quedarse en solo lectura para siempre.
+                foreach (var l in reg.LetrasSoloLectura) _quitarSoloLectura(l);
+            }
             if (reg.Capa == CapaBloqueo.Pnp || reg.Estado == EstadoBloqueo.Bloqueado)
             {
                 var nodo = reg.NodoBloqueado ?? disp.InstanciaPnP;
@@ -313,11 +346,23 @@ public sealed class MotorBloqueo
     /// Reaplica el bloqueo a lo que algo haya revivido.
     /// Devuelve las claves reaplicadas (para avisar al panel).
     /// </summary>
-    public List<string> Vigilar()
+    public List<string> Vigilar(
+        IReadOnlyDictionary<string, Dispositivo>? actuales = null)
     {
         var reaplicadas = new List<string>();
         foreach (var reg in Bloqueados())
         {
+            // Foto fresca: las particiones de una memoria montan a
+            // ritmos distintos y la enumeración de la llegada pudo
+            // ver una sola letra; sin refrescar el registro, una
+            // partición que montó DESPUÉS no existía para el vigía
+            // y quedaba accesible con el dispositivo bloqueado.
+            if (actuales is not null &&
+                actuales.TryGetValue(reg.Dispositivo.Clave, out var fresco))
+            {
+                lock (LockDe(reg.Dispositivo.Clave))
+                    reg.Dispositivo = fresco;
+            }
             var disp = reg.Dispositivo;
             var clave = disp.Clave;
             lock (LockDe(clave))

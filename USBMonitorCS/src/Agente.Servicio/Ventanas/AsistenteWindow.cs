@@ -42,6 +42,7 @@ public sealed class AsistenteWindow : Window
 
     // Paso 3 · Credencial
     private readonly PasswordBox _token;
+    private readonly PasswordBox _claveEnroll;
     private readonly TextBlock _avisoToken;
 
     // Paso 4 · Servicio
@@ -110,7 +111,7 @@ public sealed class AsistenteWindow : Window
         _pasos.Add(ConstruirPasoBienvenida());
         _pasos.Add(ConstruirPasoServidor(out _host, out _puerto, out _esquema,
             out _botonProbar, out _resultadosPrueba, out _avisoConexion));
-        _pasos.Add(ConstruirPasoCredencial(out _token, out _avisoToken));
+        _pasos.Add(ConstruirPasoCredencial(out _token, out _claveEnroll, out _avisoToken));
         _pasos.Add(ConstruirPasoServicio(out _textoEstadoServicio,
             out _botonInstalarServicio, out _avisoAdmin));
         _pasos.Add(ConstruirPasoListo(out _resumen));
@@ -454,18 +455,20 @@ public sealed class AsistenteWindow : Window
     // ── Paso 3 · Credencial del equipo ───────────────────────────
 
     private UIElement ConstruirPasoCredencial(
-        out PasswordBox token, out TextBlock avisoToken)
+        out PasswordBox token, out PasswordBox claveEnroll, out TextBlock avisoToken)
     {
         var contenido = new StackPanel();
         contenido.Children.Add(Tema.EtiquetaSeccion("Credencial del equipo"));
         contenido.Children.Add(TextoExplicacion(
             "Cada equipo se presenta al panel con su propio token, " +
-            "como una contraseña de la máquina. Lo genera un " +
-            "administrador en el panel web: entra en la pestaña " +
-            "Equipos, pulsa «Token del agente», escribe el nombre de " +
-            "este equipo y copia el token que se muestra. Solo se ve " +
-            "una vez: si se pierde, se genera otro y el anterior deja " +
-            "de valer."));
+            "como una contraseña de la máquina. El camino rápido: si " +
+            "el administrador generó la clave de enrolamiento de la " +
+            "flota (Ajustes → Enrolamiento de agentes), escríbela " +
+            "abajo y el panel emite el token de este equipo al " +
+            "instante, sin generar ni copiar tokens equipo a " +
+            "equipo. El camino de siempre también vale: un token " +
+            "generado para este equipo en Equipos → «Token del " +
+            "agente»."));
 
         var nombrePc = Tema.TextoDatos(
             $"El nombre de este equipo es {Configuracion.NombrePc}.");
@@ -476,6 +479,22 @@ public sealed class AsistenteWindow : Window
         token = Tema.CampoContrasena();
         token.Margin = new Thickness(0, 0, 0, 4);
         contenido.Children.Add(token);
+
+        var separador = new TextBlock
+        {
+            Text = "— o, con la clave de enrolamiento de la flota —",
+            FontFamily = Tema.FuenteTexto,
+            FontSize = 11.5,
+            Foreground = Tema.TintaAtenuada,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 12, 0, 8)
+        };
+        contenido.Children.Add(separador);
+
+        contenido.Children.Add(Tema.EtiquetaCampo("Clave de enrolamiento (flota)"));
+        claveEnroll = Tema.CampoContrasena();
+        claveEnroll.Margin = new Thickness(0, 0, 0, 4);
+        contenido.Children.Add(claveEnroll);
 
         contenido.Children.Add(new TextBlock
         {
@@ -490,31 +509,60 @@ public sealed class AsistenteWindow : Window
         });
 
         avisoToken = TextoAviso(
-            "Pega el token del equipo o pulsa «Saltar por ahora» para " +
-            "dejarlo para después.");
+            "Escribe el token del equipo o la clave de enrolamiento, " +
+            "o pulsa «Saltar por ahora» para dejarlo para después.");
         contenido.Children.Add(avisoToken);
 
         return contenido;
     }
 
-    private Task<bool> GuardarTokenDesdeCampoAsync()
+    private async Task<bool> GuardarTokenDesdeCampoAsync()
     {
+        // Con clave de enrolamiento escrita, manda ella: se pide
+        // el token propio al panel y se guarda el que devuelva.
+        string claveEnroll = _claveEnroll.Password.Trim();
+        if (!string.IsNullOrWhiteSpace(claveEnroll))
+        {
+            _avisoToken.Visibility = Visibility.Collapsed;
+            string? emitido;
+            using (var cliente = new ClientePanel(_config))
+            {
+                emitido = await cliente.EnrolarAsync(claveEnroll);
+            }
+            _claveEnroll.Clear();
+            if (emitido is null)
+            {
+                Tema.AvisarError(
+                    "El panel no aceptó la clave de enrolamiento. " +
+                    "Comprueba el servidor del paso anterior y que la " +
+                    "clave sea la vigente.", "Credencial");
+                return false;
+            }
+            if (!_config.GuardarTokenAgente(emitido))
+            {
+                Tema.AvisarError("No se pudo guardar la credencial.", "Credencial");
+                return false;
+            }
+            _log.Info("Asistente: equipo enrolado; token propio guardado");
+            return true;
+        }
+
         string token = _token.Password.Trim();
         if (string.IsNullOrWhiteSpace(token))
         {
             _avisoToken.Visibility = Visibility.Visible;
-            return Task.FromResult(false);
+            return false;
         }
         _avisoToken.Visibility = Visibility.Collapsed;
 
         if (!_config.GuardarTokenAgente(token))
         {
             Tema.AvisarError("No se pudo guardar la credencial.", "Credencial");
-            return Task.FromResult(false);
+            return false;
         }
         _token.Clear();
         _log.Info("Asistente: token del equipo guardado");
-        return Task.FromResult(true);
+        return true;
     }
 
     // ── Paso 4 · Servicio ────────────────────────────────────────

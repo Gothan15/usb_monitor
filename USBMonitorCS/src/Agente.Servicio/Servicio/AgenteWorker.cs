@@ -96,6 +96,7 @@ public sealed class AgenteWorker : BackgroundService
 
     private DateTime _inicio = DateTime.UtcNow;
     private DateTime _ultimoHash = DateTime.MinValue;
+    private DateTime _ultimaRotacionToken = DateTime.UtcNow;
     private DateTime _ultimaConfig = DateTime.MinValue;
 
     // Transiciones del compañero para el latido de depuración.
@@ -783,7 +784,10 @@ public sealed class AgenteWorker : BackgroundService
         {
             try
             {
-                foreach (var clave in _motor.Vigilar())
+                Dictionary<string, Dispositivo> fotoActual;
+                lock (_lockConocidos)
+                    fotoActual = new Dictionary<string, Dispositivo>(_conocidos);
+                foreach (var clave in _motor.Vigilar(fotoActual))
                 {
                     var reg = _motor.Registro(clave);
                     if (reg is not null)
@@ -1034,6 +1038,26 @@ public sealed class AgenteWorker : BackgroundService
                     var datos = await _cliente.HashDuenoAsync().ConfigureAwait(false);
                     if (datos is { Username: { } usuario, PasswordHash: { } hash })
                         _emergencia.GuardarHash(usuario, hash);
+                }
+                // Rotación automática del token del equipo, una
+                // vez al día: sin corte (el nuevo queda en espera
+                // en el panel y se promueve en su primer uso, que
+                // es la siguiente petición tras guardarlo). Si el
+                // intento falla, se reintenta a la hora en vez de
+                // esperar otro día entero.
+                if (ahora - _ultimaRotacionToken >= TimeSpan.FromHours(24))
+                {
+                    var nuevoToken = await _cliente.RotarTokenAsync().ConfigureAwait(false);
+                    if (nuevoToken is not null && _configuracion.GuardarTokenAgente(nuevoToken))
+                    {
+                        _ultimaRotacionToken = ahora;
+                        Log.Info("Token del equipo rotado automáticamente (sin corte)");
+                    }
+                    else
+                    {
+                        _ultimaRotacionToken = ahora - TimeSpan.FromHours(23);
+                        Log.Advertencia("La rotación automática del token falló; se reintenta en una hora");
+                    }
                 }
                 if (ahora - _ultimaConfig >= TimeSpan.FromSeconds(600))
                 {

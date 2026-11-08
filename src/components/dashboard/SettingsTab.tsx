@@ -69,6 +69,7 @@ const SECCIONES = [
   { id: "desbloqueo-por-contrasena", nombre: "Desbloqueo por contraseña" },
   { id: "interfaz-y-navegacion", nombre: "Interfaz y Navegación" },
   { id: "paquete-agente", nombre: "Paquete del agente" },
+  { id: "enrolamiento", nombre: "Enrolamiento de agentes" },
   { id: "preguntas-frecuentes", nombre: "Preguntas frecuentes" },
 ] as const;
 
@@ -240,6 +241,12 @@ export function SettingsTab() {
   const [versionPaquete, setVersionPaquete] = useState("");
   const [subiendoPaquete, setSubiendoPaquete] = useState(false);
   const [mensajePaquete, setMensajePaquete] = useState<string | null>(null);
+  // Enrolamiento de la flota: clave compartida de alta de agentes.
+  const [enrollConfigurada, setEnrollConfigurada] = useState<boolean | null>(null);
+  const [claveEnrollNueva, setClaveEnrollNueva] = useState<string | null>(null);
+  const [generandoEnroll, setGenerandoEnroll] = useState(false);
+  const [mensajeEnroll, setMensajeEnroll] = useState<string | null>(null);
+  const [errorEnroll, setErrorEnroll] = useState<string | null>(null);
   const [errorPaquete, setErrorPaquete] = useState<string | null>(null);
   const inputPaqueteRef = useRef<HTMLInputElement>(null);
 
@@ -294,6 +301,52 @@ export function SettingsTab() {
       })
       .catch((err) => console.error("Failed to load agent package", err));
   }, []);
+
+  useEffect(() => {
+    fetch("/api/agent/enroll-key")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.ok) setEnrollConfigurada(Boolean(data.configured));
+      })
+      .catch((err) => console.error("Failed to load enroll key", err));
+  }, []);
+
+  const generarClaveEnroll = async () => {
+    setGenerandoEnroll(true);
+    setMensajeEnroll(null);
+    setErrorEnroll(null);
+    try {
+      const res = await fetch("/api/agent/enroll-key", { method: "POST" });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "Error");
+      setClaveEnrollNueva(data.key);
+      setEnrollConfigurada(true);
+      setMensajeEnroll(
+        "Clave generada. Cópiala ahora: no se vuelve a mostrar. La anterior, si la había, ya no vale."
+      );
+    } catch {
+      setErrorEnroll("No se pudo generar la clave de enrolamiento.");
+    } finally {
+      setGenerandoEnroll(false);
+    }
+  };
+
+  const revocarClaveEnroll = async () => {
+    setMensajeEnroll(null);
+    setErrorEnroll(null);
+    try {
+      const res = await fetch("/api/agent/enroll-key", { method: "DELETE" });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "Error");
+      setEnrollConfigurada(false);
+      setClaveEnrollNueva(null);
+      setMensajeEnroll(
+        "Clave revocada: ya no se puede enrolar ningún equipo nuevo. Los tokens ya emitidos siguen valiendo."
+      );
+    } catch {
+      setErrorEnroll("No se pudo revocar la clave de enrolamiento.");
+    }
+  };
 
   const subirPaquete = async () => {
     if (!archivoPaquete) {
@@ -806,6 +859,76 @@ export function SettingsTab() {
               <p className="mt-4 max-w-xl text-sm leading-relaxed text-red-700 dark:text-red-500">
                 {errorPaquete}
               </p>
+            )}
+          </div>
+        </section>
+
+        <section
+          id="enrolamiento"
+          className="scroll-mt-24 border-t border-border py-12"
+        >
+          <h2 className="font-display flex items-center gap-2.5 text-[1.4rem] font-bold leading-tight text-foreground">
+            <KeyRound className="size-5 shrink-0 text-[var(--acero)]" />
+            Enrolamiento de agentes
+          </h2>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+            Una sola clave de despliegue para dar de alta los equipos
+            nuevos: la escribes en el asistente del agente de cada PC
+            (paso «Credencial del equipo») y el panel le emite su
+            token propio automáticamente, sin generar ni transportar
+            tokens equipo a equipo. Los agentes ya dados de alta
+            rotan su token solos cada día, sin corte.
+          </p>
+          <div className="mt-8 max-w-3xl border border-border/60 bg-muted/20 px-4 py-4">
+            <p className="text-sm font-semibold text-foreground">
+              {enrollConfigurada === null
+                ? "Comprobando…"
+                : enrollConfigurada
+                  ? "Clave de enrolamiento activa"
+                  : "Sin clave de enrolamiento"}
+            </p>
+            <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">
+              Quien tenga esta clave puede dar de alta un equipo:
+              trátala como una contraseña de despliegue. Generar una
+              nueva invalida la anterior al instante; revocarla no
+              toca los tokens de los equipos ya enrolados.
+            </p>
+            {claveEnrollNueva && (
+              <div className="mt-4">
+                <label
+                  className="smallcaps text-muted-foreground"
+                  htmlFor="clave-enroll"
+                >
+                  Clave nueva (se muestra una sola vez)
+                </label>
+                <input
+                  id="clave-enroll"
+                  readOnly
+                  value={claveEnrollNueva}
+                  onFocus={(e) => e.target.select()}
+                  className="mt-1.5 w-full rounded border border-input bg-background px-3.5 py-2.5 font-mono text-sm"
+                />
+              </div>
+            )}
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button onClick={generarClaveEnroll} disabled={generandoEnroll}>
+                {generandoEnroll
+                  ? "Generando…"
+                  : enrollConfigurada
+                    ? "Generar una clave nueva"
+                    : "Generar la clave"}
+              </Button>
+              {enrollConfigurada && (
+                <Button variant="outline" onClick={revocarClaveEnroll}>
+                  Revocar la clave
+                </Button>
+              )}
+            </div>
+            {mensajeEnroll && (
+              <p className="mt-3 text-sm text-success">{mensajeEnroll}</p>
+            )}
+            {errorEnroll && (
+              <p className="mt-3 text-sm text-destructive">{errorEnroll}</p>
             )}
           </div>
         </section>
