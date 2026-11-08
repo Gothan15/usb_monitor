@@ -24,6 +24,57 @@ public sealed class ClientePanel : IDisposable
     private static readonly JsonSerializerOptions JsonOpciones = new();
 
     private readonly Configuracion _config;
+    private IdentidadAgente? _identidad;
+    private bool _identidadResuelta;
+
+    /// <summary>
+    /// La identidad por clave de este equipo (se crea la primera
+    /// vez que hace falta: enrolar, migrar o firmar). Null si no
+    /// se pudo ni leer ni crear.
+    /// </summary>
+    public IdentidadAgente? Identidad
+    {
+        get
+        {
+            if (!_identidadResuelta)
+            {
+                _identidadResuelta = true;
+                _identidad = IdentidadAgente.ObtenerOCrear(_config);
+            }
+            return _identidad;
+        }
+    }
+
+    /// <summary>
+    /// Acredita una petición: firmada con la clave del equipo si
+    /// ya hay identidad registrada en el panel; si aún no, con el
+    /// token antiguo (puente de migración: solo lo aceptan las
+    /// rutas de auto-actualización y la de migración); si no hay
+    /// nada, la petición sale desnuda (el enrolamiento).
+    /// </summary>
+    private void AplicarCredencial(
+        HttpRequestMessage solicitud, string metodo, string ruta, byte[] cuerpo)
+    {
+        var identidad = Identidad;
+        var equipoId = _config.EquipoId;
+        if (identidad is not null && equipoId is not null)
+        {
+            var marca = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
+            var nonce = IdentidadAgente.NuevoNonce();
+            var firma = identidad.Firmar(metodo, ruta, marca, nonce, cuerpo);
+            solicitud.Headers.TryAddWithoutValidation("X-Agente-Id", equipoId);
+            solicitud.Headers.TryAddWithoutValidation("X-Agente-Ts", marca);
+            solicitud.Headers.TryAddWithoutValidation("X-Agente-Nonce", nonce);
+            solicitud.Headers.TryAddWithoutValidation("X-Agente-Firma", firma);
+            return;
+        }
+        var token = _config.TokenLegado;
+        if (token is not null)
+        {
+            solicitud.Headers.TryAddWithoutValidation(
+                "Authorization", $"AgentToken {token}");
+        }
+    }
     private readonly HttpClient _http;
     private readonly string _archivoCola;
 
@@ -56,19 +107,23 @@ public sealed class ClientePanel : IDisposable
         var datos = directorioDatos ?? Registro.DirectorioDatos;
         _archivoCola = Path.Combine(datos, "cola_eventos.json");
         _cola = LeerCola();
-        // Diagnóstico de la credencial: nunca el token, solo su
-        // huella SHA-256 (la misma que el panel guarda en la BD),
-        // para poder comparar de un vistazo si el panel rechaza.
-        var token = _config.TokenAgente;
-        if (token is null)
+        // Diagnóstico de la credencial (nunca la clave privada):
+        // con qué se acredita este equipo al arrancar.
+        if (_config.TieneClave)
         {
-            Log.Info("Credencial del equipo: AUSENTE (sin token legible en server.json).");
+            Log.Info($"Credencial del equipo: clave registrada (huella {Identidad?.Huella[..12]}…).");
+        }
+        else if (_config.TokenLegado is not null)
+        {
+            Log.Info("Credencial del equipo: token antiguo pendiente de migrar a clave.");
+        }
+        else if (_config.CodigoEnrolamiento is not null)
+        {
+            Log.Info("Credencial del equipo: código de enrolamiento pendiente de gastar.");
         }
         else
         {
-            var huella = Convert.ToHexString(
-                SHA256.HashData(Encoding.UTF8.GetBytes(token)))[..12].ToLowerInvariant();
-            Log.Info($"Credencial del equipo: presente (largo {token.Length}, huella sha256 {huella}…).");
+            Log.Info("Credencial del equipo: AUSENTE (sin clave, sin código, sin token antiguo).");
         }
     }
 
@@ -134,12 +189,19 @@ public sealed class ClientePanel : IDisposable
     {
         var url = _config.UrlBase + ruta;
         using var solicitud = new HttpRequestMessage(new HttpMethod(metodo), url);
-        foreach (var (clave, valor) in _config.CabecerasAuth())
-            solicitud.Headers.TryAddWithoutValidation(clave, valor);
+        var cuerpoBytes = cuerpo is null
+            ? Array.Empty<byte>()
+            : JsonSerializer.SerializeToUtf8Bytes(cuerpo, JsonOpciones);
+        AplicarCredencial(solicitud, metodo, ruta, cuerpoBytes);
         if (cuerpo is not null)
         {
-            solicitud.Content = new StringContent(
-                JsonSerializer.Serialize(cuerpo, JsonOpciones), Encoding.UTF8, "application/json");
+            var contenido = new ByteArrayContent(cuerpoBytes);
+            contenido.Headers.ContentType =
+                new System.Net.Http.Headers.MediaTypeHeaderValue("application/json")
+                {
+                    CharSet = "utf-8",
+                };
+            solicitud.Content = contenido;
         }
         var reloj = Stopwatch.StartNew();
         try
@@ -500,34 +562,55 @@ public sealed class ClientePanel : IDisposable
     }
 
     /// <summary>
-    /// Enrolamiento con la clave de la flota: el panel emite el
-    /// token propio de ESTE equipo y lo devuelve una sola vez.
-    /// Null si el panel no lo acepta (clave mala, sin clave
-    /// configurada o sin respuesta).
+    /// Enrolamiento con código de UN SOLO USO: presenta el código
+    /// y la clave pública de este equipo; el panel la registra y
+    /// devuelve el id del equipo, que queda guardado. La privada
+    /// no sale de la PC ni aquí: solo viaja la pública.
     /// </summary>
-    public async Task<string?> EnrolarAsync(string claveEnrolamiento)
+    public async Task<bool> EnrolarConCodigoAsync(string codigo)
     {
-        var respuesta = await PeticionAsync("POST", "/api/agent/enroll", new SolicitudEnrolamiento
+        var identidad = Identidad;
+        if (identidad is null) return false;
+        var respuesta = await PeticionAsync("POST", "/api/agent/enroll", new SolicitudEnrolamientoCodigo
         {
             PcName = Configuracion.NombrePc,
-            Key = claveEnrolamiento,
+            Codigo = codigo.Trim(),
+            ClavePublica = identidad.ClavePublicaB64,
         }).ConfigureAwait(false);
-        var datos = IntentarJson<RespuestaTokenAgente>(respuesta);
-        return datos is { Ok: true, Token: { Length: > 0 } } ? datos.Token : null;
+        var datos = IntentarJson<RespuestaCredencial>(respuesta);
+        if (datos is { Ok: true, EquipoId: { Length: > 0 } })
+        {
+            _config.GuardarEquipoId(datos.EquipoId);
+            Log.Info($"Equipo enrolado con código: el panel registró la clave (huella {identidad.Huella[..12]}…).");
+            return true;
+        }
+        return false;
     }
 
     /// <summary>
-    /// Pide un token nuevo para este equipo (rotación sin corte):
-    /// el panel lo deja EN ESPERA y el actual sigue valiendo hasta
-    /// que el nuevo se usa por primera vez. Quien llama guarda el
-    /// devuelto y pasa a usarlo: ese primer uso lo promueve.
+    /// Migración del token antiguo a la clave: presenta el token
+    /// por última vez (lo pone AplicarCredencial en la cabecera)
+    /// y registra la pública. Si el panel la acepta, el token se
+    /// borra de server.json y este equipo ya solo firma.
     /// </summary>
-    public async Task<string?> RotarTokenAsync()
+    public async Task<bool> MigrarCredencialAsync()
     {
-        var respuesta = await PeticionAsync("POST", "/api/agent/rotate-token")
-            .ConfigureAwait(false);
-        var datos = IntentarJson<RespuestaTokenAgente>(respuesta);
-        return datos is { Ok: true, Token: { Length: > 0 } } ? datos.Token : null;
+        var identidad = Identidad;
+        if (identidad is null) return false;
+        if (_config.TokenLegado is null) return false;
+        var respuesta = await PeticionAsync("POST", "/api/agent/migrar-credencial", new SolicitudMigracion
+        {
+            ClavePublica = identidad.ClavePublicaB64,
+        }).ConfigureAwait(false);
+        var datos = IntentarJson<RespuestaCredencial>(respuesta);
+        if (datos is { Ok: true, EquipoId: { Length: > 0 } })
+        {
+            _config.GuardarEquipoId(datos.EquipoId);
+            _config.BorrarTokenLegado();
+            Log.Info("Credencial migrada: el token antiguo se borró y el equipo ya firma con su clave.");
+            return true;
+        }
+        return false;
     }
 
     /// <summary>
@@ -650,8 +733,7 @@ public sealed class ClientePanel : IDisposable
             };
             using var solicitud = new HttpRequestMessage(
                 HttpMethod.Get, _config.UrlBase + "/api/agent/paquete");
-            foreach (var (clave, valor) in _config.CabecerasAuth())
-                solicitud.Headers.TryAddWithoutValidation(clave, valor);
+            AplicarCredencial(solicitud, "GET", "/api/agent/paquete", Array.Empty<byte>());
             using var respuesta = await http
                 .SendAsync(solicitud, HttpCompletionOption.ResponseHeadersRead)
                 .ConfigureAwait(false);

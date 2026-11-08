@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { requireServiceAuth } from "@/lib/auth";
+import { requireAgentAuth } from "@/lib/agentAuth";
 import { db } from "@/lib/db";
 import {
   asegurarOrdenActualizacion,
@@ -23,11 +23,11 @@ import { manifiestoPaquete } from "@/lib/paqueteAgente";
  *         mucho, minutos) y se actualiza solo por el canal de
  *         siempre, verificando el SHA-256 del paquete.
  *
- * Solo vale con el token de UN equipo: las claves de servicio
- * del operador no representan a ningún equipo concreto.
+ * Solo vale firmado por UN equipo: la firma identifica al
+ * equipo concreto sin lugar a dudas.
  */
 async function equipoDeLaPeticion(req: Request) {
-  const auth = await requireServiceAuth(req);
+  const auth = await requireAgentAuth(req);
   if (!auth.computerId) return null;
   return db.computer.findUnique({
     where: { id: auth.computerId },
@@ -40,7 +40,7 @@ export async function GET(req: Request) {
     const computer = await equipoDeLaPeticion(req);
     if (!computer) {
       return NextResponse.json(
-        { ok: false, error: "Solo el token de un equipo puede consultar su actualización" },
+        { ok: false, error: "Solo un equipo acreditado puede consultar su actualización" },
         { status: 403 },
       );
     }

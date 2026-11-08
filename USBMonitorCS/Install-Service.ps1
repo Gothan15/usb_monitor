@@ -3,15 +3,15 @@
 # Misma interfaz que el del agente Python (la instalación remota del
 # panel lo invoca así):
 #   .\Install-Service.ps1 [-ServerHost 192.168.1.10] [-ServerPort 3000]
-#                         [-AgentToken <token>] [-Action install]
+#                         [-CodigoEnrolamiento <código>] [-Action install]
 #
 # Escribe server.json junto al ejecutable (host/puerto/esquema),
-# guarda el token cifrado con el propio agente (modo fijar-token) y
+# guarda el código de enrolamiento cifrado con el propio agente (modo fijar-codigo) y
 # delega el registro del servicio en el ejecutable (modo instalar).
 param(
     [string]$ServerHost = "localhost",
     [int]$ServerPort = 3000,
-    [string]$AgentToken = "",
+    [string]$CodigoEnrolamiento = "",
     [string]$Action = "install"
 )
 
@@ -38,8 +38,8 @@ $destino = Join-Path (Split-Path -Parent $exe) "server.json"
 $serverJson | Set-Content -Path $destino -Encoding UTF8
 Write-Host "server.json escrito en $destino"
 
-if ($AgentToken) {
-    & $exe fijar-token $AgentToken
+if ($CodigoEnrolamiento) {
+    & $exe fijar-codigo $CodigoEnrolamiento
 }
 
 & $exe instalar

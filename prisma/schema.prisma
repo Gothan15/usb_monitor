@@ -40,14 +40,31 @@ model Computer {
   serviceRunning   Boolean   @default(false)
   lastServiceCheck DateTime?
   agentVersion     String? // versión del ejecutable/agent si se puede detectar en el futuro
-  // Desbloqueo por contraseña (2FA): credencial propia del agente y modo por equipo
+  // Credencial del agente (overhaul 2026-11-08): par de claves
+  // por equipo. El servidor guarda SOLO la clave pública (SPKI en
+  // base64) y su huella; la privada nace en la PC y nunca sale.
+  // Cada petición del agente va firmada (método, ruta, fecha,
+  // nonce y hash del cuerpo): sin firma válida no hay
+  // conversación, en ninguna ruta.
+  clavePublica        String?
+  clavePublicaHuella  String?
+  credencialAt        DateTime?
+  // Código de enrolamiento de UN SOLO USO atado a este equipo
+  // (hash SHA-256; el claro se enseña una vez). Sustituye a la
+  // antigua clave de flota compartida.
+  codigoEnrolamientoHash   String?
+  codigoEnrolamientoExpira DateTime?
+  // Vigilancia de la credencial: intentos de firma fallidos y
+  // última alerta (p. ej. la misma credencial vista desde dos IP).
+  intentosFallidosCredencial Int       @default(0)
+  alertaCredencial           String?
+  credencialRevocadaAt       DateTime?
+  // LEGADO DE MIGRACIÓN: hash del antiguo token por equipo. Solo
+  // lo lee la ruta de migración (registrar la clave presentando
+  // el token una última vez) y el puente mínimo de
+  // auto-actualización; se borra en cuanto el equipo migra y la
+  // columna desaparecerá cuando la flota entera haya migrado.
   agentTokenHash   String?
-  agentTokenAt     DateTime?
-  // Rotación sin corte: el token nuevo convive como «en espera»
-  // hasta que el agente lo usa por primera vez; en ese momento se
-  // promueve a principal y el viejo muere. Si nunca se usa, caduca.
-  agentTokenPendingHash String?   @unique
-  agentTokenPendingAt   DateTime?
   unlockMode       String    @default("OWNER_OR_ADMIN") // OWNER_OR_ADMIN | ADMIN_ONLY (PCs compartidas)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt

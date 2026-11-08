@@ -41,8 +41,7 @@ public sealed class AsistenteWindow : Window
     private bool? _ultimaPruebaOk;
 
     // Paso 3 · Credencial
-    private readonly PasswordBox _token;
-    private readonly PasswordBox _claveEnroll;
+    private readonly PasswordBox _codigoEnroll;
     private readonly TextBlock _avisoToken;
 
     // Paso 4 · Servicio
@@ -111,7 +110,7 @@ public sealed class AsistenteWindow : Window
         _pasos.Add(ConstruirPasoBienvenida());
         _pasos.Add(ConstruirPasoServidor(out _host, out _puerto, out _esquema,
             out _botonProbar, out _resultadosPrueba, out _avisoConexion));
-        _pasos.Add(ConstruirPasoCredencial(out _token, out _claveEnroll, out _avisoToken));
+        _pasos.Add(ConstruirPasoCredencial(out _codigoEnroll, out _avisoToken));
         _pasos.Add(ConstruirPasoServicio(out _textoEstadoServicio,
             out _botonInstalarServicio, out _avisoAdmin));
         _pasos.Add(ConstruirPasoListo(out _resumen));
@@ -223,7 +222,7 @@ public sealed class AsistenteWindow : Window
                 }
                 break;
             case 3:
-                if (await GuardarTokenDesdeCampoAsync())
+                if (await GuardarCredencialDesdeCampoAsync())
                 {
                     MostrarPaso(4);
                 }
@@ -455,52 +454,35 @@ public sealed class AsistenteWindow : Window
     // ── Paso 3 · Credencial del equipo ───────────────────────────
 
     private UIElement ConstruirPasoCredencial(
-        out PasswordBox token, out PasswordBox claveEnroll, out TextBlock avisoToken)
+        out PasswordBox codigo, out TextBlock avisoToken)
     {
         var contenido = new StackPanel();
         contenido.Children.Add(Tema.EtiquetaSeccion("Credencial del equipo"));
         contenido.Children.Add(TextoExplicacion(
-            "Cada equipo se presenta al panel con su propio token, " +
-            "como una contraseña de la máquina. El camino rápido: si " +
-            "el administrador generó la clave de enrolamiento de la " +
-            "flota (Ajustes → Enrolamiento de agentes), escríbela " +
-            "abajo y el panel emite el token de este equipo al " +
-            "instante, sin generar ni copiar tokens equipo a " +
-            "equipo. El camino de siempre también vale: un token " +
-            "generado para este equipo en Equipos → «Token del " +
-            "agente»."));
+            "Este equipo se acredita ante el panel con un par de " +
+            "claves propio: la clave privada nace en esta PC y nunca " +
+            "sale de ella, y el panel guarda solo la pública. Para " +
+            "registrarla, escribe el código de enrolamiento de un " +
+            "solo uso que el administrador genera en el panel " +
+            "(Equipos → Credencial del equipo). Si este equipo ya " +
+            "tenía el token del sistema anterior, no escribas nada: " +
+            "el agente se migra solo a la clave al arrancar."));
 
         var nombrePc = Tema.TextoDatos(
             $"El nombre de este equipo es {Configuracion.NombrePc}.");
         nombrePc.Margin = new Thickness(0, 0, 0, 10);
         contenido.Children.Add(nombrePc);
 
-        contenido.Children.Add(Tema.EtiquetaCampo("Token del equipo"));
-        token = Tema.CampoContrasena();
-        token.Margin = new Thickness(0, 0, 0, 4);
-        contenido.Children.Add(token);
-
-        var separador = new TextBlock
-        {
-            Text = "— o, con la clave de enrolamiento de la flota —",
-            FontFamily = Tema.FuenteTexto,
-            FontSize = 11.5,
-            Foreground = Tema.TintaAtenuada,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            Margin = new Thickness(0, 12, 0, 8)
-        };
-        contenido.Children.Add(separador);
-
-        contenido.Children.Add(Tema.EtiquetaCampo("Clave de enrolamiento (flota)"));
-        claveEnroll = Tema.CampoContrasena();
-        claveEnroll.Margin = new Thickness(0, 0, 0, 4);
-        contenido.Children.Add(claveEnroll);
+        contenido.Children.Add(Tema.EtiquetaCampo("Código de enrolamiento"));
+        codigo = Tema.CampoContrasena();
+        codigo.Margin = new Thickness(0, 0, 0, 4);
+        contenido.Children.Add(codigo);
 
         contenido.Children.Add(new TextBlock
         {
-            Text = "Se guarda cifrado en esta PC. Si ahora no tienes el " +
-                   "token, pulsa «Saltar por ahora» y pégalo después en " +
-                   "la caja de herramientas, sección Credencial.",
+            Text = "El código vale 30 minutos y se gasta al usarlo. " +
+                   "Si ahora no lo tienes, pulsa «Saltar por ahora» y " +
+                   "enrola después desde la caja de herramientas.",
             FontFamily = Tema.FuenteTexto,
             FontSize = 11.5,
             Foreground = Tema.TintaAtenuada,
@@ -509,59 +491,47 @@ public sealed class AsistenteWindow : Window
         });
 
         avisoToken = TextoAviso(
-            "Escribe el token del equipo o la clave de enrolamiento, " +
-            "o pulsa «Saltar por ahora» para dejarlo para después.");
+            "Escribe el código de enrolamiento, o pulsa «Saltar por " +
+            "ahora» para dejarlo para después.");
         contenido.Children.Add(avisoToken);
 
         return contenido;
     }
 
-    private async Task<bool> GuardarTokenDesdeCampoAsync()
+    private async Task<bool> GuardarCredencialDesdeCampoAsync()
     {
-        // Con clave de enrolamiento escrita, manda ella: se pide
-        // el token propio al panel y se guarda el que devuelva.
-        string claveEnroll = _claveEnroll.Password.Trim();
-        if (!string.IsNullOrWhiteSpace(claveEnroll))
+        // Ya acreditado (clave registrada o token antiguo que se
+        // migrará solo): el paso no tiene nada que guardar.
+        if (_config.TieneClave || _config.TokenLegado is not null)
         {
             _avisoToken.Visibility = Visibility.Collapsed;
-            string? emitido;
-            using (var cliente = new ClientePanel(_config))
-            {
-                emitido = await cliente.EnrolarAsync(claveEnroll);
-            }
-            _claveEnroll.Clear();
-            if (emitido is null)
-            {
-                Tema.AvisarError(
-                    "El panel no aceptó la clave de enrolamiento. " +
-                    "Comprueba el servidor del paso anterior y que la " +
-                    "clave sea la vigente.", "Credencial");
-                return false;
-            }
-            if (!_config.GuardarTokenAgente(emitido))
-            {
-                Tema.AvisarError("No se pudo guardar la credencial.", "Credencial");
-                return false;
-            }
-            _log.Info("Asistente: equipo enrolado; token propio guardado");
             return true;
         }
 
-        string token = _token.Password.Trim();
-        if (string.IsNullOrWhiteSpace(token))
+        string codigo = _codigoEnroll.Password.Trim();
+        if (string.IsNullOrWhiteSpace(codigo))
         {
             _avisoToken.Visibility = Visibility.Visible;
             return false;
         }
         _avisoToken.Visibility = Visibility.Collapsed;
 
-        if (!_config.GuardarTokenAgente(token))
+        bool enrolado;
+        using (var cliente = new ClientePanel(_config))
         {
-            Tema.AvisarError("No se pudo guardar la credencial.", "Credencial");
+            enrolado = await cliente.EnrolarConCodigoAsync(codigo);
+        }
+        _codigoEnroll.Clear();
+        if (!enrolado)
+        {
+            Tema.AvisarError(
+                "El panel no aceptó el código de enrolamiento. " +
+                "Comprueba el servidor del paso anterior y que el " +
+                "código sea el vigente para este equipo (caduca a " +
+                "los 30 minutos y se gasta al primer uso).", "Credencial");
             return false;
         }
-        _token.Clear();
-        _log.Info("Asistente: token del equipo guardado");
+        _log.Info("Asistente: equipo enrolado; clave registrada en el panel");
         return true;
     }
 
@@ -757,13 +727,15 @@ public sealed class AsistenteWindow : Window
         }
 
         // Credencial: se lee el estado real, no lo que el usuario dijo.
-        bool hayToken = !string.IsNullOrWhiteSpace(_config.TokenAgente);
-        _resumen.Children.Add(hayToken
-            ? LineaResumen(true, "Credencial: token del equipo guardado.")
+        bool hayCredencial = _config.TieneClave ||
+            _config.TokenLegado is not null ||
+            _config.CodigoEnrolamiento is not null;
+        _resumen.Children.Add(hayCredencial
+            ? LineaResumen(true, "Credencial: este equipo puede presentarse al panel.")
             : LineaResumen(false,
-                "Credencial: token del equipo sin guardar. Este equipo aún " +
-                "no puede presentarse al panel: pégalo en la caja de " +
-                "herramientas, sección Credencial."));
+                "Credencial: sin registrar. Este equipo aún no puede " +
+                "presentarse al panel: enrola con un código desde la " +
+                "caja de herramientas, sección Credencial."));
 
         // Servicio: línea con marcador; el estado real se consulta
         // en segundo plano al mostrar el paso (RefrescarResumenServicioAsync).

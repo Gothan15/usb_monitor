@@ -8,17 +8,17 @@ import {
 // ── La ruta POST, con la BD y la credencial simuladas ─────────
 // El patrón de la casa es probar la lógica sin Postgres; aquí se
 // simulan solo los bordes (auth, db, rate limit) para fijar el
-// contrato de la ruta: 401 sin credencial de servicio, 400 con el
+// contrato de la ruta: 401 sin firma del equipo, 400 con el
 // paquete mal formado, 404 si el bloqueo no existe y 200 guardando.
 const mocks = vi.hoisted(() => ({
-  requireServiceAuth: vi.fn(),
+  requireAgentAuth: vi.fn(),
   findUnique: vi.fn(),
   create: vi.fn(),
   hit: vi.fn(),
 }));
 
-vi.mock("@/lib/auth", () => ({
-  requireServiceAuth: mocks.requireServiceAuth,
+vi.mock("@/lib/agentAuth", () => ({
+  requireAgentAuth: mocks.requireAgentAuth,
 }));
 vi.mock("@/lib/db", () => ({
   db: {
@@ -118,7 +118,7 @@ describe("POST /api/usb-event/evidence", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.hit.mockResolvedValue({ allowed: true, remaining: 5, resetIn: 0 });
-    mocks.requireServiceAuth.mockResolvedValue({
+    mocks.requireAgentAuth.mockResolvedValue({
       type: "service",
       serviceId: "agente-1",
       token: "t",
@@ -133,7 +133,7 @@ describe("POST /api/usb-event/evidence", () => {
   }
 
   it("sin credencial de servicio responde 401 y no guarda nada", async () => {
-    mocks.requireServiceAuth.mockRejectedValue(new Error("UNAUTHORIZED"));
+    mocks.requireAgentAuth.mockRejectedValue(new Error("UNAUTHORIZED"));
     const { POST } = await cargarRuta();
     const res = await POST(peticion(paqueteValido()));
     expect(res.status).toBe(401);

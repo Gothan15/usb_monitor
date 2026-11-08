@@ -208,18 +208,26 @@ public sealed class SaludConexion
 
 // ── Cuerpos de petición ─────────────────────────────────────────
 
-/// <summary>Solicitud de enrolamiento: el equipo se presenta con la clave de la flota.</summary>
-internal sealed class SolicitudEnrolamiento
+/// <summary>Solicitud de enrolamiento: código de un solo uso + la clave pública recién nacida.</summary>
+internal sealed class SolicitudEnrolamientoCodigo
 {
     [JsonPropertyName("pcName")] public string PcName { get; set; } = "";
-    [JsonPropertyName("key")] public string Key { get; set; } = "";
+    [JsonPropertyName("codigo")] public string Codigo { get; set; } = "";
+    [JsonPropertyName("clavePublica")] public string ClavePublica { get; set; } = "";
 }
 
-/// <summary>Respuesta con el token propio recién emitido (enrolar/rotar).</summary>
-internal sealed class RespuestaTokenAgente
+/// <summary>Solicitud de migración: solo la clave pública (el token viaja en la cabecera, una última vez).</summary>
+internal sealed class SolicitudMigracion
+{
+    [JsonPropertyName("clavePublica")] public string ClavePublica { get; set; } = "";
+}
+
+/// <summary>Respuesta de enrolar/migrar: el id que el panel asigna a este equipo.</summary>
+internal sealed class RespuestaCredencial
 {
     [JsonPropertyName("ok")] public bool Ok { get; set; }
-    [JsonPropertyName("token")] public string? Token { get; set; }
+    [JsonPropertyName("equipoId")] public string? EquipoId { get; set; }
+    [JsonPropertyName("huella")] public string? Huella { get; set; }
 }
 
 /// <summary>Respuesta de consultar/pedir la actualización propia (caja de herramientas).</summary>

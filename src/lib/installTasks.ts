@@ -48,8 +48,8 @@ export const CONCURRENCIA_INSTALACION = 2;
 export interface DatosMetodo {
   /** Última señal del agente (null si nunca ha reportado). */
   lastSeen: Date | string | null;
-  /** El equipo tiene token de agente provisionado. */
-  tieneToken: boolean;
+  /** El equipo tiene credencial de agente registrada (su clave). */
+  tieneCredencial: boolean;
   /** Ahora, inyectable para las pruebas. */
   ahora: number;
   /** Umbral de silencio del método 3 en ms (mínimo 2 minutos). */
@@ -62,7 +62,7 @@ export interface DatosMetodo {
  * credenciales al destino); EMPUJE en cualquier otro caso.
  */
 export function resolverMetodo(datos: DatosMetodo): MetodoInstalacion {
-  if (!datos.tieneToken || !datos.lastSeen) return METODO.EMPUJE;
+  if (!datos.tieneCredencial || !datos.lastSeen) return METODO.EMPUJE;
   const ultima = new Date(datos.lastSeen).getTime();
   if (Number.isNaN(ultima)) return METODO.EMPUJE;
   return datos.ahora - ultima <= datos.umbralMs

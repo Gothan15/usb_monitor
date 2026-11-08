@@ -54,64 +54,13 @@ export async function POST(req: Request) {
     // Redis, para que la siguiente lectura no sirva los valores viejos.
     await invalidarCacheAjustes();
 
-    // Push new setting to active computers if startup_network_delay changed or provided
-    if (body.startup_network_delay !== undefined || body.lockSessionOnInsert !== undefined || body.shutdownOnNonWhitelisted !== undefined || body.shutdownCountdownSeconds !== undefined || body.captureEvidenceOnNonWhitelisted !== undefined) {
-      const computers = await prisma.computer.findMany({
-        where: { isActive: true },
-      });
-
-      const servicePort = process.env.USB_SERVICE_PORT || "5001";
-
-      const fetchPromises = computers.map(async (computer) => {
-        if (!computer.ipAddress) return;
-        try {
-          const url = `http://${computer.ipAddress}:${servicePort}/config`;
-          console.log(`Pushing config to ${url}`);
-          // El agente exige credencial en /config (fase 3): se usa la
-          // API key del usuario dueño del equipo, que el agente conoce.
-          const owner = await prisma.user.findFirst({
-            where: { computerId: computer.id },
-            select: { apiKey: true },
-          });
-          const payload: Record<string, unknown> = {};
-          if (body.startup_network_delay !== undefined) {
-            payload.startup_network_delay = Number(body.startup_network_delay);
-          }
-          if (body.lockSessionOnInsert !== undefined) {
-            payload.lock_session_on_insert = Boolean(body.lockSessionOnInsert);
-          }
-          if (body.shutdownOnNonWhitelisted !== undefined) {
-            payload.shutdown_on_non_whitelisted = Boolean(body.shutdownOnNonWhitelisted);
-          }
-          if (body.shutdownCountdownSeconds !== undefined) {
-            payload.shutdown_countdown_seconds = Math.min(
-              600,
-              Math.max(10, Number(body.shutdownCountdownSeconds) || 60),
-            );
-          }
-          if (body.captureEvidenceOnNonWhitelisted !== undefined) {
-            payload.capture_evidence_on_non_whitelisted = Boolean(body.captureEvidenceOnNonWhitelisted);
-          }
-          await fetch(url, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              ...(owner?.apiKey
-                ? { Authorization: `ApiKey ${owner.apiKey}` }
-                : {}),
-            },
-            body: JSON.stringify(payload),
-            signal: AbortSignal.timeout(5000), // 5s timeout
-          });
-        } catch (err: any) {
-          console.error(`Failed to push config to computer ${computer.ipAddress}:`, err.message);
-        }
-      });
-
-      // We don't await Promise.all here so we don't block the response, or we could.
-      // Better to await it so we know if it succeeded? The requirements don't specify, but fire-and-forget is safer for UI responsiveness.
-      Promise.allSettled(fetchPromises);
-    }
+    // Sin empuje en caliente: el antiguo POST a :5001/config del
+    // agente llevaba inservible desde el token por equipo (el
+    // panel se acreditaba con la API key del dueño y el agente
+    // esperaba otra cosa) y en el modelo de claves nadie puede
+    // firmar como el panel. Los ajustes llegan a cada agente por
+    // su sondeo firmado de configuración (máximo 10 minutos y al
+    // arrancar), como ya ocurría en la práctica.
 
     return NextResponse.json({ success: true, settings: newSettings });
   } catch (error: any) {

@@ -6,7 +6,10 @@
 //   GET  /desbloquear  -> la página de emergencia (sin red).
 //   POST /desbloquear  -> verifica SOLO con la contraseña del dueño
 //                         y el hash local (Emergencia del Core).
-//   POST /config       -> el panel empuja ajustes con la propia
+//   (El antiguo POST /config del empuje en caliente se retiró en
+//   el overhaul de credenciales: llevaba inservible desde el token
+//   por equipo y nadie puede acreditarlo en el modelo de claves;
+//   los ajustes llegan por el sondeo firmado de configuración.)
 //                         credencial del agente (snake_case o camelCase).
 //
 // El estado vive en ConfigCompartida: lo que /config escribe, el
@@ -131,10 +134,6 @@ public sealed class ServidorLocal : IDisposable
         {
             await AtenderDesbloquearAsync(ctx).ConfigureAwait(false);
         }
-        else if (ruta == "/config" && metodo == "POST")
-        {
-            await AtenderConfigAsync(ctx).ConfigureAwait(false);
-        }
         else
         {
             await ResponderJsonAsync(ctx, new { error = "not_found" }, 404).ConfigureAwait(false);
@@ -196,63 +195,6 @@ public sealed class ServidorLocal : IDisposable
             }
         }
         await ResponderHtmlAsync(ctx, PaginaDesbloquear(mensaje)).ConfigureAwait(false);
-    }
-
-    private async Task AtenderConfigAsync(HttpListenerContext ctx)
-    {
-        var cuerpo = await LeerCuerpoAsync(ctx.Request).ConfigureAwait(false);
-        if (!Autorizado(ctx.Request))
-        {
-            await ResponderJsonAsync(ctx, new { error = "unauthorized" }, 401).ConfigureAwait(false);
-            return;
-        }
-        JsonElement datos;
-        try
-        {
-            using var doc = JsonDocument.Parse(
-                string.IsNullOrWhiteSpace(cuerpo) ? "{}" : cuerpo);
-            datos = doc.RootElement.Clone();
-        }
-        catch (Exception)
-        {
-            await ResponderJsonAsync(ctx, new { error = "bad_json" }, 400).ConfigureAwait(false);
-            return;
-        }
-        // El panel empuja en snake_case; también se acepta camelCase.
-        if (ObtenerEntero(datos, "startup_network_delay") is { } espera)
-            _compartida.StartupNetworkDelay = espera;
-        else if (ObtenerEntero(datos, "startupNetworkDelay") is { } espera2)
-            _compartida.StartupNetworkDelay = espera2;
-        if (ObtenerBool(datos, "lock_session_on_insert") is { } bloquear)
-            _compartida.LockSessionOnInsert = bloquear;
-        else if (ObtenerBool(datos, "lockSessionOnInsert") is { } bloquear2)
-            _compartida.LockSessionOnInsert = bloquear2;
-        if (ObtenerBool(datos, "shutdown_on_non_whitelisted") is { } apagar)
-            _compartida.ShutdownOnNonWhitelisted = apagar;
-        else if (ObtenerBool(datos, "shutdownOnNonWhitelisted") is { } apagar2)
-            _compartida.ShutdownOnNonWhitelisted = apagar2;
-        if (ObtenerEntero(datos, "shutdown_countdown_seconds") is { } cuenta)
-            _compartida.ShutdownCountdownSeconds = cuenta;
-        else if (ObtenerEntero(datos, "shutdownCountdownSeconds") is { } cuenta2)
-            _compartida.ShutdownCountdownSeconds = cuenta2;
-        if (ObtenerBool(datos, "capture_evidence_on_non_whitelisted") is { } evidencia)
-            _compartida.CaptureEvidenceOnNonWhitelisted = evidencia;
-        else if (ObtenerBool(datos, "captureEvidenceOnNonWhitelisted") is { } evidencia2)
-            _compartida.CaptureEvidenceOnNonWhitelisted = evidencia2;
-        Log.Info($"Config local actualizada: {cuerpo}");
-        await ResponderJsonAsync(ctx, new { ok = true }).ConfigureAwait(false);
-    }
-
-    /// <summary>La petición trae la misma credencial con la que el agente llama al panel.</summary>
-    private bool Autorizado(HttpListenerRequest req)
-    {
-        var entrante = req.Headers["Authorization"];
-        if (entrante is null) return false;
-        foreach (var valor in _configuracion.CabecerasAuth().Values)
-        {
-            if (string.Equals(entrante, valor, StringComparison.Ordinal)) return true;
-        }
-        return false;
     }
 
     private static int? ObtenerEntero(JsonElement datos, string clave)

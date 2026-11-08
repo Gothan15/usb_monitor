@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { requireServiceAuth } from "@/lib/auth";
+import { requireAgentAuthOPuente } from "@/lib/agentAuth";
 import { db } from "@/lib/db";
 import { logError } from "@/lib/logger";
 import { registrarContactoAgente } from "@/lib/agentDebug";
@@ -28,7 +28,7 @@ export async function POST(
 ) {
   const { id } = await params;
   try {
-    const serviceAuth = await requireServiceAuth(req);
+    const serviceAuth = await requireAgentAuthOPuente(req);
     if (!serviceAuth.computerId) {
       return NextResponse.json(
         { ok: false, error: "No autorizado" },

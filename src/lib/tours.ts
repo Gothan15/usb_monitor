@@ -88,7 +88,7 @@ export const adminTour: TourDefinition = {
       target: "[data-tour='computers-main']",
       title: "Equipos",
       description:
-        "Cada equipo aparece solo cuando su agente hace el primer contacto. Su estado sale de la última señal del agente: «En ejecución» o «Sin señal», sin datos duplicados. Desde aquí provisionas el token de cada agente, ves sus dispositivos USB e instalas el servicio en equipos nuevos: esas instalaciones se crean como tareas y se siguen en directo en la sección Tareas.",
+        "Cada equipo aparece solo cuando su agente hace el primer contacto. Su estado sale de la última señal del agente: «En ejecución» o «Sin señal», sin datos duplicados. Desde aquí gestionas la credencial de cada agente (su código de enrolamiento), ves sus dispositivos USB e instalas el servicio en equipos nuevos: esas instalaciones se crean como tareas y se siguen en directo en la sección Tareas.",
       position: "bottom",
       icon: MonitorSmartphone,
     },

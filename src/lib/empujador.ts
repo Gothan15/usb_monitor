@@ -103,7 +103,7 @@ export interface ArgumentosEmpujador {
   ip: string;
   usuario: string;
   clave: string;
-  token?: string;
+  codigo?: string;
   servidor?: string;
   exeAgente?: string;
 }
@@ -140,7 +140,7 @@ export async function ejecutarEmpujador(
     "--clave",
     args.clave,
   ];
-  if (args.token) argv.push("--token", args.token);
+  if (args.codigo) argv.push("--codigo", args.codigo);
   if (args.servidor) argv.push("--servidor", args.servidor);
   if (args.exeAgente) argv.push("--exe", args.exeAgente);
 

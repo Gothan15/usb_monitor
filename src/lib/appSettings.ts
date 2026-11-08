@@ -17,7 +17,6 @@ import { obtenerRedis } from "@/lib/redis";
  */
 export interface AppSettings {
   /** Fase 3: exigir token por equipo en la ingesta de eventos. */
-  requireAgentToken: boolean;
   /** Fase 5: interruptor general del desbloqueo por contraseña. */
   passwordUnlockEnabled: boolean;
   /** Fase 4/5: permitir la emergencia sin red con hash local. */
@@ -46,7 +45,6 @@ export interface AppSettings {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  requireAgentToken: false,
   passwordUnlockEnabled: true,
   offlineEmergencyEnabled: true,
   lockSessionOnInsert: false,

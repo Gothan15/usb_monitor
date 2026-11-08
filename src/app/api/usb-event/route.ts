@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { resolve, TOKENS } from "@/lib/di/container";
-import { requireAuth, requireServiceAuth } from "@/lib/auth"; // requireAuth: GET (consulta). requireServiceAuth: POST si el ajuste requireAgentToken está activo
+import { requireAuth } from "@/lib/auth"; // requireAuth: GET (consulta de usuarios)
+import { requireAgentAuth } from "@/lib/agentAuth"; // POST: solo el agente, firmado
 import { readAppSettings } from "@/lib/appSettings";
 import { usbEventPayloadSchema } from "@/lib/validators";
 import { getCurrentDate } from "@/lib/time";
@@ -14,23 +15,19 @@ const prisma = resolve<PrismaClient>(TOKENS.prisma);
 
 export async function POST(request: NextRequest) {
   try {
-    // Ingesta de eventos (fase 3 del plan de desbloqueo): si el ajuste
-    // requireAgentToken está activo en el panel, el agente debe
-    // autenticarse (token por equipo o clave de servicio); si está
-    // apagado —periodo de compatibilidad con agentes viejos— la ingesta
-    // sigue abierta, pero queda constancia en el log del servidor.
-    const settings = await readAppSettings();
-    if (settings.requireAgentToken) {
-      try {
-        await requireServiceAuth(request);
-      } catch {
-        // El body aún no se leyó: la PC no se conoce en este punto.
-        registrarContactoAgente(null, "/api/usb-event", 401);
-        return NextResponse.json(
-          { error: "No autorizado" },
-          { status: 401 },
-        );
-      }
+    // Ingesta de eventos: SOLO el agente y SOLO firmado con la
+    // clave de su equipo (overhaul de credenciales de 2026-11-08;
+    // el antiguo ajuste que permitía ingesta abierta desaparece:
+    // sin firma válida no hay conversación).
+    try {
+      await requireAgentAuth(request);
+    } catch {
+      // El body aún no se leyó: la PC no se conoce en este punto.
+      registrarContactoAgente(null, "/api/usb-event", 401);
+      return NextResponse.json(
+        { error: "No autorizado" },
+        { status: 401 },
+      );
     }
     const body = await request.json();
     const parsed = usbEventPayloadSchema.safeParse(body);
