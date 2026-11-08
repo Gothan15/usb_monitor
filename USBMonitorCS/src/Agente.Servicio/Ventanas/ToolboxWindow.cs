@@ -137,6 +137,7 @@ public sealed class ToolboxWindow : Window
         Loaded += async (_, _) =>
         {
             await RefrescarEstadoAsync();
+            await RefrescarCredencialAsync();
             await RefrescarRegistroAsync();
             await ComprobarUpdateGitHubAsync(silencioso: true);
             _temporizadorEstado.Start();
@@ -685,6 +686,39 @@ public sealed class ToolboxWindow : Window
         return "Sin credencial: este equipo no puede hablar con el panel. Enrola con un código.";
     }
 
+    /// <summary>
+    /// El feedback de enrolamiento: no basta con tener la clave en
+    /// disco, se comprueba CONTRA el panel y el texto de la
+    /// sección dice el resultado con claridad (verificado,
+    /// rechazado o sin respuesta). Sin clave, el texto es el de
+    /// estado de siempre.
+    /// </summary>
+    private async Task RefrescarCredencialAsync()
+    {
+        if (!_config.TieneClave)
+        {
+            _textoCredencial.Text = TextoEstadoCredencial();
+            return;
+        }
+        var huella = _cliente.Identidad?.Huella;
+        var huellaCorta = huella is not null ? huella[..12] : "…";
+        _textoCredencial.Text =
+            $"Clave registrada en esta PC (huella {huellaCorta}…). Comprobando con el panel…";
+        var resultado = await _cliente.ProbarCredencialAsync();
+        _textoCredencial.Text = resultado switch
+        {
+            ClientePanel.ResultadoPruebaCredencial.Verificada =>
+                $"✓ Enrolado y verificado: el panel acepta la firma de este equipo (huella {huellaCorta}…).",
+            ClientePanel.ResultadoPruebaCredencial.Rechazada =>
+                "✗ El panel RECHAZA la firma de este equipo: la credencial pudo ser " +
+                "revocada o la clave registrada en el panel no es esta. Genera un código " +
+                "nuevo en Equipos → Credencial del equipo y vuelve a enrolar abajo.",
+            _ =>
+                $"Clave registrada en esta PC (huella {huellaCorta}…); el panel no " +
+                "respondió, así que la verificación queda para cuando vuelva la conexión.",
+        };
+    }
+
     private async Task EnrolarDesdeCajaAsync()
     {
         string codigo = _codigoEnroll.Password.Trim();
@@ -697,10 +731,10 @@ public sealed class ToolboxWindow : Window
         _codigoEnroll.Clear();
         if (ok)
         {
-            _textoCredencial.Text = TextoEstadoCredencial();
             Tema.Avisar(
                 "El panel registró la clave de este equipo. Reinicia el servicio para que firme ya con ella.",
                 "Equipo enrolado");
+            await RefrescarCredencialAsync();
         }
         else
         {

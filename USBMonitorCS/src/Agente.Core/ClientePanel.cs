@@ -613,6 +613,41 @@ public sealed class ClientePanel : IDisposable
         return false;
     }
 
+    /// <summary>Resultado de comprobar la credencial contra el panel.</summary>
+    public enum ResultadoPruebaCredencial
+    {
+        /// <summary>El panel aceptó una petición firmada: enrolado de verdad.</summary>
+        Verificada,
+        /// <summary>El panel respondió 401/403: la firma no vale (¿revocada?).</summary>
+        Rechazada,
+        /// <summary>El panel no respondió: no se puede concluir nada.</summary>
+        SinRespuesta,
+        /// <summary>Este equipo aún no tiene clave registrada que probar.</summary>
+        NoAplica,
+    }
+
+    /// <summary>
+    /// Comprueba la credencial de este equipo CONTRA el panel:
+    /// hace una petición firmada ligera y mira la respuesta. Es el
+    /// «¿estoy enrolado de verdad?» que enseña la caja de
+    /// herramientas: tener la clave en disco no basta si el panel
+    /// no la acepta (revocada, registrada otra, panel sin migrar).
+    /// </summary>
+    public async Task<ResultadoPruebaCredencial> ProbarCredencialAsync()
+    {
+        if (!_config.TieneClave || _config.EquipoId is null)
+            return ResultadoPruebaCredencial.NoAplica;
+        var respuesta = await PeticionAsync("GET", "/api/agent/actualizacion")
+            .ConfigureAwait(false);
+        if (respuesta is null) return ResultadoPruebaCredencial.SinRespuesta;
+        return respuesta.Estado switch
+        {
+            200 => ResultadoPruebaCredencial.Verificada,
+            401 or 403 => ResultadoPruebaCredencial.Rechazada,
+            _ => ResultadoPruebaCredencial.SinRespuesta,
+        };
+    }
+
     /// <summary>
     /// Consulta de actualización para la caja de herramientas:
     /// qué corre este equipo y qué ofrece el panel. Null si el
