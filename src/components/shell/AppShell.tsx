@@ -118,16 +118,18 @@ export function AppShell({
                 <Image
                   src="/brujula-claro.png"
                   alt="USB Monitor"
-                  width={24}
-                  height={24}
+                  width={96}
+                  height={96}
+                  quality={100}
                   className="size-6 shrink-0 rounded-[4px] dark:hidden"
                 />
                 <Image
                   src="/brujula-oscura.png"
                   alt=""
                   aria-hidden
-                  width={24}
-                  height={24}
+                  width={96}
+                  height={96}
+                  quality={100}
                   className="hidden size-6 shrink-0 rounded-[4px] dark:block"
                 />
                 <AnimatePresence>
@@ -252,71 +254,84 @@ export function AppShell({
                 <ThemeToggle />
               </div>
 
-              {/* Usuario y estado, al pie de la barra */}
-              <div className="shrink-0 border-t border-border px-[18px] py-4">
-                <div
-                  className={cn(
-                    "flex items-center gap-2.5",
-                    !lateralAbierta && "flex-col gap-2",
-                  )}
-                >
-                  <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-[var(--acero)]/70 font-display text-[11px] font-bold text-[var(--acero)]">
-                    {initials}
-                  </span>
-                  <AnimatePresence>
-                    {lateralAbierta && (
-                      <motion.span
-                        initial={{ opacity: 0, width: 0 }}
-                        animate={{ opacity: 1, width: "auto" }}
-                        exit={{ opacity: 0, width: 0 }}
-                        transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-                        className="min-w-0 flex-1 overflow-hidden whitespace-nowrap leading-tight"
-                      >
-                        <span className="block max-w-[130px] truncate text-[13px] font-medium text-foreground">
+              {/* Usuario y estado, al pie de la barra: tarjeta de
+                  perfil — medallón azul marino con filete dorado,
+                  nombre en la serif editorial y el estado de la
+                  sincronización integrado al pie de la tarjeta. */}
+              <div className="shrink-0 border-t border-border px-3 py-3">
+                {lateralAbierta ? (
+                  <div className="rounded-lg border border-border border-t-2 border-t-[#C09A3B]/70 bg-card/70 px-3 py-3 shadow-sm">
+                    <div className="flex items-center gap-2.5">
+                      <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#23211D] font-display text-[13px] font-bold text-[#F5F3EF] ring-1 ring-[#C09A3B]/70">
+                        {initials}
+                      </span>
+                      <div className="min-w-0 flex-1 leading-tight">
+                        <span className="block truncate font-display text-[15px] font-semibold text-foreground">
                           {user?.name ?? "Usuario"}
                         </span>
-                        <span className="block text-[11px] text-muted-foreground">
+                        <span className="smallcaps mt-0.5 block text-[10px] text-[#A8822F] dark:text-[#C9A44A]">
                           {user?.role?.toUpperCase() === "ADMIN"
                             ? "Administrador"
                             : "Usuario"}
                         </span>
-                      </motion.span>
-                    )}
-                  </AnimatePresence>
-                  <LogoutButton
-                    iconOnly
-                    variant="ghost"
-                    size="icon"
-                    className="size-8 shrink-0"
-                  />
-                </div>
-                <p
-                  className={cn(
-                    "mt-3 flex items-center gap-1.5 text-[11px]",
-                    !lateralAbierta && "justify-center",
-                    mounted && isLiveSyncEnabled
-                      ? "text-success"
-                      : "text-muted-foreground",
-                  )}
-                  title={
-                    mounted && isLiveSyncEnabled
-                      ? "Sincronización en vivo"
-                      : "Sincronización en pausa"
-                  }
-                >
-                  <span
-                    className={cn(
-                      "size-1.5 shrink-0 rounded-full",
-                      mounted && isLiveSyncEnabled
-                        ? "dot-pulse bg-success"
-                        : "bg-muted-foreground/50",
-                    )}
-                  />
-                  {lateralAbierta &&
-                    (mounted && isLiveSyncEnabled
-                      ? "Sincronización en vivo"
-                      : "Sincronización en pausa")}
-                </p>
+                      </div>
+                      <LogoutButton
+                        iconOnly
+                        variant="ghost"
+                        size="icon"
+                        className="size-8 shrink-0"
+                      />
+                    </div>
+                    <p
+                      className={cn(
+                        "mt-2.5 flex items-center gap-1.5 border-t border-border/70 pt-2.5 text-[11px]",
+                        mounted && isLiveSyncEnabled
+                          ? "text-success"
+                          : "text-muted-foreground",
+                      )}
+                      title={
+                        mounted && isLiveSyncEnabled
+                          ? "Sincronización en vivo"
+                          : "Sincronización en pausa"
+                      }
+                    >
+                      <span
+                        className={cn(
+                          "size-1.5 shrink-0 rounded-full",
+                          mounted && isLiveSyncEnabled
+                            ? "dot-pulse bg-success"
+                            : "bg-muted-foreground/50",
+                        )}
+                      />
+                      {mounted && isLiveSyncEnabled
+                        ? "Sincronización en vivo"
+                        : "Sincronización en pausa"}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-2">
+                    <span
+                      className="relative flex size-10 shrink-0 items-center justify-center rounded-full bg-[#23211D] font-display text-[13px] font-bold text-[#F5F3EF] ring-1 ring-[#C09A3B]/70"
+                      title={user?.name ?? "Usuario"}
+                    >
+                      {initials}
+                      <span
+                        className={cn(
+                          "absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full ring-2 ring-background",
+                          mounted && isLiveSyncEnabled
+                            ? "bg-success"
+                            : "bg-muted-foreground/50",
+                        )}
+                      />
+                    </span>
+                    <LogoutButton
+                      iconOnly
+                      variant="ghost"
+                      size="icon"
+                      className="size-8 shrink-0"
+                    />
+                  </div>
+                )}
               </div>
             </aside>
           )}
@@ -331,16 +346,18 @@ export function AppShell({
                     <Image
                       src="/brujula-claro.png"
                       alt="USB Monitor"
-                      width={22}
-                      height={22}
+                      width={88}
+                      height={88}
+                      quality={100}
                       className="size-[22px] rounded-[4px] dark:hidden"
                     />
                     <Image
                       src="/brujula-oscura.png"
                       alt=""
                       aria-hidden
-                      width={22}
-                      height={22}
+                      width={88}
+                      height={88}
+                      quality={100}
                       className="hidden size-[22px] rounded-[4px] dark:block"
                     />
                     <span className="font-display text-[15px] font-bold tracking-tight">
@@ -398,7 +415,7 @@ export function AppShell({
                     <ThemeToggle className="size-8" />
                     <span className="flex items-center gap-0.5 lg:hidden">
                       <span className="mx-1 h-5 w-px bg-border" />
-                      <span className="flex size-7 items-center justify-center rounded-full border border-[var(--acero)]/70 font-display text-[11px] font-bold text-[var(--acero)]">
+                      <span className="flex size-8 items-center justify-center rounded-full bg-[#23211D] font-display text-[11px] font-bold text-[#F5F3EF] ring-1 ring-[#C09A3B]/70">
                         {initials}
                       </span>
                       <LogoutButton
@@ -466,16 +483,18 @@ export function AppShell({
                     <Image
                       src="/brujula-claro.png"
                       alt="USB Monitor"
-                      width={24}
-                      height={24}
+                      width={96}
+                      height={96}
+                      quality={100}
                       className="size-6 rounded-[4px] dark:hidden"
                     />
                     <Image
                       src="/brujula-oscura.png"
                       alt=""
                       aria-hidden
-                      width={24}
-                      height={24}
+                      width={96}
+                      height={96}
+                      quality={100}
                       className="hidden size-6 rounded-[4px] dark:block"
                     />
                     <span className="font-display text-base font-bold tracking-tight">
@@ -552,11 +571,21 @@ export function AppShell({
 
                     <div className="flex items-center gap-2.5">
                       <span
-                        className="hidden size-8 items-center justify-center rounded-full border border-[var(--acero)]/70 font-display text-[11px] font-bold text-[var(--acero)] sm:flex"
+                        className="hidden size-9 items-center justify-center rounded-full bg-[#23211D] font-display text-[12px] font-bold text-[#F5F3EF] ring-1 ring-[#C09A3B]/70 sm:flex"
                         title={user?.name ?? "Usuario"}
                       >
                         {initials}
                       </span>
+                      <div className="hidden min-w-0 leading-tight lg:block">
+                        <span className="block max-w-[140px] truncate font-display text-[14px] font-semibold text-foreground">
+                          {user?.name ?? "Usuario"}
+                        </span>
+                        <span className="smallcaps block text-[9.5px] text-[#A8822F] dark:text-[#C9A44A]">
+                          {user?.role?.toUpperCase() === "ADMIN"
+                            ? "Administrador"
+                            : "Usuario"}
+                        </span>
+                      </div>
                       <LogoutButton
                         iconOnly
                         variant="ghost"
