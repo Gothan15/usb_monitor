@@ -215,7 +215,15 @@ public sealed class ClientePanel : IDisposable
             if (ok)
                 Log.Debug($"{metodo} {ruta} -> HTTP {estado} en {reloj.ElapsedMilliseconds} ms");
             else
-                Log.Advertencia($"{metodo} {ruta} -> HTTP {estado} en {reloj.ElapsedMilliseconds} ms");
+                // Solo los 401/403 (la credencial no vale) merecen
+                // advertencia: son raros y hay que verlos. El resto
+                // de respuestas de error baja a depuración para no
+                // llenar el registro cuando el panel está caído y
+                // cada sondeo repetiría la misma línea.
+                if (estado is 401 or 403)
+                    Log.Advertencia($"{metodo} {ruta} -> HTTP {estado} en {reloj.ElapsedMilliseconds} ms");
+                else
+                    Log.Debug($"{metodo} {ruta} -> HTTP {estado} en {reloj.ElapsedMilliseconds} ms");
             return new RespuestaHttp(estado, texto);
         }
         catch (Exception exc)
@@ -223,7 +231,11 @@ public sealed class ClientePanel : IDisposable
             reloj.Stop();
             var detalle = $"sin respuesta: {exc.Message}";
             RegistrarLlamada(metodo, ruta, false, detalle, reloj.Elapsed.TotalMilliseconds);
-            Log.Advertencia($"{metodo} {ruta} sin respuesta ({reloj.ElapsedMilliseconds} ms): {exc.Message}");
+            // Sin respuesta: depuración. El trabajador ya deja
+            // constancia del primer fallo de latido y de la
+            // recuperación; repetirla por cada petición llenaría
+            // el registro durante cualquier caída del panel.
+            Log.Debug($"{metodo} {ruta} sin respuesta ({reloj.ElapsedMilliseconds} ms): {exc.Message}");
             return null;
         }
     }

@@ -139,9 +139,10 @@ export async function POST(request: NextRequest) {
         .catch(() => undefined);
     }
 
-    console.log(
-      `Evento USB recibido: ${event} desde ${computerName} (${pc_ip})`,
-    );
+    // Sin console.log por evento: cada inserción o extracción
+    // dejaría una línea en la consola para siempre, y el evento ya
+    // queda en la base de datos y en el aviso en vivo. La consola
+    // es para el arranque y los problemas, no para el tráfico.
 
     // Broadcast vía Socket.IO a todos los clientes conectados
     broadcastUSBEvent({

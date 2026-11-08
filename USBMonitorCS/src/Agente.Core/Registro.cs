@@ -14,42 +14,70 @@ public enum NivelRegistro
     Error,
 }
 
-/// <summary>Escritor de archivo con rotación por tamaño (archivo.1, .2, …).</summary>
+/// <summary>
+/// Escritor de archivo con rotación por tamaño (archivo.1, .2, …)
+/// y escritura AGRUPADA: las líneas se acumulan en memoria y bajan
+/// a disco en tandas (cada 2 s, al llenar 8 KB o al instante si la
+/// línea es urgente), en vez de abrir y cerrar el archivo por cada
+/// línea en el hilo de quien registra. El registro no debe costar
+/// rendimiento al sistema que vigila.
+/// </summary>
 internal sealed class EscritorRotativo
 {
     private readonly string _ruta;
     private readonly long _maxBytes;
     private readonly int _copias;
     private readonly object _cerrojo = new();
+    private readonly System.Text.StringBuilder _bufer = new();
+    private readonly Timer _temporizador;
 
     public EscritorRotativo(string ruta, long maxBytes, int copias)
     {
         _ruta = ruta;
         _maxBytes = maxBytes;
         _copias = copias;
+        _temporizador = new Timer(_ => Volcar(), null, 2000, 2000);
     }
 
-    public void Escribir(string linea)
+    public void Escribir(string linea, bool urgente = false)
     {
         lock (_cerrojo)
         {
-            try
-            {
-                var directorio = Path.GetDirectoryName(_ruta);
-                if (!string.IsNullOrEmpty(directorio))
-                    Directory.CreateDirectory(directorio);
-                RotarSiHaceFalta(Encoding_Contar(linea));
-                File.AppendAllText(_ruta, linea + Environment.NewLine);
-            }
-            catch
-            {
-                // El log nunca tumba al agente.
-            }
+            _bufer.Append(linea).Append(Environment.NewLine);
+            if (urgente || _bufer.Length >= 8192)
+                VolcarBajoCerrojo();
+        }
+    }
+
+    /// <summary>Baja a disco lo acumulado, si hay algo.</summary>
+    public void Volcar()
+    {
+        lock (_cerrojo)
+            VolcarBajoCerrojo();
+    }
+
+    private void VolcarBajoCerrojo()
+    {
+        if (_bufer.Length == 0)
+            return;
+        var texto = _bufer.ToString();
+        _bufer.Clear();
+        try
+        {
+            var directorio = Path.GetDirectoryName(_ruta);
+            if (!string.IsNullOrEmpty(directorio))
+                Directory.CreateDirectory(directorio);
+            RotarSiHaceFalta(Encoding_Contar(texto));
+            File.AppendAllText(_ruta, texto);
+        }
+        catch
+        {
+            // El log nunca tumba al agente.
         }
     }
 
     private static int Encoding_Contar(string linea) =>
-        System.Text.Encoding.UTF8.GetByteCount(linea) + 2;
+        System.Text.Encoding.UTF8.GetByteCount(linea);
 
     private void RotarSiHaceFalta(int bytesNuevos)
     {
@@ -153,7 +181,13 @@ public static class Registro
             $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} [{token}] {nombre}: {mensaje}");
         lock (Cerrojo)
         {
-            _escritor?.Escribir(linea);
+            // Dieta del registro: al archivo va Info en adelante.
+            // Debug solo se persiste con la depuración activada
+            // (USBMONITOR_DEPURACION=1); si no, es ruido que cuesta
+            // disco y CPU en cada equipo vigilado. Los errores
+            // bajan al instante; el resto va en tandas.
+            if (nivel >= NivelRegistro.Info || DepuracionActiva)
+                _escritor?.Escribir(linea, urgente: nivel == NivelRegistro.Error);
         }
         if (_consola && nivel >= NivelRegistro.Info)
         {
@@ -161,14 +195,20 @@ public static class Registro
         }
     }
 
+    /// <summary>¿Depuración activa? La pone USBMONITOR_DEPURACION=1.</summary>
+    internal static bool DepuracionActiva =>
+        Environment.GetEnvironmentVariable("USBMONITOR_DEPURACION") == "1";
+
     /// <summary>
     /// Latido de depuración: cada 1 s añade la línea del proveedor a
-    /// <c>latido.log</c> (rotativo 2 MB × 3). Activo por defecto; se
-    /// apaga con la variable de entorno USBMONITOR_DEPURACION=0.
+    /// <c>latido.log</c> (rotativo 2 MB × 3). APAGADO por defecto —
+    /// una escritura por segundo en cada PC vigilada es justo el
+    /// relleno que hay que evitar —; se enciende solo para depurar,
+    /// con la variable de entorno USBMONITOR_DEPURACION=1.
     /// </summary>
     public static Task IniciarLatido(Func<string> linea, CancellationToken cancelacion)
     {
-        if (Environment.GetEnvironmentVariable("USBMONITOR_DEPURACION") == "0")
+        if (!DepuracionActiva)
             return Task.CompletedTask;
         var escritor = new EscritorRotativo(
             Path.Combine(DirectorioDatosCreado(), "latido.log"),

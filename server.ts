@@ -7,6 +7,7 @@ import path from "node:path";
 import next from "next";
 import nextPackage from "next/package.json" with { type: "json" };
 import { Server } from "socket.io";
+import { imprimirBannerPanel } from "./src/lib/banner";
 import { withContainer } from "@/lib/di/container";
 import { iniciarLatidoDepuracionAgente } from "@/lib/agentDebug";
 import { recuperarTareasInterrumpidas } from "@/lib/installExecutor";
@@ -193,22 +194,20 @@ async function createCustomServer() {
         ? `${protocol}://${networkAddress}:${currentPort}`
         : undefined;
 
-      logInfo(`Next.js ${nextVersion}`, {
-        Local: localUrl,
-        ...(networkUrl ? { Network: networkUrl } : {}),
-        Modo: mode,
-      });
-
       const socketProtocol = protocol === "https" ? "wss" : "ws";
       const localSocket = `${socketProtocol}://${displayHost}:${currentPort}/api/socketio`;
       const networkSocket = networkAddress
         ? `${socketProtocol}://${networkAddress}:${currentPort}/api/socketio`
         : undefined;
 
-      logInfo("Socket.IO", {
-        Local: localSocket,
-        ...(networkSocket ? { Network: networkSocket } : {}),
-        Orígenes: allowedOrigins,
+      imprimirBannerPanel({
+        versionNext: nextVersion,
+        local: localUrl,
+        red: networkUrl,
+        modo: mode,
+        socketLocal: localSocket,
+        socketRed: networkSocket,
+        origenes: allowedOrigins.join(", "),
       });
       if (!tlsOptions && !dev) {
         logWarn("TLS no configurado. El tráfico se sirve por HTTP.");

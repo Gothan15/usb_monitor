@@ -153,6 +153,7 @@ internal static class Program
 
             case "debug":
                 Registro.Configurar("agente.log");
+                PresentarConsola();
                 EjecutarHost(comoServicio: false);
                 return 0;
 
@@ -280,6 +281,33 @@ internal static class Program
         {
             return true;
         }
+    }
+
+    /// <summary>
+    /// La portada de la consola en el modo de depuración: marco y
+    /// nombre, sin adornos de relleno. Solo sale en consola
+    /// interactiva (el servicio de Windows no tiene dónde pintarla).
+    /// </summary>
+    private static void PresentarConsola()
+    {
+        try { Console.OutputEncoding = System.Text.Encoding.UTF8; }
+        catch { /* la consola heredada manda */ }
+        const int ancho = 62;
+        var marco = new string('═', ancho - 2);
+        string Fila(string texto)
+        {
+            if (texto.Length > ancho - 4)
+                texto = texto[..(ancho - 4)];
+            return $"║  {texto.PadRight(ancho - 4)}  ║";
+        }
+        Console.WriteLine($"╔{marco}╗");
+        Console.WriteLine(Fila("USBMONITOR · AGENTE DE MONITOREO USB"));
+        Console.WriteLine(Fila("Modo consola — depuración en esta ventana"));
+        Console.WriteLine($"╠{marco}╣");
+        Console.WriteLine(Fila($"Equipo     {Environment.MachineName}"));
+        Console.WriteLine(Fila($"Arranque   {DateTime.Now:yyyy-MM-dd HH:mm:ss}"));
+        Console.WriteLine($"╚{marco}╝");
+        Console.WriteLine();
     }
 
     private static void EjecutarHost(bool comoServicio)
