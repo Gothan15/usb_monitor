@@ -2,6 +2,8 @@ import { createHash, randomBytes } from "crypto";
 import { promises as fs } from "fs";
 import path from "path";
 
+import { escribirAtomico } from "@/lib/escribirAtomico";
+
 /**
  * Clave de enrolamiento de la flota.
  *
@@ -66,7 +68,7 @@ export async function enrollKeyStatus(): Promise<{
 export async function saveEnrollKeyHash(hash: string): Promise<void> {
   await fs.mkdir(path.dirname(ENROLL_PATH), { recursive: true });
   const data: EnrollKeyData = { hash, createdAt: new Date().toISOString() };
-  await fs.writeFile(ENROLL_PATH, JSON.stringify(data, null, 2), "utf-8");
+  await escribirAtomico(ENROLL_PATH, JSON.stringify(data, null, 2));
 }
 
 export async function deleteEnrollKey(): Promise<void> {

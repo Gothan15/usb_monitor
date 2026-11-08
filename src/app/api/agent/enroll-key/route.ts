@@ -49,8 +49,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, key });
   } catch (error) {
     logError("Error generando la clave de enrolamiento", error);
+    const motivo =
+      error instanceof Error ? error.message : "error desconocido";
     return NextResponse.json(
-      { ok: false, error: "No se pudo generar la clave" },
+      { ok: false, error: `No se pudo generar la clave: ${motivo}` },
       { status: 500 }
     );
   }

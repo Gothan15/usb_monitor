@@ -9,6 +9,7 @@ import {
 } from "@/lib/paqueteAgente";
 import { rutaEmpujador } from "@/lib/empujador";
 import { versionPeDesdeBuffer } from "@/lib/peVersion";
+import { escribirAtomico } from "@/lib/escribirAtomico";
 
 /**
  * Gestión del paquete del agente desde Ajustes.
@@ -141,23 +142,6 @@ export function elegirEntradas(nombres: string[]): EntradasPaquete {
     }
   }
   return { agente, empujador };
-}
-
-/** Escritura por temporal en la misma carpeta + renombrado. */
-async function escribirAtomico(
-  destino: string,
-  datos: Uint8Array,
-): Promise<void> {
-  const temporal = `${destino}.tmp-${process.pid}-${Math.random()
-    .toString(36)
-    .slice(2, 10)}`;
-  await fs.writeFile(temporal, datos);
-  try {
-    await fs.rename(temporal, destino);
-  } catch (error) {
-    await fs.unlink(temporal).catch(() => {});
-    throw error;
-  }
 }
 
 export interface RaicesPaquete {
