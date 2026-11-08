@@ -79,6 +79,19 @@ public static class Pnp
         return LocalizarNodo(instancia, fantasma: false) ?? LocalizarNodo(instancia, fantasma: true);
     }
 
+    /// <summary>
+    /// True si el nodo está FÍSICAMENTE presente (localizable sin
+    /// el modo fantasma). Un dispositivo extraído deja un nodo
+    /// fantasma: solo se localiza pidiéndolo expresamente. Sirve
+    /// para no dar por extraído un dispositivo bloqueado que la
+    /// enumeración WMI dejó de listar un momento: si su nodo
+    /// sigue presente, sigue enchufado.
+    /// </summary>
+    public static bool EstaPresenteFisicamente(string instancia)
+    {
+        return LocalizarNodo(instancia, fantasma: false) is not null;
+    }
+
     private static (uint Estado, uint Problema) EstadoDe(uint devInst)
     {
         var resultado = CM_Get_DevNode_Status(out var status, out var problema, devInst, 0);

@@ -55,6 +55,12 @@ public sealed class AgenteWorker : BackgroundService
     private readonly object _lockConocidos = new();
     private Dictionary<string, Dispositivo> _conocidos = new();
 
+    // Extracciones con gracia anti-parpadeo: una ausencia solo es
+    // extracción si dura 6 s sin reaparecer (ver ControlAusencias:
+    // la enumeración parpadea justo en las transiciones PnP, que
+    // es cuando el vigilante de eventos despierta a este bucle).
+    private readonly ControlAusencias _ausencias = new(TimeSpan.FromSeconds(6));
+
     // Firma (serial|letra) del último conjunto conectado que ya
     // consta en el panel: el bucle de detección avisa AL INSTANTE
     // cuando cambia, sin esperar al latido de 30 s — así «Ver USB»
@@ -537,13 +543,35 @@ public sealed class AgenteWorker : BackgroundService
         }
     }
 
-    private async Task AlExtraerAsync(string clave, Dispositivo disp)
+    /// <summary>
+    /// Procesa una extracción confirmada. Devuelve false SOLO si
+    /// la guarda anti-parpadeo la rechaza (dispositivo bloqueado
+    /// con el nodo aún presente): el llamante conserva su ficha.
+    /// </summary>
+    private async Task<bool> AlExtraerAsync(string clave, Dispositivo disp)
     {
         if (disp.Tipo == TipoDispositivo.Impresora)
         {
             // Nunca se bloqueó ni se registró: solo el evento.
             _cliente.Evento(EvDesconectado, disp.Letra, disp.Serial);
-            return;
+            return true;
+        }
+        // Guarda de último recurso: si el dispositivo consta
+        // BLOQUEADO y su nodo PnP sigue físicamente presente, no
+        // hubo extracción — es la enumeración la que no lo lista,
+        // ni con la gracia cumplida. «Extraerlo» reactivaría el
+        // nodo y dejaría la memoria accesible estando bloqueada:
+        // ante la duda, el bloqueo se mantiene (fail-closed) y la
+        // ficha se conserva; ya se procesará cuando el nodo
+        // desaparezca de verdad o el dispositivo se desbloquee.
+        var registroPrevio = _motor.Registro(clave);
+        if (registroPrevio is { Estado: EstadoBloqueo.Bloqueado } &&
+            Pnp.EstaPresenteFisicamente(disp.InstanciaPnP))
+        {
+            Log.Advertencia(
+                $"Extracción no creída de {disp.Nombre}: su nodo sigue presente " +
+                "y bloqueado; se mantiene el bloqueo (posible parpadeo de enumeración)");
+            return false;
         }
         _motor.AlExtraer(clave);
         DesarmarApagado(clave, disp, "el dispositivo se extrajo");
@@ -554,6 +582,7 @@ public sealed class AgenteWorker : BackgroundService
         // su foto del momento se pide de nuevo.
         lock (_lockEvidencia) _evidenciaSolicitada.Remove(clave);
         RefrescarPendientesLocales();
+        return true;
     }
 
     // ── apagado ante dispositivos fuera de la lista blanca ────────
@@ -702,15 +731,25 @@ public sealed class AgenteWorker : BackgroundService
                 lock (_lockConocidos) previos = new Dictionary<string, Dispositivo>(_conocidos);
                 foreach (var (clave, disp) in actuales)
                 {
+                    _ausencias.MarcarPresente(clave);
                     if (!previos.ContainsKey(clave))
                         await AlLlegarAsync(disp).ConfigureAwait(false);
                 }
+                // Ausencias: solo las CONFIRMADAS (gracia cumplida
+                // sin reaparecer) se procesan como extracción; las
+                // demás conservan su ficha de conocido — ni se
+                // extraen ni, al reaparecer, se tratan como llegada
+                // nueva (que era el ciclo bloquea/libera/bloquea).
+                var ahora = DateTime.UtcNow;
+                var siguientes = new Dictionary<string, Dispositivo>(actuales);
                 foreach (var (clave, disp) in previos)
                 {
-                    if (!actuales.ContainsKey(clave))
-                        await AlExtraerAsync(clave, disp).ConfigureAwait(false);
+                    if (actuales.ContainsKey(clave)) continue;
+                    if (!_ausencias.AusenciaConfirmada(clave, ahora) ||
+                        !await AlExtraerAsync(clave, disp).ConfigureAwait(false))
+                        siguientes[clave] = disp;
                 }
-                lock (_lockConocidos) _conocidos = actuales;
+                lock (_lockConocidos) _conocidos = siguientes;
                 AvisarConectadosSiCambio(actuales);
             }
             catch (Exception exc)
