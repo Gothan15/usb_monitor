@@ -34,7 +34,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Monitor USB - Seguridad y Control",
+  title: "NorthStar USB - Seguridad y Control",
   description:
     "Panel moderno para monitoreo y control de eventos USB en red. Seguridad reforzada, autenticación avanzada y CLI para administración.",
   keywords: [
@@ -67,7 +67,7 @@ export const metadata: Metadata = {
     },
   ],
   openGraph: {
-    title: "Monitor USB - Seguridad y Control",
+    title: "NorthStar USB - Seguridad y Control",
     description:
       "Panel moderno para monitoreo y control de eventos USB en red.",
     url: "https://usbmonitor.local",
@@ -76,7 +76,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary",
-    title: "Monitor USB - Seguridad y Control",
+    title: "NorthStar USB - Seguridad y Control",
     description:
       "Panel moderno para monitoreo y control de eventos USB en red.",
   },

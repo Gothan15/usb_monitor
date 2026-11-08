@@ -61,7 +61,7 @@ public sealed class ToolboxWindow : Window
     {
         _cliente = new ClientePanel(_config);
 
-        Title = "USBMonitor — Gestión del agente";
+        Title = "NorthStar USB — Gestión del agente";
         Width = 960;
         Height = 700;
         MinWidth = 900;

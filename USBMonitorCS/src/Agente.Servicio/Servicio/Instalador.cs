@@ -24,7 +24,7 @@ public static class Instalador
 {
     public const string NombreServicio = "USBMonitorService";
     public const string NombreTarea = "USBMonitorCompanero";
-    private const string NombreVisible = "USB Monitor Service";
+    private const string NombreVisible = "NorthStar USB Service";
     private const string Descripcion =
         "Supervisa dispositivos USB, los bloquea y exige la " +
         "contraseña del dueño o de un administrador para usarlos.";

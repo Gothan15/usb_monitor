@@ -61,7 +61,7 @@ public sealed class CompaneroWindow : Window
 
     public CompaneroWindow()
     {
-        Title = "USBMonitor — Dispositivo bloqueado";
+        Title = "NorthStar USB — Dispositivo bloqueado";
         Width = 470;
         SizeToContent = SizeToContent.Height;
         ResizeMode = ResizeMode.NoResize;

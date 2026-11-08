@@ -117,7 +117,7 @@ export function AppShell({
               <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-border px-[22px]">
                 <Image
                   src="/brujula-claro.png"
-                  alt="USB Monitor"
+                  alt="NorthStar USB"
                   width={96}
                   height={96}
                   quality={100}
@@ -142,7 +142,7 @@ export function AppShell({
                       className="overflow-hidden whitespace-nowrap leading-tight"
                     >
                       <span className="block font-display text-[15px] font-bold tracking-tight">
-                        USB Monitor
+                        NorthStar USB
                       </span>
                       <span className="block text-[10.5px] uppercase tracking-[0.14em] text-muted-foreground">
                         Centro de control
@@ -345,7 +345,7 @@ export function AppShell({
                   <span className="flex items-center gap-2 lg:hidden">
                     <Image
                       src="/brujula-claro.png"
-                      alt="USB Monitor"
+                      alt="NorthStar USB"
                       width={88}
                       height={88}
                       quality={100}
@@ -361,7 +361,7 @@ export function AppShell({
                       className="hidden size-[22px] rounded-[4px] dark:block"
                     />
                     <span className="font-display text-[15px] font-bold tracking-tight">
-                      USB Monitor
+                      NorthStar USB
                     </span>
                   </span>
                   <div className="ml-auto flex items-center gap-0.5">
@@ -482,7 +482,7 @@ export function AppShell({
                   >
                     <Image
                       src="/brujula-claro.png"
-                      alt="USB Monitor"
+                      alt="NorthStar USB"
                       width={96}
                       height={96}
                       quality={100}
@@ -498,7 +498,7 @@ export function AppShell({
                       className="hidden size-6 rounded-[4px] dark:block"
                     />
                     <span className="font-display text-base font-bold tracking-tight">
-                      USB Monitor
+                      NorthStar USB
                     </span>
                   </Link>
 
@@ -663,7 +663,7 @@ export function AppShell({
             {children}
 
             <footer className="mt-14 flex items-center justify-between border-t border-border pt-4 text-[11px] text-muted-foreground/80">
-              <span>USB Monitor</span>
+              <span>NorthStar USB</span>
               {lastUpdateLabel && <span>Sincronizado: {lastUpdateLabel}</span>}
             </footer>
           </div>

@@ -346,7 +346,7 @@ public sealed class ServidorLocal : IDisposable
         return $$"""
             <!doctype html>
             <html lang="es"><head><meta charset="utf-8">
-            <title>Desbloqueo de emergencia — USB Monitor</title>
+            <title>Desbloqueo de emergencia — NorthStar USB</title>
             <style>
               body { font-family: "Segoe UI", system-ui, sans-serif; background: #EEF0F4;
                      color: #1D2536; margin: 0; padding: 2rem 1rem; }

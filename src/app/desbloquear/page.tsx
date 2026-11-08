@@ -78,7 +78,7 @@ function DesbloquearForm() {
             <Usb className="size-5" />
           </div>
           <span className="font-display text-base font-bold tracking-tight">
-            USB Monitor
+            NorthStar USB
           </span>
         </div>
 

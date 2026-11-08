@@ -108,7 +108,7 @@ export default function LoginPage() {
         <div className="relative flex items-center gap-3">
           <Image
             src="/brujula-claro.png"
-            alt="USB Monitor"
+            alt="NorthStar USB"
             width={176}
             height={176}
             quality={100}
@@ -116,7 +116,7 @@ export default function LoginPage() {
           />
           <div className="flex flex-col">
             <span className="font-display text-lg font-bold leading-none tracking-tight">
-              USB Monitor
+              NorthStar USB
             </span>
             <span className="smallcaps mt-1.5 text-[#F5F3EF]/50">
               Centro de control
@@ -158,7 +158,7 @@ export default function LoginPage() {
           <div className="mb-7 flex items-center gap-3 lg:hidden">
             <Image
               src="/brujula-claro.png"
-              alt="USB Monitor"
+              alt="NorthStar USB"
               width={160}
               height={160}
               quality={100}
@@ -174,7 +174,7 @@ export default function LoginPage() {
               className="hidden size-10 shrink-0 rounded-sm dark:block"
             />
             <span className="font-display text-lg font-bold tracking-tight">
-              USB Monitor
+              NorthStar USB
             </span>
           </div>
 
@@ -182,7 +182,7 @@ export default function LoginPage() {
             {pcName ? "Desbloquear dispositivo USB" : "Acceso seguro al panel"}
           </p>
           <h2 className="font-display mt-2 text-[1.8rem] font-bold tracking-tight">
-            Monitoreo USB
+            Sistema de monitoreo USB
           </h2>
           <div className="mt-4 h-[2px] w-16 bg-[#C09A3B]" />
 

@@ -28,7 +28,7 @@ public sealed class VisorWindow : Window
 
     public VisorWindow()
     {
-        Title = "USBMonitor — Seriales de dispositivos";
+        Title = "NorthStar USB — Seriales de dispositivos";
         Width = 720;
         Height = 460;
         MinWidth = 600;

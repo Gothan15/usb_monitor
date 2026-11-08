@@ -60,7 +60,7 @@ public sealed class AsistenteWindow : Window
 
     public AsistenteWindow()
     {
-        Title = "USBMonitor — Configuración de este equipo";
+        Title = "NorthStar USB — Configuración de este equipo";
         Width = 620;
         Height = 660;
         MinWidth = 560;
