@@ -530,6 +530,30 @@ public sealed class ClientePanel : IDisposable
         return datos is { Ok: true, Token: { Length: > 0 } } ? datos.Token : null;
     }
 
+    /// <summary>
+    /// Consulta de actualización para la caja de herramientas:
+    /// qué corre este equipo y qué ofrece el panel. Null si el
+    /// panel no responde.
+    /// </summary>
+    public async Task<RespuestaActualizacion?> ConsultarActualizacionAsync()
+    {
+        var respuesta = await PeticionAsync("GET", "/api/agent/actualizacion")
+            .ConfigureAwait(false);
+        return IntentarJson<RespuestaActualizacion>(respuesta);
+    }
+
+    /// <summary>
+    /// Pide la actualización propia: el panel deja la orden en
+    /// espera y el servicio la recoge en su siguiente llamada de
+    /// configuración y se actualiza solo por el canal de siempre.
+    /// </summary>
+    public async Task<RespuestaActualizacion?> SolicitarActualizacionAsync()
+    {
+        var respuesta = await PeticionAsync("POST", "/api/agent/actualizacion")
+            .ConfigureAwait(false);
+        return IntentarJson<RespuestaActualizacion>(respuesta);
+    }
+
     /// <summary>Bloqueos ya autorizados esperando ejecución (reclamados).</summary>
     public async Task<List<PendienteDesbloqueo>> SondearDesbloqueosAsync()
     {

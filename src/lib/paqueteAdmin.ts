@@ -8,6 +8,7 @@ import {
   manifiestoPaquete,
 } from "@/lib/paqueteAgente";
 import { rutaEmpujador } from "@/lib/empujador";
+import { versionPeDesdeBuffer } from "@/lib/peVersion";
 
 /**
  * Gestión del paquete del agente desde Ajustes.
@@ -80,6 +81,23 @@ export function versionDesdeNombre(nombreArchivo: string): string | null {
   const sinV = nombre.match(/(\d+)\.(\d+)\.(\d+)/);
   if (sinV) return `${sinV[1]}.${sinV[2]}.${sinV[3]}`;
   return null;
+}
+
+/**
+ * La versión del agente DENTRO del zip subido, leída del recurso
+ * VERSIONINFO del propio ejecutable: es la fuente que manda desde
+ * ahora (el nombre del zip y el campo manual quedan de reserva).
+ * Null si el zip no se puede leer o el exe no declara versión.
+ */
+export function versionPeDesdeZip(zipBytes: Uint8Array): string | null {
+  try {
+    const entradas = unzipSync(zipBytes);
+    const elegidas = elegirEntradas(Object.keys(entradas));
+    if (!elegidas.agente) return null;
+    return versionPeDesdeBuffer(Buffer.from(entradas[elegidas.agente]));
+  } catch {
+    return null;
+  }
 }
 
 /**

@@ -162,7 +162,7 @@ const PREGUNTAS_FRECUENTES: { pregunta: string; respuesta: string }[] = [
     pregunta:
       "¿Cómo actualizo el paquete del agente que el panel sirve a los demás equipos?",
     respuesta:
-      "Desde Ajustes → Paquete del agente: sube el zip de la Release del agente (desde la v1.0.11 trae el ejecutable y el empujador) y el panel lo descomprime y coloca cada pieza en su carpeta — el ejecutable en «paquete-agente» y el empujador en «empujador» — y escribe el manifiesto con la versión, que se deduce del nombre del zip o se escribe en el campo de versión. Ese paquete es el que los agentes ya instalados descargan al actualizarse (verificando su SHA-256) y el que el empujador copia a los equipos nuevos; y la versión del manifiesto es la que Equipos compara con la de cada equipo para enseñar el sello de «Actualización disponible».",
+      "Desde Ajustes → Paquete del agente: sube el zip de la Release del agente (desde la v1.0.11 trae el ejecutable y el empujador) y el panel lo descomprime y coloca cada pieza en su carpeta — el ejecutable en «paquete-agente» y el empujador en «empujador» — y escribe el manifiesto con la versión, que se lee del propio ejecutable (su recurso de versión); el campo de versión y el nombre del zip solo cuentan si el ejecutable no declara ninguna. Ese paquete es el que los agentes ya instalados descargan al actualizarse (verificando su SHA-256) y el que el empujador copia a los equipos nuevos; y la versión del manifiesto es la que Equipos compara con la de cada equipo para enseñar el sello de «Actualización disponible».",
   },
   {
     pregunta: "¿Cómo funciona una tarea de instalación?",
@@ -241,6 +241,9 @@ export function SettingsTab() {
   const [versionPaquete, setVersionPaquete] = useState("");
   const [subiendoPaquete, setSubiendoPaquete] = useState(false);
   const [mensajePaquete, setMensajePaquete] = useState<string | null>(null);
+  // Actualización automática de los agentes (ajuste del panel).
+  const [autoUpdate, setAutoUpdate] = useState(false);
+  const [mensajeAutoUpdate, setMensajeAutoUpdate] = useState<string | null>(null);
   // Enrolamiento de la flota: clave compartida de alta de agentes.
   const [enrollConfigurada, setEnrollConfigurada] = useState<boolean | null>(null);
   const [claveEnrollNueva, setClaveEnrollNueva] = useState<string | null>(null);
@@ -282,6 +285,7 @@ export function SettingsTab() {
         };
         setUnlock(unlockCargado);
         setUnlockInicial(unlockCargado);
+        setAutoUpdate(Boolean(data.agentAutoUpdate));
       })
       .catch((err) => console.error("Failed to load settings", err));
   }, []);
@@ -345,6 +349,27 @@ export function SettingsTab() {
       );
     } catch {
       setErrorEnroll("No se pudo revocar la clave de enrolamiento.");
+    }
+  };
+
+  const cambiarAutoUpdate = async (activo: boolean) => {
+    setAutoUpdate(activo);
+    setMensajeAutoUpdate(null);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentAutoUpdate: activo }),
+      });
+      if (!res.ok) throw new Error("Error");
+      setMensajeAutoUpdate(
+        activo
+          ? "Actualización automática activada: cada equipo se pondrá al día solo cuando el paquete sea más nuevo que su versión."
+          : "Actualización automática desactivada."
+      );
+    } catch {
+      setAutoUpdate(!activo);
+      setMensajeAutoUpdate("No se pudo guardar el ajuste.");
     }
   };
 
@@ -842,7 +867,7 @@ export function SettingsTab() {
               id="paquete-version"
               value={versionPaquete}
               onChange={(e) => setVersionPaquete(e.target.value)}
-              placeholder="Versión (se deduce del nombre del zip)"
+              placeholder="Versión (solo si el ejecutable no la declara)"
               className="mt-3 max-w-xs"
             />
             <div className="mt-6">
@@ -860,6 +885,31 @@ export function SettingsTab() {
                 {errorPaquete}
               </p>
             )}
+          </div>
+
+          <div className="mt-6 flex max-w-3xl items-start justify-between gap-4 border border-border/60 bg-muted/20 px-4 py-4">
+            <div>
+              <p className="text-sm font-semibold text-foreground">
+                Actualización automática de los agentes
+              </p>
+              <p className="mt-1 max-w-xl text-sm leading-relaxed text-muted-foreground">
+                Con esto encendido, cada equipo se actualiza solo en
+                cuanto el paquete colocado sea más nuevo que la
+                versión que corre, sin pulsar «Actualizar» en
+                Equipos. La descarga verifica el SHA-256 del paquete,
+                como siempre. Apagado, la actualización se sigue
+                pudiendo pedir desde Equipos o desde la caja de
+                herramientas de cada equipo.
+              </p>
+              {mensajeAutoUpdate && (
+                <p className="mt-2 text-sm text-success">{mensajeAutoUpdate}</p>
+              )}
+            </div>
+            <Switch
+              checked={autoUpdate}
+              onCheckedChange={cambiarAutoUpdate}
+              aria-label="Actualización automática de los agentes"
+            />
           </div>
         </section>
 

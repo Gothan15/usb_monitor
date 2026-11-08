@@ -222,6 +222,19 @@ internal sealed class RespuestaTokenAgente
     [JsonPropertyName("token")] public string? Token { get; set; }
 }
 
+/// <summary>Respuesta de consultar/pedir la actualización propia (caja de herramientas).</summary>
+public sealed class RespuestaActualizacion
+{
+    [JsonPropertyName("ok")] public bool Ok { get; set; }
+    [JsonPropertyName("versionEquipo")] public string? VersionEquipo { get; set; }
+    [JsonPropertyName("versionDisponible")] public string? VersionDisponible { get; set; }
+    [JsonPropertyName("hayActualizacion")] public bool HayActualizacion { get; set; }
+    [JsonPropertyName("ordenActiva")] public bool OrdenActiva { get; set; }
+    [JsonPropertyName("estado")] public string? Estado { get; set; }
+    [JsonPropertyName("versionObjetivo")] public string? VersionObjetivo { get; set; }
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
 internal sealed class SolicitudBloqueo
 {
     [JsonPropertyName("pcName")] public string PcName { get; set; } = "";

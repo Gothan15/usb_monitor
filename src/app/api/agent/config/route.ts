@@ -7,6 +7,7 @@ import { registrarContactoAgente } from "@/lib/agentDebug";
 import { logError } from "@/lib/logger";
 import { db } from "@/lib/db";
 import {
+  asegurarOrdenActualizacion,
   ESTADO_ORDEN,
   ESTADOS_ORDEN_ACTIVA,
 } from "@/lib/agentCommands";
@@ -62,6 +63,22 @@ export async function GET(req: Request) {
       intentos: number;
     }> = [];
     if (serviceAuth.computerId) {
+      // Actualización automática: si el ajuste está encendido y
+      // el paquete del panel es más nuevo que lo que corre este
+      // equipo, la orden nace aquí mismo y sale en esta misma
+      // respuesta, sin que nadie pulse nada en Equipos.
+      if (settings.agentAutoUpdate === true) {
+        const equipo = await db.computer.findUnique({
+          where: { id: serviceAuth.computerId },
+          select: { agentVersion: true },
+        });
+        if (equipo) {
+          await asegurarOrdenActualizacion(
+            serviceAuth.computerId,
+            equipo.agentVersion,
+          );
+        }
+      }
       const activas = await db.agentCommand.findMany({
         where: {
           computerId: serviceAuth.computerId,

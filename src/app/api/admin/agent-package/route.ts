@@ -8,6 +8,7 @@ import {
   estadoPaqueteAgente,
   validarVersion,
   versionDesdeNombre,
+  versionPeDesdeZip,
 } from "@/lib/paqueteAdmin";
 
 /**
@@ -73,18 +74,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Manda la versión escrita si es válida; si no, la del nombre.
+    const bytes = new Uint8Array(await file.arrayBuffer());
+
+    // La versión manda el propio ejecutable: se lee de su PE
+    // (VERSIONINFO) y el nombre del zip o el campo manual solo
+    // valen si el exe no declara ninguna.
     const version =
+      versionPeDesdeZip(bytes) ??
       validarVersion(form?.get("version")) ??
       versionDesdeNombre(file.name || "");
     if (!version) {
       return errorJson(
-        "No se pudo deducir la versión del nombre del archivo: escríbela en el campo de versión (por ejemplo, 1.0.11).",
+        "No se pudo saber la versión: el ejecutable no la declara y el nombre del archivo no la trae. Escríbela en el campo de versión (por ejemplo, 1.0.19).",
         400,
       );
     }
-
-    const bytes = new Uint8Array(await file.arrayBuffer());
     const { estado, avisos } = await colocarPaquete(bytes, version);
     return NextResponse.json({ ok: true, estado, avisos });
   } catch (error: any) {
