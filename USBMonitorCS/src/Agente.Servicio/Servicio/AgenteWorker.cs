@@ -101,6 +101,7 @@ public sealed class AgenteWorker : BackgroundService
 
     // Transiciones del compañero para el latido de depuración.
     private bool? _companeroLatido;
+    private int _fallosPingSeguidos;
     private DateTime _companeroDesde = DateTime.UtcNow;
 
     private static string ArchivoPendientes =>
@@ -1006,10 +1007,21 @@ public sealed class AgenteWorker : BackgroundService
                 try
                 {
                     await _cliente.PingAsync().ConfigureAwait(false);
+                    if (_fallosPingSeguidos > 0)
+                    {
+                        Log.Info(
+                            $"Latido: el panel responde otra vez (tras {_fallosPingSeguidos} ping(s) fallidos).");
+                        _fallosPingSeguidos = 0;
+                    }
                 }
                 catch (Exception excPing)
                 {
-                    Log.Error($"Latido: ping al panel: {excPing.Message}");
+                    // Solo el primer fallo de la racha: repetir el
+                    // error en cada latido (30 s) durante una caída
+                    // larga llenaría el registro sin decir nada nuevo.
+                    _fallosPingSeguidos++;
+                    if (_fallosPingSeguidos == 1)
+                        Log.Error($"Latido: ping al panel: {excPing.Message}");
                 }
                 await _cliente.VaciarColaAsync().ConfigureAwait(false);
                 Dictionary<string, Dispositivo> actuales;
