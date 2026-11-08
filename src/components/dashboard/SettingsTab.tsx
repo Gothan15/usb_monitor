@@ -322,7 +322,10 @@ export function SettingsTab() {
     try {
       const res = await fetch("/api/agent/enroll-key", { method: "POST" });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Error");
+      if (!data.ok) {
+        setErrorEnroll(data.error || "No se pudo generar la clave de enrolamiento.");
+        return;
+      }
       setClaveEnrollNueva(data.key);
       setEnrollConfigurada(true);
       setMensajeEnroll(
@@ -341,7 +344,10 @@ export function SettingsTab() {
     try {
       const res = await fetch("/api/agent/enroll-key", { method: "DELETE" });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Error");
+      if (!data.ok) {
+        setErrorEnroll(data.error || "No se pudo revocar la clave de enrolamiento.");
+        return;
+      }
       setEnrollConfigurada(false);
       setClaveEnrollNueva(null);
       setMensajeEnroll(
