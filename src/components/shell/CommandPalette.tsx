@@ -56,6 +56,13 @@ interface CommandEntry {
 interface CommandPaletteProps {
   /** Current user role, determines which nav items show */
   role?: "ADMIN" | "USER" | null;
+  /**
+   * Abrir ya desplegada al montarse. Lo usa la carga perezosa
+   * (CommandPaletteLazy): la paleta solo se monta cuando el usuario
+   * la invoca por primera vez, y debe aparecer abierta, no esperar
+   * a un segundo Ctrl/⌘+K.
+   */
+  abiertaAlMontar?: boolean;
 }
 
 const CATEGORIES = [
@@ -77,8 +84,8 @@ function useDebounce<T>(value: T, delay: number): T {
 }
 
 /* ────── Component ────── */
-export function CommandPalette({ role }: CommandPaletteProps) {
-  const [open, setOpen] = useState(false);
+export function CommandPalette({ role, abiertaAlMontar }: CommandPaletteProps) {
+  const [open, setOpen] = useState(abiertaAlMontar ?? false);
   const router = useRouter();
   const { setTheme, theme } = useTheme();
 

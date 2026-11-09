@@ -27,6 +27,13 @@ model USBEvent {
   createdAt DateTime @default(now())
 
   @@index([createdAt])
+  // La búsqueda global (/api/search) y el registro ordenan por
+  // «timestamp» descendente con LIMIT: sin este índice, Postgres
+  // escaneaba la tabla entera y ordenaba en cada tecla de la lupa
+  // (~60 ms con 120 000 eventos); con él recorre el índice del más
+  // reciente hacia atrás y se detiene en los primeros aciertos
+  // (~0,1 ms medidos). Exige `npx prisma db push` al desplegar.
+  @@index([timestamp])
   @@map("usb_events")
 }
 
