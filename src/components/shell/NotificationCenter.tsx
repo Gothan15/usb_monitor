@@ -9,9 +9,12 @@ import {
   type ReactNode,
 } from "react";
 import { onNotification } from "@/lib/notificationBus";
+import type { EventoDestino } from "@/lib/eventoDestino";
+import { useEventosFiltroStore } from "@/store/useEventosFiltroStore";
 import { AnimatePresence, motion } from "framer-motion";
-import { Bell } from "lucide-react";
+import { Bell, ChevronRight } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -28,6 +31,9 @@ export interface Notification {
   description?: string;
   icon?: LucideIcon;
   tone?: "default" | "success" | "warning" | "danger" | "info";
+  /** Evento de origen: si está, pulsar el aviso lleva a verlo en el
+   *  registro de Eventos en vez de limitarse a descartarlo. */
+  evento?: EventoDestino;
   read: boolean;
   timestamp: Date;
 }
@@ -37,6 +43,7 @@ interface NotificationContextValue {
   unreadCount: number;
   addNotification: (n: Omit<Notification, "id" | "read" | "timestamp">) => void;
   markAllRead: () => void;
+  markOneRead: (id: string) => void;
   clearAll: () => void;
   dismissOne: (id: string) => void;
 }
@@ -78,6 +85,12 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   }, []);
 
+  const markOneRead = useCallback((id: string) => {
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
+    );
+  }, []);
+
   const clearAll = useCallback(() => setNotifications([]), []);
 
   const dismissOne = useCallback((id: string) => {
@@ -96,6 +109,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         unreadCount,
         addNotification,
         markAllRead,
+        markOneRead,
         clearAll,
         dismissOne,
       }}
@@ -128,9 +142,35 @@ function timeAgo(date: Date): string {
 }
 
 export function NotificationCenter() {
-  const { notifications, unreadCount, markAllRead, clearAll, dismissOne } =
-    useNotifications();
+  const {
+    notifications,
+    unreadCount,
+    markAllRead,
+    markOneRead,
+    clearAll,
+    dismissOne,
+  } = useNotifications();
   const [open, setOpen] = useState(false);
+  const router = useRouter();
+  const pathname = usePathname();
+  const solicitarDestino = useEventosFiltroStore((s) => s.solicitarDestino);
+
+  // El salto al registro solo existe en el área de administración,
+  // que es donde vive la pestaña de Eventos. En el área de usuario
+  // (su Historial es otra vista, con otro modelo) los avisos siguen
+  // como siempre: pulsar descarta.
+  const enAdmin = pathname?.startsWith("/admin") ?? false;
+
+  const alPulsarAviso = (n: Notification) => {
+    if (n.evento && enAdmin) {
+      markOneRead(n.id);
+      setOpen(false);
+      solicitarDestino(n.evento);
+      router.push("/admin/events");
+    } else {
+      dismissOne(n.id);
+    }
+  };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -208,6 +248,7 @@ export function NotificationCenter() {
             <AnimatePresence initial={false}>
               {notifications.map((n) => {
                 const Icon = n.icon;
+                const llevaAlRegistro = Boolean(n.evento) && enAdmin;
                 return (
                   <motion.button
                     key={n.id}
@@ -215,11 +256,16 @@ export function NotificationCenter() {
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
                     exit={{ opacity: 0, height: 0 }}
-                    onClick={() => dismissOne(n.id)}
-                    title="Pulsa para descartar"
+                    onClick={() => alPulsarAviso(n)}
+                    title={
+                      llevaAlRegistro
+                        ? "Ver en el registro de eventos"
+                        : "Pulsa para descartar"
+                    }
                     className={cn(
-                      "flex w-full items-start gap-3 border-b border-border/60 border-l-2 border-l-transparent px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-muted/40",
+                      "group flex w-full items-start gap-3 border-b border-border/60 border-l-2 border-l-transparent px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-muted/40",
                       !n.read && "border-l-[var(--acero)] bg-primary/[0.04]",
+                      llevaAlRegistro && "cursor-pointer",
                     )}
                   >
                     <span
@@ -248,8 +294,13 @@ export function NotificationCenter() {
                         </p>
                       )}
                     </div>
-                    <span className="shrink-0 text-[10.5px] text-muted-foreground/70">
-                      {timeAgo(n.timestamp)}
+                    <span className="flex shrink-0 flex-col items-end gap-1">
+                      <span className="text-[10.5px] text-muted-foreground/70">
+                        {timeAgo(n.timestamp)}
+                      </span>
+                      {llevaAlRegistro && (
+                        <ChevronRight className="size-3.5 text-muted-foreground/50 transition-all group-hover:translate-x-0.5 group-hover:text-[var(--acero)]" />
+                      )}
                     </span>
                   </motion.button>
                 );
