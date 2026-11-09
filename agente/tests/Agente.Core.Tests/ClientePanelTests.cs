@@ -204,4 +204,34 @@ public class ClientePanelTests
         Assert.Equal(Configuracion.IpsPc, ips);
         Assert.All(ips, ip => Assert.False(IPAddress.IsLoopback(IPAddress.Parse(ip!))));
     }
+
+    [Fact]
+    public async Task Firmar_CompensaElDesfaseDeRelojAprendidoDelPanel()
+    {
+        // La ventana de firma del panel es de ±300 s: un equipo
+        // con el reloj desviado (una VM restaurada es el caso
+        // típico) veía cada petición rechazada con 401 aunque
+        // su clave fuera la buena. El cliente aprende el
+        // desfase de la cabecera Date de cualquier respuesta
+        // — la del propio enrolamiento ya lo trae — y firma
+        // con la hora corregida.
+        var horaPanel = DateTimeOffset.UtcNow.AddHours(1);
+        var manejador = new ManejadorFalso(solicitud =>
+            solicitud.RequestUri!.AbsolutePath == "/api/agent/enroll"
+                ? ManejadorFalso.JsonConFecha(200,
+                    """{"ok":true,"equipoId":"eq-1","huella":"abc"}""", horaPanel)
+                : ManejadorFalso.Json(200, """{"ok":true}"""));
+        var (config, datos) = Fabrica.ConfiguracionEnPuerto(9);
+        using var cliente = new ClientePanel(config, manejador, datos);
+
+        Assert.True(await cliente.EnrolarConCodigoAsync("ABCD-EFGH-JKMN"));
+        await cliente.DuenoEquipoAsync();
+
+        // La llamada firmada posterior al enrolamiento lleva la
+        // marca corregida: la hora del panel, no la local.
+        var marca = Assert.IsType<string>(manejador.MarcasFirma[^1]);
+        var segundos = long.Parse(marca);
+        var esperado = horaPanel.ToUnixTimeSeconds();
+        Assert.InRange(Math.Abs(segundos - esperado), 0, 15);
+    }
 }

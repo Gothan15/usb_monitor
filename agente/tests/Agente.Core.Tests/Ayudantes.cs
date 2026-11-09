@@ -17,12 +17,16 @@ internal sealed class ManejadorFalso : HttpMessageHandler
     public List<string> Rutas { get; } = new();
     public List<string> Cuerpos { get; } = new();
     public List<string?> Autorizaciones { get; } = new();
+    public List<string?> MarcasFirma { get; } = new();
 
     protected override async Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage solicitud, CancellationToken cancelacion)
     {
         Rutas.Add(solicitud.RequestUri!.PathAndQuery);
         Autorizaciones.Add(solicitud.Headers.Authorization?.ToString());
+        MarcasFirma.Add(solicitud.Headers.TryGetValues("X-Agente-Ts", out var marcas)
+            ? marcas.FirstOrDefault()
+            : null);
         Cuerpos.Add(solicitud.Content is null
             ? ""
             : await solicitud.Content.ReadAsStringAsync(cancelacion));
@@ -33,6 +37,14 @@ internal sealed class ManejadorFalso : HttpMessageHandler
     {
         Content = new StringContent(cuerpo, Encoding.UTF8, "application/json"),
     };
+
+    /// <summary>Como Json, pero la respuesta declara la hora dada en su cabecera Date (la del «servidor»).</summary>
+    public static HttpResponseMessage JsonConFecha(int estado, string cuerpo, DateTimeOffset fecha)
+    {
+        var respuesta = Json(estado, cuerpo);
+        respuesta.Headers.Date = fecha;
+        return respuesta;
+    }
 }
 
 internal static class Fabrica

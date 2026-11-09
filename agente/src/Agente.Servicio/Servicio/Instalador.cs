@@ -151,7 +151,7 @@ public static class Instalador
 
     private static readonly Registrador LogInstalador = Registro.Obtener("instalador");
 
-    private static void Ejecutar(string programa, params string[] argumentos)
+    private static int Ejecutar(string programa, params string[] argumentos)
     {
         // Los comandos auxiliares (sc.exe, schtasks.exe) nunca tumban
         // la instalación, pero su resultado SÍ queda en el registro:
@@ -171,7 +171,7 @@ public static class Instalador
             if (proceso is null)
             {
                 LogInstalador.Advertencia($"{programa}: no se pudo iniciar el proceso.");
-                return;
+                return -1;
             }
             // Las dos salidas se leen EN PARALELO y la espera va
             // con límite de verdad: antes se leía stdout hasta el
@@ -189,7 +189,7 @@ public static class Instalador
             {
                 try { proceso.Kill(entireProcessTree: true); } catch { /* ya salió */ }
                 LogInstalador.Advertencia($"{programa} {string.Join(" ", argumentos)}: sin salida en 30 s; proceso terminado.");
-                return;
+                return -1;
             }
             string salida = lecturaSalida.GetAwaiter().GetResult();
             string errores = lecturaErrores.GetAwaiter().GetResult();
@@ -204,12 +204,68 @@ public static class Instalador
             {
                 LogInstalador.Debug($"{programa} {detalle} -> OK");
             }
+            return proceso.ExitCode;
         }
         catch (Exception exc)
         {
             LogInstalador.Advertencia($"{programa}: {exc.Message}");
+            return -1;
         }
     }
+
+    /// <summary>
+    /// Crea (o refresca) la tarea del compañero al iniciar
+    /// sesión. La vía clásica (schtasks /Create sin cuenta) la
+    /// traduce Windows a la identidad de quien instala; cuando
+    /// quien instala es el servicio temporal de la instalación
+    /// remota (cuenta SYSTEM), esa traducción falla con el
+    /// error 1332 y la tarea no nace — se vio en la VM el
+    /// 2026-11-08. En ese caso se crea desde una definición
+    /// XML cuyo sujeto es el GRUPO Usuarios: vale para quien
+    /// inicie sesión, sin traducir ninguna cuenta.
+    /// </summary>
+    private static void CrearTareaCompanero(string exe)
+    {
+        if (Ejecutar("schtasks.exe", "/Create", "/TN", NombreTarea,
+                "/TR", $"\"{exe}\" prompt", "/SC", "ONLOGON",
+                "/RL", "LIMITED", "/F") == 0)
+            return;
+        var rutaXml = Path.Combine(
+            Path.GetTempPath(), "USBMonitorCompanero.xml");
+        try
+        {
+            File.WriteAllText(
+                rutaXml, ConstruirXmlTareaCompanero(exe),
+                System.Text.Encoding.Unicode);
+            if (Ejecutar("schtasks.exe", "/Create", "/TN", NombreTarea,
+                    "/XML", rutaXml, "/F") == 0)
+                LogInstalador.Info(
+                    "Tarea del compañero creada desde la definición XML (sujeto: grupo Usuarios).");
+        }
+        finally
+        {
+            try { File.Delete(rutaXml); } catch { /* temporal */ }
+        }
+    }
+
+    /// <summary>La definición XML de la tarea del compañero (grupo Usuarios, al iniciar sesión, sin límite de tiempo).</summary>
+    internal static string ConstruirXmlTareaCompanero(string exe) =>
+        "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\r\n" +
+        "<Task version=\"1.2\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\r\n" +
+        "  <RegistrationInfo><Description>Compañero de USB Monitor: muestra los avisos de bloqueo en la sesión del usuario.</Description></RegistrationInfo>\r\n" +
+        "  <Triggers><LogonTrigger><Enabled>true</Enabled></LogonTrigger></Triggers>\r\n" +
+        "  <Principals><Principal id=\"Autor\"><GroupId>S-1-5-32-545</GroupId><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>\r\n" +
+        "  <Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>" +
+        "<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>" +
+        "<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>" +
+        "<Enabled>true</Enabled><ExecutionTimeLimit>PT0S</ExecutionTimeLimit></Settings>\r\n" +
+        $"  <Actions Context=\"Autor\"><Exec><Command>{EscaparXml(exe)}</Command><Arguments>prompt</Arguments></Exec></Actions>\r\n" +
+        "</Task>\r\n";
+
+    /// <summary>Escapa los caracteres con significado en XML.</summary>
+    private static string EscaparXml(string texto) => texto
+        .Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;")
+        .Replace("\"", "&quot;").Replace("'", "&apos;");
 
     // ── restauración independiente ────────────────────────────────
     /// <summary>
@@ -250,8 +306,7 @@ public static class Instalador
                     StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException(
                     $"El servicio ya está instalado desde otra ruta ({instalado}); no se toca.");
-            Ejecutar("schtasks.exe", "/Create", "/TN", NombreTarea,
-                "/TR", $"\"{exe}\" prompt", "/SC", "ONLOGON", "/RL", "LIMITED", "/F");
+            CrearTareaCompanero(exe);
             using var existente = new ServiceController(NombreServicio);
             if (existente.Status == ServiceControllerStatus.Stopped)
                 existente.Start();
@@ -296,8 +351,7 @@ public static class Instalador
         Ejecutar("sc.exe", "failure", NombreServicio,
             "reset=", "86400", "actions=", "restart/60000/restart/60000/restart/60000");
         // El compañero al iniciar sesión: el mismo exe en modo prompt.
-        Ejecutar("schtasks.exe", "/Create", "/TN", NombreTarea,
-            "/TR", $"\"{exe}\" prompt", "/SC", "ONLOGON", "/RL", "LIMITED", "/F");
+        CrearTareaCompanero(exe);
         // Y a correr AHORA, en la sesión actual: sin esto el
         // compañero no existe hasta el próximo inicio de sesión y
         // ningún bloqueo podría desbloquearse tras instalar.

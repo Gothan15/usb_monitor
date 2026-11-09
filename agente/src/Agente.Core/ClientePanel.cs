@@ -12,6 +12,7 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 
 namespace USBMonitor.Agente.Core;
 
@@ -58,7 +59,7 @@ public sealed class ClientePanel : IDisposable
         var equipoId = _config.EquipoId;
         if (identidad is not null && equipoId is not null)
         {
-            var marca = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
+            var marca = MarcaParaFirmar().ToString();
             var nonce = IdentidadAgente.NuevoNonce();
             var firma = identidad.Firmar(metodo, ruta, marca, nonce, cuerpo);
             solicitud.Headers.TryAddWithoutValidation("X-Agente-Id", equipoId);
@@ -73,6 +74,47 @@ public sealed class ClientePanel : IDisposable
 
     private readonly object _cerrojoCola = new();
     private readonly List<EventoUsb> _cola;
+
+    // Desfase entre el reloj de este equipo y el del panel, en
+    // segundos, aprendido de la cabecera Date de las respuestas
+    // del propio panel. Las marcas al firmar se compensan con
+    // él: la ventana de firma es de ±300 s y un equipo con el
+    // reloj desviado (las VM lo pierden al restaurar una
+    // instantánea) veía TODAS sus peticiones rechazadas con
+    // 401 aunque su clave fuera la buena — pasó en la VM
+    // ENDUSER-PC el 2026-11-08, con dos claves distintas y
+    // enrolamientos que el panel aceptaba.
+    private long _desfasePanelSeg;
+    private bool _desfaseAvisado;
+
+    /// <summary>La marca Unix para firmar: la hora local corregida con el desfase aprendido del panel.</summary>
+    private long MarcaParaFirmar() =>
+        DateTimeOffset.UtcNow.ToUnixTimeSeconds() +
+        Interlocked.Read(ref _desfasePanelSeg);
+
+    /// <summary>
+    /// Aprende el desfase contra el panel desde la hora que el
+    /// propio servidor declara. El panel es la autoridad para
+    /// su propia ventana de firma, así que alinearse a SU hora
+    /// es lo correcto aunque sea la suya la desviada. Un
+    /// desfase mayor de un minuto deja UNA advertencia en el
+    /// registro por proceso: el diagnóstico queda escrito
+    /// aunque la compensación ya lo haya curado.
+    /// </summary>
+    private void AprenderDesfase(DateTimeOffset horaServidor)
+    {
+        var desfase = (long)(horaServidor - DateTimeOffset.UtcNow).TotalSeconds;
+        Interlocked.Exchange(ref _desfasePanelSeg,
+            Math.Abs(desfase) >= 20 ? desfase : 0);
+        if (Math.Abs(desfase) > 60 && !_desfaseAvisado)
+        {
+            _desfaseAvisado = true;
+            Log.Advertencia(
+                $"El reloj de este equipo difiere del panel en ~{desfase} s: " +
+                "las marcas al firmar se compensan con esa diferencia, pero " +
+                "conviene sincronizar la hora de este equipo.");
+        }
+    }
 
     private readonly object _cerrojoSalud = new();
     private int _saludOk;
@@ -196,6 +238,8 @@ public sealed class ClientePanel : IDisposable
         try
         {
             using var respuesta = await _http.SendAsync(solicitud).ConfigureAwait(false);
+            if (respuesta.Headers.Date is { } fechaServidor)
+                AprenderDesfase(fechaServidor);
             var texto = await respuesta.Content.ReadAsStringAsync().ConfigureAwait(false);
             reloj.Stop();
             var estado = (int)respuesta.StatusCode;
