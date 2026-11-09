@@ -29,7 +29,7 @@ public sealed class ClientePanel : IDisposable
 
     /// <summary>
     /// La identidad por clave de este equipo (se crea la primera
-    /// vez que hace falta: enrolar, migrar o firmar). Null si no
+    /// vez que hace falta: enrolar o firmar). Null si no
     /// se pudo ni leer ni crear.
     /// </summary>
     public IdentidadAgente? Identidad
@@ -47,10 +47,9 @@ public sealed class ClientePanel : IDisposable
 
     /// <summary>
     /// Acredita una petición: firmada con la clave del equipo si
-    /// ya hay identidad registrada en el panel; si aún no, con el
-    /// token antiguo (puente de migración: solo lo aceptan las
-    /// rutas de auto-actualización y la de migración); si no hay
-    /// nada, la petición sale desnuda (el enrolamiento).
+    /// ya hay identidad registrada en el panel; si aún no la hay,
+    /// la petición sale desnuda (es el caso del enrolamiento, la
+    /// única llamada que el panel acepta sin firma).
     /// </summary>
     private void AplicarCredencial(
         HttpRequestMessage solicitud, string metodo, string ruta, byte[] cuerpo)
@@ -67,12 +66,6 @@ public sealed class ClientePanel : IDisposable
             solicitud.Headers.TryAddWithoutValidation("X-Agente-Nonce", nonce);
             solicitud.Headers.TryAddWithoutValidation("X-Agente-Firma", firma);
             return;
-        }
-        var token = _config.TokenLegado;
-        if (token is not null)
-        {
-            solicitud.Headers.TryAddWithoutValidation(
-                "Authorization", $"AgentToken {token}");
         }
     }
     private readonly HttpClient _http;
@@ -113,17 +106,13 @@ public sealed class ClientePanel : IDisposable
         {
             Log.Info($"Credencial del equipo: clave registrada (huella {Identidad?.Huella[..12]}…).");
         }
-        else if (_config.TokenLegado is not null)
-        {
-            Log.Info("Credencial del equipo: token antiguo pendiente de migrar a clave.");
-        }
         else if (_config.CodigoEnrolamiento is not null)
         {
             Log.Info("Credencial del equipo: código de enrolamiento pendiente de gastar.");
         }
         else
         {
-            Log.Info("Credencial del equipo: AUSENTE (sin clave, sin código, sin token antiguo).");
+            Log.Info("Credencial del equipo: AUSENTE (sin clave y sin código de enrolamiento).");
         }
     }
 
@@ -903,32 +892,6 @@ public sealed class ClientePanel : IDisposable
         }
 
         return pasos;
-    }
-
-    /// <summary>
-    /// Migración del token antiguo a la clave: presenta el token
-    /// por última vez (lo pone AplicarCredencial en la cabecera)
-    /// y registra la pública. Si el panel la acepta, el token se
-    /// borra de server.json y este equipo ya solo firma.
-    /// </summary>
-    public async Task<bool> MigrarCredencialAsync()
-    {
-        var identidad = Identidad;
-        if (identidad is null) return false;
-        if (_config.TokenLegado is null) return false;
-        var respuesta = await PeticionAsync("POST", "/api/agent/migrar-credencial", new SolicitudMigracion
-        {
-            ClavePublica = identidad.ClavePublicaB64,
-        }).ConfigureAwait(false);
-        var datos = IntentarJson<RespuestaCredencial>(respuesta);
-        if (datos is { Ok: true, EquipoId: { Length: > 0 } })
-        {
-            _config.GuardarEquipoId(datos.EquipoId);
-            _config.BorrarTokenLegado();
-            Log.Info("Credencial migrada: el token antiguo se borró y el equipo ya firma con su clave.");
-            return true;
-        }
-        return false;
     }
 
     /// <summary>Resultado de comprobar la credencial contra el panel.</summary>

@@ -696,8 +696,6 @@ public sealed class ToolboxWindow : Window
         }
         if (_config.CodigoEnrolamiento is not null)
             return "Hay un código de enrolamiento pendiente: el servicio lo gastará al arrancar para registrar la clave.";
-        if (_config.TokenLegado is not null)
-            return "Este equipo aún guarda el token del sistema anterior: se migrará solo a la clave en cuanto el servicio hable con el panel.";
         return "Sin credencial: este equipo no puede hablar con el panel. Enrola con un código.";
     }
 

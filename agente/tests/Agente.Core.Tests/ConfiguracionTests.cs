@@ -1,6 +1,6 @@
 // -*- coding: utf-8 -*-
 // Pruebas de server.json: lectura, prioridad de rutas, la
-// credencial por clave (y el token legado de la migración) y el
+// credencial por clave, la purga del token antiguo (2.0) y el
 // guardado.
 using USBMonitor.Agente.Core;
 
@@ -20,12 +20,11 @@ public class ConfiguracionTests
     public void LeeValoresDelArchivo()
     {
         var (config, _, _) = Crear(
-            """{"serverHost":"panel.local","serverPort":8443,"serverScheme":"https","agentToken":"plano123"}""");
+            """{"serverHost":"panel.local","serverPort":8443,"serverScheme":"https"}""");
         Assert.Equal("panel.local", config.HostServidor);
         Assert.Equal(8443, config.PuertoServidor);
         Assert.Equal("https", config.EsquemaServidor);
         Assert.Equal("https://panel.local:8443", config.UrlBase);
-        Assert.Equal("plano123", config.TokenLegado);
     }
 
     [Fact]
@@ -37,25 +36,9 @@ public class ConfiguracionTests
         Assert.Equal("localhost", config.HostServidor);
         Assert.Equal(3000, config.PuertoServidor);
         Assert.Equal("http", config.EsquemaServidor);
-        Assert.Null(config.TokenLegado);
         Assert.False(config.TieneClave);
         Assert.Null(config.EquipoId);
         Assert.Null(config.CodigoEnrolamiento);
-    }
-
-    [Fact]
-    public void TokenCifrado_SeLeeEnClaro()
-    {
-        var cifrado = CifradoValores.Cifrar("token-oculto");
-        var (config, _, _) = Crear($$"""{"agentToken":"{{cifrado}}"}""");
-        Assert.Equal("token-oculto", config.TokenLegado);
-    }
-
-    [Fact]
-    public void TokenCifradoIlegible_SeDescarta()
-    {
-        var (config, _, _) = Crear("""{"agentToken":"ENC:basura-que-no-abre"}""");
-        Assert.Null(config.TokenLegado);
     }
 
     [Fact]
@@ -74,15 +57,17 @@ public class ConfiguracionTests
     }
 
     [Fact]
-    public void BorrarTokenLegado_LoQuitaDelArchivo()
+    public void Guardar_PurgaElTokenAntiguoDelArchivo()
     {
+        // Un server.json que viene del sistema anterior trae el
+        // token guardado: en la 2.0 nadie lo lee y el primer
+        // guardado lo saca del archivo, sin perder lo demás.
         var (config, app, datos) = Crear("""{"agentToken":"legado","serverHost":"x.local"}""");
-        Assert.Equal("legado", config.TokenLegado);
-        Assert.True(config.BorrarTokenLegado());
+        Assert.True(config.GuardarEquipoId("equipo-7"));
 
         var releida = new Configuracion(app, datos);
-        Assert.Null(releida.TokenLegado);
         Assert.Equal("x.local", releida.HostServidor);
+        Assert.Equal("equipo-7", releida.EquipoId);
         var crudo = File.ReadAllText(Path.Combine(app, "server.json"));
         Assert.DoesNotContain("agentToken", crudo);
     }

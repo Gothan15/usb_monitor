@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { requireAgentAuthOPuente } from "@/lib/agentAuth";
+import { requireAgentAuth } from "@/lib/agentAuth";
 import { logError } from "@/lib/logger";
 import { manifiestoPaquete } from "@/lib/paqueteAgente";
 
@@ -13,7 +13,7 @@ import { manifiestoPaquete } from "@/lib/paqueteAgente";
  */
 export async function GET(req: Request) {
   try {
-    await requireAgentAuthOPuente(req);
+    await requireAgentAuth(req);
     const manifiesto = await manifiestoPaquete();
     if (!manifiesto) {
       return NextResponse.json(

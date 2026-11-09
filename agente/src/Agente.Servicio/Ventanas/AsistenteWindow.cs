@@ -650,9 +650,9 @@ public sealed class AsistenteWindow : Window
 
     private async Task<bool> GuardarCredencialDesdeCampoAsync()
     {
-        // Ya acreditado (clave registrada o token antiguo que se
-        // migrará solo): el paso no tiene nada que guardar.
-        if (_config.TieneClave || _config.TokenLegado is not null)
+        // Ya acreditado (clave registrada): el paso no tiene
+        // nada que guardar.
+        if (_config.TieneClave)
         {
             _avisoToken.Visibility = Visibility.Collapsed;
             return true;
@@ -886,7 +886,6 @@ public sealed class AsistenteWindow : Window
 
         // Credencial: se lee el estado real, no lo que el usuario dijo.
         bool hayCredencial = _config.TieneClave ||
-            _config.TokenLegado is not null ||
             _config.CodigoEnrolamiento is not null;
         _resumen.Children.Add(hayCredencial
             ? LineaResumen(true, "Credencial: este equipo puede presentarse al panel.")

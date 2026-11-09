@@ -106,7 +106,10 @@ public class OrdenesTests
         {
             var ctx = await oido.GetContextAsync();
             Assert.Equal("/api/agent/paquete", ctx.Request.Url!.AbsolutePath);
-            Assert.Equal("AgentToken token-prueba", ctx.Request.Headers["Authorization"]);
+            // Sin clave registrada la descarga sale desnuda: en
+            // producción el panel la rechazaría (el paquete solo
+            // baja con la petición firmada).
+            Assert.Null(ctx.Request.Headers["Authorization"]);
             ctx.Response.ContentLength64 = contenido.Length;
             await ctx.Response.OutputStream.WriteAsync(contenido);
             ctx.Response.Close();

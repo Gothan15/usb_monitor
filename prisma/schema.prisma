@@ -66,12 +66,6 @@ model Computer {
   intentosFallidosCredencial Int       @default(0)
   alertaCredencial           String?
   credencialRevocadaAt       DateTime?
-  // LEGADO DE MIGRACIÓN: hash del antiguo token por equipo. Solo
-  // lo lee la ruta de migración (registrar la clave presentando
-  // el token una última vez) y el puente mínimo de
-  // auto-actualización; se borra en cuanto el equipo migra y la
-  // columna desaparecerá cuando la flota entera haya migrado.
-  agentTokenHash   String?
   unlockMode       String    @default("OWNER_OR_ADMIN") // OWNER_OR_ADMIN | ADMIN_ONLY (PCs compartidas)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt

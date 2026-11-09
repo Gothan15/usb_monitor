@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { promises as fs } from "fs";
 import path from "path";
-import { requireAgentAuthOPuente } from "@/lib/agentAuth";
+import { requireAgentAuth } from "@/lib/agentAuth";
 import { readAppSettings } from "@/lib/appSettings";
 import { registrarContactoAgente } from "@/lib/agentDebug";
 import { logError } from "@/lib/logger";
@@ -24,7 +24,7 @@ import { getCurrentDate } from "@/lib/time";
  */
 export async function GET(req: Request) {
   try {
-    const serviceAuth = await requireAgentAuthOPuente(req);
+    const serviceAuth = await requireAgentAuth(req);
 
     const settings = await readAppSettings();
     let startupNetworkDelay = 15;

@@ -1077,11 +1077,6 @@ public sealed class AgenteWorker : BackgroundService
                             Log.Advertencia("El enrolamiento con código falló; se reintenta en unos minutos (si el código caducó o ya se gastó, genera otro en Equipos).");
                         }
                     }
-                    else if (_configuracion.TokenLegado is not null)
-                    {
-                        if (!await _cliente.MigrarCredencialAsync().ConfigureAwait(false))
-                            Log.Advertencia("La migración de la credencial falló; se reintenta en unos minutos.");
-                    }
                 }
                 if (ahora - _ultimaConfig >= TimeSpan.FromSeconds(600))
                 {
