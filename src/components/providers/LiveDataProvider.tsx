@@ -17,6 +17,7 @@ import {
 } from "@/hooks/useSocketEvents";
 import { useLiveSyncStore } from "@/store/useLiveSyncStore";
 import { emitNotification } from "@/lib/notificationBus";
+import { destinoDesdeEventoSocket } from "@/lib/eventoDestino";
 import { Usb } from "lucide-react";
 
 /* ── Context types ── */
@@ -114,12 +115,16 @@ export function LiveDataProvider({
             [event.serialNumber, event.driveLetter ? `Unidad ${event.driveLetter}` : null]
               .filter(Boolean)
               .join(" · ") || undefined;
+          // El aviso lleva la referencia a su evento: desde la
+          // campana se puede saltar a verlo en el registro.
+          const destino = destinoDesdeEventoSocket(event);
           if (esDesbloqueo) {
             emitNotification({
               title: `USB desbloqueado en ${event.pcName}`,
               description: detalle,
               icon: Usb,
               tone: "success",
+              evento: destino,
             });
           } else {
             emitNotification({
@@ -129,6 +134,7 @@ export function LiveDataProvider({
               description: detalle,
               icon: Usb,
               tone: esBloqueo ? "danger" : "warning",
+              evento: destino,
             });
           }
         }

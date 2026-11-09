@@ -18,10 +18,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ShieldCheck, Siren, Trash2, Usb } from "lucide-react";
+import { ShieldCheck, Siren, Trash2, Usb, X } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { etiquetaEventoUsb, etiquetaCapaBloqueo } from "@/lib/eventosUsb";
+import { filtrarEventosPorDestino } from "@/lib/eventoDestino";
+import { useEventosFiltroStore } from "@/store/useEventosFiltroStore";
 import { USBEvent, formatDate, formatTime } from "./types";
 
 /* «hace 5 min» para leer el registro de un vistazo. */
@@ -48,8 +50,25 @@ interface Props {
 }
 
 export function EventsTab({ events, loading, onClear, clearing }: Props) {
+  // Destino dejado por la campana de notificaciones: si hay uno, el
+  // registro se enseña filtrado a ese evento hasta que el usuario
+  // pide ver todo. Se consume del store de forma reactiva, así
+  // funciona tanto al navegar desde otra pestaña como al pulsar un
+  // aviso estando ya en Eventos.
+  const destinoPendiente = useEventosFiltroStore((s) => s.destinoPendiente);
+  const limpiarDestino = useEventosFiltroStore((s) => s.limpiarDestino);
+
+  const filtroDestino = useMemo(
+    () =>
+      destinoPendiente
+        ? filtrarEventosPorDestino(events, destinoPendiente)
+        : null,
+    [events, destinoPendiente],
+  );
+  const eventosVisibles = filtroDestino ? filtroDestino.coincidencias : events;
+
   const { page, pageSize, setPage, setPageSize } = usePagination({
-    totalItems: events.length,
+    totalItems: eventosVisibles.length,
   });
 
   const classifyEvent = (event: USBEvent) => {
@@ -156,7 +175,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
   }, [events, loading]);
 
   const { sortedData, sortConfig, requestSort } =
-    useTableSort<USBEvent>(events);
+    useTableSort<USBEvent>(eventosVisibles);
 
   const paginatedEvents = useMemo(() => {
     if (sortedData.length === 0) return [];
@@ -222,14 +241,55 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
         ))}
       </div>
 
+      {/* ── Aviso de llegada desde la campana ── */}
+      {destinoPendiente && (
+        <div className="mt-8 flex flex-wrap items-center gap-x-4 gap-y-2 border border-border border-l-2 border-l-[var(--acero)] bg-primary/[0.04] px-4 py-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-semibold text-foreground">
+              Viendo el evento de la notificación:{" "}
+              {etiquetaEventoUsb(destinoPendiente.tipo)} en{" "}
+              {destinoPendiente.pcName}
+            </p>
+            <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+              {formatDate(destinoPendiente.createdAt)} ·{" "}
+              {formatTime(destinoPendiente.createdAt)}
+              {destinoPendiente.serialNumber &&
+                ` · ${destinoPendiente.serialNumber}`}
+            </p>
+            {filtroDestino && !filtroDestino.exacto && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Ese evento ya salió de los últimos 50 del registro: se
+                enseñan las coincidencias por equipo, tipo y dispositivo.
+              </p>
+            )}
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="inline-flex items-center gap-1.5"
+            onClick={limpiarDestino}
+          >
+            <X className="size-3.5" />
+            Ver todo el registro
+          </Button>
+        </div>
+      )}
+
       {/* ── Cuerpo ── */}
-      <div className="mt-8">
+      <div className={destinoPendiente ? "mt-5" : "mt-8"}>
         {loading ? (
           <div className="space-y-3">
             {[...Array(5)].map((_, i) => (
               <Skeleton key={i} className="h-12 bg-muted/50" />
             ))}
           </div>
+        ) : destinoPendiente && eventosVisibles.length === 0 ? (
+          <p className="border-t border-border py-10 text-sm text-muted-foreground">
+            Ese evento ya no aparece entre los últimos 50 del registro y
+            no quedan coincidencias suyas. Pulsa «Ver todo el registro»
+            para volver a la lista completa.
+          </p>
         ) : events.length === 0 ? (
           <p className="border-t border-border py-10 text-sm text-muted-foreground">
             No se ha registrado ningún evento USB todavía. Cuando un agente
@@ -389,11 +449,11 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
               <ScrollBar orientation="horizontal" />
             </ScrollArea>
 
-            {!loading && events.length > 0 && (
+            {!loading && eventosVisibles.length > 0 && (
               <DashboardPagination
                 page={page}
                 pageSize={pageSize}
-                totalItems={events.length}
+                totalItems={eventosVisibles.length}
                 onPageChange={setPage}
                 onPageSizeChange={setPageSize}
                 label="eventos"

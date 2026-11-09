@@ -1,4 +1,5 @@
 import type { LucideIcon } from "lucide-react";
+import type { EventoDestino } from "@/lib/eventoDestino";
 
 /**
  * Canal de avisos entre capas: el proveedor de datos en vivo vive POR
@@ -10,6 +11,9 @@ export interface NotificationDraft {
   description?: string;
   icon?: LucideIcon;
   tone?: "default" | "success" | "warning" | "danger" | "info";
+  /** Evento de origen, si el aviso nació de un evento USB concreto:
+   *  permite saltar desde la campana a ese evento en el registro. */
+  evento?: EventoDestino;
 }
 
 type Listener = (n: NotificationDraft) => void;
