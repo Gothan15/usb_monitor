@@ -504,6 +504,7 @@ internal static class Program
         1219 => "ya hay una sesión abierta contra ese equipo con otras credenciales (1219)",
         1722 => "el servidor RPC no está disponible (1722)",
         ErrorServiceDoesNotExist => "el servicio no existe (1060)",
+        1053 => "el servicio no respondió a tiempo (1053): el instalador no confirmó su arranque al gestor de servicios",
         _ => $"error de Windows {codigo}",
     };
 

@@ -57,6 +57,19 @@ public class ConfiguracionTests
     }
 
     [Fact]
+    public void ConsolaRegistroVisible_PorDefectoTrueYSeGuarda()
+    {
+        var (config, app, datos) = Crear("""{"serverHost":"x.local"}""");
+        Assert.True(config.ConsolaRegistroVisible);
+        Assert.True(config.GuardarConsolaRegistroVisible(false));
+
+        var releida = new Configuracion(app, datos);
+        Assert.False(releida.ConsolaRegistroVisible);
+        Assert.True(releida.GuardarConsolaRegistroVisible(true));
+        Assert.True(new Configuracion(app, datos).ConsolaRegistroVisible);
+    }
+
+    [Fact]
     public void Guardar_PurgaElTokenAntiguoDelArchivo()
     {
         // Un server.json que viene del sistema anterior trae el

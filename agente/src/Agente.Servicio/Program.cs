@@ -104,6 +104,20 @@ internal static class Program
 
             case "instalar-remoto":
                 Registro.Configurar("agente.log");
+                if (WindowsServiceHelpers.IsWindowsService())
+                {
+                    // Quien lanza este modo es el SCM (el servicio
+                    // temporal del empujón): hay que hablar el
+                    // protocolo de servicios. Como proceso de
+                    // consola a secas, el instalador trabajaba sin
+                    // decir «ya arranqué», Windows lo daba por no
+                    // respondido a los ~30 s (error 1053) y el
+                    // empujador se rendía —a veces matándolo a
+                    // mitad de la instalación— aunque en el destino
+                    // todo pareciera ir bien.
+                    EjecutarInstaladorRemotoComoServicio(args);
+                    return 0;
+                }
                 return InstalarRemoto(args);
 
             case "aplicar-actualizacion":
@@ -202,12 +216,33 @@ internal static class Program
     /// después instala como el modo `instalar`, sin abrir ninguna
     /// ventana: quien lo lanza es un servicio temporal en sesión 0.
     /// </summary>
-    private static int InstalarRemoto(string[] args)
+    internal static int InstalarRemoto(string[] args)
     {
+        try
+        {
+            return InstalarRemotoPasos(args);
+        }
+        finally
+        {
+            // Proceso corto: sin este vuelco final, las líneas
+            // del registro que aún estén en el búfer (se vuelca
+            // cada 2 s) se pierden al salir. Era media historia
+            // de por qué la instalación remota no dejaba rastro
+            // en agente.log; la otra media es que este modo no
+            // escribía ni una línea: solo hablaba por una consola
+            // que, corriendo como servicio, no existe.
+            Registro.Vaciar();
+        }
+    }
+
+    private static int InstalarRemotoPasos(string[] args)
+    {
+        var log = Registro.Obtener("instalador-remoto");
         var servidor = LeerOpcion(args, "--servidor");
         var codigo = LeerOpcion(args, "--codigo");
         if (string.IsNullOrWhiteSpace(servidor) || string.IsNullOrWhiteSpace(codigo))
         {
+            log.Error("Instalación remota sin --servidor o sin --codigo: no se toca nada.");
             Console.WriteLine(
                 "Uso: USBMonitorService.exe instalar-remoto --servidor <host>[:<puerto>] --codigo <valor>");
             return 2;
@@ -222,6 +257,9 @@ internal static class Program
             puerto = puertoLeido;
         }
 
+        // El código NO se escribe nunca en el registro: solo se
+        // dice que llegó y dónde apunta el panel.
+        log.Info($"Instalación remota iniciada: panel en {host}:{puerto}, código de enrolamiento recibido.");
         var configuracion = new Configuracion();
         if (!configuracion.Guardar(new Dictionary<string, object?>
             {
@@ -229,24 +267,31 @@ internal static class Program
                 ["serverPort"] = puerto,
             }))
         {
+            log.Error("No se pudo escribir server.json con la dirección del panel.");
             Console.WriteLine("No se pudo escribir server.json.");
             return 1;
         }
         if (!configuracion.GuardarCodigoEnrolamiento(codigo.Trim()))
         {
+            log.Error("No se pudo guardar el código de enrolamiento en server.json.");
             Console.WriteLine("No se pudo guardar el código de enrolamiento.");
             return 1;
         }
+        log.Info("Configuración escrita: dirección del panel y código (cifrado). Se instala el servicio…");
 
+        string resumen;
         try
         {
-            Console.WriteLine(Instalador.Instalar());
+            resumen = Instalador.Instalar();
         }
         catch (Exception exc)
         {
+            log.Excepcion("La instalación del servicio falló", exc);
             Console.WriteLine($"No se pudo instalar: {exc.Message}");
             return 1;
         }
+        log.Info(resumen);
+        Console.WriteLine(resumen);
 
         // Instalación remota = nadie delante de la PC: se deja
         // en el escritorio público el acceso directo a la caja
@@ -255,7 +300,32 @@ internal static class Program
         // de la instalación: si falla, queda en el registro y el
         // resultado sigue siendo «instalado».
         Instalador.CrearAccesoDirectoEscritorio();
+        log.Info("Instalación remota terminada: el servicio gastará el código al arrancar y el equipo se enrolará solo.");
         return 0;
+    }
+
+    /// <summary>
+    /// El modo `instalar-remoto` corriendo COMO servicio de
+    /// Windows: el anfitrión responde al SCM en cuanto arranca
+    /// (así desaparece el error 1053) y el trabajo de verdad
+    /// corre en segundo plano dentro de ServicioInstaladorRemoto,
+    /// que al terminar detiene el servicio con su código de
+    /// salida: el empujador lo espera y lo lee como el de
+    /// cualquier servicio.
+    /// </summary>
+    private static void EjecutarInstaladorRemotoComoServicio(string[] args)
+    {
+        var builder = Host.CreateDefaultBuilder(Array.Empty<string>());
+        builder.UseWindowsService(options =>
+        {
+            options.ServiceName = ServicioInstaladorRemoto.NombreServicioTemporal;
+        });
+        builder.ConfigureServices(servicios =>
+        {
+            servicios.AddSingleton(new ParametrosInstalacionRemota(args));
+            servicios.AddHostedService<ServicioInstaladorRemoto>();
+        });
+        builder.Build().Run();
     }
 
     /// <summary>Valor de una opción «--nombre valor» en los argumentos.</summary>

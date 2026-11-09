@@ -205,6 +205,20 @@ public sealed class Configuracion
 
     public bool BorrarCodigoEnrolamiento() => Quitar("codigoEnrolamiento");
 
+    /// <summary>
+    /// Si la caja de herramientas enseña su cinta de registro (la
+    /// «consola» de últimas líneas): preferencia de la ventana que
+    /// vive en server.json para recordarse entre aperturas.
+    /// </summary>
+    public bool ConsolaRegistroVisible => Texto("consolaRegistroVisible") != "0";
+
+    /// <summary>Guarda la preferencia de la consola de la caja.</summary>
+    public bool GuardarConsolaRegistroVisible(bool visible) =>
+        Guardar(new Dictionary<string, object?>
+        {
+            ["consolaRegistroVisible"] = visible ? "1" : "0",
+        });
+
     private string Texto(string clave, string defecto = "")
     {
         if (Cargar().TryGetValue(clave, out var valor) && valor.ValueKind == JsonValueKind.String)
