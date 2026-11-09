@@ -18,7 +18,6 @@ import { cn, normalizeComputerName } from "@/lib/utils";
 import { useLiveData } from "@/components/providers/LiveDataProvider";
 import {
   Usb,
-  RefreshCw,
   ShieldCheck,
   AlertTriangle,
   HardDrive,
@@ -96,7 +95,6 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
   const [errorHistory, setErrorHistory] = useState<string | null>(null);
   const [connected, setConnected] = useState<ConnectedUSBDevice[]>([]);
   const [history, setHistory] = useState<DisconnectedUSBDevice[]>([]);
-  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
   const { containerProps, scrollbarClassName } = useAmbientScrollbar({
@@ -156,19 +154,11 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
     [canFetch, computer, historyRange]
   );
 
-  const handleRefresh = useCallback(async () => {
-    if (!canFetch) return;
-    setIsRefreshing(true);
-    try {
-      const signal = abortRef.current?.signal;
-      await Promise.all([
-        fetchDevices("connected", signal, { silencioso: true }),
-        fetchDevices("history", signal, { silencioso: true }),
-      ]);
-    } finally {
-      setIsRefreshing(false);
-    }
-  }, [canFetch, fetchDevices]);
+  // Sin botón de «Actualizar»: con la hoja abierta la lista
+  // se refresca sola por el empuje del socket y por el sondeo
+  // de respaldo de 4 s de abajo (que corre aunque «Tiempo
+  // real» esté en pausa). La recuperación tras un fallo de
+  // carga vive en los avisos de error, con su «Reintentar».
 
   useEffect(() => {
     if (!open) return;
@@ -289,23 +279,6 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
                   Historial
                 </TabsTrigger>
               </TabsList>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="mb-1.5 rounded-full"
-                onClick={handleRefresh}
-                disabled={isRefreshing || loadingConnected || loadingHistory}
-              >
-                {isRefreshing ? (
-                  <span className="mr-2 inline-flex">
-                    <Spinner size={14} />
-                  </span>
-                ) : (
-                  <RefreshCw className="mr-2 h-3.5 w-3.5" />
-                )}
-                {isRefreshing ? "Actualizando" : "Actualizar"}
-              </Button>
             </div>
           </SheetHeader>
 
@@ -313,7 +286,23 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
             <TabsContent value="connected" className="h-full">
               {errorConnected ? (
                 <Alert className="mt-4 rounded-lg border-destructive/40 bg-destructive/5 text-destructive">
-                  <AlertDescription>{errorConnected}</AlertDescription>
+                  <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
+                    <span>{errorConnected}</span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={loadingConnected}
+                      onClick={() =>
+                        void fetchDevices(
+                          "connected",
+                          abortRef.current?.signal,
+                        )
+                      }
+                    >
+                      Reintentar
+                    </Button>
+                  </AlertDescription>
                 </Alert>
               ) : (
                 <ScrollArea
@@ -407,7 +396,20 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
 
               {errorHistory ? (
                 <Alert className="rounded-lg border-destructive/40 bg-destructive/5 text-destructive">
-                  <AlertDescription>{errorHistory}</AlertDescription>
+                  <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
+                    <span>{errorHistory}</span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={loadingHistory}
+                      onClick={() =>
+                        void fetchDevices("history", abortRef.current?.signal)
+                      }
+                    >
+                      Reintentar
+                    </Button>
+                  </AlertDescription>
                 </Alert>
               ) : (
                 <ScrollArea
