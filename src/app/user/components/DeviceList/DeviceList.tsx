@@ -1,12 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw, Usb, HardDrive, Activity, Calendar } from "lucide-react";
+import { Usb, HardDrive, Activity, Calendar } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { useToast } from "@/hooks/use-toast";
 import { formatDateTime, getCurrentDate } from "@/lib/time";
 import { fetchBasicUserSnapshot, formatBytes, etiquetaTipoDispositivo } from "../../utils";
 import type { AssignedComputer, UsbConnection } from "../../types";
@@ -24,7 +23,6 @@ interface DeviceListState {
 }
 
 export const DeviceList = ({ userId }: DeviceListProps) => {
-  const { toast } = useToast();
   const [state, setState] = useState<DeviceListState>({
     devices: [],
     computer: null,
@@ -32,18 +30,18 @@ export const DeviceList = ({ userId }: DeviceListProps) => {
     warnings: [],
   });
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Sin botón de «Actualizar»: el sondeo de 10 s del efecto
+  // de abajo mantiene la lista al día por sí solo y reintenta
+  // tras un fallo (cada vuelta limpia el error si responde
+  // bien). La recuperación inmediata vive en el aviso de
+  // error, con su «Reintentar».
   const loadDevices = useCallback(
-    async (signal?: AbortSignal, manual = false) => {
+    async (signal?: AbortSignal) => {
       if (!userId) return;
       try {
-        if (manual) {
-          setRefreshing(true);
-        } else {
-          setLoading(true);
-        }
+        setLoading(true);
         setError(null);
         const snapshot = await fetchBasicUserSnapshot(userId, signal);
         const connected = snapshot.connectedUSBs.filter(
@@ -55,36 +53,17 @@ export const DeviceList = ({ userId }: DeviceListProps) => {
           lastUpdated: getCurrentDate(),
           warnings: snapshot.warnings ?? [],
         });
-        if (manual) {
-          toast({
-            title: "Dispositivos actualizados",
-            description: connected.length
-              ? `Se detectaron ${connected.length} dispositivo(s) activo(s).`
-              : "No hay dispositivos USB activos.",
-          });
-        }
       } catch (fetchError) {
         const message =
           fetchError instanceof Error
             ? fetchError.message
             : "No se pudieron obtener los dispositivos.";
         setError(message);
-        if (manual) {
-          toast({
-            title: "Error al actualizar",
-            description: message,
-            variant: "destructive",
-          });
-        }
       } finally {
-        if (manual) {
-          setRefreshing(false);
-        } else {
-          setLoading(false);
-        }
+        setLoading(false);
       }
     },
-    [toast, userId]
+    [userId]
   );
 
   useEffect(() => {
@@ -117,7 +96,17 @@ export const DeviceList = ({ userId }: DeviceListProps) => {
     if (error) {
       return (
         <Alert className="border-red-200 bg-red-50 text-red-900 dark:border-red-700 dark:bg-red-950/20 dark:text-red-100">
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
+            <span>{error}</span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => void loadDevices()}
+            >
+              Reintentar
+            </Button>
+          </AlertDescription>
         </Alert>
       );
     }
@@ -201,7 +190,7 @@ export const DeviceList = ({ userId }: DeviceListProps) => {
         ))}
       </div>
     );
-  }, [error, loading, state.devices]);
+  }, [error, loading, loadDevices, state.devices]);
 
   return (
     <Card className="flex flex-1 flex-col border-border/60 bg-card/80 shadow-sm backdrop-blur-xl">
@@ -216,23 +205,6 @@ export const DeviceList = ({ userId }: DeviceListProps) => {
               Última actualización: {formatDateTime(state.lastUpdated)}
             </span>
           )}
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="inline-flex items-center gap-2 border-border/60 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted/50"
-            disabled={refreshing}
-            onClick={() => loadDevices(undefined, true)}
-          >
-            {refreshing ? (
-              <div className="mr-2">
-                <Spinner size={16} />
-              </div>
-            ) : (
-              <RefreshCw className="mr-2 h-4 w-4 text-muted-foreground" />
-            )}
-            {refreshing ? "Actualizando..." : "Actualizar"}
-          </Button>
         </div>
       </CardHeader>
       <CardContent className="flex-1 space-y-4">

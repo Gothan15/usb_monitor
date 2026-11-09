@@ -5,7 +5,6 @@ import {
   Activity,
   Calendar,
   Clock,
-  RefreshCw,
   Shield,
   Usb,
 } from "lucide-react";
@@ -14,7 +13,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
-import { useToast } from "@/hooks/use-toast";
 import { useAmbientScrollbar } from "@/hooks/useAmbientScrollbar";
 import { formatDateTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -38,60 +36,41 @@ type TimelineRecord = {
 };
 
 export const EventHistory = ({ userId }: EventHistoryProps) => {
-  const { toast } = useToast();
   const [history, setHistory] = useState<UsbConnection[]>([]);
   const [events, setEvents] = useState<UsbEvent[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const {
     containerProps: timelineScrollProps,
     scrollbarClassName: timelineScrollbarClassName,
   } = useAmbientScrollbar();
 
+  // Sin botón de «Actualizar»: el sondeo de 15 s del efecto
+  // de abajo mantiene el historial al día por sí solo y
+  // reintenta tras un fallo. La recuperación inmediata vive
+  // en el aviso de error, con su «Reintentar».
   const loadHistory = useCallback(
-    async (signal?: AbortSignal, manual = false) => {
+    async (signal?: AbortSignal) => {
       if (!userId) return;
       try {
-        if (manual) {
-          setRefreshing(true);
-        } else {
-          setLoading(true);
-        }
+        setLoading(true);
         setError(null);
         const snapshot = await fetchBasicUserSnapshot(userId, signal);
         setHistory(snapshot.usbHistory);
         setEvents(snapshot.events);
         setWarnings(snapshot.warnings ?? []);
-        if (manual) {
-          toast({
-            title: "Historial actualizado",
-            description: "Los eventos se sincronizaron correctamente.",
-          });
-        }
       } catch (fetchError) {
         const message =
           fetchError instanceof Error
             ? fetchError.message
             : "No se pudo obtener el historial de eventos.";
         setError(message);
-        if (manual) {
-          toast({
-            title: "Error al actualizar",
-            description: message,
-            variant: "destructive",
-          });
-        }
       } finally {
-        if (manual) {
-          setRefreshing(false);
-        } else {
-          setLoading(false);
-        }
+        setLoading(false);
       }
     },
-    [toast, userId]
+    [userId]
   );
 
   useEffect(() => {
@@ -166,23 +145,6 @@ export const EventHistory = ({ userId }: EventHistoryProps) => {
           <Clock className="h-5 w-5 text-muted-foreground" />
           Historial de eventos
         </CardTitle>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="inline-flex items-center gap-2 border-border/60 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted/50"
-          disabled={refreshing}
-          onClick={() => loadHistory(undefined, true)}
-        >
-          {refreshing ? (
-            <div className="mr-2">
-              <Spinner size={16} />
-            </div>
-          ) : (
-            <RefreshCw className="mr-2 h-4 w-4 text-muted-foreground" />
-          )}
-          {refreshing ? "Actualizando..." : "Actualizar"}
-        </Button>
       </CardHeader>
       <CardContent className="space-y-4">
         {loading && (
@@ -193,7 +155,17 @@ export const EventHistory = ({ userId }: EventHistoryProps) => {
 
         {!loading && error && (
           <Alert className="border-red-200 bg-red-50 text-red-900 dark:border-red-700 dark:bg-red-950/20 dark:text-red-100">
-            <AlertDescription>{error}</AlertDescription>
+            <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
+              <span>{error}</span>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => void loadHistory()}
+              >
+                Reintentar
+              </Button>
+            </AlertDescription>
           </Alert>
         )}
 

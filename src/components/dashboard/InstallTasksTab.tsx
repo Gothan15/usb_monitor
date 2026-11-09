@@ -242,9 +242,12 @@ export function InstallTasksTab() {
                 Limpiar terminadas
               </Button>
             )}
-          <Button variant="outline" onClick={() => void load()}>
-            Actualizar
-          </Button>
+          {/* Sin botón de «Actualizar»: la lista se recarga
+              sola con cada aviso `install:change` del socket
+              (el contador no pasa por el interruptor de
+              «Tiempo real»), al reconectar y cada 60 s. La
+              recuperación tras un fallo vive en el aviso de
+              error de abajo, con su «Reintentar». */}
         </div>
       </div>
 
@@ -278,7 +281,16 @@ export function InstallTasksTab() {
 
       {error && (
         <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <AlertDescription>{error}</AlertDescription>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void load()}
+            >
+              Reintentar
+            </Button>
+          </div>
         </Alert>
       )}
 

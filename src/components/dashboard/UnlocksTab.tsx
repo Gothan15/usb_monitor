@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLiveData } from "@/components/providers/LiveDataProvider";
-import { Camera, RefreshCw } from "lucide-react";
+import { Camera } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -132,7 +132,6 @@ const tdClass = "px-4 py-2.5";
 export function UnlocksTab() {
   const [data, setData] = useState<UnlocksData | null>(null);
   const [ultimaVez, setUltimaVez] = useState<Date | null>(null);
-  const [loading, setLoading] = useState(true);
   const [resultFilter, setResultFilter] = useState("");
   const [pcFilter, setPcFilter] = useState("");
   const [evidenciaDe, setEvidenciaDe] = useState<Pending | null>(null);
@@ -159,8 +158,12 @@ export function UnlocksTab() {
     };
   }, [evidenciaDe]);
 
+  // Recarga de la vista sin botón propio: la disparan el
+  // empuje por socket (el contador de desbloqueos sube aunque
+  // «Tiempo real» esté en pausa), la reconexión del socket y
+  // la red de seguridad de 60 s de abajo. Un «Actualizar»
+  // manual no refrescaría nada que no llegue solo.
   const load = useCallback(async () => {
-    setLoading(true);
     try {
       const params = new URLSearchParams();
       if (resultFilter) params.set("result", resultFilter);
@@ -172,8 +175,9 @@ export function UnlocksTab() {
         setData(await res.json());
         setUltimaVez(new Date());
       }
-    } finally {
-      setLoading(false);
+    } catch {
+      // Sin estado de error propio: se conservan los datos
+      // anteriores y la red de 60 s reintenta sola.
     }
   }, [resultFilter, pcFilter]);
 
@@ -238,25 +242,16 @@ export function UnlocksTab() {
             Desbloqueos y bloqueos
           </h2>
         </div>
-        <div className="flex flex-col items-end gap-1">
-          <button
-            onClick={load}
-            className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-primary underline-offset-4 transition-colors hover:text-foreground hover:underline"
-          >
-            <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
-            Actualizar
-          </button>
-          {ultimaVez && (
-            <span className="text-[11px] text-muted-foreground">
-              Actualizado a las{" "}
-              {ultimaVez.toLocaleTimeString("es", {
-                hour: "2-digit",
-                minute: "2-digit",
-                second: "2-digit",
-              })}
-            </span>
-          )}
-        </div>
+        {ultimaVez && (
+          <span className="text-[11px] text-muted-foreground">
+            Actualizado a las{" "}
+            {ultimaVez.toLocaleTimeString("es", {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            })}
+          </span>
+        )}
       </div>
 
       {data?.silence.serverLikelyDown && (
