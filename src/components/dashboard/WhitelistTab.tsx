@@ -4,7 +4,6 @@ import { useCallback, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -23,6 +22,8 @@ import {
 } from "./BulkSelection";
 import { usePagination } from "@/hooks/usePagination";
 import { useTableSort } from "@/hooks/useTableSort";
+import { useBusqueda } from "@/hooks/useBusqueda";
+import { CampoBusqueda } from "@/components/shared/CampoBusqueda";
 import { SortableTableHead } from "./SortableTableHead";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -31,6 +32,15 @@ interface CreatePayload {
   label?: string;
   notes?: string;
 }
+
+// Campos por los que busca el campo de búsqueda. Constante de
+// módulo a propósito: `useBusqueda` memoiza su índice por la
+// identidad de esta lista.
+const CAMPOS_BUSQUEDA: readonly (keyof WhitelistEntry)[] = [
+  "serialNumber",
+  "label",
+  "notes",
+];
 
 interface Props {
   entries: WhitelistEntry[];
@@ -75,16 +85,10 @@ export function WhitelistTab({
 
   const [busqueda, setBusqueda] = useState("");
 
-  const filtradas = useMemo(() => {
-    const q = busqueda.trim().toLowerCase();
-    if (!q) return sortedData;
-    return sortedData.filter(
-      (e) =>
-        e.serialNumber.toLowerCase().includes(q) ||
-        (e.label ?? "").toLowerCase().includes(q) ||
-        (e.notes ?? "").toLowerCase().includes(q),
-    );
-  }, [sortedData, busqueda]);
+  // Filtrado con el hook compartido: índice normalizado una vez
+  // por dataset y consulta diferida (antes se re-normalizaba
+  // cada campo en cada pulsación).
+  const filtradas = useBusqueda(sortedData, busqueda, CAMPOS_BUSQUEDA);
 
   const { page, pageSize, setPage, setPageSize } = usePagination({
     totalItems: filtradas.length,
@@ -211,15 +215,12 @@ export function WhitelistTab({
               <> · Último alta: {formatDateTime(latestCreatedAt)}</>
             )}
           </p>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-0 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={busqueda}
-              onChange={(event) => setBusqueda(event.target.value)}
-              placeholder="Buscar por serial, alias o notas"
-              className="w-[240px] rounded-none border-0 border-b border-border bg-transparent pl-6 shadow-none focus-visible:border-[var(--acero)] focus-visible:ring-0"
-            />
-          </div>
+          <CampoBusqueda
+            value={busqueda}
+            onChange={setBusqueda}
+            placeholder="Buscar por serial, alias o notas"
+            className="w-[240px]"
+          />
           {busqueda.trim() && (
             <p className="text-xs text-muted-foreground">
               {filtradas.length} coincidencia{filtradas.length === 1 ? "" : "s"}
