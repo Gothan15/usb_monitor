@@ -6,6 +6,7 @@
 // solo el token del equipo; un valor cifrado ilegible se descarta
 // (fail-closed), nunca se usa como credencial.
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text.Json;
@@ -320,6 +321,47 @@ public sealed class Configuracion
             }
             catch { /* respaldo */ }
             return "127.0.0.1";
+        }
+    }
+
+    /// <summary>
+    /// Todas las IPv4 de la máquina en adaptadores activos (sin
+    /// loopback): las que el agente DECLARA al enrolar y al
+    /// consultar un código. La instalación remota ata el código
+    /// a la IP del empuje, pero la conexión con el panel puede
+    /// salir por otro adaptador — una VM con bridged y NAT, por
+    /// ejemplo — y llegar al panel con otra IP de origen: si el
+    /// panel solo mirara el origen, el código de esa PC se
+    /// rechazaría como «de otro equipo» para siempre.
+    /// Declarándolas todas, el emparejamiento prueba cada una.
+    /// </summary>
+    public static List<string> IpsPc
+    {
+        get
+        {
+            var lista = new List<string>();
+            try
+            {
+                foreach (var adaptador in NetworkInterface.GetAllNetworkInterfaces())
+                {
+                    if (adaptador.OperationalStatus != OperationalStatus.Up)
+                        continue;
+                    if (adaptador.NetworkInterfaceType == NetworkInterfaceType.Loopback)
+                        continue;
+                    foreach (var direccion in adaptador.GetIPProperties().UnicastAddresses)
+                    {
+                        if (direccion.Address.AddressFamily != AddressFamily.InterNetwork)
+                            continue;
+                        if (IPAddress.IsLoopback(direccion.Address))
+                            continue;
+                        var texto = direccion.Address.ToString();
+                        if (!lista.Contains(texto))
+                            lista.Add(texto);
+                    }
+                }
+            }
+            catch { /* sin inventario de red: el panel usa la IP de origen */ }
+            return lista;
         }
     }
 

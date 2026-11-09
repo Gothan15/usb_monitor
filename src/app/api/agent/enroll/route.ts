@@ -8,7 +8,10 @@ import {
   registrarClavePublica,
 } from "@/lib/credenciales";
 import { diagnosticarCodigo } from "@/lib/diagnosticoEnrolamiento";
-import { resolverEquipoParaAgente } from "@/lib/identidadEquipo";
+import {
+  esNombreIp,
+  resolverEquipoParaAgente,
+} from "@/lib/identidadEquipo";
 import { logError, logWarn } from "@/lib/logger";
 import { hit } from "@/lib/rateLimit";
 import { normalizeComputerName } from "@/lib/utils";
@@ -32,11 +35,16 @@ import { normalizeComputerName } from "@/lib/utils";
  * servidor.
  *
  * Antes de validar se resuelve la identidad del equipo
- * (nombre normalizado o IP de origen, fusionando duplicados):
- * el código pudo generarse sobre la fila «por IP» que creaban
- * el escáner o el refresco de host, mientras el agente se
- * presenta con el nombre real de su PC. Sin esta resolución,
- * ese código válido era rechazado siempre.
+ * (nombre normalizado, IPs —la de origen y TODAS las que el
+ * agente declara como suyas— y la fila dueña del código si es
+ * un marcador, fusionando duplicados): el código pudo
+ * generarse sobre la fila «por IP» que creaban el escáner o
+ * la instalación remota, mientras el agente se presenta con
+ * el nombre real de su PC. Sin esta resolución, ese código
+ * válido era rechazado siempre; y emparejar solo por la IP de
+ * origen no bastaba en una VM con varios adaptadores, donde
+ * la conexión al panel sale por otra IP que no es la del
+ * empuje (segunda vuelta, 2026-11-08).
  */
 export async function POST(req: Request) {
   try {
@@ -53,6 +61,20 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+    // Las IPv4 que el agente declara como suyas (todos sus
+    // adaptadores): el emparejamiento las prueba junto a la de
+    // origen, porque la del empuje puede ser la de otro
+    // adaptador. Solo valen IPv4 bien formadas y con tope: es
+    // una ayuda de emparejamiento, no una credencial.
+    const ipsDeclaradas: string[] = Array.isArray(body?.ips)
+      ? body.ips
+          .filter(
+            (valor: unknown): valor is string =>
+              typeof valor === "string" && esNombreIp(valor.trim()),
+          )
+          .map((valor: string) => valor.trim())
+          .slice(0, 16)
+      : [];
 
     // El límite es POR EQUIPO (IP de origen + nombre), no una
     // bolsa común: antes todas las peticiones sin cabecera de
@@ -71,9 +93,22 @@ export async function POST(req: Request) {
       );
     }
 
+    // La fila dueña del código se busca ANTES de resolver: si
+    // es un marcador (la fila «por IP» de la instalación
+    // remota), la resolución la reclama por el propio código.
+    const hash = hashCodigoEnrolamiento(codigo);
+    const dueno = await (db as any).computer
+      .findFirst({
+        where: { codigoEnrolamientoHash: hash },
+        select: { id: true, name: true },
+      })
+      .catch(() => null);
+
     const resuelto = await resolverEquipoParaAgente({
       nombre: pcName,
       ip: clientIp !== "unknown" ? clientIp : null,
+      ips: ipsDeclaradas,
+      filaDelCodigoId: dueno?.id ?? null,
     }).catch(() => null);
     const computer = resuelto
       ? await (db as any).computer.findUnique({
@@ -95,13 +130,6 @@ export async function POST(req: Request) {
       // Antes era un 401 genérico que no decía nada en ningún
       // sitio y el fallo real solo se podía adivinar. El código
       // sigue siendo de un solo uso y su hash, lo único guardado.
-      const hash = hashCodigoEnrolamiento(codigo);
-      const dueno = await (db as any).computer
-        .findFirst({
-          where: { codigoEnrolamientoHash: hash },
-          select: { name: true },
-        })
-        .catch(() => null);
       const diagnostico = diagnosticarCodigo({
         fila: computer,
         coincideConLaFila:
