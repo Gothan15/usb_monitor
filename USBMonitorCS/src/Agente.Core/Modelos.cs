@@ -214,6 +214,10 @@ internal sealed class SolicitudEnrolamientoCodigo
     [JsonPropertyName("pcName")] public string PcName { get; set; } = "";
     [JsonPropertyName("codigo")] public string Codigo { get; set; } = "";
     [JsonPropertyName("clavePublica")] public string ClavePublica { get; set; } = "";
+    // Todas las IPv4 de esta PC: el panel empareja el código
+    // también por ellas, no solo por la IP de origen de la
+    // conexión (la del empuje puede ser la de otro adaptador).
+    [JsonPropertyName("ips")] public List<string> Ips { get; set; } = new();
 }
 
 /// <summary>Solicitud de migración: solo la clave pública (el token viaja en la cabecera, una última vez).</summary>

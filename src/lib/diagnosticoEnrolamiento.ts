@@ -46,6 +46,7 @@ export interface DiagnosticoCodigo {
 }
 
 interface FilaConCodigo {
+  id?: string;
   name: string;
   codigoEnrolamientoHash: string | null;
   codigoEnrolamientoExpira: Date | string | null;
@@ -60,7 +61,7 @@ interface FilaConCodigo {
 export function diagnosticarCodigo(datos: {
   fila: FilaConCodigo | null;
   coincideConLaFila: boolean;
-  duenoDelCodigo: { name: string } | null;
+  duenoDelCodigo: { id?: string; name: string } | null;
   ahoraMs: number;
 }): DiagnosticoCodigo {
   const { fila, coincideConLaFila, duenoDelCodigo, ahoraMs } = datos;
@@ -70,7 +71,18 @@ export function diagnosticarCodigo(datos: {
 
   // El código consta, pero es de otra PC: el caso típico del
   // duplicado nombre/IP — se generó sobre la fila equivocada.
-  if (duenoDelCodigo && (!fila || duenoDelCodigo.name !== fila.name)) {
+  // La comparación es por ID cuando se conoce: la resolución
+  // puede haber RENOMBRADO la fila dueña (la «por IP» que
+  // adopta el nombre real al reclamarse), y comparar por el
+  // nombre de antes del renombrado la daría por «otra» siendo
+  // la misma.
+  const esDeOtro =
+    duenoDelCodigo &&
+    (!fila ||
+      (duenoDelCodigo.id && fila.id
+        ? duenoDelCodigo.id !== fila.id
+        : duenoDelCodigo.name !== fila.name));
+  if (esDeOtro && duenoDelCodigo) {
     return {
       estado: ESTADO_CODIGO.OTRO_EQUIPO,
       detalle:

@@ -52,6 +52,21 @@ describe("diagnosticarCodigo", () => {
     expect(d.detalle).toContain("172.26.125.38");
   });
 
+  it("no es otro-equipo si el dueño es LA MISMA fila renombrada (comparación por id)", () => {
+    // La resolución reclama la fila «por IP» y la renombra al
+    // nombre real ANTES de diagnosticar: el dueño buscado por
+    // el hash conserva el nombre viejo en la respuesta de la
+    // búsqueda, pero es la misma fila — por nombre parecería
+    // «otro equipo» y por id se ve que no.
+    const d = diagnosticarCodigo({
+      fila: { ...FILA, id: "fila-1" },
+      coincideConLaFila: true,
+      duenoDelCodigo: { id: "fila-1", name: "172.26.125.38" },
+      ahoraMs: AHORA,
+    });
+    expect(d.estado).toBe(ESTADO_CODIGO.VIGENTE);
+  });
+
   it("otro-equipo aunque no exista fila para el nombre presentado", () => {
     const d = diagnosticarCodigo({
       fila: null,

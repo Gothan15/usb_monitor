@@ -4,7 +4,10 @@ import { ipClienteDe } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { hashCodigoEnrolamiento } from "@/lib/credenciales";
 import { diagnosticarCodigo } from "@/lib/diagnosticoEnrolamiento";
-import { resolverEquipoParaAgente } from "@/lib/identidadEquipo";
+import {
+  esNombreIp,
+  resolverEquipoParaAgente,
+} from "@/lib/identidadEquipo";
 import { logError } from "@/lib/logger";
 import { hit } from "@/lib/rateLimit";
 import { normalizeComputerName } from "@/lib/utils";
@@ -50,25 +53,40 @@ export async function GET(req: Request) {
       );
     }
 
+    // Las IPs que el agente declara como suyas llegan por la
+    // query (?ips=1.2.3.4,5.6.7.8) y la fila dueña del código
+    // se busca antes de resolver, igual que al enrolar: esta
+    // consulta promete enseñar lo que el enrolamiento de
+    // verdad verá, así que resuelve con las mismas piezas (la
+    // fila-marcador del código incluida).
+    const ipsDeclaradas = (searchParams.get("ips") || "")
+      .split(",")
+      .map((valor) => valor.trim())
+      .filter((valor) => esNombreIp(valor))
+      .slice(0, 16);
+
     const hash = hashCodigoEnrolamiento(codigo);
+    const dueno = await (db as any).computer.findFirst({
+      where: { codigoEnrolamientoHash: hash },
+      select: { id: true, name: true },
+    });
     const resuelto = await resolverEquipoParaAgente({
       nombre: pcName,
       ip: clientIp !== "unknown" ? clientIp : null,
+      ips: ipsDeclaradas,
+      filaDelCodigoId: dueno?.id ?? null,
     }).catch(() => null);
     const fila = resuelto
       ? await (db as any).computer.findUnique({
           where: { id: resuelto.id },
           select: {
+            id: true,
             name: true,
             codigoEnrolamientoHash: true,
             codigoEnrolamientoExpira: true,
           },
         })
       : null;
-    const dueno = await (db as any).computer.findFirst({
-      where: { codigoEnrolamientoHash: hash },
-      select: { name: true },
-    });
 
     const diagnostico = diagnosticarCodigo({
       fila,

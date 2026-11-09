@@ -602,6 +602,10 @@ public sealed class ClientePanel : IDisposable
             PcName = Configuracion.NombrePc,
             Codigo = codigo.Trim(),
             ClavePublica = identidad.ClavePublicaB64,
+            // Todas las IPv4 de esta PC: el código puede estar
+            // atado a la IP del empuje (otro adaptador) y la
+            // conexión puede llegar al panel con otra de origen.
+            Ips = Configuracion.IpsPc,
         }).ConfigureAwait(false);
         if (respuesta is null)
         {
@@ -630,7 +634,11 @@ public sealed class ClientePanel : IDisposable
         var respuesta = await PeticionAsync("GET",
             "/api/agent/enroll/estado" + Consulta(
                 ("pcName", Configuracion.NombrePc),
-                ("codigo", codigo.Trim()))).ConfigureAwait(false);
+                ("codigo", codigo.Trim()),
+                // Las mismas IPs declaradas que al enrolar, para
+                // que la consulta enseñe lo que el enrolamiento
+                // de verdad verá.
+                ("ips", string.Join(",", Configuracion.IpsPc)))).ConfigureAwait(false);
         return IntentarJson<RespuestaEstadoCodigo>(respuesta);
     }
 

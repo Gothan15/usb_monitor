@@ -2,6 +2,7 @@
 // Pruebas del cliente del panel: cola persistente FIFO y ProbarConexion.
 using System.Net;
 using System.Net.Sockets;
+using System.Text.Json;
 using USBMonitor.Agente.Core;
 
 namespace Agente.Core.Tests;
@@ -169,5 +170,36 @@ public class ClientePanelTests
         var noExiste = await cliente404.DuenoEquipoAsync();
         Assert.Equal(404, noExiste.EstadoHttp);
         Assert.Null(noExiste.Datos);
+    }
+
+    [Fact]
+    public async Task Enrolar_DeclaraTodasLasIpsDeLaMaquina()
+    {
+        // El código de una instalación remota queda atado a la
+        // IP del empuje, que puede ser la de OTRO adaptador (una
+        // VM con bridged y NAT): el enrolamiento declara todas
+        // las IPv4 de la máquina para que el panel empareje por
+        // cualquiera, no solo por la de origen de la conexión.
+        var manejador = new ManejadorFalso(solicitud =>
+            solicitud.RequestUri!.AbsolutePath == "/api/agent/enroll"
+                ? ManejadorFalso.Json(200, """{"ok":true,"equipoId":"eq-1","huella":"abc"}""")
+                : ManejadorFalso.Json(404, """{"ok":false}"""));
+        var (config, datos) = Fabrica.ConfiguracionEnPuerto(9);
+        using var cliente = new ClientePanel(config, manejador, datos);
+
+        var ok = await cliente.EnrolarConCodigoAsync("ABCD-EFGH-JKMN");
+
+        Assert.True(ok);
+        var cuerpo = Assert.Single(manejador.Cuerpos);
+        Assert.Contains("\"pcName\"", cuerpo);
+        Assert.Contains("\"codigo\":\"ABCD-EFGH-JKMN\"", cuerpo);
+        Assert.Contains("\"clavePublica\"", cuerpo);
+        using var doc = JsonDocument.Parse(cuerpo);
+        var ips = doc.RootElement.GetProperty("ips")
+            .EnumerateArray()
+            .Select(e => e.GetString())
+            .ToList();
+        Assert.Equal(Configuracion.IpsPc, ips);
+        Assert.All(ips, ip => Assert.False(IPAddress.IsLoopback(IPAddress.Parse(ip!))));
     }
 }
