@@ -404,6 +404,14 @@ async function intentoInstalacion(
         select: { id: true },
       });
   await actualizarDestino(destino.id, { computerId: equipo.id });
+  // ¿El equipo ya tenía credencial de un alta anterior? Lo decide
+  // el aviso que se añade si el empujón falla: sin credencial
+  // previa, el código que nace ahora es la única vía de alta del
+  // destino y conviene decir en el mensaje que sigue vivo.
+  const estadoPrevio = await db.computer.findUnique({
+    where: { id: equipo.id },
+    select: { clavePublica: true },
+  });
   const { codigo } = await generarCodigoEnrolamiento(equipo.id, 12 * 60);
 
   const manifiesto = await manifiestoPaquete();
@@ -428,7 +436,11 @@ async function intentoInstalacion(
   if (!instalacion.success) {
     return {
       estado: ESTADO_DESTINO.ERROR,
-      message: instalacion.message,
+      message:
+        instalacion.message +
+        (estadoPrevio?.clavePublica
+          ? ""
+          : " El código de enrolamiento de este intento ya quedó generado y vale 12 h: si el agente llegó a escribir su configuración en el destino, se enrolará solo en cuanto su servicio arranque; si en unos minutos el equipo no aparece en Equipos, reintenta la instalación, no hace falta tocar nada en esa PC."),
       reintentable: true,
     };
   }
@@ -452,7 +464,7 @@ async function intentoInstalacion(
   return {
     estado: ESTADO_DESTINO.ERROR,
     message:
-      "El instalador terminó bien en el destino, pero el agente no dio señal en 3 minutos: revisa en ese equipo que el servicio USBMonitorService esté en marcha.",
+      "El instalador terminó bien en el destino, pero el agente no dio señal en 3 minutos. El código de enrolamiento sigue vigente 12 h: si el servicio arranca más tarde, el agente se enrolará solo. Revisa en ese equipo que el servicio USBMonitorService esté en marcha y su registro en C:\\ProgramData\\USBMonitor\\agente.log (las líneas del instalador-remoto cuentan la instalación paso a paso).",
     reintentable: false,
   };
 }

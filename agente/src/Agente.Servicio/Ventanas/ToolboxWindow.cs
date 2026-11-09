@@ -53,6 +53,7 @@ public sealed class ToolboxWindow : Window
     private readonly PasswordBox _codigoEnroll;
     private readonly TextBlock _textoCredencial;
     private readonly TextBox _registro;
+    private Button? _botonConsola;
 
     private bool _refrescandoEstado;
     private bool _refrescandoRegistro;
@@ -69,10 +70,17 @@ public sealed class ToolboxWindow : Window
         _cliente = new ClientePanel(_config);
 
         Title = "USBMonitor — Gestión del agente";
-        Width = 960;
-        Height = 700;
+        // Tamaño con aire (antes 960×700: en pantallas con la
+        // escala de Windows al 125 % las secciones de la columna
+        // derecha se cortaban por abajo, y la credencial era la
+        // primera en caer) y nunca mayor que el área útil del
+        // escritorio: en una pantalla pequeña la ventana nace
+        // ajustada a ella en vez de salirse por los bordes.
+        var areaUtil = SystemParameters.WorkArea;
+        Width = Math.Min(1080, areaUtil.Width - 16);
+        Height = Math.Min(820, areaUtil.Height - 16);
         MinWidth = 900;
-        MinHeight = 660;
+        MinHeight = 640;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Tema.AplicarVentana(this);
         // Misma presentación que el compañero remodelado: tonos de
@@ -113,14 +121,32 @@ public sealed class ToolboxWindow : Window
         izquierda.Children.Add(ConstruirSeccionServicio(out _textoServicio));
         izquierda.Children.Add(ConstruirSeccionActualizacion(out _textoActualizacion, out _botonUpdate, out _botonCancelarUpdate));
         izquierda.Children.Add(ConstruirSeccionAcciones());
-        Grid.SetColumn(izquierda, 0);
-        columnas.Children.Add(izquierda);
+        // Cada columna con su propio desplazamiento discreto:
+        // en la pantalla de diseño no aparece nunca (todo cabe
+        // de un vistazo, como manda la presentación), pero en
+        // una pantalla pequeña o con la escala alta la columna
+        // baja en vez de cortarse a media sección — antes la
+        // credencial quedaba fuera de la ventana sin remedio.
+        var scrollIzquierda = new ScrollViewer
+        {
+            Content = izquierda,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+        };
+        Grid.SetColumn(scrollIzquierda, 0);
+        columnas.Children.Add(scrollIzquierda);
 
         var derecha = new StackPanel();
         derecha.Children.Add(ConstruirSeccionServidor(out _host, out _puerto, out _esquema, out _botonProbar));
         derecha.Children.Add(ConstruirSeccionCredencial(out _codigoEnroll, out _textoCredencial));
-        Grid.SetColumn(derecha, 2);
-        columnas.Children.Add(derecha);
+        var scrollDerecha = new ScrollViewer
+        {
+            Content = derecha,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+        };
+        Grid.SetColumn(scrollDerecha, 2);
+        columnas.Children.Add(scrollDerecha);
 
         var registro = ConstruirSeccionRegistro(out _registro);
         registro.Margin = new Thickness(20, 0, 20, 16);
@@ -840,15 +866,30 @@ public sealed class ToolboxWindow : Window
         var cabecera = new Grid { Margin = new Thickness(0, 0, 0, 7) };
         cabecera.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         cabecera.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        cabecera.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var etiqueta = Tema.EtiquetaSeccion("Registro · últimas líneas");
         etiqueta.Margin = new Thickness(0);
         cabecera.Children.Add(etiqueta);
+        // La consola (esta cinta del registro) se puede apagar:
+        // la ventana gana su alto para las demás secciones. La
+        // elección se guarda en la configuración y se recuerda
+        // al volver a abrir la caja.
+        var consolaVisible = _config.ConsolaRegistroVisible;
+        var consola = Tema.BotonSecundario(
+            consolaVisible ? "Ocultar consola" : "Mostrar consola");
+        consola.Margin = new Thickness(0, 0, 8, 0);
+        consola.Padding = new Thickness(10, 3, 10, 3);
+        consola.FontSize = 12;
+        consola.Click += (_, _) => AlternarConsola();
+        Grid.SetColumn(consola, 1);
+        cabecera.Children.Add(consola);
+        _botonConsola = consola;
         var abrir = Tema.BotonSecundario("Abrir registro completo");
         abrir.Margin = new Thickness(0);
         abrir.Padding = new Thickness(10, 3, 10, 3);
         abrir.FontSize = 12;
         abrir.Click += (_, _) => AbrirRegistroCompleto();
-        Grid.SetColumn(abrir, 1);
+        Grid.SetColumn(abrir, 2);
         cabecera.Children.Add(abrir);
         contenido.Children.Add(cabecera);
 
@@ -869,10 +910,32 @@ public sealed class ToolboxWindow : Window
             BorderThickness = new Thickness(1),
             Padding = new Thickness(8),
             FontFamily = Tema.FuenteDatos,
-            FontSize = 11.5
+            FontSize = 11.5,
+            Visibility = consolaVisible
+                ? Visibility.Visible
+                : Visibility.Collapsed
         };
         contenido.Children.Add(registro);
         return TarjetaCalida(contenido, new Thickness(0), new Thickness(16, 12, 16, 12));
+    }
+
+    /// <summary>
+    /// Enseña u oculta la consola (la cinta del registro) y
+    /// guarda la elección: al reabrir la caja, nace como quedó.
+    /// </summary>
+    private void AlternarConsola()
+    {
+        var visible = _registro.Visibility != Visibility.Visible;
+        _registro.Visibility = visible
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        if (_botonConsola is not null)
+            _botonConsola.Content = visible
+                ? "Ocultar consola"
+                : "Mostrar consola";
+        _config.GuardarConsolaRegistroVisible(visible);
+        if (visible)
+            _ = RefrescarRegistroAsync();
     }
 
     // ── Piezas de la presentación remodelada (como el compañero) ──
@@ -1480,7 +1543,8 @@ public sealed class ToolboxWindow : Window
 
     private async Task RefrescarRegistroAsync()
     {
-        if (_refrescandoRegistro)
+        // Consola oculta: ni se lee el archivo (cada 5 s) para nada.
+        if (_refrescandoRegistro || _registro.Visibility != Visibility.Visible)
         {
             return;
         }

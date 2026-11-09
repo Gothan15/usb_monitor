@@ -236,7 +236,29 @@ public static class Instalador
     {
         var exe = RutaExe();
         if (EstadoServicio() != "no instalado")
-            throw new InvalidOperationException("El servicio ya está instalado.");
+        {
+            // Reparación: el segundo empujón tras uno cortado a
+            // medias. El servicio ya existe y es ESTE ejecutable:
+            // no hay nada que registrar — se refresca la tarea
+            // del compañero y se pone en marcha, para que gaste
+            // el código que el instalador remoto acaba de
+            // escribir en server.json. Si el servicio registrado
+            // apuntara a OTRO ejecutable, sí sería un conflicto.
+            var instalado = RutaExeInstalado();
+            if (!string.Equals(
+                    Path.GetFullPath(instalado), Path.GetFullPath(exe),
+                    StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException(
+                    $"El servicio ya está instalado desde otra ruta ({instalado}); no se toca.");
+            Ejecutar("schtasks.exe", "/Create", "/TN", NombreTarea,
+                "/TR", $"\"{exe}\" prompt", "/SC", "ONLOGON", "/RL", "LIMITED", "/F");
+            using var existente = new ServiceController(NombreServicio);
+            if (existente.Status == ServiceControllerStatus.Stopped)
+                existente.Start();
+            LogInstalador.Info(
+                "Instalar sobre un servicio ya registrado (reparación): tarea refrescada y servicio en marcha.");
+            return $"El servicio ya estaba instalado desde {exe}: queda en marcha.";
+        }
 
         var scm = OpenSCManager(null, null, ScManagerAllAccess);
         if (scm == IntPtr.Zero)

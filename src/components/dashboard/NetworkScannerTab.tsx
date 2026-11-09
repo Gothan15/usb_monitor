@@ -423,7 +423,7 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
       </div>
 
       {/* ── Resultados: filas de anfitrión ── */}
-      <ScrollArea className="max-h-[min(65vh,480px)] [--scrollbar-size:0px] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+      <ScrollArea className="max-h-[min(70vh,560px)] [--scrollbar-size:0px] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
         {results.length === 0 ? (
           <p className="flex items-center gap-3 py-10 text-sm text-muted-foreground">
             {scanning && <Spinner size={16} />}
@@ -433,7 +433,7 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
           </p>
         ) : (
           <>
-            <div className="smallcaps sticky top-0 z-10 hidden grid-cols-[auto_1.1fr_1fr_1fr_auto_7.5rem] items-center gap-6 border-b border-border bg-card py-3 text-muted-foreground md:grid">
+            <div className="smallcaps sticky top-0 z-10 hidden grid-cols-[auto_minmax(11rem,1.2fr)_minmax(10rem,1.4fr)_minmax(9rem,1fr)_minmax(5.5rem,auto)_8.5rem] items-center gap-x-8 gap-y-2 border-b border-border bg-card py-3.5 text-muted-foreground md:grid">
               <span />
               <span>IP</span>
               <span>Nombre</span>
@@ -452,7 +452,7 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
                 return (
                   <li
                     key={result.ip}
-                    className="grid gap-2 py-5 transition-colors duration-150 md:grid-cols-[auto_1.1fr_1fr_1fr_auto_7.5rem] md:items-center md:gap-6"
+                    className="grid gap-x-8 gap-y-2.5 px-1 py-6 transition-colors duration-150 md:grid-cols-[auto_minmax(11rem,1.2fr)_minmax(10rem,1.4fr)_minmax(9rem,1fr)_minmax(5.5rem,auto)_8.5rem] md:items-center"
                   >
                     <span>
                       {!serviceOk && (
@@ -463,10 +463,10 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
                         />
                       )}
                     </span>
-                    <span className="font-display text-[1.35rem] font-bold leading-none text-foreground">
+                    <span className="font-display text-[1.5rem] font-bold leading-none tracking-tight text-foreground">
                       {result.ip}
                     </span>
-                    <span className="truncate text-sm text-muted-foreground">
+                    <span className="min-w-0 truncate text-[0.95rem] text-muted-foreground">
                       {result.hostname || "Sin nombre"}
                       {(() => {
                         const info =
@@ -493,10 +493,10 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
                         );
                       })()}
                     </span>
-                    <span className="flex items-center gap-2 text-sm text-foreground">
+                    <span className="flex items-center gap-2.5 text-[0.95rem] text-foreground">
                       <span
                         className={cn(
-                          "size-1.5 shrink-0 rounded-full",
+                          "size-2 shrink-0 rounded-full",
                           serviceOk
                             ? "bg-success"
                             : "bg-muted-foreground/50",
@@ -504,7 +504,7 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
                       />
                       {serviceOk ? "Activo" : "Sin respuesta"}
                     </span>
-                    <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                    <span className="font-mono text-sm tabular-nums text-muted-foreground">
                       {typeof result.latencyMs === "number"
                         ? `${Math.max(0, Math.round(result.latencyMs))} ms`
                         : "—"}
@@ -522,9 +522,9 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
                               },
                             ]);
                           }}
-                          className="h-7 px-2.5 text-xs"
+                          className="h-8 px-3 text-[0.8rem]"
                         >
-                          <Download className="mr-1.5 size-3" />
+                          <Download className="mr-1.5 size-3.5" />
                           Instalar
                         </Button>
                       )}

@@ -165,6 +165,19 @@ public static class Registro
         }
     }
 
+    /// <summary>
+    /// Vuelca a disco lo acumulado en el búfer del escritor. Los
+    /// procesos cortos (instalar-remoto, fijar-codigo…) salen
+    /// antes de que venza el vuelco periódico de 2 s: sin llamar
+    /// a esto al salir, sus últimas líneas —a veces todas— nunca
+    /// llegan al archivo.
+    /// </summary>
+    public static void Vaciar()
+    {
+        lock (Cerrojo)
+            _escritor?.Volcar();
+    }
+
     public static Registrador Obtener(string nombre) => new(nombre);
 
     internal static void Emitir(NivelRegistro nivel, string nombre, string mensaje)
