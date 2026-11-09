@@ -21,7 +21,6 @@ import {
   Copy,
   KeyRound,
   Router,
-  Search,
   Wifi,
 } from "lucide-react";
 import {
@@ -46,6 +45,8 @@ import {
   useBulkSelection,
 } from "./BulkSelection";
 import { useTableSort } from "@/hooks/useTableSort";
+import { useBusqueda } from "@/hooks/useBusqueda";
+import { CampoBusqueda } from "@/components/shared/CampoBusqueda";
 import { USBDevicesSheet } from "./USBDevicesSheet";
 import { Spinner } from "@/components/ui/spinner";
 import { InstallTaskDialog } from "./InstallTaskDialog";
@@ -106,6 +107,11 @@ const COLUMNAS_ORDEN: { key: keyof Computer; label: string }[] = [
   { key: "lastSeen", label: "Última conexión" },
   { key: "createdAt", label: "Registro" },
 ];
+
+// Campos por los que busca el campo de búsqueda. Constante de
+// módulo a propósito: `useBusqueda` memoiza su índice por la
+// identidad de esta lista.
+const CAMPOS_BUSQUEDA: readonly (keyof Computer)[] = ["name", "ipAddress"];
 
 /** Dato de registro: etiqueta en versalitas y valor debajo. */
 function Dato({
@@ -421,15 +427,10 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
     setPage(1);
   }, []);
 
-  const filtrados = useMemo(() => {
-    const q = busqueda.trim().toLowerCase();
-    if (!q) return sortedData;
-    return sortedData.filter(
-      (c) =>
-        c.name.toLowerCase().includes(q) ||
-        (c.ipAddress ?? "").toLowerCase().includes(q),
-    );
-  }, [sortedData, busqueda]);
+  // Filtrado con el hook compartido: índice normalizado una vez
+  // por dataset y consulta diferida (antes se re-normalizaba
+  // cada campo en cada pulsación).
+  const filtrados = useBusqueda(sortedData, busqueda, CAMPOS_BUSQUEDA);
 
   // Al cambiar la búsqueda se vuelve a la primera página
   // (ajuste durante el render al cambiar el valor anterior).
@@ -555,15 +556,12 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
               />
             )}
             {botonTokenAgente}
-            <div className="relative order-last w-full sm:order-none sm:ml-auto sm:w-auto">
-              <Search className="pointer-events-none absolute left-0 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={busqueda}
-                onChange={(event) => setBusqueda(event.target.value)}
-                placeholder="Buscar por nombre o IP"
-                className="w-full rounded-none border-0 border-b border-border bg-transparent pl-6 shadow-none focus-visible:border-[var(--acero)] focus-visible:ring-0 sm:w-[220px]"
-              />
-            </div>
+            <CampoBusqueda
+              value={busqueda}
+              onChange={setBusqueda}
+              placeholder="Buscar por nombre o IP"
+              className="order-last w-full sm:order-none sm:ml-auto sm:w-[220px]"
+            />
             <span className="smallcaps text-muted-foreground/70">
               Ordenar por
             </span>

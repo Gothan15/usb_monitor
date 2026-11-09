@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Command as CommandPrimitive } from "cmdk";
-import { SearchIcon } from "lucide-react";
+import { SearchIcon, XIcon } from "lucide-react";
 
 import { useAmbientScrollbar } from "@/hooks/useAmbientScrollbar";
 import { cn } from "@/lib/utils";
@@ -66,8 +66,16 @@ function CommandDialog({
 function CommandInput({
   className,
   endAdornment,
+  value,
+  onValueChange,
   ...props
 }: React.ComponentProps<typeof CommandPrimitive.Input> & { endAdornment?: React.ReactNode }) {
+  // Con el input controlado y texto, la ✕ de limpiar va EN LA
+  // FILA, como un elemento más del flex (antes del adorno final):
+  // su hueco lo reserva el layout y nunca puede montarse sobre
+  // el botón de filtro. Sin control externo no hay ✕, como antes.
+  const mostrarLimpiar =
+    typeof value === "string" && value.length > 0 && !!onValueChange;
   return (
     <div
       data-slot="command-input-wrapper"
@@ -80,8 +88,20 @@ function CommandInput({
           "placeholder:text-muted-foreground flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-hidden disabled:cursor-not-allowed disabled:opacity-50",
           className,
         )}
+        value={value}
+        onValueChange={onValueChange}
         {...props}
       />
+      {mostrarLimpiar && (
+        <button
+          type="button"
+          aria-label="Limpiar búsqueda"
+          onClick={() => onValueChange?.("")}
+          className="flex size-6 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <XIcon className="size-3.5" aria-hidden="true" />
+        </button>
+      )}
       {endAdornment}
     </div>
   );

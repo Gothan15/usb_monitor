@@ -260,6 +260,11 @@ export function CommandPalette({ role }: CommandPaletteProps) {
       title="Búsqueda global"
       description="Busca en todas las entidades o ejecuta un comando..."
       shouldFilter={!isSearching} // Disable local filter when fetching results
+      // Sin la ✕ flotante de cerrar del diálogo: va en posición
+      // absoluta (top-4 right-4) y caía ENCIMA del botón de
+      // filtro del campo de búsqueda. La paleta se cierra con
+      // Esc o clicando fuera, como las paletas habituales.
+      showCloseButton={false}
     >
       <CommandInput
         placeholder="Buscar sección, usuario, equipo o evento..."

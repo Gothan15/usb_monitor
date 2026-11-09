@@ -48,11 +48,11 @@ import {
   ArrowUp,
   Pencil,
   Plus,
-  Search,
   Trash2,
   UserRound,
 } from "lucide-react";
 import { useTableSort } from "@/hooks/useTableSort";
+import { CampoBusqueda } from "@/components/shared/CampoBusqueda";
 import { Spinner } from "@/components/ui/spinner";
 
 interface AdminUser {
@@ -564,12 +564,11 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
         </div>
         <div className="flex flex-wrap items-end gap-4">
           <div className="relative">
-            <Search className="pointer-events-none absolute left-0 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
+            <CampoBusqueda
               value={searchInput}
-              onChange={(event) => setSearchInput(event.target.value)}
+              onChange={setSearchInput}
               placeholder="Buscar por usuario, equipo o IP"
-              className="w-[240px] rounded-none border-0 border-b border-border bg-transparent pl-6 shadow-none focus-visible:border-[var(--acero)] focus-visible:ring-0"
+              className="w-[240px]"
             />
             {deferredSearch.trim() && (
               <span className="absolute left-0 top-full mt-1.5 whitespace-nowrap text-xs text-muted-foreground">
