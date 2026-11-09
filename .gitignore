@@ -49,24 +49,11 @@ prompt
 
 server.log
 
-# python
+# python (las utilidades de scripts/ que aún son .py)
 **/__pycache__/
 *.py[cod]
-*.spec
-
-# pyinstaller artifacts
-USBMonitor/build/
-USBMonitor/build_usb_prompt/
-USBMonitor/build_usb_serial_viewer/
-USBMonitor/build_usb_monitor_service/
-USBMonitor/build_usb_monitor_admin/
-USBMonitor/dist/
-USBMonitor/dist_usb_prompt/
-USBMonitor/dist_usb_serial_viewer/
-USBMonitor/dist_usb_monitor_admin/
 
 seed-data.json
-/scripts
 # SonarQube (salida del escáner, no código)
 .scannerwork/
 
@@ -75,20 +62,13 @@ seed-data.json
 *.bk2
 /dist/
 
-# Los .spec de PyInstaller de USBMonitor son código fuente (viven en compilacion/)
-!USBMonitor/compilacion/USBMonitorPrompt.spec
-!USBMonitor/compilacion/USBSerialViewer.spec
-!USBMonitor/compilacion/USBMonitorService.spec
-!USBMonitor/compilacion/USBMonitorAdmin.spec
-
 # Artefactos de las pruebas en el sandbox (stubs crean rutas C:/...)
 /C:/
-USBMonitor/C:/
 
 # .NET (agente C#)
-USBMonitorCS/**/bin/
-USBMonitorCS/**/obj/
-USBMonitorCS/dist/
+agente/**/bin/
+agente/**/obj/
+agente/dist/
 
 # Instalador del panel (salida de Construir-Instalador.ps1)
 salida-instalador/
@@ -99,3 +79,6 @@ salida-instalador/
 # paquete de actualización del agente (lo sirve el panel en local)
 /paquete-agente/*.exe
 /paquete-agente/manifiesto.json
+
+# empujador compilado junto al panel (su fuente vive en agente/empujador)
+/empujador/*.exe

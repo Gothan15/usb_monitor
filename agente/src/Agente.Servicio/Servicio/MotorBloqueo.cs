@@ -1,0 +1,404 @@
+// -*- coding: utf-8 -*-
+// Motor de bloqueo en capas, verificado, con vigía. Espejo de
+// nucleo/bloqueo.py.
+//
+// Capas, en orden (cada una se comprueba contra el sistema, nunca se
+// cree el «OK» de una llamada):
+//   1. PNP: deshabilitar el nodo del dispositivo y verificar que
+//      quedó deshabilitado (código de problema 22).
+//   2. VOLUMEN: candado FSCTL (bloquear + desmontar, handle retenido)
+//      con sonda de inaccesibilidad. Solo para dispositivos con letra.
+//   3. SOLO_LECTURA: último recurso, declarado como degradado.
+//
+// Concurrencia (sin condiciones de carrera):
+//   - Un lock global protege el registro de dispositivos y el mapa de
+//     locks por dispositivo; cada transición de un dispositivo
+//     (bloquear, liberar, extraer) ocurre bajo SU lock: dos hilos
+//     nunca transicionan el mismo dispositivo a la vez. Los lock() de
+//     C# son reentrantes por hilo, como los RLock de Python: el vigía
+//     puede reaplicar llamando a Bloquear bajo el mismo lock.
+//   - Bloquear y liberar son idempotentes.
+//
+// Sin huella: deshabilitar un nodo se anota en el Diario al momento;
+// la anotación solo se borra cuando la reactivación se verifica.
+using USBMonitor.Agente.Core;
+
+namespace USBMonitor.Agente.Servicio;
+
+/// <summary>Capas de bloqueo, en orden de intento.</summary>
+public static class CapaBloqueo
+{
+    public const string Pnp = "PNP";
+    public const string Volumen = "VOLUMEN";
+    public const string SoloLectura = "SOLO_LECTURA";
+}
+
+/// <summary>Estados de un registro de bloqueo.</summary>
+public static class EstadoBloqueo
+{
+    public const string Bloqueado = "BLOQUEADO";
+    public const string Liberado = "LIBERADO";
+}
+
+/// <summary>Seguimiento de un dispositivo conocido por el motor.</summary>
+public sealed class RegistroBloqueo
+{
+    public required Dispositivo Dispositivo { get; set; }
+    public string Estado { get; set; } = EstadoBloqueo.Liberado;
+    public string? Capa { get; set; }
+    public bool Degradado { get; set; }
+    public bool? EnWhitelist { get; set; }
+
+    /// <summary>
+    /// Nodo que la capa PnP deshabilitó DE VERDAD: el del propio
+    /// dispositivo o, cuando ese no cede (discos duros externos),
+    /// el nodo USB del dispositivo. Liberar, extraer y vigilar
+    /// actúan sobre ESTE nodo, no sobre el de siempre.
+    /// </summary>
+    public string? NodoBloqueado { get; set; }
+
+    /// <summary>
+    /// Letras a las que la capa degradada puso solo lectura: en
+    /// una memoria de VARIAS particiones hay que ponerlas TODAS
+    /// (antes solo la primera y las demás quedaban escribibles) y
+    /// al liberar hay que quitarlo de las mismas.
+    /// </summary>
+    public List<string> LetrasSoloLectura { get; set; } = new();
+}
+
+/// <summary>Motor de bloqueo en capas con vigía y restauración sin huella.</summary>
+public sealed class MotorBloqueo
+{
+    // Ojo: cualificado entero porque esta clase tiene un método
+    // Registro(string) que ocultaría la clase del Core.
+    private static readonly Registrador Log =
+        global::USBMonitor.Agente.Core.Registro.Obtener("bloqueo");
+
+    private readonly Diario _diario;
+    private readonly CandadosVolumen _candados;
+    private readonly Func<string, bool>? _ponerSoloLectura;
+    private readonly Func<string, bool>? _quitarSoloLectura;
+
+    private readonly object _lockGlobal = new();
+    private readonly Dictionary<string, RegistroBloqueo> _registros = new();
+    private readonly Dictionary<string, object> _locks = new();
+
+    /// <param name="ponerSoloLectura">Capa degradada (diskpart); la aporta el Worker.</param>
+    /// <param name="quitarSoloLectura">Reversión de la capa degradada.</param>
+    public MotorBloqueo(
+        Diario diario,
+        CandadosVolumen candados,
+        Func<string, bool>? ponerSoloLectura = null,
+        Func<string, bool>? quitarSoloLectura = null)
+    {
+        _diario = diario;
+        _candados = candados;
+        _ponerSoloLectura = ponerSoloLectura;
+        _quitarSoloLectura = quitarSoloLectura;
+    }
+
+    // ── infraestructura de locks ──────────────────────────────────
+    private object LockDe(string clave)
+    {
+        lock (_lockGlobal)
+        {
+            if (!_locks.TryGetValue(clave, out var candado))
+            {
+                candado = new object();
+                _locks[clave] = candado;
+            }
+            return candado;
+        }
+    }
+
+    public RegistroBloqueo? Registro(string clave)
+    {
+        lock (_lockGlobal)
+            return _registros.TryGetValue(clave, out var reg) ? reg : null;
+    }
+
+    public List<RegistroBloqueo> Bloqueados()
+    {
+        lock (_lockGlobal)
+            return _registros.Values.Where(r => r.Estado == EstadoBloqueo.Bloqueado).ToList();
+    }
+
+    public void Olvidar(string clave)
+    {
+        lock (_lockGlobal) _registros.Remove(clave);
+    }
+
+    // ── bloquear ──────────────────────────────────────────────────
+    public RegistroBloqueo Bloquear(Dispositivo disp, bool? enWhitelist)
+    {
+        var clave = disp.Clave;
+        lock (LockDe(clave))
+        {
+            RegistroBloqueo reg;
+            lock (_lockGlobal)
+            {
+                if (!_registros.TryGetValue(clave, out var existente))
+                {
+                    reg = new RegistroBloqueo { Dispositivo = disp };
+                    _registros[clave] = reg;
+                }
+                else
+                {
+                    reg = existente;
+                    reg.Dispositivo = disp;
+                }
+                if (enWhitelist is not null) reg.EnWhitelist = enWhitelist;
+            }
+            if (reg.Estado == EstadoBloqueo.Bloqueado) return reg;
+
+            // Capa 1: PnP verificado, en cadena (el propio nodo o,
+            // si no cede — discos duros externos —, el nodo USB del
+            // dispositivo). El diario anota el nodo EFECTIVO: es el
+            // que hay que reactivar al liberar y al restaurar.
+            var nodo = Pnp.DeshabilitarConCadena(disp.InstanciaPnP);
+            if (nodo is not null)
+            {
+                _diario.AnotarDeshabilitado(nodo, disp.Serial);
+                reg.NodoBloqueado = nodo;
+                reg.Capa = CapaBloqueo.Pnp;
+                reg.Degradado = false;
+                reg.Estado = EstadoBloqueo.Bloqueado;
+                Log.Info($"Bloqueado por PnP: {disp.Nombre} ({disp.Serial})");
+                return reg;
+            }
+
+            // Capa 2, que además PREPARA otro intento de la 1:
+            // cuando la cadena PnP no cede, el veto suele venir del
+            // volumen montado (CM_Disable_DevNode devuelve 23,
+            // CR_REMOVE_VETOED, con el sistema de archivos y los
+            // ficheros abiertos de una unidad recién conectada).
+            // Se toman los candados de volumen — sobre TODAS las
+            // letras: candar solo la primera dejaba las demás
+            // particiones abiertas con el dispositivo «bloqueado» —
+            // y con el volumen ya bloqueado y desmontado se
+            // reintenta la cadena PnP una vez, con esperas cortas:
+            // si ahora cede, el bloqueo queda por la capa fuerte y
+            // los candados se sueltan; si no cede, los candados ya
+            // tomados SON la capa 2, sin repetir trabajo. Si alguna
+            // letra se resiste al candado, se suelta lo tomado y se
+            // pasa a la capa degradada, como antes.
+            if (disp.Letras.Count > 0)
+            {
+                var tomadas = new List<string>();
+                var todas = true;
+                foreach (var l in disp.Letras)
+                {
+                    if (_candados.Bloquear(l)) tomadas.Add(l);
+                    else { todas = false; break; }
+                }
+                if (todas)
+                {
+                    var nodoTrasCandado = Pnp.DeshabilitarConCadena(
+                        disp.InstanciaPnP, segundosPropio: 2, segundosAncestro: 3);
+                    if (nodoTrasCandado is not null)
+                    {
+                        foreach (var l in tomadas) _candados.Soltar(l);
+                        _diario.AnotarDeshabilitado(nodoTrasCandado, disp.Serial);
+                        reg.NodoBloqueado = nodoTrasCandado;
+                        reg.Capa = CapaBloqueo.Pnp;
+                        reg.Degradado = false;
+                        reg.Estado = EstadoBloqueo.Bloqueado;
+                        Log.Info($"Bloqueado por PnP tras candar el volumen: {disp.Nombre} ({disp.Serial})");
+                        return reg;
+                    }
+                    reg.Capa = CapaBloqueo.Volumen;
+                    reg.Degradado = false;
+                    reg.Estado = EstadoBloqueo.Bloqueado;
+                    Log.Info($"Bloqueado por volumen: {disp.Nombre} en {string.Join(", ", disp.Letras)}");
+                    return reg;
+                }
+                foreach (var l in tomadas) _candados.Soltar(l);
+            }
+
+            // Capa 3: solo lectura, degradado y declarado. En
+            // TODAS las particiones: poner solo la primera dejaba
+            // las demás particiones de la memoria escribibles con
+            // el dispositivo «bloqueado».
+            if (_ponerSoloLectura is not null)
+            {
+                var puestas = new List<string>();
+                foreach (var l in disp.Letras)
+                    if (_ponerSoloLectura(l)) puestas.Add(l);
+                if (puestas.Count > 0)
+                {
+                    reg.LetrasSoloLectura = puestas;
+                    reg.Capa = CapaBloqueo.SoloLectura;
+                    reg.Degradado = true;
+                    reg.Estado = EstadoBloqueo.Bloqueado;
+                    Log.Advertencia(
+                        $"Bloqueo DEGRADADO (solo lectura) para {disp.Nombre} " +
+                        $"en {string.Join(", ", puestas)}");
+                    return reg;
+                }
+            }
+
+            Log.Error($"No se pudo bloquear {disp.Nombre} por ninguna capa");
+            return reg;
+        }
+    }
+
+    // ── liberar ───────────────────────────────────────────────────
+    /// <summary>Idempotente: liberar algo no bloqueado devuelve True.</summary>
+    public bool Liberar(string clave)
+    {
+        lock (LockDe(clave))
+        {
+            RegistroBloqueo? reg;
+            lock (_lockGlobal) _registros.TryGetValue(clave, out reg);
+            if (reg is null || reg.Estado != EstadoBloqueo.Bloqueado) return true;
+            var disp = reg.Dispositivo;
+            var ok = true;
+            if (reg.Capa == CapaBloqueo.Pnp)
+            {
+                var nodo = reg.NodoBloqueado ?? disp.InstanciaPnP;
+                foreach (var letra in disp.Letras) _candados.Soltar(letra);
+                if (Pnp.Habilitar(nodo))
+                {
+                    _diario.QuitarDeshabilitado(nodo);
+                    reg.NodoBloqueado = null;
+                }
+                else
+                    ok = false;
+            }
+            else if (reg.Capa == CapaBloqueo.Volumen)
+            {
+                foreach (var letra in disp.Letras) _candados.Soltar(letra);
+            }
+            else if (reg.Capa == CapaBloqueo.SoloLectura)
+            {
+                if (_quitarSoloLectura is not null)
+                {
+                    var letras = reg.LetrasSoloLectura.Count > 0
+                        ? reg.LetrasSoloLectura
+                        : disp.Letras;
+                    foreach (var l in letras) _quitarSoloLectura(l);
+                }
+                reg.LetrasSoloLectura = new List<string>();
+            }
+            if (ok)
+            {
+                reg.Estado = EstadoBloqueo.Liberado;
+                reg.Capa = null;
+                reg.Degradado = false;
+                Log.Info($"Liberado: {disp.Nombre} ({disp.Serial})");
+            }
+            else
+            {
+                Log.Error($"Liberación incompleta de {disp.Nombre}");
+            }
+            return ok;
+        }
+    }
+
+    public bool LiberarConReintentos(string clave, int[]? esperasSegundos = null)
+    {
+        esperasSegundos ??= new[] { 10, 30, 60 };
+        if (Liberar(clave)) return true;
+        foreach (var espera in esperasSegundos)
+        {
+            Thread.Sleep(TimeSpan.FromSeconds(espera));
+            if (Liberar(clave)) return true;
+        }
+        return false;
+    }
+
+    // ── extracción ────────────────────────────────────────────────
+    /// <summary>
+    /// El dispositivo ya no está: se suelta todo y se revierte su nodo
+    /// aunque esté desconectado (que la próxima vez entre normal).
+    /// Sin esto, la v1 dejó una memoria muerta.
+    /// </summary>
+    public void AlExtraer(string clave)
+    {
+        lock (LockDe(clave))
+        {
+            RegistroBloqueo? reg;
+            lock (_lockGlobal)
+            {
+                if (!_registros.Remove(clave, out reg)) return;
+            }
+            var disp = reg.Dispositivo;
+            foreach (var letra in disp.Letras) _candados.Soltar(letra);
+            if (reg.Capa == CapaBloqueo.SoloLectura && _quitarSoloLectura is not null)
+            {
+                // El atributo vive en el volumen: si la extracción
+                // fue real, la llamada falla en silencio y no pasa
+                // nada; si fue un parpadeo, la memoria no puede
+                // quedarse en solo lectura para siempre.
+                foreach (var l in reg.LetrasSoloLectura) _quitarSoloLectura(l);
+            }
+            if (reg.Capa == CapaBloqueo.Pnp || reg.Estado == EstadoBloqueo.Bloqueado)
+            {
+                var nodo = reg.NodoBloqueado ?? disp.InstanciaPnP;
+                if (Pnp.Habilitar(nodo))
+                    _diario.QuitarDeshabilitado(nodo);
+            }
+        }
+    }
+
+    // ── vigía ─────────────────────────────────────────────────────
+    /// <summary>
+    /// Reaplica el bloqueo a lo que algo haya revivido.
+    /// Devuelve las claves reaplicadas (para avisar al panel).
+    /// </summary>
+    public List<string> Vigilar(
+        IReadOnlyDictionary<string, Dispositivo>? actuales = null)
+    {
+        var reaplicadas = new List<string>();
+        foreach (var reg in Bloqueados())
+        {
+            // Foto fresca: las particiones de una memoria montan a
+            // ritmos distintos y la enumeración de la llegada pudo
+            // ver una sola letra; sin refrescar el registro, una
+            // partición que montó DESPUÉS no existía para el vigía
+            // y quedaba accesible con el dispositivo bloqueado.
+            if (actuales is not null &&
+                actuales.TryGetValue(reg.Dispositivo.Clave, out var fresco))
+            {
+                lock (LockDe(reg.Dispositivo.Clave))
+                    reg.Dispositivo = fresco;
+            }
+            var disp = reg.Dispositivo;
+            var clave = disp.Clave;
+            lock (LockDe(clave))
+            {
+                if (reg.Estado != EstadoBloqueo.Bloqueado) continue;
+                var revivido = false;
+                if (reg.Capa == CapaBloqueo.Pnp)
+                {
+                    revivido = Pnp.EstaDeshabilitado(reg.NodoBloqueado ?? disp.InstanciaPnP) == false;
+                }
+                else if (reg.Capa == CapaBloqueo.Volumen)
+                {
+                    // Con varias particiones basta que UNA vuelva a
+                    // ser accesible para dar el bloqueo por revivido.
+                    revivido = disp.Letras.Any(l => Volumen.EsAccesible(l));
+                }
+                if (revivido)
+                {
+                    Log.Advertencia($"Dispositivo revivido, reaplicando: {disp.Nombre}");
+                    reg.Estado = EstadoBloqueo.Liberado;
+                    reg.Capa = null;
+                    Bloquear(disp, reg.EnWhitelist);
+                    reaplicadas.Add(clave);
+                }
+            }
+        }
+        return reaplicadas;
+    }
+
+    // ── restauración total ────────────────────────────────────────
+    /// <summary>Libera lo bloqueado y revierte el diario completo.</summary>
+    public ResumenRestauracion RestaurarTodo()
+    {
+        foreach (var reg in Bloqueados())
+            Liberar(reg.Dispositivo.Clave);
+        _candados.SoltarTodos();
+        return _diario.RestaurarTodo(Pnp.Habilitar, _ => true);
+    }
+}
