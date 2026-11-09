@@ -2,9 +2,9 @@
 // Configuración del agente: vive SOLO en server.json (junto al
 // ejecutable o en la carpeta de datos), espejo del config.py del
 // agente original en Python (retirado). Claves: serverHost, serverPort,
-// serverScheme, agentToken, sslCert, sslVerify. La credencial es
-// solo el token del equipo; un valor cifrado ilegible se descarta
-// (fail-closed), nunca se usa como credencial.
+// serverScheme, sslCert, sslVerify y la credencial por clave
+// (clavePrivada, equipoId, codigoEnrolamiento). La antigua clave
+// agentToken ya no se lee: Guardar la purga del archivo.
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
@@ -95,6 +95,10 @@ public sealed class Configuracion
             {
                 datos = new Dictionary<string, JsonElement>(Cargar());
             }
+            // Purga del sistema anterior (2.0): si server.json
+            // aún guarda el token antiguo, sale del archivo en
+            // cuanto algo se guarda. Ya nadie lo lee.
+            datos.Remove("agentToken");
             foreach (var (clave, valor) in actualizaciones)
             {
                 datos[clave] = JsonSerializer.SerializeToElement(valor);
@@ -167,7 +171,7 @@ public sealed class Configuracion
     /// <summary>¿Este equipo ya tiene identidad (clave privada guardada)?</summary>
     public bool TieneClave => LeerClavePrivadaPkcs8B64() is not null;
 
-    /// <summary>El id que el panel asignó a este equipo al enrolar o migrar.</summary>
+    /// <summary>El id que el panel asignó a este equipo al enrolar.</summary>
     public string? EquipoId
     {
         get
@@ -200,9 +204,6 @@ public sealed class Configuracion
         Guardar(new Dictionary<string, object?> { ["codigoEnrolamiento"] = CifradoValores.Cifrar(codigoPlano) });
 
     public bool BorrarCodigoEnrolamiento() => Quitar("codigoEnrolamiento");
-
-    /// <summary>Al migrar, el token antiguo se borra de server.json.</summary>
-    public bool BorrarTokenLegado() => Quitar("agentToken");
 
     private string Texto(string clave, string defecto = "")
     {
@@ -270,23 +271,6 @@ public sealed class Configuracion
                 return true;
             return !(Cargar().TryGetValue("sslVerify", out var v) &&
                      v.ValueKind == JsonValueKind.False);
-        }
-    }
-
-    /// <summary>
-    /// El token del sistema ANTERIOR, descifrado. Tras el overhaul
-    /// solo sirve para una cosa: presentarlo una última vez en la
-    /// migración y borrarlo. Nada más debe leerlo.
-    /// </summary>
-    public string? TokenLegado
-    {
-        get
-        {
-            var bruto = Texto("agentToken");
-            if (bruto.Length == 0)
-                return null;
-            var limpio = CifradoValores.Descifrar(bruto).Trim();
-            return limpio.Length > 0 ? limpio : null;
         }
     }
 

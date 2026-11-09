@@ -1,4 +1,4 @@
-import { createHash, createPublicKey, timingSafeEqual, verify } from "crypto";
+import { createHash, createPublicKey, verify } from "crypto";
 
 import type { ServiceAuthIdentity } from "@/lib/auth";
 import { ipClienteDe } from "@/lib/auth";
@@ -25,10 +25,9 @@ import { logError } from "@/lib/logger";
  * distintas dentro de 10 minutos, casi seguro la clave salió de
  * la PC: se revoca al momento y queda la alerta en el equipo.
  *
- * Puente legado (M): solo para las rutas de auto-actualización
- * y la de migración, un equipo aún no migrado puede presentarse
- * con su antiguo token; en cuanto registra su clave, el token
- * se borra y el puente muere para ese equipo.
+ * Desde la 2.0 es la ÚNICA vía: el puente con el token antiguo
+ * y la ruta de migración desaparecieron; un equipo sin clave
+ * registrada solo puede enrolarse con un código de un solo uso.
  */
 
 const VENTANA_TS_SEG = 300;
@@ -185,60 +184,4 @@ export async function requireAgentAuth(
   const auth = await autenticarAgenteFirmado(req);
   if (!auth) throw new Error("UNAUTHORIZED");
   return auth;
-}
-
-// ── Puente legado de migración ────────────────────────────────
-
-function hashTokenLegado(token: string): string {
-  return createHash("sha256").update(token, "utf8").digest("hex");
-}
-
-/**
- * El antiguo token, SOLO donde el llamador lo permita (rutas de
- * auto-actualización y migración). Sin hash registrado no hay
- * puente: para un equipo migrado esto devuelve siempre null.
- */
-export async function autenticarPuenteLegado(
-  req: Request,
-): Promise<ServiceAuthIdentity | null> {
-  const authHeader = req.headers.get("authorization") || "";
-  const coincidencia = authHeader.match(/^AgentToken\s+(\S+)$/i);
-  if (!coincidencia) return null;
-  const hash = hashTokenLegado(coincidencia[1]);
-  const computer = await (db as any).computer.findFirst({
-    where: { agentTokenHash: hash },
-    select: { id: true, name: true, clavePublica: true },
-  });
-  if (!computer || computer.clavePublica) return null;
-  // Comparación en tiempo constante sobre el hash ya localizado.
-  const a = Buffer.from(hash, "hex");
-  const b = Buffer.from(hash, "hex");
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
-  if (registrarAvistamiento(computer.id, ipClienteDe(req))) {
-    const motivo =
-      "El token antiguo se usó desde dos direcciones IP a la vez: " +
-      "revocado automáticamente.";
-    logError(`Token legado revocado por doble IP: ${computer.name}`, new Error(motivo));
-    await revocarCredencial(computer.id, motivo).catch(() => {});
-    return null;
-  }
-  return { type: "service", serviceId: computer.name, token: "", computerId: computer.id };
-}
-
-/**
- * Firma primero; el puente solo si la petición no trae NINGUNA
- * cabecera de firma (una firma presente pero inválida no rebaja
- * la exigencia: es un 401 y punto).
- */
-export async function requireAgentAuthOPuente(
-  req: Request,
-): Promise<ServiceAuthIdentity> {
-  const firmado = await autenticarAgenteFirmado(req);
-  if (firmado) return firmado;
-  const traeFirma = req.headers.has("x-agente-firma");
-  if (!traeFirma) {
-    const legado = await autenticarPuenteLegado(req);
-    if (legado) return legado;
-  }
-  throw new Error("UNAUTHORIZED");
 }

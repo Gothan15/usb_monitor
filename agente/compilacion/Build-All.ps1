@@ -26,7 +26,7 @@ if ($Clean -and (Test-Path $dist)) {
 
 # La versión del ejecutable: la manda la etiqueta de la Release
 # (el workflow corre este script y GITHUB_REF_NAME trae p. ej.
-# «agente-v1.0.18»); en local se puede pasar -Version a mano. Sin
+# «agente-v2.0.0»); en local se puede pasar -Version a mano. Sin
 # una versión X.Y.Z clara no se estampa nada y manda el <Version>
 # del .csproj. Antes el exe salía SIEMPRE con el 1.0.11 fijo del
 # proyecto y el agente se anunciaba al panel con esa versión

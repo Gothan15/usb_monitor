@@ -70,7 +70,6 @@ export async function registrarClavePublica(
       credencialAt: new Date(),
       codigoEnrolamientoHash: null,
       codigoEnrolamientoExpira: null,
-      agentTokenHash: null,
       intentosFallidosCredencial: 0,
       alertaCredencial: null,
       credencialRevocadaAt: null,
@@ -80,9 +79,8 @@ export async function registrarClavePublica(
 }
 
 /**
- * Revoca la credencial de un equipo: sin clave ni token legado
- * no puede firmar ni migrar; solo le queda enrolarse de nuevo
- * con un código. El motivo queda como alerta visible en Equipos.
+ * Revoca la credencial de un equipo: sin clave no puede
+ * firmar; solo le queda enrolarse de nuevo con un código. El motivo queda como alerta visible en Equipos.
  */
 export async function revocarCredencial(
   computerId: string,
@@ -96,7 +94,6 @@ export async function revocarCredencial(
       credencialAt: null,
       codigoEnrolamientoHash: null,
       codigoEnrolamientoExpira: null,
-      agentTokenHash: null,
       alertaCredencial: motivo,
       credencialRevocadaAt: new Date(),
     },

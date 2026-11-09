@@ -271,10 +271,10 @@ internal static class Program
 
     /// <summary>
     /// Primera vez en este equipo: no hay credencial de ninguna
-    /// clase (ni clave, ni código pendiente, ni token antiguo que
-    /// migrar), así que el equipo no está dado de alta en el panel
-    /// y toca pasar por el asistente de configuración. Si la
-    /// configuración no se puede ni leer, también es primera vez.
+    /// clase (ni clave ni código pendiente), así que el equipo no
+    /// está dado de alta en el panel y toca pasar por el asistente
+    /// de configuración. Si la configuración no se puede ni leer,
+    /// también es primera vez.
     /// </summary>
     private static bool EsPrimeraVez()
     {
@@ -282,7 +282,6 @@ internal static class Program
         {
             var config = new Configuracion();
             return !config.TieneClave &&
-                   config.TokenLegado is null &&
                    config.CodigoEnrolamiento is null;
         }
         catch

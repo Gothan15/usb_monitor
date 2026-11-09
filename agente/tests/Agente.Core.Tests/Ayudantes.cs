@@ -46,7 +46,7 @@ internal static class Fabrica
         var datos = DirectorioTemporal();
         File.WriteAllText(
             Path.Combine(app, "server.json"),
-            $$"""{"serverHost":"127.0.0.1","serverPort":{{puerto}},"serverScheme":"http","agentToken":"token-prueba"}""");
+            $$"""{"serverHost":"127.0.0.1","serverPort":{{puerto}},"serverScheme":"http"}""");
         return (new Configuracion(app, datos), datos);
     }
 }

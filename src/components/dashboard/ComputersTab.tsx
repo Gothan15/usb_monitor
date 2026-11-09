@@ -876,13 +876,6 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
                       ? ` · huella ${String(credencialEstado.huella).slice(0, 12)}…`
                       : ""}
                   </p>
-                ) : credencialEstado.tieneTokenLegado ? (
-                  <p>
-                    <strong>Token antiguo:</strong> este equipo aún se
-                    acredita con el sistema anterior. Al actualizar su
-                    agente se migrará solo a la clave; no hay que tocar
-                    nada en la PC.
-                  </p>
                 ) : (
                   <p>
                     <strong>Sin credencial:</strong> este equipo no puede

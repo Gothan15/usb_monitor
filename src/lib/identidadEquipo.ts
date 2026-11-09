@@ -155,7 +155,6 @@ export async function fusionarEquipos(
         serviceInstalled: true,
         serviceRunning: true,
         agentVersion: true,
-        agentTokenHash: true,
       },
     }),
     (db as any).computer.findUnique({
@@ -165,7 +164,6 @@ export async function fusionarEquipos(
         serviceInstalled: true,
         serviceRunning: true,
         agentVersion: true,
-        agentTokenHash: true,
       },
     }),
   ]);
@@ -225,8 +223,6 @@ export async function fusionarEquipos(
         codigoEnrolamientoExpira:
           sobreviviente.codigoEnrolamientoExpira ??
           duplicado.codigoEnrolamientoExpira,
-        agentTokenHash:
-          sobreviviente.agentTokenHash ?? duplicado.agentTokenHash,
         ipAddress:
           sobreviviente.ipAddress && sobreviviente.ipAddress.trim() !== ""
             ? sobreviviente.ipAddress

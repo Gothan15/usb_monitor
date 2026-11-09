@@ -130,7 +130,6 @@ function filaEquipo(parcial: Record<string, unknown>) {
     serviceInstalled: false,
     serviceRunning: false,
     agentVersion: null,
-    agentTokenHash: null,
     ...parcial,
   };
 }

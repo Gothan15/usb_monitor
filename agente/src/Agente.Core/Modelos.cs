@@ -220,13 +220,7 @@ internal sealed class SolicitudEnrolamientoCodigo
     [JsonPropertyName("ips")] public List<string> Ips { get; set; } = new();
 }
 
-/// <summary>Solicitud de migración: solo la clave pública (el token viaja en la cabecera, una última vez).</summary>
-internal sealed class SolicitudMigracion
-{
-    [JsonPropertyName("clavePublica")] public string ClavePublica { get; set; } = "";
-}
-
-/// <summary>Respuesta de enrolar/migrar: el id que el panel asigna a este equipo.</summary>
+/// <summary>Respuesta de enrolar: el id que el panel asigna a este equipo.</summary>
 internal sealed class RespuestaCredencial
 {
     [JsonPropertyName("ok")] public bool Ok { get; set; }

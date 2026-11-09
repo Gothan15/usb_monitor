@@ -35,9 +35,11 @@ public class ClientePanelTests
         Assert.Contains("\"event\":\"DISCONNECTED\"", manejador.Cuerpos[2]);
         // Sin whitelisted cuando no se informa (como el Python).
         Assert.DoesNotContain("whitelisted", manejador.Cuerpos[0]);
-        // Sin equipoId registrado aún, manda el puente legado: la
-        // cabecera con el token antiguo va en cada llamada.
-        Assert.All(manejador.Autorizaciones, a => Assert.Equal("AgentToken token-prueba", a));
+        // Sin clave registrada, las llamadas salen desnudas (sin
+        // cabecera Authorization): en la 2.0 ya no hay token
+        // antiguo que mandar. El panel solo acepta así el
+        // enrolamiento; el resto lo rechaza hasta enrolar.
+        Assert.All(manejador.Autorizaciones, a => Assert.Null(a));
 
         var salud = cliente2.Salud();
         Assert.Equal(3, salud.Ok);
