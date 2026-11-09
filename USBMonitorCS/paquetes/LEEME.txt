@@ -1,6 +1,0 @@
-Carpeta de paquetes NuGet locales (compilación sin internet).
-
-Si aquí dentro están los .nupkg del proyecto (el paquete
-«paquetes-nuget-agente.zip» que prepara Ciri), `dotnet` los usa
-desde esta carpeta y la compilación no necesita conexión.
-Sin archivos, esta carpeta no estorba: NuGet tira de nuget.org.
