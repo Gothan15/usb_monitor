@@ -147,7 +147,9 @@ export async function ejecutarEmpujador(
   return new Promise<ResultadoEmpujador>((resolve) => {
     let resultado: ResultadoEmpujador | null = null;
     let resto = "";
+    let errores = "";
     let terminado = false;
+    let agotado = false;
     const terminar = (r: ResultadoEmpujador) => {
       if (terminado) return;
       terminado = true;
@@ -167,17 +169,36 @@ export async function ejecutarEmpujador(
       });
     }
 
+    // stderr se DRENA siempre, aunque no se use: con la tubería
+    // sin lector, un empujador que escriba más de lo que cabe en
+    // el búfer (un volcado de excepción de.NET, por ejemplo) se
+    // queda bloqueado escribiendo y no termina nunca — era una
+    // de las vías del «proceso colgado» que retenía el paquete.
+    // Se guarda solo la cola, para poder contar el fallo.
+    hijo.stderr?.setEncoding("utf-8");
+    hijo.stderr?.on("data", (trozo: string) => {
+      errores = (errores + trozo).slice(-4096);
+    });
+
     const limite = setTimeout(() => {
+      agotado = true;
       try {
         hijo.kill();
       } catch {}
-      terminar({
-        success: false,
-        message:
-          "El empujador no terminó en 10 minutos; se detuvo. El destino queda como estaba antes del intento.",
-        checks: null,
-        yaInstalado: null,
-      });
+      // No se resuelve hasta que el proceso muere de verdad
+      // (evento close) o pasa una gracia breve: resolver aquí
+      // dejaba al empujador zombi con el ejecutable del paquete
+      // abierto, y el siguiente intento — o la subida de un
+      // paquete nuevo en Ajustes — chocaba contra ese candado.
+      setTimeout(() => {
+        terminar({
+          success: false,
+          message:
+            "El empujador no terminó en 10 minutos y no se dejó detener; el destino queda como estaba antes del intento.",
+          checks: null,
+          yaInstalado: null,
+        });
+      }, 5_000);
     }, LIMITE_EMPUJADOR_MS);
 
     hijo.stdout?.setEncoding("utf-8");
@@ -208,9 +229,26 @@ export async function ejecutarEmpujador(
     });
     hijo.on("close", () => {
       clearTimeout(limite);
+      if (agotado) {
+        logError("El empujador agotó el tiempo y fue detenido", {
+          stderr: errores.trim().slice(-500) || undefined,
+        });
+        return terminar({
+          success: false,
+          message:
+            "El empujador no terminó en 10 minutos; se detuvo. El destino queda como estaba antes del intento.",
+          checks: null,
+          yaInstalado: null,
+        });
+      }
       if (resto.trim()) {
         const evento = interpretarLineaEmpujador(resto);
         if (evento?.tipo === "resultado") resultado = evento.resultado;
+      }
+      if (!resultado && errores.trim()) {
+        logError("El empujador terminó sin resultado", {
+          stderr: errores.trim().slice(-500),
+        });
       }
       terminar(
         resultado ?? {

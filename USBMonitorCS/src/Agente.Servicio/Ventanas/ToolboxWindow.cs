@@ -656,6 +656,21 @@ public sealed class ToolboxWindow : Window
         enrolar.Click += async (_, _) => await EnrolarDesdeCajaAsync();
         contenido.Children.Add(enrolar);
 
+        // La prueba de enrolamiento paso a paso: seis pasos con
+        // su veredicto y su frase, la misma lista en pantalla y
+        // en el registro. Es la herramienta para cuando el
+        // código «no se acepta» y nadie sabe por qué.
+        var textoDiagnostico = Tema.TextoDatos("", 12);
+        textoDiagnostico.TextWrapping = TextWrapping.Wrap;
+        textoDiagnostico.Margin = new Thickness(0, 8, 0, 0);
+        textoDiagnostico.Visibility = Visibility.Collapsed;
+        var diagnostico = Tema.BotonSecundario("Diagnóstico paso a paso");
+        diagnostico.Margin = new Thickness(0, 8, 0, 0);
+        diagnostico.Click += async (_, _) =>
+            await EjecutarDiagnosticoAsync(diagnostico, textoDiagnostico);
+        contenido.Children.Add(diagnostico);
+        contenido.Children.Add(textoDiagnostico);
+
         var nota = Tema.TextoDatos(
             "El código lo genera el administrador en Equipos → " +
             "Credencial del equipo; vale 30 minutos y se gasta al " +
@@ -719,6 +734,47 @@ public sealed class ToolboxWindow : Window
         };
     }
 
+    /// <summary>
+    /// Corre la prueba de enrolamiento paso a paso y pinta el
+    /// resultado en la propia sección: un renglón por paso, con
+    /// su marca y su frase. El código del campo (si hay) es el
+    /// que la prueba consulta y gasta; sin código escrito, la
+    /// prueba usa el pendiente que trajera la instalación.
+    /// </summary>
+    private async Task EjecutarDiagnosticoAsync(Button boton, TextBlock destino)
+    {
+        boton.IsEnabled = false;
+        destino.Visibility = Visibility.Visible;
+        destino.Text = "Ejecutando la prueba paso a paso…";
+        try
+        {
+            var escrito = _codigoEnroll.Password.Trim();
+            var pasos = await _cliente.DiagnosticoEnrolamientoAsync(
+                escrito.Length > 0 ? escrito : null);
+            var lineas = new List<string>
+            {
+                "Prueba de enrolamiento (queda en el registro del agente):",
+            };
+            foreach (var paso in pasos)
+            {
+                var marca = paso.Estado switch
+                {
+                    "ok" => "✓",
+                    "fallo" => "✗",
+                    _ => "–",
+                };
+                lineas.Add($"{marca} {paso.Paso} — {paso.Detalle}");
+            }
+            destino.Text = string.Join("\n", lineas);
+            _codigoEnroll.Clear();
+            await RefrescarCredencialAsync();
+        }
+        finally
+        {
+            boton.IsEnabled = true;
+        }
+    }
+
     private async Task EnrolarDesdeCajaAsync()
     {
         string codigo = _codigoEnroll.Password.Trim();
@@ -727,9 +783,9 @@ public sealed class ToolboxWindow : Window
             Tema.AvisarError("Escribe el código de enrolamiento.", "Vacío");
             return;
         }
-        var ok = await _cliente.EnrolarConCodigoAsync(codigo);
+        var intento = await _cliente.EnrolarDetalladoAsync(codigo);
         _codigoEnroll.Clear();
-        if (ok)
+        if (intento.Ok)
         {
             Tema.Avisar(
                 "El panel registró la clave de este equipo. Reinicia el servicio para que firme ya con ella.",
@@ -738,10 +794,14 @@ public sealed class ToolboxWindow : Window
         }
         else
         {
+            // La respuesta EXACTA del panel, con su motivo: el
+            // «no aceptado» a secas no servía para corregir nada.
             Tema.AvisarError(
-                "El panel no aceptó el código. Comprueba que sea el " +
-                "vigente para este equipo (caduca a los 30 minutos y " +
-                "se gasta al primer uso) y que el panel responda.",
+                "El panel no aceptó el código" +
+                (intento.Motivo is not null ? $" (motivo: {intento.Motivo})" : "") +
+                $": {intento.Detalle} " +
+                "Si la causa no queda clara, corre el «Diagnóstico paso a paso» " +
+                "de esta misma sección: deja cada paso en el registro.",
                 "Credencial");
         }
     }
@@ -1212,10 +1272,15 @@ public sealed class ToolboxWindow : Window
 
         FijarBotonesServicio(true);
         object? previo = Tema.MarcarOcupado(boton, "Desinstalando…");
+        var desinstalado = false;
         try
         {
             string resumen = await Task.Run(() => Instalador.Desinstalar());
-            Tema.Avisar(resumen, "Desinstalar servicio");
+            desinstalado = true;
+            Tema.Avisar(
+                resumen + " La caja de herramientas se cierra: ya no queda " +
+                "ningún proceso del agente en marcha.",
+                "Desinstalar servicio");
         }
         catch (Exception ex)
         {
@@ -1226,6 +1291,15 @@ public sealed class ToolboxWindow : Window
         {
             Tema.RestaurarBoton(boton, previo);
             FijarBotonesServicio(false);
+        }
+        // La propia caja ES un proceso del agente: si la
+        // desinstalación dejó cero procesos, esta ventana es la
+        // última en salir (síntoma de 2026-11-08: «desinstalo
+        // todo y el proceso se queda funcionando»).
+        if (desinstalado)
+        {
+            Close();
+            return;
         }
         await RefrescarEstadoAsync();
     }

@@ -110,6 +110,16 @@ function normalizarCodigo(codigo: string): string {
 }
 
 /**
+ * Hash con el que el panel guarda y busca un código: SHA-256
+ * del código normalizado (sin guiones ni espacios, en
+ * mayúsculas). Lo comparten la generación, la validación al
+ * enrolar y la consulta de estado sin gastar.
+ */
+export function hashCodigoEnrolamiento(codigo: string): string {
+  return hashTexto(normalizarCodigo(codigo));
+}
+
+/**
  * Genera un código de enrolamiento de UN SOLO USO para un
  * equipo (12 caracteres en tres grupos, sin caracteres
  * ambiguos). Se enseña una vez; el servidor guarda solo su
@@ -129,7 +139,7 @@ export async function generarCodigoEnrolamiento(
   await (db as any).computer.update({
     where: { id: computerId },
     data: {
-      codigoEnrolamientoHash: hashTexto(normalizarCodigo(codigo)),
+      codigoEnrolamientoHash: hashCodigoEnrolamiento(codigo),
       codigoEnrolamientoExpira: expira,
     },
   });
@@ -147,7 +157,7 @@ export function codigoEnrolamientoValido(
   if (new Date(computer.codigoEnrolamientoExpira).getTime() < Date.now()) {
     return false;
   }
-  const presentado = Buffer.from(hashTexto(normalizarCodigo(codigo)), "hex");
+  const presentado = Buffer.from(hashCodigoEnrolamiento(codigo), "hex");
   const guardado = Buffer.from(computer.codigoEnrolamientoHash, "hex");
   return (
     presentado.length === guardado.length &&

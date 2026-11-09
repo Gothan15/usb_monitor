@@ -666,19 +666,27 @@ public sealed class AsistenteWindow : Window
         }
         _avisoToken.Visibility = Visibility.Collapsed;
 
-        bool enrolado;
+        ResultadoEnrolamiento intento;
         using (var cliente = new ClientePanel(_config))
         {
-            enrolado = await cliente.EnrolarConCodigoAsync(codigo);
+            intento = await cliente.EnrolarDetalladoAsync(codigo);
         }
         _codigoEnroll.Clear();
-        if (!enrolado)
+        if (!intento.Ok)
         {
+            // La respuesta EXACTA del panel, con su motivo
+            // distinguible: el «no aceptado» a secas obligaba a
+            // adivinar (¿caducado?, ¿de otra PC?, ¿ya gastado?).
             Tema.AvisarError(
-                "El panel no aceptó el código de enrolamiento. " +
-                "Comprueba el servidor del paso anterior y que el " +
-                "código sea el vigente para este equipo (caduca a " +
-                "los 30 minutos y se gasta al primer uso).", "Credencial");
+                "El panel no aceptó el código de enrolamiento" +
+                (intento.Motivo is not null ? $" (motivo: {intento.Motivo})" : "") +
+                $": {intento.Detalle} " +
+                "Comprueba también el servidor del paso anterior y " +
+                "que el código se haya generado en el panel para " +
+                "el nombre EXACTO de esta PC (" +
+                Environment.MachineName + "). Para el detalle " +
+                "completo, la caja de herramientas tiene la prueba " +
+                "de enrolamiento paso a paso.", "Credencial");
             return false;
         }
         _log.Info("Asistente: equipo enrolado; clave registrada en el panel");

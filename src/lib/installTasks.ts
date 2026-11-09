@@ -105,3 +105,24 @@ export const ETIQUETA_ESTADO_DESTINO: Record<string, string> = {
   ERROR: "Error",
   INTERRUMPIDO: "Interrumpido",
 };
+
+/**
+ * ¿Se puede borrar una tarea? Solo si ya terminó de verdad:
+ * la tarea no está EN_CURSO, el ejecutor no la tiene entre
+ * manos en este proceso y NINGÚN destino sigue en un estado
+ * en curso. Borrar una tarea viva dejaría procesos empujando
+ * contra filas que ya no existen; para esas, primero hay que
+ * dejar que acaben (o que el panel las marque interrumpidas
+ * al reiniciar).
+ */
+export function tareaPuedeBorrarse(datos: {
+  status: string;
+  estadosDestinos: string[];
+  enEjecucion: boolean;
+}): boolean {
+  if (datos.enEjecucion) return false;
+  if (datos.status === ESTADO_TAREA.EN_CURSO) return false;
+  return datos.estadosDestinos.every((e) =>
+    (ESTADOS_DESTINO_FINALES as string[]).includes(e),
+  );
+}

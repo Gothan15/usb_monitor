@@ -5,6 +5,7 @@ import dgram from "dgram";
 import net from "net";
 import util from "util";
 import { db } from "@/lib/db";
+import { resolverEquipoParaAgente } from "@/lib/identidadEquipo";
 import { checkServiceHealth } from "@/lib/serviceNotifier";
 import { getCurrentDate, getCurrentTimestamp } from "@/lib/time";
 import { normalizeComputerName } from "@/lib/utils";
@@ -706,36 +707,39 @@ async function checkService(ip: string): Promise<ServiceCheckResult> {
   return result;
 }
 
-const UPSERT_BATCH_SIZE = 25;
-
 async function persistComputers(entries: ComputerUpsertPayload[]) {
   if (!entries.length) return;
-  // Chunk $transaction calls to keep Prisma execution time predictable and reduce round trips.
-  for (let i = 0; i < entries.length; i += UPSERT_BATCH_SIZE) {
-    const slice = entries.slice(i, i + UPSERT_BATCH_SIZE);
-    const operations = slice.map((entry) =>
-      (db as any).computer.upsert({
+  // Cada entrada pasa por la resolución de identidad
+  // (nombre + IP): si la misma PC existía como dos filas —la
+  // del nombre y otra con la misma IP— se fusionan y el
+  // escaneo anota en la fila única, en vez de alimentar la
+  // duplicada. Son pocos hosts (solo los que tienen agente),
+  // así que va en serie sin problema.
+  for (const entry of entries) {
+    const datos = {
+      ipAddress: entry.ip,
+      lastSeen: entry.lastSeenAt,
+      isActive: entry.isActive,
+      serviceInstalled: entry.serviceInstalled ?? false,
+      serviceRunning: entry.serviceRunning ?? false,
+      lastServiceCheck: entry.lastServiceCheck,
+    };
+    const resuelto = await resolverEquipoParaAgente({
+      nombre: entry.name,
+      ip: entry.ip,
+    }).catch(() => null);
+    if (resuelto) {
+      await (db as any).computer.update({
+        where: { id: resuelto.id },
+        data: datos,
+      });
+    } else {
+      await (db as any).computer.upsert({
         where: { name: entry.name },
-        update: {
-          ipAddress: entry.ip,
-          lastSeen: entry.lastSeenAt,
-          isActive: entry.isActive,
-          serviceInstalled: entry.serviceInstalled ?? false,
-          serviceRunning: entry.serviceRunning ?? false,
-          lastServiceCheck: entry.lastServiceCheck,
-        },
-        create: {
-          name: entry.name,
-          ipAddress: entry.ip,
-          lastSeen: entry.lastSeenAt,
-          isActive: entry.isActive,
-          serviceInstalled: entry.serviceInstalled ?? false,
-          serviceRunning: entry.serviceRunning ?? false,
-          lastServiceCheck: entry.lastServiceCheck,
-        },
-      })
-    );
-    await (db as any).$transaction(operations);
+        update: datos,
+        create: { name: entry.name, ...datos },
+      });
+    }
   }
 }
 
@@ -937,15 +941,22 @@ export async function scanNetwork(
           // Solo se persiste lo que tiene agente: un host vivo sin
           // agente (impresora, teléfono) se muestra en los
           // resultados pero NO se convierte en «equipo» del registro.
-          persistQueue.push({
-            name: normalizedName || normalizeComputerName(vecino.ip),
-            ip: vecino.ip,
-            lastSeenAt: getCurrentDate(),
-            isActive: true,
-            serviceInstalled: true,
-            serviceRunning: true,
-            lastServiceCheck: svc.lastServiceCheck,
-          });
+          // Y solo si se conoce su NOMBRE: antes, sin nombre, la
+          // fila se creaba con la IP como nombre, y esa fila «por
+          // IP» duplicaba a la de verdad (con la credencial y el
+          // dueño en la otra). Sin nombre no hay alta: el equipo
+          // entrará por su propio reporte, que sí trae el nombre.
+          if (normalizedName) {
+            persistQueue.push({
+              name: normalizedName,
+              ip: vecino.ip,
+              lastSeenAt: getCurrentDate(),
+              isActive: true,
+              serviceInstalled: true,
+              serviceRunning: true,
+              lastServiceCheck: svc.lastServiceCheck,
+            });
+          }
         }
       } catch (e: any) {
         host.error = e.message;

@@ -147,22 +147,30 @@ internal static class Program
         });
 
         // 4. ¿El agente ya está instalado? (dato, no bloqueo: la
-        // tarea decide si omite este equipo)
-        var yaInstalado = ServicioExiste(o.Ip, NombreServicioAgente);
+        // tarea decide si omite este equipo). La respuesta es a
+        // TRES estados: true / false / null (no se pudo
+        // comprobar). Antes era sí-o-no y «no se pudo preguntar»
+        // se contaba como «no», y un «sí» a secas —sin mirar QUÉ
+        // servicio era— como instalado: de ahí salían omisiones
+        // imposibles en PCs nunca instaladas.
+        var yaInstalado = ServicioInstalado(o.Ip, NombreServicioAgente);
         checks.Add(new
         {
             id = "instalado",
             etiqueta = "El agente no está ya instalado",
-            ok = !yaInstalado,
-            detalle = yaInstalado
-                ? "USBMonitorService ya existe en el destino: a este equipo se llega por el canal del agente (actualizar), no empujando."
-                : "No hay ningún USBMonitorService en el destino.",
+            ok = yaInstalado == false,
+            detalle = yaInstalado switch
+            {
+                true => "USBMonitorService ya existe en el destino y su binario es el del agente: a este equipo se llega por el canal del agente (actualizar), no empujando.",
+                false => "No hay ningún USBMonitorService en el destino.",
+                null => "No se pudo comprobar si el agente ya está instalado: el gestor de servicios no dejó consultar el servicio.",
+            },
             consejo = (string?)null,
         });
 
         Resultado(scmOk,
             scmOk
-                ? (yaInstalado
+                ? (yaInstalado == true
                     ? "El destino cumple, pero el agente ya está instalado."
                     : "El destino cumple todos los requisitos del empujón.")
                 : "El destino responde, pero el gestor de servicios remoto no permite instalar.",
@@ -246,8 +254,18 @@ internal static class Program
                 }
                 var salida = EsperarParada(svc, TimeSpan.FromSeconds(180));
                 if (salida is null)
+                {
+                    // Sin este alto, «retirar» el servicio era solo
+                    // marcarlo para borrar: el proceso instalador
+                    // seguía vivo (es el propio exe del agente) y
+                    // el ejecutable quedaba retenido en el destino
+                    // hasta que alguien lo matara a mano. Se le
+                    // ordena parar y se espera a que muera antes de
+                    // que el finally lo borre.
+                    DetenerServicio(svc);
                     return (false,
-                        "El instalador remoto no terminó en 180 segundos; el servicio temporal se retira y el equipo queda como estaba.");
+                        "El instalador remoto no terminó en 180 segundos; el servicio temporal se detuvo y se retiró, y el equipo queda como estaba.");
+                }
                 return salida.Value == 0
                     ? (true, "El instalador remoto terminó bien: el agente quedó instalado y arrancado.")
                     : (false,
@@ -263,6 +281,24 @@ internal static class Program
         {
             CloseServiceHandle(scm);
         }
+    }
+
+    /// <summary>
+    /// Ordena parar un servicio y espera (poco) a que su proceso
+    /// muera: DeleteService sin esto solo marca el servicio para
+    /// borrar y el proceso sigue corriendo.
+    /// </summary>
+    private static void DetenerServicio(IntPtr svc)
+    {
+        try
+        {
+            ControlService(svc, ServiceControlStop, out _);
+        }
+        catch
+        {
+            // Si ni parar se puede, lo dirá el resultado global.
+        }
+        _ = EsperarParada(svc, TimeSpan.FromSeconds(15));
     }
 
     /// <summary>Espera a que el servicio pare; devuelve su código de salida.</summary>
@@ -318,22 +354,68 @@ internal static class Program
         return (true, "El gestor de servicios acepta crear el servicio de instalación.");
     }
 
-    private static bool ServicioExiste(string ip, string nombre)
+    /// <summary>
+    /// ¿Está el agente instalado en el destino? Tres estados:
+    /// true (hay un servicio con ese nombre Y su binario es el
+    /// ejecutable del agente), false (no hay servicio con ese
+    /// nombre) y null (no se pudo comprobar: el SCM no abrió o
+    /// la consulta fue denegada). Que el nombre exista no basta:
+    /// sin mirar el binario, cualquier servicio homónimo —o un
+    /// resto a medio borrar— contaba como «instalado» y la tarea
+    /// omitía PCs que nunca tuvieron el agente.
+    /// </summary>
+    private static bool? ServicioInstalado(string ip, string nombre)
     {
         var scm = OpenSCManager(ip, null, ScManagerConnect);
         if (scm == IntPtr.Zero)
-            return false;
+            return null;
         try
         {
-            var svc = OpenService(scm, nombre, ServiceQueryStatus);
+            var svc = OpenService(scm, nombre, ServiceQueryStatus | ServiceQueryConfig);
             if (svc == IntPtr.Zero)
-                return false;
-            CloseServiceHandle(svc);
-            return true;
+            {
+                return Marshal.GetLastWin32Error() == ErrorServiceDoesNotExist
+                    ? false
+                    : null;
+            }
+            try
+            {
+                var ruta = RutaBinariaServicio(svc);
+                if (ruta is null)
+                    return null;
+                return ruta.Contains(NombreExe, StringComparison.OrdinalIgnoreCase);
+            }
+            finally
+            {
+                CloseServiceHandle(svc);
+            }
         }
         finally
         {
             CloseServiceHandle(scm);
+        }
+    }
+
+    /// <summary>La ruta del binario de un servicio (QueryServiceConfig).</summary>
+    private static string? RutaBinariaServicio(IntPtr svc)
+    {
+        if (!QueryServiceConfig(svc, IntPtr.Zero, 0, out var necesarios))
+        {
+            var error = Marshal.GetLastWin32Error();
+            if (error != ErrorInsufficientBuffer || necesarios <= 0)
+                return null;
+        }
+        var bufer = Marshal.AllocHGlobal(necesarios);
+        try
+        {
+            if (!QueryServiceConfig(svc, bufer, necesarios, out _))
+                return null;
+            var config = Marshal.PtrToStructure<ConfiguracionServicio>(bufer);
+            return config.RutaBinaria;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(bufer);
         }
     }
 
@@ -428,6 +510,7 @@ internal static class Program
     private const int ErrorAccessDenied = 5;
     private const int ErrorServiceAlreadyRunning = 1056;
     private const int ErrorServiceDoesNotExist = 1060;
+    private const int ErrorInsufficientBuffer = 122;
 
     // ── sesión SMB (mpr.dll) ─────────────────────────────────────
 
@@ -497,6 +580,7 @@ internal static class Program
     private const uint ScManagerAllAccess = 0xF003F;
     private const uint ServiceAllAccess = 0xF01FF;
     private const uint ServiceQueryStatus = 0x0004;
+    private const uint ServiceQueryConfig = 0x0001;
     private const uint ServiceWin32OwnProcess = 0x00000010;
     private const uint ServiceDemandStart = 0x00000003;
     private const uint ServiceErrorNormal = 0x00000001;
@@ -547,6 +631,31 @@ internal static class Program
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool ControlService(
         IntPtr servicio, int control, out ServicioEstadoProceso estado);
+
+    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool QueryServiceConfig(
+        IntPtr servicio, IntPtr configuracion, int tamano, out int necesarios);
+
+    /// <summary>QUERY_SERVICE_CONFIG: solo se lee la ruta del binario.</summary>
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct ConfiguracionServicio
+    {
+        public uint TipoServicio;
+        public uint TipoArranque;
+        public uint ControlError;
+        [MarshalAs(UnmanagedType.LPWStr)]
+        public string? RutaBinaria;
+        [MarshalAs(UnmanagedType.LPWStr)]
+        public string? GrupoCarga;
+        public uint IdEtiqueta;
+        [MarshalAs(UnmanagedType.LPWStr)]
+        public string? Dependencias;
+        [MarshalAs(UnmanagedType.LPWStr)]
+        public string? Cuenta;
+        [MarshalAs(UnmanagedType.LPWStr)]
+        public string? NombreVisible;
+    }
 
     [DllImport("advapi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

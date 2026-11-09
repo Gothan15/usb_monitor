@@ -1,6 +1,7 @@
 
 import { db } from "@/lib/db";
 import { generarCodigoEnrolamiento } from "@/lib/credenciales";
+import { resolverEquipoParaAgente } from "@/lib/identidadEquipo";
 import { readAppSettings } from "@/lib/appSettings";
 import { getCurrentDate } from "@/lib/time";
 import { logError, logInfo } from "@/lib/logger";
@@ -314,10 +315,30 @@ async function intentoInstalacion(
   if (comprobacion.checks) {
     await actualizarDestino(destino.id, { checks: comprobacion.checks });
   }
+  // OJO al orden (falso «Completado y omitido» de 2026-11-08):
+  // la comprobación pregunta «¿ya instalado?» con un acceso al
+  // SCM más débil que el que exige para darla por buena, así
+  // que puede volver success=false Y yaInstalado=true a la vez
+  // (p. ej. el filtro UAC deniega crear servicios pero deja
+  // consultarlos). Antes el omitido se miraba primero y la
+  // tarea «completaba y omitía» sin haber podido comprobar de
+  // verdad. Ahora el omitido solo vale con la comprobación
+  // entera en verde; si la comprobación falló, es un error
+  // reintentable aunque el servicio pareciera existir.
+  if (comprobacion.yaInstalado && !comprobacion.success) {
+    return {
+      estado: ESTADO_DESTINO.ERROR,
+      message:
+        "El destino parece tener el servicio, pero la comprobación no pudo completarse (el gestor de servicios no aceptó todas las operaciones): no se da por instalado sin comprobarlo bien. Revisa los requisitos y reintenta.",
+      reintentable: true,
+    };
+  }
   if (comprobacion.yaInstalado && task.omitIfInstalled) {
     return {
       estado: ESTADO_DESTINO.OMITIDO,
-      message: comprobacion.message,
+      message: computer?.clavePublica
+        ? comprobacion.message
+        : "El servicio ya existe en el destino —casi seguro lo dejó un intento anterior de esta misma instalación— pero su agente aún no se ha enrolado en el panel. No hay que empujar otra vez: el agente gastará solo el código de aquel intento; si en unos minutos sigue sin aparecer en Equipos, genera un código en Equipos → «Credencial del equipo» y escríbelo en el asistente de esa PC.",
       reintentable: false,
     };
   }
@@ -359,12 +380,29 @@ async function intentoInstalacion(
   // clave que genera en la propia PC, y muere en ese acto. Su
   // ventana es larga (12 h) porque copiar el paquete por SMB
   // puede tardar; sigue siendo de un solo uso.
-  const equipo = await db.computer.upsert({
-    where: { name: destino.pcName },
-    update: { ipAddress: destino.ipAddress },
-    create: { name: destino.pcName, ipAddress: destino.ipAddress },
-    select: { id: true },
-  });
+  //
+  // Antes de generarlo se resuelve LA identidad del equipo
+  // (nombre + IP): si existían dos filas para esta PC —la del
+  // nombre y la de la IP, del escáner o de un refresco— se
+  // fusionan y el código nace en la fila única. Sin esto, el
+  // código podía quedar atado a la fila equivocada y el agente
+  // era rechazado al enrolar («código no aceptado»).
+  const resuelto = await resolverEquipoParaAgente({
+    nombre: destino.pcName,
+    ip: destino.ipAddress,
+  }).catch(() => null);
+  const equipo = resuelto
+    ? await db.computer.update({
+        where: { id: resuelto.id },
+        data: { ipAddress: destino.ipAddress },
+        select: { id: true },
+      })
+    : await db.computer.upsert({
+        where: { name: destino.pcName },
+        update: { ipAddress: destino.ipAddress },
+        create: { name: destino.pcName, ipAddress: destino.ipAddress },
+        select: { id: true },
+      });
   await actualizarDestino(destino.id, { computerId: equipo.id });
   const { codigo } = await generarCodigoEnrolamiento(equipo.id, 12 * 60);
 
@@ -522,6 +560,15 @@ async function ejecutarTarea(taskId: string): Promise<void> {
   } finally {
     tareasEnEjecucion.delete(taskId);
   }
+}
+
+/**
+ * ¿El ejecutor de ESTE proceso tiene la tarea entre manos?
+ * Lo usa el borrado de tareas: una tarea viva no se borra
+ * (dejaría empujones corriendo contra filas inexistentes).
+ */
+export function tareaEnEjecucion(taskId: string): boolean {
+  return tareasEnEjecucion.has(taskId);
 }
 
 /** Registra la clave en memoria y pone la tarea en marcha. */
