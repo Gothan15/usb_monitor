@@ -21,20 +21,19 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const cidr = body.cidr as string | undefined;
     const force = !!body.force;
-    // Un solo motor de escaneo: el síncrono. El antiguo modo por
-    // «trabajos» (async) no lo llamaba nadie y divergía de este.
-    const { results, cached, limitado, cidrEscaneado } = await scanNetwork(
-      cidr,
-      { force }
-    );
+    // Un solo motor de escaneo: descubrimiento por tabla de
+    // vecinos con barrido UDP (todas las redes conectadas, o solo
+    // la del CIDR pedido) y sondeo del agente sobre los vivos.
+    const { results, cached, resumen } = await scanNetwork(cidr, { force });
     const res = NextResponse.json({
-      // El CIDR efectivamente escaneado: si la red pedida era mayor
-      // que el tope, es la ventana /24 alrededor de la IP propia y
-      // «limitado» va a true para que la interfaz lo avise (no es un
-      // error: el escaneo se hizo, sobre un tramo).
-      cidr: cidrEscaneado,
-      redSolicitada: cidr || "auto",
-      limitado,
+      // Cobertura del escaneo: qué redes entraron, si alguna quedó
+      // parcial (red mayor que una /16: solo se barrió alrededor de
+      // lo conocido) y el balance de hosts vivos / con agente.
+      redesEscaneadas: resumen.redes,
+      coberturaParcial: resumen.redes.some((r) => r.coberturaParcial),
+      hostsVivos: resumen.hostsVivos,
+      conAgente: resumen.conAgente,
+      metodo: resumen.metodo,
       cached,
       count: results.length,
       results,
