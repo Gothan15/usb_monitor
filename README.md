@@ -27,15 +27,15 @@ Las versiones del agente y del instalador del panel se compilan solas con GitHub
 
 Panel de resumen, con los equipos y eventos en vivo:
 
-![Panel de resumen](docs/capturas/02-panel.png)
+![Panel de resumen](documentacion/capturas/02-panel.png)
 
 La pantalla de acceso:
 
-![Acceso al panel](docs/capturas/01-login.png)
+![Acceso al panel](documentacion/capturas/01-login.png)
 
 La página de desbloqueo, que es el respaldo cuando la ventana del agente no puede abrirse:
 
-![Página de desbloqueo](docs/capturas/03-desbloquear.png)
+![Página de desbloqueo](documentacion/capturas/03-desbloquear.png)
 
 ## Cómo funciona un bloqueo, paso a paso
 
@@ -114,23 +114,27 @@ Eso registra el servicio (con recuperación automática: si se cae, Windows lo r
 
 La configuración vive solo en `server.json`, junto al ejecutable o en `C:\ProgramData\USBMonitor`: claves `serverHost`, `serverPort`, `serverScheme` y `agentToken` (se guarda cifrada al guardarla desde la ventana). Para desinstalar restaurando todo: `USBMonitorService.exe desinstalar`.
 
-Compilar desde el código: `USBMonitorCS/compilacion/Build-All.ps1` publica el ejecutable autocontenido en `USBMonitorCS/dist`. Los paquetes NuGet pueden ir en `USBMonitorCS/paquetes` como fuente local, para compilar sin internet.
+Compilar desde el código: `agente/compilacion/Build-All.ps1` publica el ejecutable autocontenido en `agente/dist`. Los paquetes NuGet pueden ir en `agente/paquetes` como fuente local, para compilar sin internet.
 
 ## Estructura del repo
 
 ```
 src/                 Panel (Next.js): páginas, API y lógica de servidor
 prisma/              Esquema de la base de datos y migraciones
-USBMonitorCS/        Agente Windows en C#/.NET 8 (servicio, compañero,
-                     ventana de gestión, visor) y su compilación
-USBMonitor/          El agente original en Python (histórico, ya no se usa)
+agente/              Agente Windows en C# (servicio, compañero, caja de
+                     herramientas, visor), el empujador y su compilación
 instalador/          Instalador .msi del panel (WiX v5) y su constructor
+documentacion/       Guías del proyecto y las capturas de este README
+empujador/           Carpeta donde va el empujador compilado del panel
+paquete-agente/      Carpeta donde va el paquete del agente que el
+                     panel sirve a los equipos
+config/              Ajustes del panel en disco (app_settings.json)
+scripts/             Utilidades de administración por consola
+tests/               Pruebas del panel (Vitest)
 .github/workflows/   Actions: compilan y publican el agente (agente-v*)
                      y el instalador del panel (panel-v*) en Releases
-documentacion/       Documentación del proyecto (fuentes Markdown; los
-                     PDF generados se entregan aparte)
-docs/capturas/       Las capturas de este README
 INSPIRACION.md       Referencias de diseño de la interfaz
+ESTRUCTURA.md        El mapa completo del repo, carpeta por carpeta
 ```
 
 ## Limitaciones, dichas claramente

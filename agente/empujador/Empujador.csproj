@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>USBMonitorEmpujador</AssemblyName>
+    <RootNamespace>USBMonitor.Empujador</RootNamespace>
+    <!-- El empujador acompaña al panel, no al agente: su versión
+         es propia y solo se usa a título informativo. -->
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+</Project>

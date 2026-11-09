@@ -1,0 +1,337 @@
+// -*- coding: utf-8 -*-
+// DTOs del contrato con el panel (ver CONTRATO-SERVIDOR.md).
+// Nombres de campo exactos: snake_case en /api/usb-event y
+// camelCase en el resto, tal como los espera el servidor.
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace USBMonitor.Agente.Core;
+
+/// <summary>Evento para POST /api/usb-event (cuerpo snake_case).</summary>
+public sealed class EventoUsb
+{
+    [JsonPropertyName("pc_name")] public string PcName { get; set; } = "";
+    [JsonPropertyName("pc_ip")] public string PcIp { get; set; } = "";
+    [JsonPropertyName("pc_user")] public string PcUser { get; set; } = "";
+    [JsonPropertyName("event")] public string Tipo { get; set; } = "";
+    [JsonPropertyName("drive_letter")] public string? DriveLetter { get; set; }
+    [JsonPropertyName("serial_number")] public string? SerialNumber { get; set; }
+    [JsonPropertyName("readonly_status")] public string? ReadonlyStatus { get; set; }
+
+    // Python solo incluye la clave cuando hay valor: se omite si es null.
+    [JsonPropertyName("whitelisted")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Whitelisted { get; set; }
+}
+
+/// <summary>Unidad conectada de POST /api/usb-event/connected-status.</summary>
+public sealed class UnidadConectada
+{
+    [JsonPropertyName("driveLetter")] public string? DriveLetter { get; set; }
+    [JsonPropertyName("volumeName")] public string? VolumeName { get; set; }
+    [JsonPropertyName("serialNumber")] public string? SerialNumber { get; set; }
+    [JsonPropertyName("model")] public string? Model { get; set; }
+    [JsonPropertyName("size")] public long? Size { get; set; }
+    /// <summary>Tipo del dispositivo (DISCO, TELEFONO, OPTICO, RED, IMPRESORA).</summary>
+    [JsonPropertyName("deviceKind")] public string? DeviceKind { get; set; }
+}
+
+/// <summary>Bloqueo pendiente de ejecución de GET /api/usb-unlock/status.</summary>
+public sealed class PendienteDesbloqueo
+{
+    [JsonPropertyName("id")] public string? Id { get; set; }
+    [JsonPropertyName("driveLetter")] public string? DriveLetter { get; set; }
+    [JsonPropertyName("serialNumber")] public string? SerialNumber { get; set; }
+}
+
+/// <summary>Respuesta de GET /api/usb-unlock/status.</summary>
+internal sealed class RespuestaSondeo
+{
+    [JsonPropertyName("ok")] public bool Ok { get; set; }
+    [JsonPropertyName("unlocked")] public bool Unlocked { get; set; }
+    [JsonPropertyName("pendings")] public List<PendienteDesbloqueo>? Pendings { get; set; }
+}
+
+/// <summary>Respuesta de POST /api/usb-event/pending-unlock.</summary>
+internal sealed class RespuestaRegistroBloqueo
+{
+    [JsonPropertyName("ok")] public bool Ok { get; set; }
+    [JsonPropertyName("id")] public string? Id { get; set; }
+}
+
+/// <summary>Respuesta genérica {ok} de varias rutas del agente.</summary>
+internal sealed class RespuestaBasica
+{
+    [JsonPropertyName("ok")] public bool Ok { get; set; }
+}
+
+/// <summary>Respuesta de GET /api/whitelist/check.</summary>
+internal sealed class RespuestaWhitelist
+{
+    [JsonPropertyName("ok")] public bool Ok { get; set; }
+    [JsonPropertyName("allowed")] public bool Allowed { get; set; }
+    [JsonPropertyName("entry")] public JsonElement? Entry { get; set; }
+}
+
+/// <summary>Ajustes que el agente obedece, de GET /api/agent/config.</summary>
+public sealed class ConfigRemota
+{
+    [JsonPropertyName("ok")] public bool Ok { get; set; }
+    [JsonPropertyName("startupNetworkDelay")] public int? StartupNetworkDelay { get; set; }
+    [JsonPropertyName("lockSessionOnInsert")] public bool LockSessionOnInsert { get; set; }
+    [JsonPropertyName("shutdownOnNonWhitelisted")] public bool ShutdownOnNonWhitelisted { get; set; }
+    [JsonPropertyName("shutdownCountdownSeconds")] public int? ShutdownCountdownSeconds { get; set; }
+    [JsonPropertyName("captureEvidenceOnNonWhitelisted")] public bool CaptureEvidenceOnNonWhitelisted { get; set; }
+    [JsonPropertyName("comandos")] public List<OrdenAgente>? Comandos { get; set; }
+}
+
+/// <summary>
+/// Una orden del canal (tabla agent_commands del panel), servida en
+/// la misma respuesta de configuración. Estado: ENTREGADA cuando
+/// llega nueva y EN_CURSO cuando ya hubo un intento (tras el
+/// reinicio de una actualización, el agente la concilia).
+/// </summary>
+public sealed class OrdenAgente
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = "";
+    [JsonPropertyName("tipo")] public string Tipo { get; set; } = "";
+    [JsonPropertyName("estado")] public string Estado { get; set; } = "";
+    [JsonPropertyName("versionObjetivo")] public string? VersionObjetivo { get; set; }
+    [JsonPropertyName("intentos")] public int Intentos { get; set; }
+}
+
+/// <summary>Respuesta de GET /api/agent/paquete/manifiesto.</summary>
+public sealed class ManifiestoPaquete
+{
+    [JsonPropertyName("ok")] public bool Ok { get; set; }
+    [JsonPropertyName("version")] public string? Version { get; set; }
+    [JsonPropertyName("sha256")] public string Sha256 { get; set; } = "";
+    [JsonPropertyName("tamano")] public long Tamano { get; set; }
+    [JsonPropertyName("nombreArchivo")] public string? NombreArchivo { get; set; }
+}
+
+/// <summary>Cuerpo de POST /api/agent/comandos/:id.</summary>
+internal sealed class SolicitudInformeOrden
+{
+    [JsonPropertyName("estado")] public string Estado { get; set; } = "";
+    [JsonPropertyName("detalle")] public string? Detalle { get; set; }
+    [JsonPropertyName("versionObjetivo")] public string? VersionObjetivo { get; set; }
+}
+
+/// <summary>Respuesta de GET /api/agent/owner-hash.</summary>
+public sealed class HashDuenoRespuesta
+{
+    [JsonPropertyName("ok")] public bool Ok { get; set; }
+    [JsonPropertyName("username")] public string? Username { get; set; }
+    [JsonPropertyName("passwordHash")] public string? PasswordHash { get; set; }
+}
+
+/// <summary>
+/// Respuesta de GET /api/agent/owner: identidad pública del equipo
+/// (sin ninguna credencial). OwnerUsername viene null cuando la PC
+/// no tiene usuario dueño asignado en el panel.
+/// </summary>
+public sealed class DuenoEquipoRespuesta
+{
+    [JsonPropertyName("ok")] public bool Ok { get; set; }
+    [JsonPropertyName("pcName")] public string? PcName { get; set; }
+    [JsonPropertyName("ownerUsername")] public string? OwnerUsername { get; set; }
+    [JsonPropertyName("unlockMode")] public string? UnlockMode { get; set; }
+    [JsonPropertyName("passwordUnlockEnabled")] public bool PasswordUnlockEnabled { get; set; }
+}
+
+/// <summary>
+/// Resultado de consultar el dueño del equipo: EstadoHttp 0 = sin
+/// respuesta del panel; Datos null cuando el panel no devolvió la
+/// identidad (401, 404 = equipo aún no registrado, etc.).
+/// </summary>
+public sealed record ResultadoDueno(int EstadoHttp, DuenoEquipoRespuesta? Datos);
+
+/// <summary>Respuesta cruda de POST /api/usb-auth.</summary>
+internal sealed class RespuestaAuth
+{
+    [JsonPropertyName("authorized")] public bool Authorized { get; set; }
+    [JsonPropertyName("message")] public string? Message { get; set; }
+}
+
+/// <summary>Resultado de autenticar un desbloqueo contra el servidor.</summary>
+/// <param name="EstadoHttp">Código HTTP (0 = sin respuesta).</param>
+/// <param name="Autorizado">El servidor autorizó el desbloqueo.</param>
+/// <param name="Mensaje">Mensaje del servidor (403) o descripción local.</param>
+public sealed record ResultadoAutenticacion(int EstadoHttp, bool Autorizado, string Mensaje);
+
+/// <summary>Respuesta de GET /api/agent/ping.</summary>
+public sealed class RespuestaPing
+{
+    [JsonPropertyName("ok")] public bool Ok { get; set; }
+    [JsonPropertyName("serverTime")] public string? ServerTime { get; set; }
+    [JsonPropertyName("pc")] public string? Pc { get; set; }
+}
+
+/// <summary>Intento de desbloqueo sin red, para POST /api/agent/offline-attempts.</summary>
+public sealed class IntentoOffline
+{
+    [JsonPropertyName("usernameTried")] public string UsernameTried { get; set; } = "";
+    [JsonPropertyName("result")] public string Result { get; set; } = "";
+    [JsonPropertyName("driveLetter")] public string? DriveLetter { get; set; }
+    [JsonPropertyName("serialNumber")] public string? SerialNumber { get; set; }
+    [JsonPropertyName("createdAt")] public string CreatedAt { get; set; } = "";
+}
+
+/// <summary>Un paso del diagnóstico «Probar conexión».</summary>
+public sealed record PasoPruebaConexion(string Paso, bool Ok, string Detalle, double Ms);
+
+/// <summary>Última llamada registrada por el cliente del panel.</summary>
+public sealed class UltimaLlamadaInfo
+{
+    public string Metodo { get; set; } = "";
+    public string Ruta { get; set; } = "";
+    public bool Ok { get; set; }
+    public string Detalle { get; set; } = "";
+    public double Ms { get; set; }
+    public string? Cuando { get; set; }
+}
+
+/// <summary>Foto de la conexión con el panel (espejo de ClientePanel.salud() en Python).</summary>
+public sealed class SaludConexion
+{
+    public string UrlBase { get; set; } = "";
+    public string Pc { get; set; } = "";
+    public int Ok { get; set; }
+    public int Fallos { get; set; }
+    public string? UltimoExito { get; set; }
+    public string? UltimoFallo { get; set; }
+    public string DetalleUltimoExito { get; set; } = "";
+    public string DetalleUltimoFallo { get; set; } = "";
+    public UltimaLlamadaInfo UltimaLlamada { get; set; } = new();
+}
+
+// ── Cuerpos de petición ─────────────────────────────────────────
+
+/// <summary>Solicitud de enrolamiento: código de un solo uso + la clave pública recién nacida.</summary>
+internal sealed class SolicitudEnrolamientoCodigo
+{
+    [JsonPropertyName("pcName")] public string PcName { get; set; } = "";
+    [JsonPropertyName("codigo")] public string Codigo { get; set; } = "";
+    [JsonPropertyName("clavePublica")] public string ClavePublica { get; set; } = "";
+    // Todas las IPv4 de esta PC: el panel empareja el código
+    // también por ellas, no solo por la IP de origen de la
+    // conexión (la del empuje puede ser la de otro adaptador).
+    [JsonPropertyName("ips")] public List<string> Ips { get; set; } = new();
+}
+
+/// <summary>Solicitud de migración: solo la clave pública (el token viaja en la cabecera, una última vez).</summary>
+internal sealed class SolicitudMigracion
+{
+    [JsonPropertyName("clavePublica")] public string ClavePublica { get; set; } = "";
+}
+
+/// <summary>Respuesta de enrolar/migrar: el id que el panel asigna a este equipo.</summary>
+internal sealed class RespuestaCredencial
+{
+    [JsonPropertyName("ok")] public bool Ok { get; set; }
+    [JsonPropertyName("equipoId")] public string? EquipoId { get; set; }
+    [JsonPropertyName("huella")] public string? Huella { get; set; }
+    /// <summary>Motivo distinguible del rechazo (caducado, otro-equipo…), si lo hubo.</summary>
+    [JsonPropertyName("motivo")] public string? Motivo { get; set; }
+    /// <summary>La frase del panel lista para enseñar, si la trae.</summary>
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
+/// <summary>
+/// Respuesta de la consulta de estado del código (sin gastarlo):
+/// el estado con su motivo y la frase lista para enseñar.
+/// </summary>
+internal sealed class RespuestaEstadoCodigo
+{
+    [JsonPropertyName("ok")] public bool Ok { get; set; }
+    [JsonPropertyName("estado")] public string? Estado { get; set; }
+    [JsonPropertyName("detalle")] public string? Detalle { get; set; }
+    [JsonPropertyName("expira")] public string? Expira { get; set; }
+}
+
+/// <summary>
+/// Un paso de la prueba de enrolamiento paso a paso: qué se
+/// miró, cómo salió (ok / fallo / omitido) y el detalle legible.
+/// La misma lista se pinta en la caja de herramientas y se
+/// escribe en el registro del agente.
+/// </summary>
+public sealed record PasoDiagnosticoEnrolamiento(
+    string Paso, string Estado, string Detalle, double Ms);
+
+/// <summary>
+/// Resultado de UN intento de enrolamiento con la respuesta del
+/// panel sin resumir: el estado HTTP y, si el panel lo dio, el
+/// motivo distinguible del rechazo con su frase.
+/// </summary>
+public sealed record ResultadoEnrolamiento(
+    bool Ok, int? EstadoHttp, string? Motivo, string? Detalle);
+
+/// <summary>Respuesta de consultar/pedir la actualización propia (caja de herramientas).</summary>
+public sealed class RespuestaActualizacion
+{
+    [JsonPropertyName("ok")] public bool Ok { get; set; }
+    [JsonPropertyName("versionEquipo")] public string? VersionEquipo { get; set; }
+    [JsonPropertyName("versionDisponible")] public string? VersionDisponible { get; set; }
+    [JsonPropertyName("hayActualizacion")] public bool HayActualizacion { get; set; }
+    [JsonPropertyName("ordenActiva")] public bool OrdenActiva { get; set; }
+    [JsonPropertyName("estado")] public string? Estado { get; set; }
+    [JsonPropertyName("versionObjetivo")] public string? VersionObjetivo { get; set; }
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
+internal sealed class SolicitudBloqueo
+{
+    [JsonPropertyName("pcName")] public string PcName { get; set; } = "";
+    [JsonPropertyName("driveLetter")] public string? DriveLetter { get; set; }
+    [JsonPropertyName("serialNumber")] public string? SerialNumber { get; set; }
+    [JsonPropertyName("deviceLabel")] public string? DeviceLabel { get; set; }
+    [JsonPropertyName("whitelisted")] public bool Whitelisted { get; set; }
+}
+
+/// <summary>Cuerpo de POST /api/usb-event/evidence (la foto del momento de un bloqueo).</summary>
+internal sealed class SolicitudEvidenciaPanel
+{
+    [JsonPropertyName("pendingUnlockId")] public string PendingUnlockId { get; set; } = "";
+    [JsonPropertyName("serialNumber")] public string? SerialNumber { get; set; }
+    [JsonPropertyName("capturedAt")] public string CapturedAt { get; set; } = "";
+    [JsonPropertyName("foregroundProcess")] public string? ForegroundProcess { get; set; }
+    [JsonPropertyName("foregroundTitle")] public string? ForegroundTitle { get; set; }
+    [JsonPropertyName("processes")] public List<ProcesoEvidencia> Processes { get; set; } = new();
+    [JsonPropertyName("browserTabs")] public List<PestanaNavegador> BrowserTabs { get; set; } = new();
+    [JsonPropertyName("tabsComplete")] public bool TabsComplete { get; set; }
+    [JsonPropertyName("nota")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Nota { get; set; }
+    [JsonPropertyName("imagenBase64")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ImagenBase64 { get; set; }
+}
+
+internal sealed class SolicitudCierre
+{
+    [JsonPropertyName("pcName")] public string PcName { get; set; } = "";
+    [JsonPropertyName("driveLetter")] public string? DriveLetter { get; set; }
+    [JsonPropertyName("serialNumber")] public string? SerialNumber { get; set; }
+}
+
+internal sealed class SolicitudEstadoConectados
+{
+    [JsonPropertyName("pcName")] public string PcName { get; set; } = "";
+    [JsonPropertyName("connectedDrives")] public List<UnidadConectada> ConnectedDrives { get; set; } = new();
+}
+
+internal sealed class SolicitudAuth
+{
+    [JsonPropertyName("username")] public string Username { get; set; } = "";
+    [JsonPropertyName("password")] public string Password { get; set; } = "";
+    [JsonPropertyName("pcName")] public string PcName { get; set; } = "";
+    [JsonPropertyName("driveLetter")] public string? DriveLetter { get; set; }
+    [JsonPropertyName("serialNumber")] public string? SerialNumber { get; set; }
+}
+
+internal sealed class SolicitudIntentos
+{
+    [JsonPropertyName("pcName")] public string PcName { get; set; } = "";
+    [JsonPropertyName("attempts")] public List<IntentoOffline> Attempts { get; set; } = new();
+}
