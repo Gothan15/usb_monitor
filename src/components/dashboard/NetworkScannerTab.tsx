@@ -275,13 +275,31 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
 
       setScanResults(normalized);
       setLastScanAt(getCurrentIsoString());
-      if (data?.limitado) {
-        // La red era mayor que el tope (pasa con las Ethernet /16):
-        // el escaneo se hizo sobre la ventana que devuelve la API.
-        // Es un aviso, no un error.
-        setScanNotice(
-          `La red es demasiado grande para escanearla entera: se ha escaneado solo el tramo ${data.cidr} (las 254 direcciones alrededor de la IP de este equipo).`,
-        );
+      // Información de cobertura del escaneo (no es un error): qué
+      // redes entraron, cuántos hosts vivos salieron y cuántos
+      // tienen agente. Una red mayor que una /16 no se barre
+      // entera: se avisa de su cobertura parcial.
+      const redes: Array<{
+        cidr: string;
+        coberturaParcial?: boolean;
+        motivoParcial?: string;
+      }> = Array.isArray(data?.redesEscaneadas) ? data.redesEscaneadas : [];
+      if (redes.length > 0) {
+        const partes: string[] = [
+          `Redes escaneadas: ${redes.map((r) => r.cidr).join(", ")}.`,
+          `${typeof data?.hostsVivos === "number" ? data.hostsVivos : normalized.length} equipos vivos, ${typeof data?.conAgente === "number" ? data.conAgente : 0} con agente.`,
+        ];
+        for (const parcial of redes.filter((r) => r.coberturaParcial)) {
+          partes.push(
+            `Cobertura parcial en ${parcial.cidr}: ${parcial.motivoParcial || "solo se barrió alrededor de las direcciones conocidas"}.`,
+          );
+        }
+        if (data?.metodo === "tcp") {
+          partes.push(
+            "No se pudo leer la tabla de vecinos del sistema: se usó el sondeo directo del puerto del agente, que solo detecta equipos con el agente activo.",
+          );
+        }
+        setScanNotice(partes.join(" "));
       }
       onRefreshComputers();
       void cargarVersiones();
@@ -345,7 +363,7 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
                       <Radar className="size-3.5 shrink-0 text-muted-foreground" />
                       <span>Automática</span>
                       <span className="text-[0.65rem] text-muted-foreground">
-                        (primera disponible)
+                        (todas las redes)
                       </span>
                     </span>
                   </SelectItem>
