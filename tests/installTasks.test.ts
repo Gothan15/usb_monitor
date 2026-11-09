@@ -6,6 +6,7 @@ import {
   estadoDesdeEtapaEmpujador,
   estadoFinalTarea,
   resolverMetodo,
+  tareaPuedeBorrarse,
 } from "@/lib/installTasks";
 import {
   PASOS_EMPUJE_VM,
@@ -152,5 +153,57 @@ describe("interpretarLineaEmpujador", () => {
     expect(interpretarLineaEmpujador('{"tipo":"otro"}')).toBeNull();
     expect(interpretarLineaEmpujador("{roto")).toBeNull();
     expect(interpretarLineaEmpujador("")).toBeNull();
+  });
+});
+
+describe("tareaPuedeBorrarse", () => {
+  it("una tarea completada con destinos finales se puede borrar", () => {
+    expect(
+      tareaPuedeBorrarse({
+        status: "COMPLETADA",
+        estadosDestinos: ["INSTALADO", "OMITIDO"],
+        enEjecucion: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("una tarea con errores también (son las que se acumulan)", () => {
+    expect(
+      tareaPuedeBorrarse({
+        status: "CON_ERRORES",
+        estadosDestinos: ["ERROR", "INTERRUMPIDO"],
+        enEjecucion: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("una tarea EN_CURSO no se borra nunca", () => {
+    expect(
+      tareaPuedeBorrarse({
+        status: "EN_CURSO",
+        estadosDestinos: ["INSTALADO"],
+        enEjecucion: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("con un destino a medias no se borra aunque la tarea diga otra cosa", () => {
+    expect(
+      tareaPuedeBorrarse({
+        status: "CON_ERRORES",
+        estadosDestinos: ["INSTALADO", "COPIANDO"],
+        enEjecucion: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("si el ejecutor la tiene entre manos, no se borra", () => {
+    expect(
+      tareaPuedeBorrarse({
+        status: "COMPLETADA",
+        estadosDestinos: ["INSTALADO"],
+        enEjecucion: true,
+      }),
+    ).toBe(false);
   });
 });

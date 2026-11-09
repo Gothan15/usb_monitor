@@ -825,13 +825,18 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
           <DialogHeader>
             <DialogTitle>Credencial del equipo</DialogTitle>
             <DialogDescription>
-              Cada equipo se acredita con un par de claves propio: la
-              privada nace en la PC y nunca sale de ella; el panel solo
-              guarda la pública. Para dar de alta (o recuperar) un
-              equipo, genera un código de un solo uso y escríbelo en el
-              asistente de su agente: el código se muestra una vez,
-              caduca a los 30 minutos y generar otro invalida el
-              anterior.
+              El código de enrolamiento es de UN SOLO USO y vale solo
+              para el equipo cuyo nombre escribas abajo: ese nombre
+              tiene que ser EXACTAMENTE el nombre de la PC (el que
+              enseña su agente), porque el agente se presenta con él
+              y el panel lo empareja con esta fila. Genera el código,
+              ve a ESA PC, abre el asistente de su agente y pégalo en
+              el campo «Código de enrolamiento». El código se muestra
+              una vez, caduca a los 30 minutos y generar otro
+              invalida el anterior. La clave privada del equipo no
+              se copia nunca a ningún sitio: nace dentro de la PC
+              cuando el agente arranca, y lo único que viaja es este
+              código.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-2">
@@ -850,6 +855,15 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
                 <option key={c.id} value={c.name} />
               ))}
             </datalist>
+            {/^\d{1,3}(\.\d{1,3}){3}$/.test(tokenPc.trim()) && (
+              <p className="text-[11px] font-medium leading-relaxed text-destructive">
+                Eso que has escrito es una dirección IP, no el nombre
+                de la PC. El código quedaría atado a una fila que el
+                agente nunca usará —se presenta con su nombre— y el
+                enrolamiento será rechazado. Escribe el nombre del
+                equipo tal como se ve en su agente.
+              </p>
+            )}
             {credencialEstado && (
               <div className="mt-1 flex flex-col gap-1 border border-border bg-muted/30 p-3 text-xs leading-relaxed">
                 {credencialEstado.tieneClave ? (
@@ -922,33 +936,43 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
               con su contraseña, sin pasar por la pestaña Usuarios.
             </p>
             {tokenValor && (
-              <div className="mt-2 flex items-center gap-2 border border-border bg-muted/30 p-3">
-                <code className="flex-1 select-all break-all font-mono text-xs">
-                  {tokenValor}
-                </code>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="rounded-none"
-                  onClick={() => {
-                    void copiarAlPortapapeles(tokenValor).then((ok) => {
-                      toast(
-                        ok
-                          ? { title: "Token copiado" }
-                          : {
-                              title: "No se pudo copiar",
-                              description:
-                                "Toca el código para seleccionarlo entero y cópialo a mano.",
-                              variant: "destructive",
-                            },
-                      );
-                    });
-                  }}
-                >
-                  <Copy className="mr-1 size-3.5" />
-                  Copiar
-                </Button>
+              <div className="mt-2 flex flex-col gap-2">
+                <div className="flex items-center gap-2 border border-border bg-muted/30 p-3">
+                  <code className="flex-1 select-all break-all font-mono text-xs">
+                    {tokenValor}
+                  </code>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="rounded-none"
+                    onClick={() => {
+                      void copiarAlPortapapeles(tokenValor).then((ok) => {
+                        toast(
+                          ok
+                            ? { title: "Código copiado" }
+                            : {
+                                title: "No se pudo copiar",
+                                description:
+                                  "Toca el código para seleccionarlo entero y cópialo a mano.",
+                                variant: "destructive",
+                              },
+                        );
+                      });
+                    }}
+                  >
+                    <Copy className="mr-1 size-3.5" />
+                    Copiar
+                  </Button>
+                </div>
+                <p className="text-[11px] leading-relaxed text-muted-foreground">
+                  Llévalo a la PC de arriba y pégalo en el asistente
+                  de su agente, campo «Código de enrolamiento», antes
+                  de 30 minutos. Se gasta al primer uso que salga
+                  bien; si el agente de esa PC ya corre como servicio
+                  (instalación remota), no pegues nada: gastará solo
+                  el código que viajó con la instalación.
+                </p>
               </div>
             )}
           </div>

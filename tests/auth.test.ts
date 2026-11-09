@@ -34,3 +34,26 @@ describe("contraseñas (auth)", () => {
     expect(a).not.toBe(b);
   });
 });
+
+describe("cookie CSRF (síntoma: «CSRF token missing» al guardar ajustes)", () => {
+  it("sin conexión segura NO lleva Secure: debe sobrevivir al HTTP de la LAN", async () => {
+    const { buildCsrfCookie } = await import("@/lib/auth");
+    const cookie = buildCsrfCookie("token-de-prueba", 3600, false);
+    expect(cookie).toContain("csrf-token=token-de-prueba");
+    expect(cookie).not.toContain("Secure");
+    expect(cookie).toContain("SameSite=Strict");
+    expect(cookie).toContain("Path=/");
+  });
+
+  it("con conexión segura sí lleva Secure", async () => {
+    const { buildCsrfCookie } = await import("@/lib/auth");
+    const cookie = buildCsrfCookie("token-de-prueba", 3600, true);
+    expect(cookie).toContain("Secure");
+  });
+
+  it("la cookie CSRF no es HttpOnly: la interfaz la lee de document.cookie", async () => {
+    const { buildCsrfCookie } = await import("@/lib/auth");
+    const cookie = buildCsrfCookie("token-de-prueba", 3600, false);
+    expect(cookie).not.toContain("HttpOnly");
+  });
+});

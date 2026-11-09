@@ -579,24 +579,322 @@ public sealed class ClientePanel : IDisposable
     /// devuelve el id del equipo, que queda guardado. La privada
     /// no sale de la PC ni aquí: solo viaja la pública.
     /// </summary>
-    public async Task<bool> EnrolarConCodigoAsync(string codigo)
+    public async Task<bool> EnrolarConCodigoAsync(string codigo) =>
+        (await EnrolarDetalladoAsync(codigo).ConfigureAwait(false)).Ok;
+
+    /// <summary>
+    /// El mismo enrolamiento, pero devolviendo la respuesta del
+    /// panel SIN resumir: estado HTTP, motivo distinguible del
+    /// rechazo y su frase. Es lo que enseñan el asistente y la
+    /// prueba paso a paso cuando el panel dice que no — antes
+    /// todo eso se perdía en un «no aceptado» genérico.
+    /// </summary>
+    public async Task<ResultadoEnrolamiento> EnrolarDetalladoAsync(string codigo)
     {
         var identidad = Identidad;
-        if (identidad is null) return false;
+        if (identidad is null)
+        {
+            return new ResultadoEnrolamiento(false, null, "sin-clave-local",
+                "No se pudo ni crear ni leer el par de claves de esta PC.");
+        }
         var respuesta = await PeticionAsync("POST", "/api/agent/enroll", new SolicitudEnrolamientoCodigo
         {
             PcName = Configuracion.NombrePc,
             Codigo = codigo.Trim(),
             ClavePublica = identidad.ClavePublicaB64,
         }).ConfigureAwait(false);
+        if (respuesta is null)
+        {
+            return new ResultadoEnrolamiento(false, null, "sin-respuesta",
+                "El panel no respondió a la petición de enrolamiento.");
+        }
         var datos = IntentarJson<RespuestaCredencial>(respuesta);
         if (datos is { Ok: true, EquipoId: { Length: > 0 } })
         {
             _config.GuardarEquipoId(datos.EquipoId);
             Log.Info($"Equipo enrolado con código: el panel registró la clave (huella {identidad.Huella[..12]}…).");
-            return true;
+            return new ResultadoEnrolamiento(true, respuesta.Estado, null,
+                $"El panel registró la clave de este equipo (huella {identidad.Huella[..12]}…).");
         }
-        return false;
+        return new ResultadoEnrolamiento(false, respuesta.Estado, datos?.Motivo,
+            datos?.Error ?? $"El panel respondió HTTP {respuesta.Estado} sin más detalle.");
+    }
+
+    /// <summary>
+    /// Consulta el estado de un código SIN gastarlo (la ruta de
+    /// solo lectura del panel): de qué equipo es, si caducó.
+    /// Null si el panel no respondió o respondió otra cosa.
+    /// </summary>
+    private async Task<RespuestaEstadoCodigo?> ConsultarEstadoCodigoAsync(string codigo)
+    {
+        var respuesta = await PeticionAsync("GET",
+            "/api/agent/enroll/estado" + Consulta(
+                ("pcName", Configuracion.NombrePc),
+                ("codigo", codigo.Trim()))).ConfigureAwait(false);
+        return IntentarJson<RespuestaEstadoCodigo>(respuesta);
+    }
+
+    // ── prueba de enrolamiento paso a paso ───────────────────
+
+    /// <summary>
+    /// La prueba DETALLADA de conexión y enrolamiento: seis
+    /// pasos en orden, cada uno con su veredicto y su frase, y
+    /// cada uno escrito también en el registro del agente. Sirve
+    /// para destapar el fallo real sin adivinar: si el código no
+    /// vale, el paso 3 dice por qué ANTES de gastarlo; si el
+    /// enrolamiento falla, el paso 5 enseña la respuesta exacta
+    /// del panel; y el paso 6 es la prueba de verdad — una
+    /// petición firmada, con la diferencia de relojes medida.
+    /// No toca el esquema de credenciales: solo mira y, si el
+    /// equipo aún no está enrolado y hay código, enrola.
+    /// </summary>
+    public async Task<List<PasoDiagnosticoEnrolamiento>> DiagnosticoEnrolamientoAsync(
+        string? codigoEscrito)
+    {
+        var pasos = new List<PasoDiagnosticoEnrolamiento>();
+
+        void Registrar(string nombre, Stopwatch reloj, string estado, string detalle)
+        {
+            reloj.Stop();
+            pasos.Add(new PasoDiagnosticoEnrolamiento(
+                nombre, estado, detalle, Math.Round(reloj.Elapsed.TotalMilliseconds, 1)));
+            if (estado == "fallo")
+                Log.Advertencia($"Diagnóstico de enrolamiento · {nombre}: FALLO — {detalle}");
+            else
+                Log.Info($"Diagnóstico de enrolamiento · {nombre}: {estado} — {detalle}");
+        }
+
+        var baseUri = new Uri(_config.UrlBase);
+        var host = baseUri.Host;
+        var puerto = baseUri.Port;
+        var codigo = !string.IsNullOrWhiteSpace(codigoEscrito)
+            ? codigoEscrito.Trim()
+            : _config.CodigoEnrolamiento;
+
+        // 1 · Panel alcanzable (TCP).
+        var reloj = Stopwatch.StartNew();
+        var tcpOk = false;
+        try
+        {
+            using var tcp = new TcpClient();
+            using var limite = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await tcp.ConnectAsync(host, puerto, limite.Token).ConfigureAwait(false);
+            tcpOk = true;
+            Registrar("1. Panel alcanzable", reloj, "ok",
+                $"{host}:{puerto} acepta conexiones.");
+        }
+        catch (Exception exc)
+        {
+            Registrar("1. Panel alcanzable", reloj, "fallo",
+                $"{host}:{puerto} no acepta conexiones: {exc.Message} " +
+                "Revisa que el panel esté arrancado y que esta PC lo vea por red.");
+        }
+
+        // 2 · El que responde es el panel (una ruta suya, sin
+        // credencial: el panel contesta 401 con su formato; un
+        // servidor ajeno contestaría otra cosa).
+        reloj = Stopwatch.StartNew();
+        if (!tcpOk)
+        {
+            Registrar("2. Es el panel", reloj, "omitido",
+                "Sin conexión TCP no hay nada que identificar.");
+        }
+        else
+        {
+            try
+            {
+                using var solicitud = new HttpRequestMessage(
+                    HttpMethod.Get, _config.UrlBase + "/api/auth/session");
+                using var respuesta = await _http.SendAsync(solicitud).ConfigureAwait(false);
+                var cuerpo = await respuesta.Content.ReadAsStringAsync().ConfigureAwait(false);
+                var estado = (int)respuesta.StatusCode;
+                if ((estado is 200 or 401 or 403) && cuerpo.Contains("\"ok\""))
+                {
+                    Registrar("2. Es el panel", reloj, "ok",
+                        $"Lo que responde en {_config.UrlBase} es el panel " +
+                        $"(HTTP {estado} en /api/auth/session, con su formato de respuesta).");
+                }
+                else
+                {
+                    Registrar("2. Es el panel", reloj, "fallo",
+                        $"En {_config.UrlBase} responde algo que no parece el panel: " +
+                        $"HTTP {estado} en /api/auth/session. Revisa host y puerto del paso anterior del asistente.");
+                }
+            }
+            catch (Exception exc)
+            {
+                Registrar("2. Es el panel", reloj, "fallo",
+                    $"La comprobación HTTP falló: {exc.Message}");
+            }
+        }
+
+        // 3 · El código, ANTES de gastarlo (consulta sin gastar).
+        reloj = Stopwatch.StartNew();
+        if (!tcpOk)
+        {
+            Registrar("3. Código de enrolamiento", reloj, "omitido",
+                "Sin conexión con el panel no se puede consultar el código.");
+        }
+        else if (_config.EquipoId is not null)
+        {
+            Registrar("3. Código de enrolamiento", reloj, "omitido",
+                "Este equipo ya está enrolado: el código ya no hace falta. " +
+                "La prueba de su credencial es el paso 6.");
+        }
+        else if (codigo is null)
+        {
+            Registrar("3. Código de enrolamiento", reloj, "fallo",
+                "No hay código que comprobar: ni escrito en el campo ni " +
+                "pendiente de la instalación. Genera uno en el panel, en " +
+                "Equipos → Credencial del equipo, para el nombre EXACTO " +
+                $"de esta PC ({Configuracion.NombrePc}).");
+        }
+        else
+        {
+            var consulta = await ConsultarEstadoCodigoAsync(codigo).ConfigureAwait(false);
+            if (consulta is not { Ok: true })
+            {
+                Registrar("3. Código de enrolamiento", reloj, "fallo",
+                    "El panel no respondió a la consulta de estado del código.");
+            }
+            else if (consulta.Estado == "vigente")
+            {
+                Registrar("3. Código de enrolamiento", reloj, "ok",
+                    consulta.Detalle ?? "El código es de esta PC y sigue vigente.");
+            }
+            else
+            {
+                Registrar("3. Código de enrolamiento", reloj, "fallo",
+                    consulta.Detalle ?? $"El código no vale (estado: {consulta.Estado}).");
+            }
+        }
+
+        // 4 · El par de claves de esta PC (nace aquí; la privada
+        // se guarda cifrada con DPAPI y nunca sale).
+        reloj = Stopwatch.StartNew();
+        try
+        {
+            var yaEstaba = _config.TieneClave;
+            var identidad = Identidad;
+            if (identidad?.ClavePublicaB64 is null)
+            {
+                Registrar("4. Par de claves de esta PC", reloj, "fallo",
+                    "No se pudo ni crear ni leer el par de claves de esta PC.");
+            }
+            else
+            {
+                Registrar("4. Par de claves de esta PC", reloj, "ok",
+                    (yaEstaba
+                        ? "Clave presente y legible: el cifrado DPAPI de esta PC la abre bien."
+                        : "La clave no existía y se acaba de generar en esta PC, guardada cifrada con DPAPI.") +
+                    $" Huella pública: {identidad.Huella[..12]}…");
+            }
+        }
+        catch (Exception exc)
+        {
+            Registrar("4. Par de claves de esta PC", reloj, "fallo",
+                $"El par de claves no se pudo leer: {exc.Message}");
+        }
+
+        // 5 · El enrolamiento propiamente dicho, con la
+        // respuesta exacta del panel si dice que no.
+        reloj = Stopwatch.StartNew();
+        if (_config.EquipoId is not null)
+        {
+            Registrar("5. Enrolamiento", reloj, "omitido",
+                $"Este equipo ya tiene id en el panel ({_config.EquipoId}): " +
+                "no hay nada que registrar. Su credencial se prueba en el paso 6.");
+        }
+        else if (codigo is null)
+        {
+            Registrar("5. Enrolamiento", reloj, "fallo",
+                "Sin código no hay enrolamiento: mira el paso 3.");
+        }
+        else if (!tcpOk)
+        {
+            Registrar("5. Enrolamiento", reloj, "omitido",
+                "Sin conexión con el panel no se puede enrolar.");
+        }
+        else
+        {
+            var intento = await EnrolarDetalladoAsync(codigo).ConfigureAwait(false);
+            if (intento.Ok)
+            {
+                // El código era de un solo uso y era para el
+                // servicio: si quedó guardado, ya está gastado.
+                if (_config.CodigoEnrolamiento is not null)
+                    _config.BorrarCodigoEnrolamiento();
+                Registrar("5. Enrolamiento", reloj, "ok",
+                    intento.Detalle ?? "El panel registró la clave de este equipo.");
+            }
+            else
+            {
+                Registrar("5. Enrolamiento", reloj, "fallo",
+                    $"El panel respondió HTTP {intento.EstadoHttp?.ToString() ?? "—"}" +
+                    (intento.Motivo is not null ? $" (motivo: {intento.Motivo})" : "") +
+                    $": {intento.Detalle}");
+            }
+        }
+
+        // 6 · La prueba de verdad: una petición FIRMADA. Y la
+        // diferencia de relojes, medida con la hora que el
+        // propio panel devuelve: las firmas se rechazan si la
+        // diferencia pasa de 300 segundos.
+        reloj = Stopwatch.StartNew();
+        if (_config.EquipoId is null)
+        {
+            Registrar("6. Prueba con firma", reloj, "omitido",
+                "Aún no hay id de equipo: sin enrolamiento no se puede firmar.");
+        }
+        else if (!tcpOk)
+        {
+            Registrar("6. Prueba con firma", reloj, "omitido",
+                "Sin conexión con el panel no se puede probar la firma.");
+        }
+        else
+        {
+            var respuesta = await PeticionAsync(
+                "GET", "/api/agent/ping" + Consulta(
+                    ("pcName", Configuracion.NombrePc),
+                    ("version", VersionAgente))).ConfigureAwait(false);
+            if (respuesta is null)
+            {
+                Registrar("6. Prueba con firma", reloj, "fallo",
+                    "El panel no respondió a la petición firmada.");
+            }
+            else
+            {
+                var datos = IntentarJson<RespuestaPing>(respuesta);
+                string diferencia = "";
+                if (datos?.ServerTime is not null &&
+                    DateTimeOffset.TryParse(datos.ServerTime, out var horaPanel))
+                {
+                    var segundos = Math.Abs(
+                        (DateTimeOffset.UtcNow - horaPanel).TotalSeconds);
+                    diferencia =
+                        $" Hora del panel: {horaPanel:HH:mm:ss} UTC; diferencia con " +
+                        $"el reloj de esta PC: {segundos:0} s" +
+                        (segundos > 240
+                            ? " (peligrosa: a los 300 s las firmas dejan de valer; ajusta el reloj de esta PC)."
+                            : ".");
+                }
+                if (respuesta.Estado == 200 && datos is { Ok: true })
+                {
+                    Registrar("6. Prueba con firma", reloj, "ok",
+                        "El panel ACEPTA la firma de este equipo: queda enrolado de verdad." +
+                        diferencia);
+                }
+                else
+                {
+                    Registrar("6. Prueba con firma", reloj, "fallo",
+                        $"El panel RECHAZA la firma (HTTP {respuesta.Estado}): la credencial " +
+                        "pudo ser revocada, la clave registrada en el panel no es esta, o el " +
+                        "reloj de esta PC va desviado." + diferencia);
+                }
+            }
+        }
+
+        return pasos;
     }
 
     /// <summary>

@@ -228,7 +228,40 @@ internal sealed class RespuestaCredencial
     [JsonPropertyName("ok")] public bool Ok { get; set; }
     [JsonPropertyName("equipoId")] public string? EquipoId { get; set; }
     [JsonPropertyName("huella")] public string? Huella { get; set; }
+    /// <summary>Motivo distinguible del rechazo (caducado, otro-equipo…), si lo hubo.</summary>
+    [JsonPropertyName("motivo")] public string? Motivo { get; set; }
+    /// <summary>La frase del panel lista para enseñar, si la trae.</summary>
+    [JsonPropertyName("error")] public string? Error { get; set; }
 }
+
+/// <summary>
+/// Respuesta de la consulta de estado del código (sin gastarlo):
+/// el estado con su motivo y la frase lista para enseñar.
+/// </summary>
+internal sealed class RespuestaEstadoCodigo
+{
+    [JsonPropertyName("ok")] public bool Ok { get; set; }
+    [JsonPropertyName("estado")] public string? Estado { get; set; }
+    [JsonPropertyName("detalle")] public string? Detalle { get; set; }
+    [JsonPropertyName("expira")] public string? Expira { get; set; }
+}
+
+/// <summary>
+/// Un paso de la prueba de enrolamiento paso a paso: qué se
+/// miró, cómo salió (ok / fallo / omitido) y el detalle legible.
+/// La misma lista se pinta en la caja de herramientas y se
+/// escribe en el registro del agente.
+/// </summary>
+public sealed record PasoDiagnosticoEnrolamiento(
+    string Paso, string Estado, string Detalle, double Ms);
+
+/// <summary>
+/// Resultado de UN intento de enrolamiento con la respuesta del
+/// panel sin resumir: el estado HTTP y, si el panel lo dio, el
+/// motivo distinguible del rechazo con su frase.
+/// </summary>
+public sealed record ResultadoEnrolamiento(
+    bool Ok, int? EstadoHttp, string? Motivo, string? Detalle);
 
 /// <summary>Respuesta de consultar/pedir la actualización propia (caja de herramientas).</summary>
 public sealed class RespuestaActualizacion

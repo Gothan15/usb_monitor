@@ -6,6 +6,7 @@ import { getCurrentDate, getCurrentIsoString } from "@/lib/time";
 import { normalizeComputerName } from "@/lib/utils";
 import { registrarContactoAgente } from "@/lib/agentDebug";
 import { refrescarPresencia } from "@/lib/agentPresence";
+import { fusionarDuplicadoDeReporte } from "@/lib/identidadEquipo";
 import { logError } from "@/lib/logger";
 
 /**
@@ -33,9 +34,19 @@ export async function GET(req: Request) {
     );
 
     let pc: string | null = null;
-    if (pcName) {
+    // La identidad manda la FIRMA: requireAgentAuth ya resolvió
+    // la fila por el id de la cabecera (X-Agente-Id). Antes la
+    // señal se anotaba en la fila que coincidiera por NOMBRE, y
+    // si existía una fila duplicada (la «por IP» del escáner),
+    // el latido podía caer en la fila equivocada y la buena
+    // parecía muerta. Si el nombre reportado existe como otra
+    // fila, se fusiona en la acreditada y desaparece.
+    if (serviceAuth.computerId) {
+      if (pcName) {
+        await fusionarDuplicadoDeReporte(serviceAuth.computerId, pcName);
+      }
       const computer = await db.computer.findUnique({
-        where: { name: pcName },
+        where: { id: serviceAuth.computerId },
         select: { id: true, name: true, ipAddress: true },
       });
       if (computer) {

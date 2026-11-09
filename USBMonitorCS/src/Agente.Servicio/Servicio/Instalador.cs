@@ -15,6 +15,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.ServiceProcess;
+using System.Text;
 using USBMonitor.Agente.Core;
 
 namespace USBMonitor.Agente.Servicio;
@@ -172,13 +173,26 @@ public static class Instalador
                 LogInstalador.Advertencia($"{programa}: no se pudo iniciar el proceso.");
                 return;
             }
-            string salida = proceso.StandardOutput.ReadToEnd();
-            string errores = proceso.StandardError.ReadToEnd();
+            // Las dos salidas se leen EN PARALELO y la espera va
+            // con límite de verdad: antes se leía stdout hasta el
+            // final, luego stderr, y el WaitForExit(30000) solo
+            // llegaba DESPUÉS de ambas lecturas — un hijo que
+            // llenara una tubería o se quedara colgado dejaba la
+            // lectura bloqueada para siempre. En el modo
+            // `instalar-remoto` eso significaba que el servicio
+            // temporal nunca terminaba: su proceso (este mismo
+            // exe) seguía vivo y el ejecutable quedaba «en uso»
+            // sin remedio. Ahora, a los 30 s sin salir, se mata.
+            var lecturaSalida = proceso.StandardOutput.ReadToEndAsync();
+            var lecturaErrores = proceso.StandardError.ReadToEndAsync();
             if (!proceso.WaitForExit(30000))
             {
-                LogInstalador.Advertencia($"{programa} {string.Join(" ", argumentos)}: sin salida en 30 s.");
+                try { proceso.Kill(entireProcessTree: true); } catch { /* ya salió */ }
+                LogInstalador.Advertencia($"{programa} {string.Join(" ", argumentos)}: sin salida en 30 s; proceso terminado.");
                 return;
             }
+            string salida = lecturaSalida.GetAwaiter().GetResult();
+            string errores = lecturaErrores.GetAwaiter().GetResult();
             string detalle = string.Join(" ", argumentos);
             if (proceso.ExitCode != 0)
             {
@@ -404,11 +418,32 @@ public static class Instalador
     /// Orden sin huella: parar (la parada ya restaura), restaurar lo
     /// que pudiera quedar, quitar el servicio y la tarea. No borra los
     /// archivos del ejecutable: eso se hace a mano.
+    ///
+    /// El orden del apagado importa (síntoma de 2026-11-08: «se
+    /// desinstala y el proceso se queda funcionando»):
+    ///   1. Se para el SERVICIO primero, porque su vigía relanza
+    ///      al compañero si desaparece: matar al compañero con el
+    ///      servicio vivo era perder el tiempo.
+    ///   2. Se quitan el servicio y la tarea de inicio de sesión
+    ///      (lo que podría volver a arrancar algo al reiniciar o
+    ///      al entrar un usuario).
+    ///   3. AL FINAL se cierran los procesos que queden corriendo
+    ///      desde el ejecutable instalado —el compañero en la
+    ///      sesión del usuario, un visor, otra caja de
+    ///      herramientas, incluso el propio servicio si su parada
+    ///      no llegó a tiempo— salvo ESTE proceso, que sale por
+    ///      su cuenta al terminar el modo desinstalar (y la caja
+    ///      de herramientas se cierra a sí misma tras el aviso).
+    /// Resultado: cero procesos del agente en marcha.
     /// </summary>
     public static string Desinstalar()
     {
         if (EstadoServicio() == "no instalado")
             throw new InvalidOperationException("El servicio no está instalado.");
+        // La ruta instalada se lee ANTES de borrar el servicio:
+        // después, el barrido de procesos ya no sabría qué
+        // ejecutable buscar en el registro.
+        var rutaExe = RutaExeInstalado();
         try
         {
             using var controlador = new ServiceController(NombreServicio);
@@ -444,6 +479,125 @@ public static class Instalador
             }
         }
         Ejecutar("schtasks.exe", "/Delete", "/TN", NombreTarea, "/F");
-        return "Servicio desinstalado y sistema restaurado.";
+        BorrarAccesoDirectoEscritorio();
+        CerrarProcesosDelExe(rutaExe);
+        return "Servicio desinstalado, sistema restaurado y procesos del agente cerrados.";
+    }
+
+    // ── acceso directo en el escritorio ───────────────────────
+
+    private const string NombreAccesoDirecto = "USB Monitor.lnk";
+
+    /// <summary>
+    /// Ruta del acceso directo: el escritorio PÚBLICO
+    /// (C:\Users\Public\Desktop). La instalación remota corre
+    /// como SYSTEM, sin usuario concreto: el escritorio público
+    /// es el que ven todos los que entren en la PC.
+    /// </summary>
+    private static string RutaAccesoDirecto()
+    {
+        var escritorio = Environment.GetFolderPath(
+            Environment.SpecialFolder.CommonDesktopDirectory);
+        return Path.Combine(escritorio, NombreAccesoDirecto);
+    }
+
+    /// <summary>
+    /// Crea (o refresca) el acceso directo a la caja de
+    /// herramientas en el escritorio público: apunta al
+    /// ejecutable SIN argumentos —el doble clic de siempre, que
+    /// abre el asistente la primera vez y la caja después— con
+    /// el icono del propio exe. Idempotente: guardar sobre la
+    /// misma ruta sustituye el .lnk, reinstalar no duplica
+    /// nada. Nunca tumba una instalación: quien llama decide
+    /// con el bool, y el motivo queda en el registro.
+    /// </summary>
+    public static bool CrearAccesoDirectoEscritorio()
+    {
+        try
+        {
+            var exe = RutaExe();
+            var enlace = (IShellLinkW)new ShellLink();
+            try
+            {
+                enlace.SetPath(exe);
+                enlace.SetWorkingDirectory(Path.GetDirectoryName(exe) ?? "");
+                enlace.SetDescription("Caja de herramientas de USB Monitor");
+                enlace.SetIconLocation(exe, 0);
+                ((IPersistFile)enlace).Save(RutaAccesoDirecto(), true);
+            }
+            finally
+            {
+                Marshal.ReleaseComObject(enlace);
+            }
+            LogInstalador.Info(
+                $"Acceso directo creado en el escritorio público: {RutaAccesoDirecto()}");
+            return true;
+        }
+        catch (Exception exc)
+        {
+            LogInstalador.Advertencia(
+                $"No se pudo crear el acceso directo del escritorio: {exc.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>Quita el acceso directo si está (al desinstalar).</summary>
+    private static void BorrarAccesoDirectoEscritorio()
+    {
+        try
+        {
+            var ruta = RutaAccesoDirecto();
+            if (File.Exists(ruta))
+                File.Delete(ruta);
+        }
+        catch
+        {
+            // Un .lnk huérfano es cosmético; la desinstalación no
+            // puede caer por él.
+        }
+    }
+
+    // IShellLink (Unicode) e IPersistFile, a mano como el resto
+    // de la interop de esta casa: sin paquetes de interop.
+    [ComImport, Guid("000214F9-0000-0000-C000-000000000046"),
+     InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IShellLinkW
+    {
+        void GetPath([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder archivo, int tamano, IntPtr datos, int banderas);
+        void GetIDList(out IntPtr idLista);
+        void SetIDList(IntPtr idLista);
+        void GetDescription([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder descripcion, int tamano);
+        void SetDescription([MarshalAs(UnmanagedType.LPWStr)] string descripcion);
+        void GetWorkingDirectory([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder carpeta, int tamano);
+        void SetWorkingDirectory([MarshalAs(UnmanagedType.LPWStr)] string carpeta);
+        void GetArguments([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder argumentos, int tamano);
+        void SetArguments([MarshalAs(UnmanagedType.LPWStr)] string argumentos);
+        void GetHotkey(out short tecla);
+        void SetHotkey(short tecla);
+        void GetShowCmd(out int mostrar);
+        void SetShowCmd(int mostrar);
+        void GetIconLocation([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder icono, int tamano, out int indice);
+        void SetIconLocation([MarshalAs(UnmanagedType.LPWStr)] string icono, int indice);
+        void SetRelativePath([MarshalAs(UnmanagedType.LPWStr)] string ruta, int reservado);
+        void Resolve(IntPtr ventana, int banderas);
+        void SetPath([MarshalAs(UnmanagedType.LPWStr)] string archivo);
+    }
+
+    [ComImport, Guid("0000010B-0000-0000-C000-000000000046"),
+     InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IPersistFile
+    {
+        void GetClassID(out Guid clase);
+        [PreserveSig] int IsDirty();
+        void Load([MarshalAs(UnmanagedType.LPWStr)] string archivo, int modo);
+        void Save([MarshalAs(UnmanagedType.LPWStr)] string archivo, [MarshalAs(UnmanagedType.Bool)] bool recordar);
+        void SaveCompleted([MarshalAs(UnmanagedType.LPWStr)] string archivo);
+        void GetCurFile([MarshalAs(UnmanagedType.LPWStr)] out string archivo);
+    }
+
+    [ComImport, Guid("00021401-0000-0000-C000-000000000046"),
+     ClassInterface(ClassInterfaceType.None)]
+    private class ShellLink
+    {
     }
 }

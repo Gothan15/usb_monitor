@@ -241,13 +241,21 @@ internal static class Program
         try
         {
             Console.WriteLine(Instalador.Instalar());
-            return 0;
         }
         catch (Exception exc)
         {
             Console.WriteLine($"No se pudo instalar: {exc.Message}");
             return 1;
         }
+
+        // Instalación remota = nadie delante de la PC: se deja
+        // en el escritorio público el acceso directo a la caja
+        // de herramientas, para que quien llegue al equipo la
+        // encuentre sin saber rutas. Es un adorno útil, no parte
+        // de la instalación: si falla, queda en el registro y el
+        // resultado sigue siendo «instalado».
+        Instalador.CrearAccesoDirectoEscritorio();
+        return 0;
     }
 
     /// <summary>Valor de una opción «--nombre valor» en los argumentos.</summary>

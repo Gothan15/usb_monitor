@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
   Clock,
+  KeyRound,
   LayoutDashboard,
+  ListTodo,
   MonitorSmartphone,
   Moon,
   Radar,
@@ -151,6 +153,26 @@ export function CommandPalette({ role }: CommandPaletteProps) {
           icon: ShieldCheck,
           keywords: "lista blanca autorizados permitidos",
           action: () => navigate("/admin/whitelist"),
+          group: "navigation",
+        },
+        // Desbloqueos y Tareas llegaron después que la paleta y
+        // nunca entraron en su lista: la lupa no sabía ir a dos
+        // de las nueve vistas del panel (síntoma 8, 2026-11-08).
+        // El orden y los iconos son los de la navegación principal.
+        {
+          id: "nav-unlocks",
+          label: "Desbloqueos",
+          icon: KeyRound,
+          keywords: "desbloqueos bloqueos contraseña intentos",
+          action: () => navigate("/admin/unlocks"),
+          group: "navigation",
+        },
+        {
+          id: "nav-tasks",
+          label: "Tareas de instalación",
+          icon: ListTodo,
+          keywords: "tareas instalación remota empuje instalar agente",
+          action: () => navigate("/admin/tasks"),
           group: "navigation",
         },
         {

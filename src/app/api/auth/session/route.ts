@@ -59,7 +59,15 @@ export async function GET(req: Request) {
       renewed: rotated,
     };
     const res = NextResponse.json(payload);
-    if (rotated) {
+    // La cookie CSRF se repone si la sesión rotó O si la
+    // petición no traía ninguna: sin ella, el navegador no
+    // puede adjuntar la cabecera que exigen los POST y TODAS
+    // las acciones de administración mueren con CSRF_MISSING
+    // hasta volver a iniciar sesión (la cookie puede perderse
+    // —caducidad propia, limpieza del navegador— con la sesión
+    // aún viva). Reponerla aquí, en la comprobación de sesión
+    // que la interfaz hace al cargar, cura ese estado solo.
+    if (rotated || !cookies["csrf-token"]) {
       const csrfToken = issueCsrfToken();
       cookiesToSet.push(buildCsrfCookie(csrfToken, undefined, requestIsSecure(req)));
       res.headers.set("X-CSRF-Token", csrfToken);

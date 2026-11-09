@@ -8,6 +8,7 @@ import { usbEventPayloadSchema } from "@/lib/validators";
 import { getCurrentDate } from "@/lib/time";
 import { normalizeComputerName } from "@/lib/utils";
 import { registrarContactoAgente } from "@/lib/agentDebug";
+import { fusionarDuplicadoDeReporte } from "@/lib/identidadEquipo";
 import { normalizeSerial } from "../whitelist/_helpers";
 import { broadcastUSBEvent, broadcastComputerStatus } from "@/lib/socket";
 
@@ -19,8 +20,9 @@ export async function POST(request: NextRequest) {
     // clave de su equipo (overhaul de credenciales de 2026-11-08;
     // el antiguo ajuste que permitía ingesta abierta desaparece:
     // sin firma válida no hay conversación).
+    let authAgente: Awaited<ReturnType<typeof requireAgentAuth>>;
     try {
-      await requireAgentAuth(request);
+      authAgente = await requireAgentAuth(request);
     } catch {
       // El body aún no se leyó: la PC no se conoce en este punto.
       registrarContactoAgente(null, "/api/usb-event", 401);
@@ -103,21 +105,37 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Actualizar o crear registro de computadora
-    await prisma.computer.upsert({
-      where: { name: computerName },
-      update: {
-        ipAddress: pc_ip,
-        lastSeen: occurredAt,
-        isActive: true,
-      },
-      create: {
-        name: computerName,
-        ipAddress: pc_ip,
-        lastSeen: occurredAt,
-        isActive: true,
-      },
-    });
+    // Actualizar el registro de computadora: la fila es la de
+    // la credencial que firmó el evento (identidad resuelta por
+    // requireAgentAuth), no una que coincida por nombre. Si el
+    // nombre reportado existía como fila aparte —la duplicada
+    // «por IP»—, se fusiona en la acreditada antes de anotar.
+    if (authAgente?.computerId) {
+      await fusionarDuplicadoDeReporte(authAgente.computerId, computerName);
+      await prisma.computer.update({
+        where: { id: authAgente.computerId },
+        data: {
+          ipAddress: pc_ip,
+          lastSeen: occurredAt,
+          isActive: true,
+        },
+      });
+    } else {
+      await prisma.computer.upsert({
+        where: { name: computerName },
+        update: {
+          ipAddress: pc_ip,
+          lastSeen: occurredAt,
+          isActive: true,
+        },
+        create: {
+          name: computerName,
+          ipAddress: pc_ip,
+          lastSeen: occurredAt,
+          isActive: true,
+        },
+      });
+    }
 
     // Fase 2: al extraerse el dispositivo, el permiso de uso muere.
     // El agente también llama a /api/usb-event/pending-close; esto es

@@ -4,7 +4,8 @@ import { requireAdminUser } from "@/lib/admin";
 import { db } from "@/lib/db";
 import { logError } from "@/lib/logger";
 import { normalizeComputerName } from "@/lib/utils";
-import { lanzarTarea } from "@/lib/installExecutor";
+import { lanzarTarea, tareaEnEjecucion } from "@/lib/installExecutor";
+import { ESTADO_TAREA, tareaPuedeBorrarse } from "@/lib/installTasks";
 
 /**
  * Tareas de instalación (fase D, capa de Kaspersky).
@@ -128,6 +129,53 @@ export async function POST(req: Request) {
     return res;
   } catch (error: any) {
     logError("Error creando tarea de instalación", error);
+    return NextResponse.json(
+      { ok: false, error: error.message },
+      { status: 500 },
+    );
+  }
+}
+
+/**
+ * DELETE (admin): «limpiar terminadas» — borra de una vez
+ * todas las tareas que ya acabaron (COMPLETADA o CON_ERRORES)
+ * y cumplen la misma regla del borrado individual. Las que
+ * sigan en curso se quedan. Devuelve cuántas se borraron.
+ */
+export async function DELETE(req: Request) {
+  const admin = await requireAdminUser(req);
+  if (!admin) {
+    return NextResponse.json(
+      { ok: false, error: "No autorizado" },
+      { status: 401 },
+    );
+  }
+  try {
+    const candidatas = await db.installTask.findMany({
+      where: { status: { not: ESTADO_TAREA.EN_CURSO } },
+      select: {
+        id: true,
+        status: true,
+        targets: { select: { status: true } },
+      },
+    });
+    const borrables = candidatas.filter((tarea) =>
+      tareaPuedeBorrarse({
+        status: tarea.status,
+        estadosDestinos: tarea.targets.map((t) => t.status),
+        enEjecucion: tareaEnEjecucion(tarea.id),
+      }),
+    );
+    if (borrables.length > 0) {
+      await db.installTask.deleteMany({
+        where: { id: { in: borrables.map((t) => t.id) } },
+      });
+    }
+    const res = NextResponse.json({ ok: true, eliminadas: borrables.length });
+    res.headers.set("Cache-Control", "no-store");
+    return res;
+  } catch (error: any) {
+    logError("Error limpiando tareas de instalación", error);
     return NextResponse.json(
       { ok: false, error: error.message },
       { status: 500 },

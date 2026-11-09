@@ -306,9 +306,26 @@ export function SettingsTab() {
     setAutoUpdate(activo);
     setMensajeAutoUpdate(null);
     try {
+      // Como todo POST de administración: con la cabecera CSRF
+      // leída de la cookie. Sin ella el servidor responde
+      // CSRF_MISSING y el ajuste no se guarda (era el fallo de
+      // «Guardar ajustes está roto»: estas dos funciones de
+      // guardado eran las únicas que no la adjuntaban).
+      const csrfToken = getCsrfTokenFromDocument();
+      if (!csrfToken) {
+        setAutoUpdate(!activo);
+        setMensajeAutoUpdate(
+          "La sesión no trae el token de seguridad: vuelve a iniciar sesión e inténtalo de nuevo.",
+        );
+        return;
+      }
       const res = await fetch("/api/settings", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": csrfToken,
+        },
         body: JSON.stringify({ agentAutoUpdate: activo }),
       });
       if (!res.ok) throw new Error("Error");
@@ -381,9 +398,28 @@ export function SettingsTab() {
     alGuardar?: () => void,
   ) => {
     try {
+      // Con la cabecera CSRF, como el resto de POST de la
+      // interfaz: esta función guardaba sin ella y el servidor
+      // rechazaba TODOS los guardados de Ajustes con
+      // «CSRF token missing» (auth.ts) aunque la sesión y la
+      // cookie estuvieran perfectas.
+      const csrfToken = getCsrfTokenFromDocument();
+      if (!csrfToken) {
+        toast({
+          title: "Error al guardar",
+          description:
+            "La sesión no trae el token de seguridad: vuelve a iniciar sesión e inténtalo de nuevo.",
+          variant: "destructive",
+        });
+        return;
+      }
       const res = await fetch("/api/settings", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": csrfToken,
+        },
         body: JSON.stringify(payload),
       });
       if (res.ok) {

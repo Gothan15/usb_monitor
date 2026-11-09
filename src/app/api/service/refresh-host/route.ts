@@ -46,24 +46,29 @@ export async function POST(req: NextRequest) {
     // ahora» en PCs cuyo agente llevaba días caído. lastSeen solo
     // lo mueve el propio agente (ping y eventos); aquí se guarda
     // únicamente el resultado de la comprobación.
-    await db.computer.upsert({
-      where: { name: normalizedIp },
-      update: {
-        ipAddress: normalizedIp,
-        serviceInstalled,
-        serviceRunning,
-        lastServiceCheck: checkedAt,
-        agentVersion: health?.serviceVersion ?? undefined,
-      },
-      create: {
-        name: normalizedIp,
-        ipAddress: normalizedIp,
-        serviceInstalled,
-        serviceRunning,
-        lastServiceCheck: checkedAt,
-        agentVersion: health?.serviceVersion ?? null,
-      },
+    //
+    // Y la fila se busca POR IP, nunca se crea con la IP como
+    // nombre: esta ruta hacía upsert con `name = ip` y así nació
+    // la fila duplicada «por IP» junto a la fila por nombre de
+    // la misma PC (con su credencial y su dueño en la otra). Si
+    // ninguna fila tiene esta IP, la sonda se devuelve a la
+    // vista pero no se inventa un equipo: el alta es del agente
+    // al reportar, del escáner con nombre o del administrador.
+    const existente = await db.computer.findFirst({
+      where: { ipAddress: normalizedIp },
+      select: { id: true },
     });
+    if (existente) {
+      await db.computer.update({
+        where: { id: existente.id },
+        data: {
+          serviceInstalled,
+          serviceRunning,
+          lastServiceCheck: checkedAt,
+          agentVersion: health?.serviceVersion ?? undefined,
+        },
+      });
+    }
     const res = NextResponse.json({
       ip: normalizedIp,
       serviceInstalled,
