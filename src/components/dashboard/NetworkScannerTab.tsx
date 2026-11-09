@@ -122,6 +122,22 @@ interface VersionConocida {
   desactualizado: boolean;
 }
 
+/** Dato de asiento: etiqueta en versalitas y valor debajo (la disposición de las demás pestañas). */
+function Dato({
+  etiqueta,
+  children,
+}: {
+  etiqueta: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <p className="smallcaps text-muted-foreground">{etiqueta}</p>
+      <div className="mt-1.5">{children}</div>
+    </div>
+  );
+}
+
 export function NetworkScannerTab({ onRefreshComputers }: Props) {
   const router = useRouter();
   const [versiones, setVersiones] = useState<Map<string, VersionConocida>>(
@@ -433,14 +449,6 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
           </p>
         ) : (
           <>
-            <div className="smallcaps sticky top-0 z-10 hidden grid-cols-[auto_minmax(11rem,1.2fr)_minmax(10rem,1.4fr)_minmax(9rem,1fr)_minmax(5.5rem,auto)_8.5rem] items-center gap-x-8 gap-y-2 border-b border-border bg-card py-3.5 text-muted-foreground md:grid">
-              <span />
-              <span>IP</span>
-              <span>Nombre</span>
-              <span>Puerto del agente</span>
-              <span>Latencia</span>
-              <span className="text-right">Acciones</span>
-            </div>
             <ul className="divide-y divide-border">
               {results.map((result) => {
                 const status = result.healthStatus
@@ -452,64 +460,92 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
                 return (
                   <li
                     key={result.ip}
-                    className="grid gap-x-8 gap-y-2.5 px-1 py-6 transition-colors duration-150 md:grid-cols-[auto_minmax(11rem,1.2fr)_minmax(10rem,1.4fr)_minmax(9rem,1fr)_minmax(5.5rem,auto)_8.5rem] md:items-center"
+                    className="flex flex-col gap-5 py-5 transition-colors duration-150 lg:flex-row lg:items-center lg:gap-8"
                   >
-                    <span>
-                      {!serviceOk && (
+                    <div className="pt-1.5 lg:shrink-0">
+                      {!serviceOk ? (
                         <RowCheckbox
                           checked={seleccionados.has(result.ip)}
                           onChange={() => alternarSeleccion(result.ip)}
                           label={`Seleccionar ${result.ip} para instalar`}
                         />
+                      ) : (
+                        <span className="block size-4" />
                       )}
-                    </span>
-                    <span className="font-display text-[1.5rem] font-bold leading-none tracking-tight text-foreground">
-                      {result.ip}
-                    </span>
-                    <span className="min-w-0 truncate text-[0.95rem] text-muted-foreground">
-                      {result.hostname || "Sin nombre"}
-                      {(() => {
-                        const info =
-                          versiones.get(result.ip.toLowerCase()) ??
-                          (result.hostname
-                            ? versiones.get(
-                                normalizeComputerName(
-                                  result.hostname,
-                                ).toLowerCase(),
-                              )
-                            : undefined);
-                        if (!info?.version) return null;
-                        return (
-                          <span className="ml-2 inline-flex items-center gap-1.5">
-                            <span className="inline-flex items-center border border-border px-1.5 py-0.5 font-mono text-[11px] text-foreground">
-                              Agente v{info.version}
-                            </span>
-                            {info.desactualizado && (
-                              <span className="inline-flex items-center border border-amber-600/50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-500">
-                                Desactualizado
-                              </span>
+                    </div>
+
+                    {/* Dirección y nombre del anfitrión */}
+                    <div className="min-w-0 lg:w-56 lg:shrink-0">
+                      <p className="font-display truncate text-lg font-bold leading-snug text-foreground">
+                        {result.ip}
+                      </p>
+                      <p className="smallcaps mt-1 truncate text-muted-foreground">
+                        {result.hostname || "Sin nombre"}
+                      </p>
+                    </div>
+                    {/* Puerto del agente */}
+                    <div className="lg:w-44 lg:shrink-0">
+                      <Dato etiqueta="Puerto del agente">
+                        <span className="flex items-center gap-2.5 text-sm text-foreground">
+                          <span
+                            className={cn(
+                              "size-2 shrink-0 rounded-full",
+                              serviceOk
+                                ? "bg-success"
+                                : "bg-muted-foreground/50",
                             )}
-                          </span>
-                        );
-                      })()}
-                    </span>
-                    <span className="flex items-center gap-2.5 text-[0.95rem] text-foreground">
-                      <span
-                        className={cn(
-                          "size-2 shrink-0 rounded-full",
-                          serviceOk
-                            ? "bg-success"
-                            : "bg-muted-foreground/50",
-                        )}
-                      />
-                      {serviceOk ? "Activo" : "Sin respuesta"}
-                    </span>
-                    <span className="font-mono text-sm tabular-nums text-muted-foreground">
-                      {typeof result.latencyMs === "number"
-                        ? `${Math.max(0, Math.round(result.latencyMs))} ms`
-                        : "—"}
-                    </span>
-                    <span className="md:text-right">
+                          />
+                          {serviceOk ? "Activo" : "Sin respuesta"}
+                        </span>
+                      </Dato>
+                    </div>
+
+                    {/* Versión del agente, si el equipo está en Equipos */}
+                    <div className="lg:w-52 lg:shrink-0">
+                      <Dato etiqueta="Versión">
+                        {(() => {
+                          const info =
+                            versiones.get(result.ip.toLowerCase()) ??
+                            (result.hostname
+                              ? versiones.get(
+                                  normalizeComputerName(
+                                    result.hostname,
+                                  ).toLowerCase(),
+                                )
+                              : undefined);
+                          if (!info?.version)
+                            return (
+                              <span className="text-sm text-muted-foreground/70">
+                                —
+                              </span>
+                            );
+                          return (
+                            <span className="inline-flex items-center gap-1.5">
+                              <span className="inline-flex items-center border border-border px-1.5 py-0.5 font-mono text-[11px] text-foreground">
+                                Agente v{info.version}
+                              </span>
+                              {info.desactualizado && (
+                                <span className="inline-flex items-center border border-amber-600/50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-500">
+                                  Desactualizado
+                                </span>
+                              )}
+                            </span>
+                          );
+                        })()}
+                      </Dato>
+                    </div>
+
+                    {/* Latencia de la sonda */}
+                    <Dato etiqueta="Latencia">
+                      <span className="font-mono text-sm tabular-nums text-foreground">
+                        {typeof result.latencyMs === "number"
+                          ? `${Math.max(0, Math.round(result.latencyMs))} ms`
+                          : "—"}
+                      </span>
+                    </Dato>
+
+                    {/* Acción de la fila */}
+                    <div className="flex items-center gap-1 lg:ml-auto lg:shrink-0">
                       {!serviceOk && (
                         <Button
                           variant="ghost"
@@ -528,7 +564,7 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
                           Instalar
                         </Button>
                       )}
-                    </span>
+                    </div>
                   </li>
                 );
               })}
