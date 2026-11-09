@@ -4,7 +4,7 @@ import { useMemo, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { Clock, Usb } from "lucide-react";
 import { AppShell, type AppShellNavItem } from "@/components/shell/AppShell";
-import { CommandPalette } from "@/components/shell/CommandPalette";
+import { CommandPaletteLazy } from "@/components/shell/CommandPaletteLazy";
 import { PageTransition } from "@/components/shell/PageTransition";
 import { LiveDataProvider } from "@/components/providers/LiveDataProvider";
 import { TourEngine } from "@/components/onboarding/TourEngine";
@@ -91,7 +91,7 @@ function UserLayoutContent({
         role: "Usuario básico",
       }}
     >
-      <CommandPalette role="USER" />
+      <CommandPaletteLazy role="USER" />
       <TourEngine tour={userTour} />
       <PageTransition
         transitionKey={pathname ?? "user-root"}
