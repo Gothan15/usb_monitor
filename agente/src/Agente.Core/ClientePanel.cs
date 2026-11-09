@@ -1,6 +1,6 @@
 // -*- coding: utf-8 -*-
-// Cliente del panel, espejo de USBMonitor/nucleo/api.py y del
-// contrato auditado (CONTRATO-SERVIDOR.md). Los eventos van con
+// Cliente del panel, espejo del api.py del agente original en
+// Python (retirado) y del contrato auditado (CONTRATO-SERVIDOR.md). Los eventos van con
 // cola persistente: sin red se guardan en disco y se suben en orden
 // al volver la conexión. El resto de llamadas son directas y
 // devuelven null/false ante cualquier fallo, para que quien llama

@@ -81,9 +81,9 @@ El servidor local del agente debe:
 El panel copia a `C:\USBMonitor` el ejecutable y `Install-Service.ps1`
 y lo ejecuta con `-Action install -ServerHost <h> -ServerPort <p>
 [-AgentToken <t>]`. El paquete C# mantiene ese contrato:
-`USBMonitorCS/dist/USBMonitorService.exe` + `USBMonitorCS/Install-Service.ps1`
+`agente/dist/USBMonitorService.exe` + `agente/Install-Service.ps1`
 con la misma interfaz (al adoptar el agente C# en producción basta
-apuntar el panel a estas rutas o copiar el dist sobre `USBMonitor/dist`).
+apuntar el panel a estas rutas).
 
 ## Reglas de negocio que no cambian
 

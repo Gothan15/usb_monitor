@@ -1,12 +1,12 @@
-# Agente USBMonitor en C# (.NET 8)
+# Agente USBMonitor en C# (.NET 10)
 
 El mismo agente de siempre — un solo ejecutable, `USBMonitorService.exe` —
-reescrito en C# sobre .NET 8. Convive en esta rama con el agente Python
-(`USBMonitor/`), que no se toca: el panel no distingue cuál de los dos
-tiene delante porque ambos cumplen el mismo contrato
-(`CONTRATO-SERVIDOR.md`) y comparten el `server.json` (el agente C# lee
-incluso el token cifrado `ENC:` del agente Python y lo guarda de nuevo
-con DPAPI de Windows).
+reescrito en C# sobre .NET 10. Es el único agente del proyecto: el
+original en Python se retiró del repo en la reorganización de
+noviembre de 2026 (su código sigue en el historial de git). Ambos
+cumplían el mismo contrato (`CONTRATO-SERVIDOR.md`) y comparten el
+`server.json` (este agente lee incluso el token cifrado `ENC:` del
+agente Python y lo guarda de nuevo con DPAPI de Windows).
 
 ## Qué trae de nuevo frente al Python
 
@@ -22,9 +22,9 @@ con DPAPI de Windows).
   marino como la web.
 - **Cifrado con DPAPI** (ámbito máquina) para el token en `server.json`.
 - **Los iconos del proyecto**: el ejecutable y las ventanas usan los
-  `.ico` de siempre (`USBMonitor/usb_monitor_service.ico` y
-  `usb_prompt.ico` para el compañero), enlazados desde su carpeta —
-  no hay copias dentro de `USBMonitorCS/`.
+  `.ico` de siempre (`usb_monitor_service.ico` y `usb_prompt.ico`
+  para el compañero), que viven en `src/Agente.Servicio/iconos/`
+  (antes se enlazaban desde la carpeta del agente en Python).
 - La depuración de la otra rama viene de serie: latido cada segundo en
   `latido.log`, salud de la conexión registrada y botón «Probar
   conexión» (en el asistente y en la caja de herramientas).
@@ -68,19 +68,18 @@ recompilar ya no pide red.
 ```
 
 `Install-Service.ps1` cumple la misma interfaz que el del agente
-Python: es el archivo que la instalación remota del panel sabe copiar
-y ejecutar. Para adoptar este agente en producción basta apuntar el
-panel a `USBMonitorCS/dist/USBMonitorService.exe` y a este
-`Install-Service.ps1` (o copiar el dist sobre `USBMonitor/dist`).
+Python y sirve para la instalación local en una PC. La instalación
+remota no lo usa: la hace el empujador ejecutando el propio exe en
+su modo `instalar-remoto`, y el paquete vigente es el que el panel
+guarda en su carpeta `paquete-agente/` (el de la última Release).
 
-En Linux/macOS de desarrollo: `dotnet build USBMonitorCS.sln` compila
+En Linux/macOS de desarrollo: `dotnet build Agente.sln` compila
 todo (las ventanas van con `EnableWindowsTargeting`) y
 `dotnet test` corre la suite del núcleo; el ejecutable solo corre en
 Windows, como el agente actual.
 
 ## Estado
 
-Hito 1 de la rama `agente-csharp`: paridad de contrato con el agente
-Python v2 + asistente de primera vez + interfaz clara. Pendiente:
-probar en una PC Windows real (servicio, capas de bloqueo, compañero)
-antes de pensar en sustituir al agente Python en producción.
+Es el agente en producción: se publica en las Releases `agente-v*`
+del repo y sustituyó por completo al agente en Python, retirado del
+repo en la reorganización de noviembre de 2026.

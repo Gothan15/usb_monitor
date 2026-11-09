@@ -113,8 +113,8 @@ public static class AppVentanas
     }
 
     /// <summary>
-    /// Pone a la ventana el icono del proyecto (recurso WPF enlazado
-    /// desde USBMonitor\). Si el recurso faltara, la ventana abre
+    /// Pone a la ventana el icono del proyecto (recurso WPF desde la
+    /// carpeta iconos\ del proyecto). Si el recurso faltara, la ventana abre
     /// igual con el icono por defecto: el icono nunca es un bloqueo.
     /// </summary>
     private static Window ConIcono(Window ventana, string recurso)

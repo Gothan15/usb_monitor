@@ -34,21 +34,21 @@ jobs:
       - name: Descargar el repositorio
         uses: actions/checkout@v5
 
-      - name: Instalar .NET 8
+      - name: Instalar .NET 10
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "10.0.x"
 
       - name: Pruebas del núcleo
-        run: dotnet test USBMonitorCS/tests/Agente.Core.Tests -c Release
+        run: dotnet test agente/tests/Agente.Core.Tests -c Release
 
       - name: Compilar el ejecutable
         shell: pwsh
-        run: ./USBMonitorCS/compilacion/Build-All.ps1 -Clean
+        run: ./agente/compilacion/Build-All.ps1 -Clean
 
       - name: Compilar el empujador del panel
         shell: pwsh
-        run: dotnet publish USBMonitorCS/empujador/Empujador.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o USBMonitorCS/dist-empujador
+        run: dotnet publish agente/empujador/Empujador.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o agente/dist-empujador
 
       - name: Preparar el zip
         id: paquete
@@ -60,7 +60,7 @@ jobs:
             "manual-$($env:GITHUB_SHA.Substring(0, 7))"
           }
           $zip = "USBMonitorService-$version.zip"
-          Compress-Archive -Path "USBMonitorCS/dist/USBMonitorService.exe", "USBMonitorCS/Install-Service.ps1", "USBMonitorCS/dist-empujador/USBMonitorEmpujador.exe" -DestinationPath $zip
+          Compress-Archive -Path "agente/dist/USBMonitorService.exe", "agente/Install-Service.ps1", "agente/dist-empujador/USBMonitorEmpujador.exe" -DestinationPath $zip
           "zip=$zip" >> $env:GITHUB_OUTPUT
           "version=$version" >> $env:GITHUB_OUTPUT
 

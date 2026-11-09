@@ -21,19 +21,20 @@
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <AssemblyName>USBMonitorService</AssemblyName>
     <RootNamespace>USBMonitor.Agente</RootNamespace>
-    <!-- Icono del ejecutable: el del proyecto, enlazado desde USBMonitor\
-         (única fuente; no se duplica el binario en USBMonitorCS). -->
-    <ApplicationIcon>..\..\..\USBMonitor\usb_monitor_service.ico</ApplicationIcon>
+    <!-- Icono del ejecutable: vive en la carpeta iconos\ del propio
+         proyecto (antes se enlazaba desde la carpeta del agente en
+         Python, ya retirado del repo). -->
+    <ApplicationIcon>iconos\usb_monitor_service.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
     <!-- Los mismos .ico como recursos WPF: icono de cada ventana
          (el compañero usa el suyo, usb_prompt.ico). -->
-    <Resource Include="..\..\..\USBMonitor\usb_monitor_service.ico" Link="usb_monitor_service.ico" />
-    <Resource Include="..\..\..\USBMonitor\usb_prompt.ico" Link="usb_prompt.ico" />
+    <Resource Include="iconos\usb_monitor_service.ico" Link="usb_monitor_service.ico" />
+    <Resource Include="iconos\usb_prompt.ico" Link="usb_prompt.ico" />
     <!-- La brújula del tema claro como PNG: emblema de las
          cabeceras sin pasar por la decodificación del .ico. -->
-    <Resource Include="..\..\..\USBMonitor\brujula-clara-256.png" Link="brujula-clara-256.png" />
+    <Resource Include="iconos\brujula-clara-256.png" Link="brujula-clara-256.png" />
   </ItemGroup>
 
   <ItemGroup>

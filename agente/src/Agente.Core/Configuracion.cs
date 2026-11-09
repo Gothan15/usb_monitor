@@ -1,7 +1,7 @@
 // -*- coding: utf-8 -*-
 // Configuración del agente: vive SOLO en server.json (junto al
-// ejecutable o en la carpeta de datos), espejo de
-// USBMonitor/nucleo/config.py. Claves: serverHost, serverPort,
+// ejecutable o en la carpeta de datos), espejo del config.py del
+// agente original en Python (retirado). Claves: serverHost, serverPort,
 // serverScheme, agentToken, sslCert, sslVerify. La credencial es
 // solo el token del equipo; un valor cifrado ilegible se descarta
 // (fail-closed), nunca se usa como credencial.

@@ -1,6 +1,7 @@
 // -*- coding: utf-8 -*-
 // Emergencia sin red: desbloqueo local con la contraseña del
-// dueño, espejo de USBMonitor/nucleo/emergencia.py. El panel
+// dueño, espejo del emergencia.py del agente original en Python
+// (retirado). El panel
 // entrega el hash Argon2id del dueño (/api/agent/owner-hash); el
 // agente lo guarda en dueno.json (mismo archivo que el Python) y,
 // sin red, verifica la contraseña localmente contra ese hash.

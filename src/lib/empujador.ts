@@ -126,7 +126,7 @@ export async function ejecutarEmpujador(
     return {
       success: false,
       message:
-        "Falta el empujador en el equipo del panel: deja USBMonitorEmpujador.exe en la carpeta empujador del panel (sale de compilar el proyecto USBMonitorCS/empujador).",
+        "Falta el empujador en el equipo del panel: deja USBMonitorEmpujador.exe en la carpeta empujador del panel (sale de compilar el proyecto agente/empujador).",
       checks: null,
       yaInstalado: null,
     };

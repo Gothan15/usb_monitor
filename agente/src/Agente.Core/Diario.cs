@@ -1,7 +1,8 @@
 // -*- coding: utf-8 -*-
-// Diario de cambios del sistema — la regla «sin huella», espejo de
-// USBMonitor/nucleo/diario.py. Todo cambio persistente que el
-// agente hace en Windows queda anotado aquí con su valor original:
+// Diario de cambios del sistema — la regla «sin huella», espejo
+// del diario.py del agente original en Python (retirado). Todo
+// cambio persistente que el agente hace en Windows queda anotado
+// aquí con su valor original:
 // dispositivos deshabilitados (instancia exacta), el estado del
 // automontaje, volúmenes retenidos y volúmenes en solo lectura. La
 // restauración revierte exactamente eso, y solo borra una

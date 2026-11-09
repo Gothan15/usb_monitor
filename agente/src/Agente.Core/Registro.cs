@@ -1,6 +1,6 @@
 // -*- coding: utf-8 -*-
 // Registro (log) del agente: un solo logger raíz con rotación.
-// Espejo de USBMonitor/nucleo/registro.py.
+// Espejo del registro.py del agente original en Python (retirado).
 using System.Globalization;
 
 namespace USBMonitor.Agente.Core;
