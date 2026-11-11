@@ -243,16 +243,28 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
   }, [tokenAbierto]);
   const [tokenOcupado, setTokenOcupado] = useState(false);
   const [credencialEstado, setCredencialEstado] = useState<any>(null);
+  // «Ahora» como estado para decidir si el código sigue vivo:
+  // Date.now() durante el render es impuro y el lint lo marca;
+  // la referencia se toma al consultar el estado y se refresca
+  // cada 30 s mientras el diálogo muestra un código vivo.
+  const [ahora, setAhora] = useState(() => Date.now());
+
+  // Al vaciarse el nombre, el estado de la credencial se limpia
+  // en el propio render (el patrón que recomienda React para
+  // reajustar un estado cuando cambia otro) en vez de en un
+  // efecto: el efecto solo consulta, nunca limpia.
+  const [nombreAnterior, setNombreAnterior] = useState(tokenPc);
+  if (tokenPc !== nombreAnterior) {
+    setNombreAnterior(tokenPc);
+    if (!tokenPc.trim()) setCredencialEstado(null);
+  }
 
   // El estado de la credencial del nombre escrito: se consulta al
   // abrir el diálogo y al cambiar el nombre (con un respiro).
   useEffect(() => {
     if (!tokenAbierto) return;
     const nombre = tokenPc.trim();
-    if (!nombre) {
-      setCredencialEstado(null);
-      return;
-    }
+    if (!nombre) return;
     const temporizador = setTimeout(() => {
       void (async () => {
         try {
@@ -261,6 +273,7 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
           );
           const d = await r.json().catch(() => null);
           setCredencialEstado(r.ok && d?.ok ? d : null);
+          setAhora(Date.now());
         } catch {
           setCredencialEstado(null);
         }
@@ -268,6 +281,15 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
     }, 400);
     return () => clearTimeout(temporizador);
   }, [tokenAbierto, tokenPc]);
+
+  // Refresco de la referencia de tiempo con un código vivo a
+  // la vista: al caducar, el aviso de «código vivo» se retira
+  // solo en vez de esperar a otro render.
+  useEffect(() => {
+    if (!tokenAbierto || !credencialEstado?.codigoExpira) return;
+    const temporizador = setInterval(() => setAhora(Date.now()), 30000);
+    return () => clearInterval(temporizador);
+  }, [tokenAbierto, credencialEstado]);
 
   const llamarProvision = useCallback(
     async (metodo: "POST" | "DELETE") => {
@@ -883,7 +905,7 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
                   </p>
                 )}
                 {credencialEstado.codigoExpira &&
-                  new Date(credencialEstado.codigoExpira).getTime() > Date.now() && (
+                  new Date(credencialEstado.codigoExpira).getTime() > ahora && (
                     <p className="text-muted-foreground">
                       Hay un código de enrolamiento vivo hasta el{" "}
                       {new Date(credencialEstado.codigoExpira).toLocaleString()}.

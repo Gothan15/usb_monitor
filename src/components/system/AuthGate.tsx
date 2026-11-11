@@ -69,6 +69,13 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // Las redirecciones de este efecto cruzan la frontera de
+  // sesión (entrar, salir, aterrizar según el rol) y se hacen
+  // con recarga completa A PROPÓSITO: una navegación suave
+  // arrastraría el estado del cliente (socket y consultas) de
+  // un lado a otro de la frontera. La regla de Next que pide
+  // useRouter se desactiva solo para este efecto.
+  /* eslint-disable @next/next/no-location-assign-relative-destination */
   useEffect(() => {
     if (typeof window === "undefined") return;
     // /desbloquear es pública a propósito: es la página de respaldo del
@@ -101,6 +108,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
         });
     }
   }, [status]);
+  /* eslint-enable @next/next/no-location-assign-relative-destination */
 
   // Hidratación: el servidor y el PRIMER render del cliente deben
   // coincidir al carácter. Antes esto se intentaba con una rama

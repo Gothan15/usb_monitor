@@ -137,13 +137,20 @@ export function UnlocksTab() {
   const [evidenciaDe, setEvidenciaDe] = useState<Pending | null>(null);
   const [evidencia, setEvidencia] = useState<EvidenceData | null>(null);
 
+  // Al cerrarse el diálogo, la evidencia se limpia en el propio
+  // render (el patrón que recomienda React para reajustar un
+  // estado cuando cambia otro) en vez de en el efecto: el
+  // efecto solo pide, nunca limpia.
+  const [evidenciaDeAnterior, setEvidenciaDeAnterior] = useState(evidenciaDe);
+  if (evidenciaDe !== evidenciaDeAnterior) {
+    setEvidenciaDeAnterior(evidenciaDe);
+    if (!evidenciaDe) setEvidencia(null);
+  }
+
   // La evidencia se pide al abrir el diálogo: los metadatos por un
   // lado y la captura como imagen aparte, para no moverla en JSON.
   useEffect(() => {
-    if (!evidenciaDe) {
-      setEvidencia(null);
-      return;
-    }
+    if (!evidenciaDe) return;
     let viva = true;
     fetch(`/api/admin/evidence/${evidenciaDe.id}`, { credentials: "include" })
       .then((res) => (res.ok ? res.json() : null))
@@ -535,7 +542,9 @@ export function UnlocksTab() {
           ) : (
             <div className="space-y-6">
               {evidencia.hasImage && evidenciaDe ? (
-                // eslint-disable-next-line @next/next/no-img-element
+                // La captura llega de una ruta con sesión: un
+                // <img> directo con la cookie es la vía correcta
+                // (next/image no puede con rutas autenticadas).
                 <img
                   src={`/api/admin/evidence/${evidenciaDe.id}/image`}
                   alt="Captura de pantalla en el momento del bloqueo"

@@ -199,7 +199,7 @@ public class ClientePanelTests
         using var doc = JsonDocument.Parse(cuerpo);
         var ips = doc.RootElement.GetProperty("ips")
             .EnumerateArray()
-            .Select(e => e.GetString())
+            .Select(e => e.GetString()!)
             .ToList();
         Assert.Equal(Configuracion.IpsPc, ips);
         Assert.All(ips, ip => Assert.False(IPAddress.IsLoopback(IPAddress.Parse(ip!))));
