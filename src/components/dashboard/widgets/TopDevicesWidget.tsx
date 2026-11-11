@@ -87,7 +87,10 @@ export function TopDevicesWidget({
               fontSize: 12,
               backdropFilter: "blur(12px)",
             }}
-            formatter={(value: number) => [value, "Eventos"]}
+            // En recharts 3 el valor del tooltip puede venir
+            // indefinido (sin dato bajo el cursor): se muestra 0.
+            // El tipo lo pone el propio Tooltip (número o texto).
+            formatter={(value) => [value ?? 0, "Eventos"]}
           />
           <Bar
             dataKey="count"
