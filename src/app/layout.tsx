@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Playfair_Display, JetBrains_Mono } from "next/font/google";
-import "@fontsource-variable/jetbrains-mono";
+import localFont from "next/font/local";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import AuthGate from "@/components/system/AuthGate";
@@ -17,19 +16,35 @@ import { QueryProvider } from "@/components/system/QueryProvider";
 // 'unsafe-inline'. No quitar sin cambiar antes la CSP.
 export const dynamic = "force-dynamic";
 
-const inter = Inter({
+// Fuentes AUTOALOJADAS (next/font/local): hasta el 2026-11-10
+// las tres salían de next/font/google, que descarga las
+// fuentes de fonts.googleapis.com AL COMPILAR — y desde la
+// red de Gothan ese dominio no responde, así que su build
+// moría con «Failed to fetch … from Google Fonts» aunque el
+// código estuviera perfecto. Los woff2 variables viven en
+// src/app/fonts (sacados de los paquetes Fontsource 5.3.0,
+// licencia OFL incluida en esa carpeta; el subconjunto latin
+// cubre todo el español: ñ y acentos son Latin-1) y el build
+// ya no necesita internet para las fuentes.
+const inter = localFont({
+  src: "./fonts/inter-latin-wght-normal.woff2",
   variable: "--font-inter",
-  subsets: ["latin"],
+  weight: "100 900",
   display: "swap",
 });
-const playfair = Playfair_Display({
+const playfair = localFont({
+  src: "./fonts/playfair-display-latin-wght-normal.woff2",
   variable: "--font-playfair",
-  subsets: ["latin"],
+  weight: "400 900",
   display: "swap",
 });
-const jetbrainsMono = JetBrains_Mono({
+const jetbrainsMono = localFont({
+  src: [
+    { path: "./fonts/jetbrains-mono-latin-wght-normal.woff2", style: "normal" },
+    { path: "./fonts/jetbrains-mono-latin-wght-italic.woff2", style: "italic" },
+  ],
   variable: "--font-jetbrains",
-  subsets: ["latin"],
+  weight: "100 800",
   display: "swap",
 });
 
