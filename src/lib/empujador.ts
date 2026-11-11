@@ -92,7 +92,12 @@ export function rutaEmpujador(): string {
 
 export async function empujadorDisponible(): Promise<boolean> {
   try {
-    const info = await fs.stat(rutaEmpujador());
+    // turbopackIgnore: la ruta del empujador se calcula al
+    // ejecutar (es un exe externo que el panel administra en
+    // disco, no código a empaquetar); sin la marca, Turbopack
+    // avisa de que rastrea todo el proyecto por no poder
+    // seguir la ruta.
+    const info = await fs.stat(/*turbopackIgnore: true*/ rutaEmpujador());
     return info.isFile() && info.size > 0;
   } catch {
     return false;
@@ -158,7 +163,7 @@ export async function ejecutarEmpujador(
 
     let hijo: ReturnType<typeof spawn>;
     try {
-      hijo = spawn(ruta, argv, { windowsHide: true });
+      hijo = spawn(/*turbopackIgnore: true*/ ruta, argv, { windowsHide: true });
     } catch (error) {
       logError("No se pudo lanzar el empujador", error);
       return terminar({

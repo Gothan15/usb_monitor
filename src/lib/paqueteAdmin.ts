@@ -193,8 +193,12 @@ export async function colocarPaquete(
   await fs.mkdir(carpeta, { recursive: true });
   await fs.mkdir(path.dirname(destinoEmpujador), { recursive: true });
 
+  // turbopackIgnore en las rutas de esta carpeta: el paquete
+  // del agente vive en disco y lo administra el panel al
+  // ejecutar; no es código a empaquetar y Turbopack no debe
+  // intentar seguirlo (avisaba de rastrear todo el proyecto).
   await escribirAtomico(
-    path.join(carpeta, NOMBRE_EXE_PAQUETE),
+    path.join(/*turbopackIgnore: true*/ carpeta, NOMBRE_EXE_PAQUETE),
     entradas[elegidas.agente],
   );
 
@@ -221,7 +225,7 @@ export async function colocarPaquete(
         sha256: null,
         agente: {
           presente: true,
-          tamano: await tamanoSiExiste(path.join(carpeta, NOMBRE_EXE_PAQUETE)),
+          tamano: await tamanoSiExiste(path.join(/*turbopackIgnore: true*/ carpeta, NOMBRE_EXE_PAQUETE)),
         },
         empujador: {
           presente: (await tamanoSiExiste(destinoEmpujador)) > 0,
