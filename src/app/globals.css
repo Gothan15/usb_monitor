@@ -16,8 +16,7 @@
 @theme inline {
   /* — Typography — */
   --font-sans: var(--font-inter), "Inter", system-ui, sans-serif;
-  --font-mono:
-    "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, monospace;
+  --font-mono: var(--font-jetbrains), "JetBrains Mono", ui-monospace, monospace;
   --font-display: var(--font-playfair), "Playfair Display", Georgia, serif;
 
   /* — Semantic color tokens — */
