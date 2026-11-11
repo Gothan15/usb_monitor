@@ -174,7 +174,6 @@ export function TourEngine({
     };
     // pathname se lee pero no es dependencia: al llegar a la
     // vista destino el efecto no debe relanzar la llegada.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, stepIndex, step?.target, step?.view, tour.id, router]);
 
   // Track target element position

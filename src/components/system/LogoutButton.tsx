@@ -56,6 +56,10 @@ export const LogoutButton = ({
         channel.postMessage({ type: "logout" });
         channel.close();
       } catch {}
+      // Recarga completa a propósito al cerrar la sesión: el
+      // cliente entero (socket, consultas, estado) se tira y
+      // se entra limpio a /login, sin arrastrar nada.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
       window.location.href = "/login";
     } catch (error) {
       const message =
