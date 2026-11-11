@@ -96,7 +96,16 @@ public sealed class AgenteWorker : BackgroundService
 
     private DateTime _inicio = DateTime.UtcNow;
     private DateTime _ultimoHash = DateTime.MinValue;
-    private DateTime _ultimoIntentoCredencial = DateTime.UtcNow;
+    // MinValue a propósito: el PRIMER intento de credencial (el
+    // enrolamiento con el código que dejó la instalación remota)
+    // tiene que salir en la primera vuelta del latido, no a los
+    // 5 minutos. Con UtcNow aquí, un agente recién empujado no
+    // podía enrolarse hasta pasados 5 min de servicio, y el
+    // panel —que espera la primera señal solo 3 min desde que
+    // empieza el empujón— daba la instalación por fallida
+    // siempre. El espaciado de 5 min entre reintentos se
+    // mantiene: el bloque del latido estampa la hora al intentar.
+    private DateTime _ultimoIntentoCredencial = DateTime.MinValue;
     private DateTime _ultimaConfig = DateTime.MinValue;
 
     // Transiciones del compañero para el latido de depuración.

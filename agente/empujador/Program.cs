@@ -48,6 +48,15 @@ internal static class Program
 
     public static int Main(string[] args)
     {
+        // El panel lee el stdout de este proceso como UTF-8
+        // (empujador.ts lo decodifica así, línea a línea JSON).
+        // Sin fijar la codificación, la consola de Windows
+        // escribe en su página de códigos (850 en un Windows en
+        // español) y las tildes y signos de los mensajes llegan
+        // a la pantalla de la tarea como «?» o caracteres rotos.
+        // Se fija antes de imprimir nada, también por stderr.
+        Console.OutputEncoding = System.Text.Encoding.UTF8;
+
         var modo = args.Length > 0 ? args[0].ToLowerInvariant() : null;
         var opciones = new Opciones(args);
         try
