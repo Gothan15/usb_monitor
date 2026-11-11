@@ -73,7 +73,7 @@
 - **Pasos**:
   1. Ejecuta el comando indicando username **o** id.
   2. Copia la nueva API key mostrada en `ROTATED ...`.
-  3. Reconfigura los servicios que dependan de esa llave (por ejemplo, usando `setApiKeyRemote.ts` o el GUI).
+  3. Reconfigura los servicios que dependan de esa llave.
 
 ### 2.6 `listComputers.ts`
 
@@ -109,35 +109,6 @@
   1. Proporciona nombre de la computadora y la nueva IP.
   2. Verifica el mensaje `✅ IP actualizada ...`.
   3. Toma nota de la URL sugerida `http://<nuevaIP>:5001` para el backend.
-
-### 2.9 `getApiKey.ts`
-
-- **Objetivo**: Obtener la API key del primer usuario asignado a una computadora.
-- **Uso**:
-  ```powershell
-  npx tsx scripts/getApiKey.ts <computerName>
-  ```
-  (si no das nombre usa `GWINTBLEIDD` por defecto)
-- **Pasos**:
-  1. Ejecuta el comando.
-  2. Si la computadora no existe, el script listará las válidas.
-  3. Cuando haya usuarios asignados, copia la API key y sigue las instrucciones para configurar el servicio (`setx ...` + reinicio).
-
-### 2.10 `setApiKeyRemote.ts`
-
-- **Objetivo**: Configurar la API key en la máquina remota (manual o vía WinRM).
-- **Uso manual** (sólo instrucciones):
-  ```powershell
-  npx tsx scripts/setApiKeyRemote.ts <computerName>
-  ```
-- **Uso automático vía WinRM**:
-  ```powershell
-  npx tsx scripts/setApiKeyRemote.ts <computerName> <hostname> <username> <password>
-  ```
-- **Pasos**:
-  1. Ejecuta el modo que prefieras. El script tomará la API key del primer usuario asignado (priorizando rol `user`).
-  2. Si usas WinRM, confirma que esté habilitado y que las credenciales sean válidas.
-  3. Tras éxito (manual o automático) reinicia el servicio con `net stop USBMonitorService` y `net start USBMonitorService`.
 
 ### 2.11 `updateUserRoles.ts`
 

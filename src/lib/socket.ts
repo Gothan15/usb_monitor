@@ -20,11 +20,6 @@ function ioActual(): Server | null {
   return (globalThis as SocketGlobal).__usbMonitorIO ?? null;
 }
 
-/** Returns the Socket.IO server instance (null before `setupSocket` is called). */
-export function getIO(): Server | null {
-  return ioActual();
-}
-
 /* ── Event types shared between server & client ── */
 
 export interface SocketUSBEvent {

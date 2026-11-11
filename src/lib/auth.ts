@@ -156,8 +156,6 @@ const CSRF_HEADER_NAME = "x-csrf-token";
 const SAFE_HTTP_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const AUTHORIZATION_HEADER_PATTERN = /^ApiKey\s+(\S+)$/i;
 
-
-
 function parseCookies(headerValue: string | null): Record<string, string> {
   if (!headerValue) return {};
   const pairs = headerValue
@@ -214,14 +212,6 @@ function validateCsrfToken(req: Request, authIdentity: AuthIdentity | null) {
       code: "CSRF_INVALID",
     });
   }
-}
-
-export function hashPasswordLegacyScrypt(password: string): string {
-  const salt = randomBytes(16);
-  const derived = scryptSync(password, salt, 64);
-  return `${PASSWORD_HASH_PREFIX_SCRYPT}$${salt.toString(
-    "hex",
-  )}$${derived.toString("hex")}`;
 }
 
 export async function hashPassword(password: string): Promise<string> {
@@ -613,34 +603,3 @@ export function expireCsrfCookie(secure?: boolean) {
   if (isSecure) cookieFlags.push("Secure");
   return `${CSRF_COOKIE_NAME}=; ${cookieFlags.join("; ")}`;
 }
-
-export const sessionInternal = {
-  verifySession,
-  renewSessionToken,
-  issueCsrfToken,
-};
-
-export const authTesting = {
-  clearCaches() {
-    sessionUserCache.clear();
-  },
-  seedApiKeyUserCache(seed: {
-    id: string;
-    username: string;
-    role: UserRole;
-    apiKey: string;
-    computerId?: string | null;
-    computerName?: string | null;
-  }) {
-    const cached: CachedUser = {
-      id: seed.id,
-      username: seed.username,
-      role: seed.role,
-      apiKey: seed.apiKey,
-      computerId: seed.computerId ?? null,
-      computerName: seed.computerName ?? null,
-      sessionVersion: 1,
-    };
-    cacheUserRecord(cached);
-  },
-};
