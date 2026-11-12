@@ -14,6 +14,12 @@
     <!-- Versión de reserva para compilaciones locales sin estampar:
          las Releases estampan la de su etiqueta vía Build-All.ps1. -->
     <Version>2.0.0</Version>
+    <!-- Sin el «+commit» que el SDK añade por su cuenta a la
+         versión informativa al compilar dentro de un repo git:
+         las Propiedades del exe enseñan «2.0.5», no
+         «2.0.5+d7d14d97…», y la versión que el panel lee del PE
+         sale limpia a la primera. -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>dotnet-Agente.Servicio-c78ab9c7-132a-4654-97f3-83d7b06e3b0b</UserSecretsId>

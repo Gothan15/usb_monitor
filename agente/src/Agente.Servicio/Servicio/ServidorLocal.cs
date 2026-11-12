@@ -2,7 +2,7 @@
 // Servidor local HTTP (127.0.0.1:5001). Espejo del servidor local de
 // servicio.py:
 //
-//   GET  /estado       -> salud y dispositivos bloqueados.
+//   GET  /estado       -> salud, versión y dispositivos bloqueados.
 //   GET  /desbloquear  -> la página de emergencia (sin red).
 //   POST /desbloquear  -> verifica SOLO con la contraseña del dueño
 //                         y el hash local (Emergencia del Core).
@@ -118,6 +118,12 @@ public sealed class ServidorLocal : IDisposable
             {
                 ok = true,
                 pc = Configuracion.NombrePc,
+                // La versión de este agente, con el mismo valor
+                // que anuncia al panel en su ping: el escáner del
+                // panel la busca en esta respuesta (campo
+                // «version») y hasta ahora no la encontraba,
+                // porque /estado no la traía.
+                version = ClientePanel.VersionAgente,
                 bloqueados = _bloqueados().Select(b => new
                 {
                     serial = b.Serial,
