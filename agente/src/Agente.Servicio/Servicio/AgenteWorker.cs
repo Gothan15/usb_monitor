@@ -216,6 +216,16 @@ public sealed class AgenteWorker : BackgroundService
                 if (disp.Tipo == TipoDispositivo.Red) continue;
                 await AlLlegarAsync(disp).ConfigureAwait(false);
             }
+            // La línea que ata la cadena del arranque: qué
+            // quedó en pending_local.json para el compañero.
+            // Si un día el cartel no sale con la PC recién
+            // encendida, esta línea dice si el bloqueo llegó al
+            // archivo (y el fallo está en el compañero o su
+            // lanzamiento) o nunca llegó (y está en el barrido).
+            var pendientesArranque = PendientesLocalesActuales().Count;
+            Log.Info(
+                $"Barrido inicial terminado: {pendientesArranque} bloqueo(s) " +
+                "en pending_local.json para el compañero.");
             _cliente.Evento(EvArranque);
             await _cliente.VaciarColaAsync().ConfigureAwait(false);
 
@@ -425,7 +435,7 @@ public sealed class AgenteWorker : BackgroundService
         }
     }
 
-    // ── compañero en marcha (WMI, caché 5 s) ──────────────────────
+    // ── compañero en marcha (ficha PID; WMI de respaldo) ─────────
     private bool? CompaneroEnMarcha()
     {
         lock (_lockCompanero)
@@ -433,7 +443,59 @@ public sealed class AgenteWorker : BackgroundService
             if (DateTime.UtcNow - _companeroCacheMarca < TimeSpan.FromSeconds(5))
                 return _companeroCacheValor;
         }
-        bool? resultado;
+        bool? resultado = CompaneroEnMarchaSegunFicha() ??
+                          CompaneroEnMarchaSegunWmi();
+        lock (_lockCompanero)
+        {
+            _companeroCacheValor = resultado;
+            _companeroCacheMarca = DateTime.UtcNow;
+        }
+        return resultado;
+    }
+
+    /// <summary>
+    /// La vía principal: la ficha que el compañero escribe al
+    /// arrancar (CompaneroPid). Si hay ficha, su veredicto
+    /// manda — el proceso del PID es el compañero que la
+    /// escribió, o no lo es. Sin ficha (un compañero de una
+    /// versión anterior aún vivo tras la actualización) se
+    /// devuelve null y decide el respaldo.
+    /// </summary>
+    private static bool? CompaneroEnMarchaSegunFicha()
+    {
+        var ficha = CompaneroPid.Leer();
+        if (ficha is null) return null;
+        try
+        {
+            using var proceso = Process.GetProcessById(ficha.Pid);
+            return CompaneroPid.CoincideProceso(
+                ficha,
+                proceso.ProcessName,
+                proceso.SessionId,
+                proceso.StartTime.ToUniversalTime());
+        }
+        catch (ArgumentException)
+        {
+            // No hay proceso con ese PID: la ficha es de un
+            // compañero ya cerrado sin poder borrarla.
+            return false;
+        }
+        catch (Exception exc)
+        {
+            Log.Debug($"Comprobación por ficha del compañero falló: {exc.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// El respaldo histórico: buscar texto en las líneas de
+    /// comandos por WMI («companero.py» de la época Python o el
+    /// modo « prompt» del exe). Solo decide cuando no hay ficha
+    /// — un compañero anterior a ella — porque la coincidencia
+    /// es frágil: depende del nombre del exe y del argumento.
+    /// </summary>
+    private bool? CompaneroEnMarchaSegunWmi()
+    {
         try
         {
             var encontrado = false;
@@ -448,19 +510,13 @@ public sealed class AgenteWorker : BackgroundService
                     (comando.Contains("usbmonitor") || comando.Contains("servicio.py"));
                 if (esCompaneroPy || esModoPrompt) { encontrado = true; break; }
             }
-            resultado = encontrado;
+            return encontrado;
         }
         catch (Exception exc)
         {
             Log.Debug($"Consulta WMI del compañero falló: {exc.Message}");
-            resultado = null;
+            return null;
         }
-        lock (_lockCompanero)
-        {
-            _companeroCacheValor = resultado;
-            _companeroCacheMarca = DateTime.UtcNow;
-        }
-        return resultado;
     }
 
     // ── llegada y extracción ──────────────────────────────────────
