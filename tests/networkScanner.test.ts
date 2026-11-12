@@ -3,9 +3,13 @@ import { describe, expect, it } from "vitest";
 import * as escaner from "@/lib/networkScanner";
 import {
   analizarCidr,
+  datosEscaneoNegativo,
+  datosEscaneoPositivo,
   filtrarVecinosPorRedes,
   numeroAIp,
   ordenarRedesPorPreferencia,
+  reporteEsReciente,
+  VENTANA_REPORTE_AGENTE_MS,
   parsearVecinosArpUnix,
   parsearVecinosArpWindows,
   parsearVecinosIpNeigh,
@@ -302,5 +306,56 @@ describe("ordenarRedesPorPreferencia", () => {
       red("Ethernet 2", "ethernet"),
     ]);
     expect(ordenadas.map((r) => r.name)).toEqual(["Ethernet", "Ethernet 2"]);
+  });
+});
+
+
+describe("agente fantasma: el escaneo no se testifica a sí mismo", () => {
+  // El bug: un agente desinstalado seguía saliendo «instalado»
+  // en cada escaneo, porque (1) el respaldo por reporte reciente
+  // miraba un lastSeen que el propio escaneo refrescaba al
+  // persistir, y (2) ningún escaneo limpiaba las marcas de un
+  // equipo conocido cuyo agente ya no responde.
+
+  const AHORA = Date.parse("2026-11-12T10:00:00Z");
+
+  it("reporteEsReciente: dentro de la ventana cuenta como vivo", () => {
+    const senal = new Date(AHORA - (VENTANA_REPORTE_AGENTE_MS - 1_000));
+    expect(reporteEsReciente(senal, AHORA)).toBe(true);
+  });
+
+  it("reporteEsReciente: cumplida la ventana, el reporte ya no resucita", () => {
+    const senal = new Date(AHORA - VENTANA_REPORTE_AGENTE_MS);
+    expect(reporteEsReciente(senal, AHORA)).toBe(false);
+    const vieja = new Date(AHORA - 60 * 60_000);
+    expect(reporteEsReciente(vieja, AHORA)).toBe(false);
+  });
+
+  it("el positivo al actualizar NO toca lastSeen (la señal es del agente)", () => {
+    const datos = datosEscaneoPositivo({
+      name: "PC-CAJA",
+      ip: "192.168.1.60",
+      lastSeenAt: new Date(AHORA),
+      isActive: true,
+      serviceInstalled: true,
+      serviceRunning: true,
+      lastServiceCheck: new Date(AHORA),
+    });
+    expect(datos).not.toHaveProperty("lastSeen");
+    expect(datos.serviceInstalled).toBe(true);
+    expect(datos.serviceRunning).toBe(true);
+    expect(datos.lastServiceCheck).toEqual(new Date(AHORA));
+  });
+
+  it("el negativo limpia las marcas y solo las marcas", () => {
+    const datos = datosEscaneoNegativo({
+      lastServiceCheck: new Date(AHORA),
+    });
+    expect(datos.serviceInstalled).toBe(false);
+    expect(datos.serviceRunning).toBe(false);
+    expect(datos.lastServiceCheck).toEqual(new Date(AHORA));
+    expect(datos).not.toHaveProperty("lastSeen");
+    expect(datos).not.toHaveProperty("isActive");
+    expect(datos).not.toHaveProperty("ipAddress");
   });
 });
