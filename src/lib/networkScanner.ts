@@ -707,6 +707,47 @@ async function checkService(ip: string): Promise<ServiceCheckResult> {
   return result;
 }
 
+/** Ventana en la que la última señal de un agente cuenta como
+ *  «reportó hace nada»: el respaldo del sondeo cuando el puerto
+ *  del agente no responde desde la red. */
+export const VENTANA_REPORTE_AGENTE_MS = 5 * 60_000;
+
+/** ¿La última señal del agente es reciente? Pieza pura. OJO: la
+ *  señal tiene que venir DEL AGENTE (su lastSeen solo lo tocan
+ *  sus contactos). Si el escaneo refrescara esa hora, se
+ *  convertiría en su propio testigo y un agente desinstalado
+ *  seguiría «reportando» para siempre. */
+export function reporteEsReciente(ultimaSenal: Date, ahoraMs: number): boolean {
+  return ahoraMs - ultimaSenal.getTime() < VENTANA_REPORTE_AGENTE_MS;
+}
+
+/** Datos que un escaneo POSITIVO escribe en un equipo YA
+ *  registrado. Sin `lastSeen` a propósito: esa hora es la última
+ *  señal del agente y solo la mueve el agente (ver
+ *  reporteEsReciente). Lo que el escaneo sí deja es su propio
+ *  rastro, `lastServiceCheck`. */
+export function datosEscaneoPositivo(entry: ComputerUpsertPayload) {
+  return {
+    ipAddress: entry.ip,
+    isActive: entry.isActive,
+    serviceInstalled: entry.serviceInstalled ?? false,
+    serviceRunning: entry.serviceRunning ?? false,
+    lastServiceCheck: entry.lastServiceCheck,
+  };
+}
+
+/** Datos que un escaneo NEGATIVO escribe en un equipo YA
+ *  conocido: limpia las marcas del agente que ya no está. No
+ *  toca ni la IP ni la presencia ni `lastSeen`: el equipo sigue
+ *  existiendo, solo que sin agente. */
+export function datosEscaneoNegativo(entry: { lastServiceCheck?: Date }) {
+  return {
+    serviceInstalled: false,
+    serviceRunning: false,
+    lastServiceCheck: entry.lastServiceCheck,
+  };
+}
+
 async function persistComputers(entries: ComputerUpsertPayload[]) {
   if (!entries.length) return;
   // Cada entrada pasa por la resolución de identidad
@@ -716,14 +757,14 @@ async function persistComputers(entries: ComputerUpsertPayload[]) {
   // duplicada. Son pocos hosts (solo los que tienen agente),
   // así que va en serie sin problema.
   for (const entry of entries) {
-    const datos = {
-      ipAddress: entry.ip,
-      lastSeen: entry.lastSeenAt,
-      isActive: entry.isActive,
-      serviceInstalled: entry.serviceInstalled ?? false,
-      serviceRunning: entry.serviceRunning ?? false,
-      lastServiceCheck: entry.lastServiceCheck,
-    };
+    // Al ACTUALIZAR un equipo existente, el escaneo no toca su
+    // lastSeen (ver datosEscaneoPositivo): si lo refrescara, el
+    // respaldo por «reportó hace menos de 5 minutos» se
+    // alimentaría de los propios escaneos y un agente
+    // desinstalado nunca dejaría de «estar». Al CREAR la fila sí
+    // se anota la hora: el agente acaba de ser visto de verdad
+    // (respondió al sondeo o constaba un reporte reciente).
+    const datos = datosEscaneoPositivo(entry);
     const resuelto = await resolverEquipoParaAgente({
       nombre: entry.name,
       ip: entry.ip,
@@ -737,9 +778,34 @@ async function persistComputers(entries: ComputerUpsertPayload[]) {
       await (db as any).computer.upsert({
         where: { name: entry.name },
         update: datos,
-        create: { name: entry.name, ...datos },
+        create: { name: entry.name, ...datos, lastSeen: entry.lastSeenAt },
       });
     }
+  }
+}
+
+/** Persiste los veredictos NEGATIVOS del escaneo sobre equipos
+ *  que el panel YA conoce: si el sondeo no respondió y no hay
+ *  reporte reciente del agente, las marcas de «instalado» se
+ *  limpian, para que un agente desinstalado no siga saliendo
+ *  como instalado escaneo tras escaneo. Nunca crea filas: un
+ *  host desconocido sin agente (impresora, teléfono) sigue
+ *  fuera del registro, como hasta ahora. */
+async function persistirNegativos(
+  entries: { name: string; ip: string; lastServiceCheck?: Date }[]
+) {
+  for (const entry of entries) {
+    const resuelto = await resolverEquipoParaAgente({
+      nombre: entry.name,
+      ip: entry.ip,
+    }).catch(() => null);
+    if (!resuelto) continue;
+    await (db as any).computer
+      .update({
+        where: { id: resuelto.id },
+        data: datosEscaneoNegativo(entry),
+      })
+      .catch(() => undefined);
   }
 }
 
@@ -886,13 +952,19 @@ export async function scanNetwork(
     string,
     { nombre: string; ultimaSenal: Date }
   >();
+  // Todos los equipos conocidos por IP, tengan o no señal
+  // reciente: es el mapa que permite LIMPIAR las marcas de un
+  // agente que ya no está (persistirNegativos).
+  const equiposPorIp = new Map<string, { nombre: string }>();
   try {
     const equipos = await (db as any).computer.findMany({
       select: { name: true, ipAddress: true, lastSeen: true },
     });
     for (const eq of equipos) {
       const ipEq = typeof eq.ipAddress === "string" ? eq.ipAddress.trim() : "";
-      if (ipEq && eq.lastSeen) {
+      if (!ipEq) continue;
+      equiposPorIp.set(ipEq, { nombre: eq.name });
+      if (eq.lastSeen) {
         agentesPorIp.set(ipEq, { nombre: eq.name, ultimaSenal: eq.lastSeen });
       }
     }
@@ -904,6 +976,7 @@ export async function scanNetwork(
   // hosts, no miles de direcciones).
   const results: HostScanResult[] = [];
   const persistQueue: ComputerUpsertPayload[] = [];
+  const persistNegativos: { name: string; ip: string; lastServiceCheck?: Date }[] = [];
   let conAgente = 0;
   let indice = 0;
   async function worker() {
@@ -918,10 +991,7 @@ export async function scanNetwork(
         let svc = await checkService(vecino.ip);
         if (!svc.serviceInstalled) {
           const reg = agentesPorIp.get(vecino.ip);
-          if (
-            reg &&
-            getCurrentTimestamp() - reg.ultimaSenal.getTime() < 5 * 60_000
-          ) {
+          if (reg && reporteEsReciente(reg.ultimaSenal, getCurrentTimestamp())) {
             svc = {
               serviceInstalled: true,
               serviceRunning: true,
@@ -957,6 +1027,21 @@ export async function scanNetwork(
               lastServiceCheck: svc.lastServiceCheck,
             });
           }
+        } else {
+          // Veredicto negativo (ni sondeo ni reporte reciente)
+          // sobre un equipo YA conocido: se anota para limpiar
+          // sus marcas de agente. Si el agente fue desinstalado,
+          // el escaneo no puede seguir enseñándolo como
+          // instalado para siempre. Los hosts desconocidos no
+          // generan nada, como siempre.
+          const conocido = equiposPorIp.get(vecino.ip);
+          if (conocido) {
+            persistNegativos.push({
+              name: conocido.nombre,
+              ip: vecino.ip,
+              lastServiceCheck: svc.lastServiceCheck,
+            });
+          }
         }
       } catch (e: any) {
         host.error = e.message;
@@ -971,6 +1056,7 @@ export async function scanNetwork(
     )
   );
   await persistComputers(persistQueue);
+  await persistirNegativos(persistNegativos);
 
   results.sort((a, b) => ipANumero(a.ip) - ipANumero(b.ip));
 
