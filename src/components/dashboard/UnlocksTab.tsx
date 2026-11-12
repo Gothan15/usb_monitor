@@ -81,6 +81,7 @@ const RESULT_LABELS: Record<string, string> = {
   NOT_WHITELISTED: "Fuera de la lista blanca",
   NO_PENDING: "Sin bloqueo activo",
   LOCKED: "Cuenta bloqueada",
+  PC_LOCKED: "PC en pausa por intentos",
   DISABLED: "Función desactivada",
   OFFLINE_OK: "Desbloqueo sin red",
   OFFLINE_FAIL: "Fallo sin red",

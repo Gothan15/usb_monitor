@@ -89,6 +89,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
       readonly.includes("removido");
     const isError =
       code === "UNLOCK_RELEASE_FAILED" ||
+      code === "UNLOCK_ATTEMPT_FAILED" ||
       (code === "BLOCKED" && !event.whitelisted) ||
       normalized.includes("error") ||
       normalized.includes("fallo") ||
