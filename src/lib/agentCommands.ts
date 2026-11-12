@@ -76,6 +76,72 @@ export function compararVersiones(a: string | null, b: string | null): number {
   return 0;
 }
 
+/** Etiqueta legible de cada estado de una orden, para las vistas. */
+export const ETIQUETA_ESTADO_ORDEN: Record<string, string> = {
+  [ESTADO_ORDEN.ESPERA]: "En espera",
+  [ESTADO_ORDEN.ENTREGADA]: "Entregada",
+  [ESTADO_ORDEN.EN_CURSO]: "En curso",
+  [ESTADO_ORDEN.HECHA]: "Hecha",
+  [ESTADO_ORDEN.ERROR]: "Error",
+};
+
+/** Una fila de `agent_commands` tal como sale de la base de datos. */
+export interface OrdenActualizacionFila {
+  id: string;
+  pcName: string;
+  type: string;
+  status: string;
+  detail: string | null;
+  targetVersion: string | null;
+  attempts: number;
+  createdAt: Date | string;
+  deliveredAt: Date | string | null;
+  startedAt: Date | string | null;
+  finishedAt: Date | string | null;
+}
+
+/** La misma orden lista para pintar: fechas en ISO y estado con etiqueta. */
+export interface VistaOrdenActualizacion {
+  id: string;
+  pcName: string;
+  estado: string;
+  etiquetaEstado: string;
+  viva: boolean;
+  detalle: string | null;
+  versionObjetivo: string | null;
+  intentos: number;
+  creadaEn: string;
+  terminadaEn: string | null;
+}
+
+function aIso(fecha: Date | string | null): string | null {
+  if (fecha === null) return null;
+  return fecha instanceof Date ? fecha.toISOString() : fecha;
+}
+
+/**
+ * Da forma de vista a una orden de actualización (las de la
+ * pestaña de Tareas): normaliza las fechas a ISO, traduce el
+ * estado a su etiqueta y dice si la orden sigue viva. Un estado
+ * desconocido se enseña tal cual, sin romper la lista.
+ */
+export function vistaOrdenActualizacion(
+  fila: OrdenActualizacionFila,
+): VistaOrdenActualizacion {
+  return {
+    id: fila.id,
+    pcName: fila.pcName,
+    estado: fila.status,
+    etiquetaEstado: ETIQUETA_ESTADO_ORDEN[fila.status] ?? fila.status,
+    viva: (ESTADOS_ORDEN_ACTIVA as string[]).includes(fila.status),
+    detalle: fila.detail?.trim() ? fila.detail : null,
+    versionObjetivo: fila.targetVersion,
+    intentos: fila.attempts,
+    creadaEn: aIso(fila.createdAt) ?? "",
+    terminadaEn: aIso(fila.finishedAt),
+  };
+}
+
 export type ResultadoOrdenActualizacion =
   | { resultado: "creada"; versionObjetivo: string }
   | { resultado: "ya-activa"; versionObjetivo: string | null }
