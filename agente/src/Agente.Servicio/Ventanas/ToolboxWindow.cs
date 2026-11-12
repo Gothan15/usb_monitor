@@ -289,6 +289,18 @@ public sealed class ToolboxWindow : Window
         textoServicio.Margin = new Thickness(0, 0, 0, 10);
         contenido.Children.Add(textoServicio);
 
+        // La versión DEL ARCHIVO: la que el ejecutable declara en
+        // su propio recurso de versión (la misma que enseñan las
+        // Propiedades del exe y la que el panel lee del paquete),
+        // no una cadena escrita a mano en el código. Vivía en la
+        // sección de actualización, que desapareció con el canal
+        // de GitHub; la línea se queda aquí, como dato del equipo.
+        var versionArchivo = Tema.TextoDatos(
+            $"Versión del archivo: {Versiones.VersionArchivoActual() ?? ClientePanel.VersionAgente}",
+            12.5);
+        versionArchivo.Margin = new Thickness(0, 0, 0, 10);
+        contenido.Children.Add(versionArchivo);
+
         var fila = new UniformGrid { Columns = 3 };
         fila.Children.Add(BotonServicio("Iniciar", "start", "Iniciando…"));
         fila.Children.Add(BotonServicio("Detener", "stop", "Deteniendo…"));

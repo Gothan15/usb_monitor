@@ -7,9 +7,34 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>USBMonitorEmpujador</AssemblyName>
     <RootNamespace>USBMonitor.Empujador</RootNamespace>
-    <!-- El empujador acompaña al panel, no al agente: su versión
-         es propia y solo se usa a título informativo. -->
+    <!-- Versión de reserva para compilaciones locales: en la CI
+         manda la de la etiqueta de la Release (grupo de abajo).
+         Antes era la única y las Propiedades del exe enseñaban
+         «1.0.0» en todas las Releases. -->
     <Version>1.0.0</Version>
+    <!-- Sin el «+commit» que el SDK añade por su cuenta a la
+         versión informativa al compilar dentro de un repo git:
+         las Propiedades del exe enseñan la versión limpia. -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+
+  <!-- La versión de la Release en las Propiedades del exe.
+       El empujador viaja DENTRO del zip del agente, pero su paso
+       de compilación en la CI es un «dotnet publish» pelado que
+       no recibe la versión a mano (a Build-All.ps1, que sí la
+       estampa en el servicio, no le toca este proyecto). La
+       etiqueta «agente-vX.Y.Z» sí llega a ese paso como variable
+       de entorno GITHUB_REF_NAME, que GitHub pone en todos los
+       pasos: si trae una X.Y.Z, esa versión manda en las cuatro
+       formas (la que enseñan las Propiedades y la que lee
+       cualquier lector de PE). Sin etiqueta —compilación local o
+       lanzamiento a mano de la CI— queda la de reserva. -->
+  <PropertyGroup>
+    <VersionEtiqueta>$([System.Text.RegularExpressions.Regex]::Replace('$(GITHUB_REF_NAME)', '^agente-v', ''))</VersionEtiqueta>
+    <Version Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('$(VersionEtiqueta)', '^\d+\.\d+\.\d+$'))">$(VersionEtiqueta)</Version>
+    <InformationalVersion Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('$(VersionEtiqueta)', '^\d+\.\d+\.\d+$'))">$(VersionEtiqueta)</InformationalVersion>
+    <AssemblyVersion Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('$(VersionEtiqueta)', '^\d+\.\d+\.\d+$'))">$(VersionEtiqueta)</AssemblyVersion>
+    <FileVersion Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('$(VersionEtiqueta)', '^\d+\.\d+\.\d+$'))">$(VersionEtiqueta)</FileVersion>
   </PropertyGroup>
 
 </Project>
