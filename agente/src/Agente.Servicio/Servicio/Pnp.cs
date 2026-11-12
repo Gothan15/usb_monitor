@@ -118,10 +118,30 @@ public static class Pnp
         return EstaDeshabilitado(instancia) == deshabilitado;
     }
 
+    /// <summary>
+    /// Localiza el nodo reintentando unos instantes: durante un
+    /// parpadeo de enumeración el nodo puede no localizarse en
+    /// la primera pasada y aparecer en la siguiente, y darlo
+    /// por ausente degradaba el bloqueo a solo lectura por un
+    /// temblor de medio segundo (visto en ENDUSER-PC el
+    /// 2026-11-11). Seis intentos a 250 ms: ~1,5 s de gracia,
+    /// poco frente a los segundos que ya espera la cadena.
+    /// </summary>
+    private static uint? LocalizarConReintento(string instancia)
+    {
+        for (var intento = 0; intento < 6; intento++)
+        {
+            var devInst = LocalizarNodo(instancia, fantasma: false);
+            if (devInst is not null) return devInst;
+            if (intento < 5) Thread.Sleep(250);
+        }
+        return null;
+    }
+
     /// <summary>Deshabilita el nodo y VERIFICA que quedó deshabilitado.</summary>
     public static bool Deshabilitar(string instancia, double segundos = 3.0)
     {
-        var devInst = LocalizarNodo(instancia, fantasma: false);
+        var devInst = LocalizarConReintento(instancia);
         if (devInst is null)
         {
             Log.Advertencia($"No se localizó el nodo para deshabilitar: {instancia}");

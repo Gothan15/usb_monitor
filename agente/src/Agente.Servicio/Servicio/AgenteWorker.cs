@@ -61,6 +61,16 @@ public sealed class AgenteWorker : BackgroundService
     // es cuando el vigilante de eventos despierta a este bucle).
     private readonly ControlAusencias _ausencias = new(TimeSpan.FromSeconds(6));
 
+    // Extracciones vetadas por la guarda anti-parpadeo cuyo
+    // aviso YA salió al registro. El veto se repite en cada
+    // barrido mientras el parpadeo dure (en ENDUSER-PC, el
+    // 2026-11-11, la misma advertencia salió cada ~18 s durante
+    // una hora y tapó todo lo demás); el veto sigue siendo
+    // fail-closed igual, pero se anuncia una sola vez por
+    // episodio. Se olvida cuando el dispositivo reaparece o la
+    // extracción por fin se procesa.
+    private readonly HashSet<string> _vetosExtraccionAvisados = new();
+
     // Firma (serial|letra) del último conjunto conectado que ya
     // consta en el panel: el bucle de detección avisa AL INSTANTE
     // cuando cambia, sin esperar al latido de 30 s — así «Ver USB»
@@ -579,11 +589,20 @@ public sealed class AgenteWorker : BackgroundService
         if (registroPrevio is { Estado: EstadoBloqueo.Bloqueado } &&
             Pnp.EstaPresenteFisicamente(disp.InstanciaPnP))
         {
-            Log.Advertencia(
-                $"Extracción no creída de {disp.Nombre}: su nodo sigue presente " +
-                "y bloqueado; se mantiene el bloqueo (posible parpadeo de enumeración)");
+            // El veto se anuncia una vez por episodio: el
+            // barrido volverá por aquí en cada ciclo mientras
+            // el parpadeo dure, y repetir la advertencia solo
+            // entierra el registro. El bloqueo se mantiene
+            // igualmente (fail-closed).
+            if (_vetosExtraccionAvisados.Add(clave))
+            {
+                Log.Advertencia(
+                    $"Extracción no creída de {disp.Nombre}: su nodo sigue presente " +
+                    "y bloqueado; se mantiene el bloqueo (posible parpadeo de enumeración)");
+            }
             return false;
         }
+        _vetosExtraccionAvisados.Remove(clave);
         _motor.AlExtraer(clave);
         DesarmarApagado(clave, disp, "el dispositivo se extrajo");
         await _cliente.CerrarBloqueoAsync(disp.Letra, disp.Serial).ConfigureAwait(false);
@@ -743,6 +762,9 @@ public sealed class AgenteWorker : BackgroundService
                 foreach (var (clave, disp) in actuales)
                 {
                     _ausencias.MarcarPresente(clave);
+                    // Reapareció: el episodio de veto terminó;
+                    // si vuelve a parpadear, se avisa de nuevo.
+                    _vetosExtraccionAvisados.Remove(clave);
                     if (!previos.ContainsKey(clave))
                         await AlLlegarAsync(disp).ConfigureAwait(false);
                 }
