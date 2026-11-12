@@ -243,6 +243,9 @@ public sealed class CompaneroWindow : Window
 
         Loaded += async (_, _) =>
         {
+            // La ficha con mi PID: el servicio me detecta por
+            // ella, no buscando texto en mi línea de comandos.
+            CompaneroPid.Escribir(DatosVentanas.CarpetaDatos);
             RegistroVentanas.Info("Ventana del compañero cargada.");
             await RevisarArchivoAsync();
             await ConsultarDuenoAsync();
@@ -259,6 +262,7 @@ public sealed class CompaneroWindow : Window
             _temporizador.Stop();
             _latido.Stop();
             _temporizadorEspera.Stop();
+            CompaneroPid.Borrar(DatosVentanas.CarpetaDatos);
             _vigilante?.Dispose();
             _vigilanteEvidencia?.Dispose();
             _cliente.Dispose();
@@ -611,6 +615,14 @@ public sealed class CompaneroWindow : Window
 
         if (estabaOculta)
         {
+            // El eslabón que faltaba en los registros: que el
+            // cartel SALIÓ. Sin esta línea, una ventana que
+            // cargaba pero nunca se mostraba no dejaba rastro
+            // y el fallo era invisible desde fuera.
+            var mostrado = _bloqueos[Math.Max(0, _selector.SelectedIndex)];
+            RegistroVentanas.Info(
+                $"Cartel de credenciales mostrado: {mostrado.Nombre} ({mostrado.Serial}).");
+
             // Sin animación de entrada: la ventana aparece tal cual.
             // La entrada animada (fundido + escala del PR #59) se
             // retiró en la caza del «no abre»: era la sospechosa del
