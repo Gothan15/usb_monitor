@@ -104,6 +104,12 @@ export function LiveDataProvider({
       if (event.id && !notificadosRef.current.has(event.id)) {
         const esBloqueo = event.event.toUpperCase().includes("BLOCK");
         const esDesbloqueo = event.event.toUpperCase().includes("UNLOCK");
+        // Un intento fallido también lleva «UNLOCK» en el código:
+        // hay que cazarlo ANTES que el desbloqueo bueno, porque
+        // su aviso es de peligro, no de éxito.
+        const esIntentoFallido = event.event
+          .toUpperCase()
+          .includes("ATTEMPT_FAILED");
         if (esBloqueo || esDesbloqueo || event.whitelisted === false) {
           notificadosRef.current.add(event.id);
           if (notificadosRef.current.size > 200) {
@@ -118,7 +124,15 @@ export function LiveDataProvider({
           // El aviso lleva la referencia a su evento: desde la
           // campana se puede saltar a verlo en el registro.
           const destino = destinoDesdeEventoSocket(event);
-          if (esDesbloqueo) {
+          if (esIntentoFallido) {
+            emitNotification({
+              title: `Intento de desbloqueo fallido en ${event.pcName}`,
+              description: detalle,
+              icon: Usb,
+              tone: "danger",
+              evento: destino,
+            });
+          } else if (esDesbloqueo) {
             emitNotification({
               title: `USB desbloqueado en ${event.pcName}`,
               description: detalle,

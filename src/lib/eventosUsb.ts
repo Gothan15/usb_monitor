@@ -9,6 +9,7 @@ const ETIQUETAS_EVENTO: Record<string, string> = {
   DISCONNECTED: "Desconectado",
   BLOCKED: "Bloqueado",
   UNLOCKED: "Desbloqueado",
+  UNLOCK_ATTEMPT_FAILED: "Intento de desbloqueo fallido",
   BLOCK_REAPPLIED: "Bloqueo reaplicado",
   UNLOCK_RELEASE_FAILED: "Fallo al liberar",
   EMERGENCY_UNLOCK: "Desbloqueo de emergencia",

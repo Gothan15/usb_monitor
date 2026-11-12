@@ -4,6 +4,7 @@ import { requireAgentAuth } from "@/lib/agentAuth";
 import { registrarContactoAgente } from "@/lib/agentDebug";
 import { logError } from "@/lib/logger";
 import { broadcastUnlockChange } from "@/lib/socket";
+import { crearEventoIntentoFallido } from "@/lib/eventoIntentoFallido";
 
 /**
  * POST /api/agent/offline-attempts
@@ -70,6 +71,18 @@ export async function POST(req: Request) {
         },
       });
       recorded++;
+
+      // Un fallo sin conexión también es señal: su evento entra
+      // al sincronizarse, con la hora en que ocurrió de verdad.
+      if (result === "OFFLINE_FAIL") {
+        await crearEventoIntentoFallido({
+          pcName,
+          usernameTried,
+          serialNumber,
+          driveLetter,
+          cuando: when,
+        });
+      }
 
       if (result === "OFFLINE_OK" && pending?.status === "BLOCKED") {
         await db.pendingUnlock.update({

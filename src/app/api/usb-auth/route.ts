@@ -8,6 +8,15 @@ import {
 import { getCurrentDate } from "@/lib/time";
 import { readAppSettings } from "@/lib/appSettings";
 import { broadcastUnlockChange } from "@/lib/socket";
+import {
+  crearEventoIntentoFallido,
+  debeCrearEventoIntento,
+  debePausarPc,
+  esActivacionPausa,
+  RESULTADOS_QUE_CUENTAN_PC,
+  RESULTADO_PC_EN_PAUSA,
+  VENTANA_PAUSA_PC_MIN,
+} from "@/lib/eventoIntentoFallido";
 
 const MAX_FAILED_ATTEMPTS = Number(
   process.env.USB_MONITOR_MAX_FAILED_ATTEMPTS || 5
@@ -46,6 +55,29 @@ async function recordAttempt(data: {
   } catch (error) {
     // La auditoría nunca debe tumbar la verificación.
     console.error("No se pudo registrar el intento de desbloqueo:", error);
+  }
+}
+
+/**
+ * Como recordAttempt, pero además deja el evento en el
+ * registro y lo emite en vivo cuando el resultado es un fallo
+ * que merece escaparate (contraseña, propiedad, bloqueos).
+ */
+async function recordFailedAttemptWithEvent(
+  data: Parameters<typeof recordAttempt>[0] & {
+    driveLetter?: string | null;
+    whitelisted?: boolean;
+  },
+) {
+  await recordAttempt(data);
+  if (debeCrearEventoIntento(data.result)) {
+    await crearEventoIntentoFallido({
+      pcName: data.pcName,
+      usernameTried: data.usernameTried,
+      serialNumber: data.serialNumber ?? null,
+      driveLetter: data.driveLetter ?? null,
+      whitelisted: data.whitelisted ?? false,
+    });
   }
 }
 
@@ -149,6 +181,44 @@ async function handleDeviceUnlock(body: any, pcName: string) {
   }
 
   const now = getCurrentDate();
+
+  // Freno a la fuerza bruta por EQUIPO: si esta PC acumula
+  // demasiados fallos en la ventana, no se evalúa ni una
+  // contraseña más hasta que se enfríe — ni la buena. El
+  // bloqueo por cuenta que ya existía no frena la rotación de
+  // usuarios ni el sondeo desde una misma máquina; esto sí.
+  const desdeVentana = new Date(now.getTime() - VENTANA_PAUSA_PC_MIN * 60_000);
+  const fallosPc = await db.unlockAttempt.count({
+    where: {
+      pcName,
+      createdAt: { gte: desdeVentana },
+      result: { in: [...RESULTADOS_QUE_CUENTAN_PC] },
+    },
+  });
+  if (debePausarPc(fallosPc)) {
+    const ultimo = await db.unlockAttempt.findFirst({
+      where: { pcName },
+      orderBy: { createdAt: "desc" },
+      select: { result: true },
+    });
+    await recordAttempt({
+      pcName,
+      usernameTried,
+      serialNumber,
+      result: RESULTADO_PC_EN_PAUSA,
+    });
+    // El evento salta una sola vez por racha: al activarse.
+    if (esActivacionPausa(ultimo?.result)) {
+      await crearEventoIntentoFallido({
+        pcName,
+        usernameTried,
+        serialNumber,
+        driveLetter,
+      });
+    }
+    return NextResponse.json(GENERIC_DENIED, { status: 401 });
+  }
+
   const baseWhere = {
     pcName,
     status: "BLOCKED" as const,
@@ -208,12 +278,23 @@ async function handleDeviceUnlock(body: any, pcName: string) {
   const user = usernameTried ? await findUser(usernameTried) : null;
   if (!user) {
     await simulatePasswordCheckDelay();
-    await recordAttempt({ ...auditBase, result: "BAD_PASSWORD" });
+    await recordFailedAttemptWithEvent({
+      ...auditBase,
+      result: "BAD_PASSWORD",
+      driveLetter,
+      whitelisted: true,
+    });
     return NextResponse.json(GENERIC_DENIED, { status: 401 });
   }
 
   if (user.lockedUntil && user.lockedUntil > now) {
-    await recordAttempt({ ...auditBase, userId: user.id, result: "LOCKED" });
+    await recordFailedAttemptWithEvent({
+      ...auditBase,
+      userId: user.id,
+      result: "LOCKED",
+      driveLetter,
+      whitelisted: true,
+    });
     return NextResponse.json(GENERIC_DENIED, { status: 401 });
   }
 
@@ -223,10 +304,12 @@ async function handleDeviceUnlock(body: any, pcName: string) {
   );
   if (!valid) {
     await registerFailedAttempt(user, now);
-    await recordAttempt({
+    await recordFailedAttemptWithEvent({
       ...auditBase,
       userId: user.id,
       result: "BAD_PASSWORD",
+      driveLetter,
+      whitelisted: true,
     });
     return NextResponse.json(GENERIC_DENIED, { status: 401 });
   }
@@ -243,7 +326,13 @@ async function handleDeviceUnlock(body: any, pcName: string) {
     computer?.unlockMode === "ADMIN_ONLY" ? isAdmin : isAdmin || isOwner;
 
   if (!allowed) {
-    await recordAttempt({ ...auditBase, userId: user.id, result: "NOT_OWNER" });
+    await recordFailedAttemptWithEvent({
+      ...auditBase,
+      userId: user.id,
+      result: "NOT_OWNER",
+      driveLetter,
+      whitelisted: true,
+    });
     return NextResponse.json(GENERIC_DENIED, { status: 401 });
   }
 
