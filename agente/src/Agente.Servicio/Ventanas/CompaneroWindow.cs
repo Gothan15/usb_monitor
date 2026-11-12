@@ -59,6 +59,19 @@ public sealed class CompaneroWindow : Window
     private DateTime _duenoConsultado = DateTime.MinValue;
     private bool _consultandoDueno;
 
+    // Freno local de reintentos (FrenoReintentos): fallos
+    // seguidos en ESTA ventana, la espera que imponen y su
+    // cuenta atrás. Sin él, la ventana dejaba probar
+    // contraseñas sin fricción y cada intento quemaba uno de
+    // la cuenta hasta bloquearla en el panel.
+    private int _fallosSeguidos;
+    private DateTime _esperaHasta = DateTime.MinValue;
+    private readonly DispatcherTimer _temporizadorEspera;
+
+    // Bloqueos ya re-informados al panel en esta sesión de la
+    // ventana (autosaneado ante un 401 con el bloqueo en local).
+    private readonly HashSet<string> _bloqueosReinformados = new();
+
     public CompaneroWindow()
     {
         Title = "USBMonitor — Dispositivo bloqueado";
@@ -222,6 +235,12 @@ public sealed class CompaneroWindow : Window
         };
         _latido.Tick += (_, _) => AnotarLatido();
 
+        _temporizadorEspera = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(1)
+        };
+        _temporizadorEspera.Tick += (_, _) => RefrescarEspera();
+
         Loaded += async (_, _) =>
         {
             RegistroVentanas.Info("Ventana del compañero cargada.");
@@ -239,6 +258,7 @@ public sealed class CompaneroWindow : Window
             _cerrando = true;
             _temporizador.Stop();
             _latido.Stop();
+            _temporizadorEspera.Stop();
             _vigilante?.Dispose();
             _vigilanteEvidencia?.Dispose();
             _cliente.Dispose();
@@ -668,10 +688,92 @@ public sealed class CompaneroWindow : Window
         }
     }
 
+    /// <summary>
+    /// Cuenta atrás del freno local: mientras corre, el
+    /// formulario sigue inhabilitado y el mensaje enseña los
+    /// segundos que faltan; al agotarse, se libera.
+    /// </summary>
+    private void RefrescarEspera()
+    {
+        var restante = (int)Math.Ceiling(
+            (_esperaHasta - DateTime.Now).TotalSeconds);
+        if (restante <= 0)
+        {
+            _temporizadorEspera.Stop();
+            _esperaHasta = DateTime.MinValue;
+            _boton.IsEnabled = true;
+            _usuario.IsEnabled = true;
+            _contrasena.IsEnabled = true;
+            PintarMensaje("Ya puedes intentarlo de nuevo.", Tema.TintaAtenuada);
+            _contrasena.Focus();
+            return;
+        }
+        PintarMensaje(
+            $"Demasiados intentos seguidos. Espera {restante} s y prueba de nuevo.",
+            Tema.Ambar);
+    }
+
+    /// <summary>Arma la espera del freno local tras un fallo.</summary>
+    private void IniciarEspera(int segundos)
+    {
+        _esperaHasta = DateTime.Now.AddSeconds(segundos);
+        _boton.IsEnabled = false;
+        _usuario.IsEnabled = false;
+        _contrasena.IsEnabled = false;
+        _temporizadorEspera.Start();
+        RefrescarEspera();
+    }
+
+    /// <summary>
+    /// Autosaneado: el panel denegó (401) pero ESTA ventana
+    /// tiene el bloqueo en local. Una causa posible es que el
+    /// panel no tenga el bloqueo registrado — su informe se
+    /// perdió por el camino (sin red en ese momento, la
+    /// credencial rechazada al informar…) y entonces deniega
+    /// con «sin bloqueo» aunque la contraseña sea la buena. Se
+    /// vuelve a informar el estado de conectados, una vez por
+    /// dispositivo y sesión, para que el panel (re)cree el
+    /// bloqueo y el próximo intento se evalúe de verdad.
+    /// Devuelve la nota que se añade al mensaje de denegación.
+    /// </summary>
+    private async Task<string> ReinformarSiProcedeAsync(BloqueoLocal actual)
+    {
+        var serial = actual.Serial;
+        if (string.IsNullOrWhiteSpace(serial) ||
+            !_bloqueosReinformados.Add(serial))
+        {
+            return "";
+        }
+        try
+        {
+            var unidades = _bloqueos.Select(b => new UnidadConectada
+            {
+                DriveLetter = b.Letra,
+                SerialNumber = b.Serial,
+                Model = b.Nombre,
+                DeviceKind = b.Tipo,
+            }).ToList();
+            await _cliente.EstadoConectadosAsync(unidades);
+            return " Se volvió a informar el bloqueo al panel: " +
+                   "espera unos segundos y prueba otra vez.";
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
     private async Task EnviarAsync()
     {
         if (_enviando)
         {
+            return;
+        }
+
+        // Freno local en curso: ni se intenta.
+        if (DateTime.Now < _esperaHasta)
+        {
+            RefrescarEspera();
             return;
         }
 
@@ -706,6 +808,7 @@ public sealed class CompaneroWindow : Window
 
             if (respuesta.Autorizado)
             {
+                _fallosSeguidos = 0;
                 PintarMensaje(
                     "Autorizado. El dispositivo se está liberando…",
                     Tema.Verde);
@@ -720,9 +823,10 @@ public sealed class CompaneroWindow : Window
             }
             else if (respuesta.EstadoHttp == 401)
             {
+                var nota = await ReinformarSiProcedeAsync(actual);
                 PintarMensaje(
                     "Usuario o contraseña incorrectos, o esa cuenta no es " +
-                    "la dueña de esta PC ni administradora.",
+                    "la dueña de esta PC ni administradora." + nota,
                     Tema.Rojo);
             }
             else if (respuesta.EstadoHttp == 0)
@@ -740,6 +844,22 @@ public sealed class CompaneroWindow : Window
                         : respuesta.Mensaje,
                     Tema.Rojo);
             }
+
+            // Fallo CON respuesta del panel: suma al freno
+            // local y, si toca espera, la arma (la cuenta atrás
+            // pinta su propio mensaje). Sin respuesta (sin
+            // conexión, EstadoHttp 0) no suma: no es un intento
+            // contra la contraseña y no debe castigar al usuario
+            // por una caída de red.
+            if (respuesta.EstadoHttp != 0)
+            {
+                _fallosSeguidos++;
+                var espera = FrenoReintentos.EsperaSegundos(_fallosSeguidos);
+                if (espera > 0)
+                {
+                    IniciarEspera(espera);
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -752,12 +872,20 @@ public sealed class CompaneroWindow : Window
         finally
         {
             _enviando = false;
-            _boton.IsEnabled = true;
-            _usuario.IsEnabled = true;
-            _contrasena.IsEnabled = true;
+            // Con espera del freno local en curso, el formulario
+            // se queda inhabilitado: lo libera la cuenta atrás.
+            if (DateTime.Now >= _esperaHasta)
+            {
+                _boton.IsEnabled = true;
+                _usuario.IsEnabled = true;
+                _contrasena.IsEnabled = true;
+            }
             Tema.RestaurarBoton(_boton, previoBoton);
             _contrasena.Clear();
-            _contrasena.Focus();
+            if (_boton.IsEnabled)
+            {
+                _contrasena.Focus();
+            }
         }
     }
 

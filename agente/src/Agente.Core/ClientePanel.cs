@@ -87,6 +87,12 @@ public sealed class ClientePanel : IDisposable
     private long _desfasePanelSeg;
     private bool _desfaseAvisado;
 
+    // El último desfase dejado en disco (ver DesfaseReloj): al
+    // construir, el cliente nace con el que otro proceso ya
+    // aprendió; al aprender uno distinto, lo deja escrito.
+    private long _ultimoDesfasePersistido;
+    private readonly string _directorioDatos;
+
     /// <summary>La marca Unix para firmar: la hora local corregida con el desfase aprendido del panel.</summary>
     private long MarcaParaFirmar() =>
         DateTimeOffset.UtcNow.ToUnixTimeSeconds() +
@@ -104,8 +110,16 @@ public sealed class ClientePanel : IDisposable
     private void AprenderDesfase(DateTimeOffset horaServidor)
     {
         var desfase = (long)(horaServidor - DateTimeOffset.UtcNow).TotalSeconds;
-        Interlocked.Exchange(ref _desfasePanelSeg,
-            Math.Abs(desfase) >= 20 ? desfase : 0);
+        var efectivo = Math.Abs(desfase) >= 20 ? desfase : 0;
+        Interlocked.Exchange(ref _desfasePanelSeg, efectivo);
+        // Lo aprendido se deja en disco para los demás
+        // procesos: el próximo compañero que se abra ya firmará
+        // alineado desde su primera petición.
+        if (DesfaseReloj.DebePersistir(_ultimoDesfasePersistido, efectivo))
+        {
+            _ultimoDesfasePersistido = efectivo;
+            DesfaseReloj.Guardar(efectivo, _directorioDatos);
+        }
         if (Math.Abs(desfase) > 60 && !_desfaseAvisado)
         {
             _desfaseAvisado = true;
@@ -140,8 +154,13 @@ public sealed class ClientePanel : IDisposable
             Timeout = TimeSpan.FromSeconds(8),
         };
         var datos = directorioDatos ?? Registro.DirectorioDatos;
+        _directorioDatos = datos;
         _archivoCola = Path.Combine(datos, "cola_eventos.json");
         _cola = LeerCola();
+        // Nacer alineado: el desfase que cualquier proceso
+        // anterior aprendió ya compensa la primera firma.
+        _ultimoDesfasePersistido = DesfaseReloj.Cargar(datos);
+        _desfasePanelSeg = _ultimoDesfasePersistido;
         // Diagnóstico de la credencial (nunca la clave privada):
         // con qué se acredita este equipo al arrancar.
         if (_config.TieneClave)
