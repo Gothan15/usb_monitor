@@ -11,6 +11,11 @@ import { registrarContactoAgente } from "@/lib/agentDebug";
 import { fusionarDuplicadoDeReporte } from "@/lib/identidadEquipo";
 import { normalizeSerial } from "../whitelist/_helpers";
 import { broadcastUSBEvent, broadcastComputerStatus } from "@/lib/socket";
+import {
+  esEventoDesbloqueo,
+  resolverNombreDesbloqueador,
+  completarDesbloqueadores,
+} from "@/lib/eventoDesbloqueo";
 
 const prisma = resolve<PrismaClient>(TOKENS.prisma);
 
@@ -91,11 +96,29 @@ export async function POST(request: NextRequest) {
     // Guardar el evento USB en la base de datos
     const occurredAt = getCurrentDate();
 
+    // Si es un desbloqueo, se estampa la cuenta que lo autorizó
+    // cruzando el evento con su bloqueo (el bloqueo ya guarda
+    // quién y cuándo; el agente no conoce ese dato, lo aporta el
+    // panel). Si el cruce no encuentra nada —p. ej. un desbloqueo
+    // sin conexión cuyo intento aún no se sincronizó—, el evento
+    // queda sin sello y la lectura lo rellena cuando exista.
+    let unlockedBy: string | null = null;
+    if (esEventoDesbloqueo(event)) {
+      unlockedBy = await resolverNombreDesbloqueador({
+        pcName: computerName,
+        event,
+        serialNumber: normalizedSerial,
+        driveLetter: normalizedDrive,
+        cuando: occurredAt,
+      }).catch(() => null);
+    }
+
     const usbEvent = await prisma.uSBEvent.create({
       data: {
         pcName: computerName,
         pcIp: pc_ip,
         pcUser: pc_user,
+        unlockedBy,
         event,
         timestamp: occurredAt,
         driveLetter: normalizedDrive,
@@ -168,6 +191,7 @@ export async function POST(request: NextRequest) {
       pcName: computerName,
       pcIp: pc_ip,
       pcUser: pc_user,
+      unlockedBy,
       event,
       driveLetter: normalizedDrive,
       serialNumber: normalizedSerial,
@@ -202,10 +226,35 @@ export async function POST(request: NextRequest) {
 export async function GET(req: Request) {
   try {
     await requireAuth(req); // JWT en Authorization: Bearer <token>
-    const events = await prisma.uSBEvent.findMany({
+    const found = await prisma.uSBEvent.findMany({
       orderBy: { createdAt: "desc" },
       take: 50, // Limitar a los últimos 50 eventos
     });
+
+    // Relleno al leer de la cuenta que desbloqueó: los eventos de
+    // desbloqueo que entraron sin sello (la ingesta no encontró
+    // aún el bloqueo, p. ej. desbloqueos sin conexión que se
+    // sincronizan después) se completan cruzando con los
+    // bloqueos, igual que abajo se recalcula la lista blanca.
+    // Si el cruce falla, se sirve lo guardado.
+    let events = found;
+    try {
+      const nombres = await completarDesbloqueadores(
+        found.map((e) => ({
+          pcName: e.pcName,
+          event: e.event,
+          serialNumber: e.serialNumber,
+          driveLetter: e.driveLetter,
+          cuando: e.timestamp,
+          unlockedBy: e.unlockedBy,
+        })),
+      );
+      events = found.map((e, i) =>
+        nombres[i] ? { ...e, unlockedBy: nombres[i] } : e,
+      );
+    } catch {
+      // El registro no puede caer por este relleno.
+    }
 
     // El sello guardado puede venir vacío o de la caché del agente
     // (ver la nota en el POST): al LEER se recalcula contra la

@@ -325,6 +325,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                     </div>
                     <p className="mt-1 text-[13px] text-muted-foreground">
                       {etiquetaEventoUsb(event.event)}
+                      {event.unlockedBy && <> · por {event.unlockedBy}</>}
                     </p>
                     <p className="mt-2 font-mono text-[11px] leading-relaxed text-muted-foreground/80">
                       {event.pcUser} · {event.pcIp}
@@ -399,6 +400,11 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                             <span className="mt-0.5 block truncate text-xs text-muted-foreground" title={event.event}>
                               {etiquetaEventoUsb(event.event)}
                             </span>
+                            {event.unlockedBy && (
+                              <span className="mt-0.5 block truncate text-xs text-muted-foreground" title={event.unlockedBy}>
+                                por {event.unlockedBy}
+                              </span>
+                            )}
                           </TableCell>
                           <TableCell className="max-w-[180px] text-muted-foreground">
                             <Tooltip>

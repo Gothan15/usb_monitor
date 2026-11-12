@@ -3,6 +3,8 @@ export interface USBEvent {
   pcName: string;
   pcIp: string;
   pcUser: string;
+  /** Cuenta que autorizó el desbloqueo (solo en eventos de desbloqueo). */
+  unlockedBy?: string | null;
   event: string;
   driveLetter?: string | null;
   serialNumber?: string | null;
