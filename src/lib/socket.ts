@@ -27,6 +27,7 @@ export interface SocketUSBEvent {
   pcName: string;
   pcIp: string;
   pcUser: string;
+  unlockedBy?: string | null;
   event: string;
   driveLetter?: string | null;
   serialNumber?: string | null;

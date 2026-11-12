@@ -18,6 +18,14 @@ model USBEvent {
   pcName    String
   pcIp      String
   pcUser    String
+  // Cuenta que autorizó el desbloqueo con su contraseña, cuando el
+  // evento es un desbloqueo. NO es pcUser (el usuario de sesión de
+  // Windows en la PC): esto lo estampa el PANEL cruzando el evento
+  // con el bloqueo correspondiente (PendingUnlock.unlockedBy), así
+  // el registro de eventos se audita sin abrir la pestaña de
+  // desbloqueos. Nullable: los eventos que no son desbloqueos y los
+  // anteriores a esta mejora quedan en null.
+  unlockedBy String?
   event     String
   driveLetter    String?
   serialNumber   String?
