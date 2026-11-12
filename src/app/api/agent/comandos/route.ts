@@ -7,6 +7,7 @@ import { normalizeComputerName } from "@/lib/utils";
 import {
   ESTADOS_ORDEN_ACTIVA,
   TIPO_ORDEN_ACTUALIZAR,
+  vistaOrdenActualizacion,
 } from "@/lib/agentCommands";
 import { manifiestoPaquete } from "@/lib/paqueteAgente";
 
@@ -19,6 +20,9 @@ import { manifiestoPaquete } from "@/lib/paqueteAgente";
  *   crea la orden (el agente no tendría nada que descargar).
  *   Si el equipo ya tiene una «actualizar» activa no se duplica.
  * GET ?pcName= -> las órdenes recientes de ese equipo (25).
+ * GET sin pcName -> las órdenes recientes de TODOS los equipos
+ *   (50, con forma de vista): la lista que pinta la pestaña de
+ *   Tareas, donde estas órdenes viven junto a las de instalación.
  */
 export async function POST(req: Request) {
   const admin = await requireAdminUser(req);
@@ -142,10 +146,39 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const pcName = normalizeComputerName(searchParams.get("pcName") || "");
   if (!pcName) {
-    return NextResponse.json(
-      { ok: false, error: "pcName requerido" },
-      { status: 400 },
-    );
+    // Sin equipo concreto: la lista global para la pestaña de
+    // Tareas, con el nombre de cada equipo y forma de vista.
+    try {
+      const filas = await db.agentCommand.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 50,
+        include: { computer: { select: { name: true } } },
+      });
+      const comandos = filas.map((fila) =>
+        vistaOrdenActualizacion({
+          id: fila.id,
+          pcName: fila.computer.name,
+          type: fila.type,
+          status: fila.status,
+          detail: fila.detail,
+          targetVersion: fila.targetVersion,
+          attempts: fila.attempts,
+          createdAt: fila.createdAt,
+          deliveredAt: fila.deliveredAt,
+          startedAt: fila.startedAt,
+          finishedAt: fila.finishedAt,
+        }),
+      );
+      const res = NextResponse.json({ ok: true, comandos });
+      res.headers.set("Cache-Control", "no-store");
+      return res;
+    } catch (error: any) {
+      logError("Error listando las órdenes de todos los equipos", error);
+      return NextResponse.json(
+        { ok: false, error: error.message },
+        { status: 500 },
+      );
+    }
   }
   try {
     const computer = await db.computer.findUnique({

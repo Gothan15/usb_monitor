@@ -8,6 +8,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ESTADOS_ORDEN_ACTIVA,
   transicionInformeValida,
+  vistaOrdenActualizacion,
+  type OrdenActualizacionFila,
 } from "@/lib/agentCommands";
 
 describe("transicionInformeValida", () => {
@@ -80,5 +82,66 @@ describe("manifiestoPaquete", () => {
     );
     expect(manifiesto!.tamano).toBe(Buffer.byteLength(contenido));
     expect(manifiesto!.version).toBe("9.9.9");
+  });
+});
+
+describe("vistaOrdenActualizacion", () => {
+  // Fila base: una orden recién creada, como la dejaría el panel.
+  const fila = (cambios: Partial<OrdenActualizacionFila> = {}): OrdenActualizacionFila => ({
+    id: "orden-1",
+    pcName: "ENDUSER-PC",
+    type: "actualizar",
+    status: "ESPERA",
+    detail: null,
+    targetVersion: "2.0.3",
+    attempts: 0,
+    createdAt: new Date("2026-11-12T06:50:24.577Z"),
+    deliveredAt: null,
+    startedAt: null,
+    finishedAt: null,
+    ...cambios,
+  });
+
+  it("traduce el estado y marca la orden como viva", () => {
+    const vista = vistaOrdenActualizacion(fila());
+    expect(vista.etiquetaEstado).toBe("En espera");
+    expect(vista.viva).toBe(true);
+    expect(vista.pcName).toBe("ENDUSER-PC");
+    expect(vista.versionObjetivo).toBe("2.0.3");
+  });
+
+  it("una orden cerrada ya no vive y lleva su fecha de fin en ISO", () => {
+    const vista = vistaOrdenActualizacion(
+      fila({
+        status: "HECHA",
+        detail: "Actualización confirmada tras el reinicio: versión 2.0.3.",
+        finishedAt: new Date("2026-11-12T07:02:00.000Z"),
+      }),
+    );
+    expect(vista.etiquetaEstado).toBe("Hecha");
+    expect(vista.viva).toBe(false);
+    expect(vista.terminadaEn).toBe("2026-11-12T07:02:00.000Z");
+    expect(vista.detalle).toContain("confirmada");
+  });
+
+  it("el error conserva su detalle: es lo que la pestaña tiene que enseñar", () => {
+    const vista = vistaOrdenActualizacion(
+      fila({ status: "ERROR", detail: "No se pudo descargar el paquete del panel." }),
+    );
+    expect(vista.etiquetaEstado).toBe("Error");
+    expect(vista.detalle).toBe("No se pudo descargar el paquete del panel.");
+  });
+
+  it("un estado desconocido se enseña tal cual y un detalle vacío cuenta como ninguno", () => {
+    const vista = vistaOrdenActualizacion(fila({ status: "RARO", detail: "   " }));
+    expect(vista.etiquetaEstado).toBe("RARO");
+    expect(vista.detalle).toBeNull();
+  });
+
+  it("las fechas que ya vienen en texto pasan sin tocarse", () => {
+    const vista = vistaOrdenActualizacion(
+      fila({ createdAt: "2026-11-12T06:50:24.577Z" }),
+    );
+    expect(vista.creadaEn).toBe("2026-11-12T06:50:24.577Z");
   });
 });

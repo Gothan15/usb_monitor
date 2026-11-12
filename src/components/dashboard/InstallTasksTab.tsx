@@ -48,6 +48,28 @@ interface TareaVista {
   targets: DestinoTareaVista[];
 }
 
+/** Una orden de actualización tal como la sirve la lista global. */
+interface OrdenVista {
+  id: string;
+  pcName: string;
+  estado: string;
+  etiquetaEstado: string;
+  viva: boolean;
+  detalle: string | null;
+  versionObjetivo: string | null;
+  intentos: number;
+  creadaEn: string;
+  terminadaEn: string | null;
+}
+
+const TONO_ESTADO_ORDEN: Record<string, string> = {
+  HECHA: "text-emerald-600",
+  ERROR: "text-rose-600",
+  EN_CURSO: "text-[var(--acero)]",
+  ENTREGADA: "text-amber-600",
+  ESPERA: "text-muted-foreground",
+};
+
 const TONO_ESTADO: Record<string, string> = {
   INSTALADO: "text-emerald-600",
   OMITIDO: "text-muted-foreground",
@@ -69,6 +91,10 @@ const EN_CURSO = new Set([
 
 export function InstallTasksTab() {
   const [tareas, setTareas] = useState<TareaVista[] | null>(null);
+  // Las órdenes de actualización del canal del agente: viven en
+  // otro sistema que las tareas de instalación, pero esta es su
+  // pestaña — aquí se ven con su estado y su detalle de error.
+  const [ordenes, setOrdenes] = useState<OrdenVista[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expandida, setExpandida] = useState<ReadonlySet<string>>(new Set());
   const [reintentando, setReintentando] = useState<string | null>(null);
@@ -99,6 +125,20 @@ export function InstallTasksTab() {
       setTareas(datos.tareas as TareaVista[]);
     } catch {
       setError("No se pudo contactar con el panel.");
+    }
+    // Las órdenes de actualización van por su propia ruta y su
+    // propio fallo no debe tapar la lista de tareas: si no
+    // cargan, la sección simplemente no se actualiza esta vez.
+    try {
+      const res = await fetch("/api/agent/comandos", {
+        credentials: "include",
+      });
+      const datos = await res.json().catch(() => null);
+      if (res.ok && datos?.ok) {
+        setOrdenes(datos.comandos as OrdenVista[]);
+      }
+    } catch {
+      // Sin órdenes esta vez; la siguiente recarga lo reintenta.
     }
   }, []);
 
@@ -524,6 +564,91 @@ export function InstallTasksTab() {
           );
         })}
       </div>
+
+      {ordenes !== null && (
+        <section className="space-y-4">
+          <div className="flex flex-col">
+            <p className="smallcaps text-acero">Canal del agente</p>
+            <h3 className="font-display mt-2 text-[1.35rem] font-bold leading-none text-foreground">
+              Actualizaciones del agente
+            </h3>
+            <p className="mt-2 max-w-xl text-sm text-muted-foreground">
+              Las órdenes de actualización que el panel deja a los
+              equipos y que cada agente recoge y aplica solo. Si una
+              falla, aquí queda escrito el motivo que el propio
+              agente informó.
+            </p>
+          </div>
+
+          {ordenes.length === 0 && (
+            <div className="flex items-start gap-3 border-t border-border pt-6 text-sm text-muted-foreground">
+              <ListTodo className="mt-0.5 size-4 shrink-0 text-[var(--acero)]" />
+              <p>
+                Todavía no hay actualizaciones. Se crean desde
+                Equipos, con el botón Actualizar de cada equipo, o
+                solas si la actualización automática está encendida.
+              </p>
+            </div>
+          )}
+
+          <div className="space-y-3">
+            {ordenes.map((orden) => (
+              <article
+                key={orden.id}
+                className="border border-border/60 bg-muted/10 px-4 py-3"
+              >
+                <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                  <p className="font-display text-base font-bold text-foreground">
+                    {orden.pcName}
+                  </p>
+                  <span
+                    className={`inline-flex items-center gap-1.5 text-xs font-semibold ${
+                      TONO_ESTADO_ORDEN[orden.estado] ??
+                      "text-muted-foreground"
+                    }`}
+                  >
+                    {orden.viva && orden.estado === "EN_CURSO" && (
+                      <Spinner size={12} />
+                    )}
+                    {orden.estado === "HECHA" && (
+                      <CheckCircle2 className="size-3.5" />
+                    )}
+                    {orden.estado === "ERROR" && (
+                      <AlertTriangle className="size-3.5" />
+                    )}
+                    {orden.etiquetaEstado}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {orden.versionObjetivo
+                      ? `Actualización a la v${orden.versionObjetivo}`
+                      : "Actualización"}
+                    {orden.intentos > 0
+                      ? ` · intento ${orden.intentos}`
+                      : ""}
+                  </span>
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {formatDateTime(orden.creadaEn)}
+                    {orden.terminadaEn
+                      ? ` → ${formatDateTime(orden.terminadaEn)}`
+                      : ""}
+                  </span>
+                </div>
+                {orden.detalle && (
+                  <p
+                    className={`mt-1 text-xs leading-relaxed ${
+                      orden.estado === "ERROR"
+                        ? "text-rose-600"
+                        : "text-muted-foreground"
+                    }`}
+                  >
+                    {orden.detalle}
+                  </p>
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }
