@@ -144,13 +144,49 @@ internal static class Program
                 Registro.Configurar("agente.log");
                 try
                 {
-                    Console.WriteLine(Instalador.Desinstalar());
+                    Console.WriteLine(Instalador.DesinstalarLimpio());
                     return 0;
                 }
                 catch (Exception exc)
                 {
                     Console.WriteLine($"No se pudo desinstalar: {exc.Message}");
                     Console.WriteLine("Ejecuta este programa como administrador.");
+                    return 1;
+                }
+
+            case "desinstalar-orden":
+                // Lo lanza el propio agente (una copia temporal)
+                // cuando el panel ordena desinstalar este equipo:
+                // informa HECHA — el panel borra la fila al
+                // recibirla — y después desinstala limpio, carpeta
+                // incluida. Tras la desinstalación ya no hay
+                // agente que pueda informar: por eso el orden.
+                Registro.Configurar("agente.log");
+                if (args.Length < 2 || string.IsNullOrWhiteSpace(args[1]))
+                {
+                    Console.WriteLine(
+                        "Falta el id de la orden: USBMonitorService.exe desinstalar-orden <id>");
+                    return 1;
+                }
+                try
+                {
+                    using var cliente = new ClientePanel(new Configuracion());
+                    var aceptada = cliente.InformarOrdenAsync(
+                        args[1].Trim(), "HECHA",
+                        "Desinstalación aceptada: se ejecuta ahora.")
+                        .GetAwaiter().GetResult();
+                    if (!aceptada)
+                    {
+                        Console.WriteLine(
+                            "El panel no aceptó el informe de la desinstalación; no se toca nada.");
+                        return 1;
+                    }
+                    Console.WriteLine(Instalador.DesinstalarLimpio());
+                    return 0;
+                }
+                catch (Exception exc)
+                {
+                    Console.WriteLine($"No se pudo desinstalar: {exc.Message}");
                     return 1;
                 }
 
@@ -203,7 +239,7 @@ internal static class Program
                     return 0;
                 }
                 Console.WriteLine($"Modo no reconocido: {args[0]}");
-                Console.WriteLine("Modos: gui, configurar, prompt, visor, instalar, desinstalar, restaurar, debug");
+                Console.WriteLine("Modos: gui, configurar, prompt, visor, instalar, desinstalar, desinstalar-orden, restaurar, debug");
                 return 1;
         }
     }

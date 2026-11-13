@@ -6,6 +6,7 @@ import path from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  accionAlBorrarEquipo,
   ESTADOS_ORDEN_ACTIVA,
   transicionInformeValida,
   vistaOrdenActualizacion,
@@ -143,5 +144,20 @@ describe("vistaOrdenActualizacion", () => {
       fila({ createdAt: "2026-11-12T06:50:24.577Z" }),
     );
     expect(vista.creadaEn).toBe("2026-11-12T06:50:24.577Z");
+  });
+});
+
+describe("accionAlBorrarEquipo", () => {
+  it("sin credencial no hay agente que desinstalar: borrado directo", () => {
+    expect(accionAlBorrarEquipo(false, false)).toBe("borrar");
+    expect(accionAlBorrarEquipo(false, true)).toBe("borrar");
+  });
+
+  it("con credencial se pide la desinstalación al agente", () => {
+    expect(accionAlBorrarEquipo(true, false)).toBe("pedir-desinstalacion");
+  });
+
+  it("con la orden ya viva no se duplica", () => {
+    expect(accionAlBorrarEquipo(true, true)).toBe("ya-pedida");
   });
 });

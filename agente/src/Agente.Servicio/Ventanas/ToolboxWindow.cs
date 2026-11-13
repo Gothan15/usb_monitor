@@ -1074,8 +1074,8 @@ public sealed class ToolboxWindow : Window
         }
         if (Tema.Confirmar(
                 "Se restaura todo lo bloqueado, se detiene el servicio y " +
-                "se quita de Windows, junto con la tarea del compañero. " +
-                "¿Continuar?",
+                "se quita de Windows, junto con la tarea del compañero, " +
+                "y se borra la carpeta de instalación. ¿Continuar?",
                 "Desinstalar servicio") != MessageBoxResult.Yes)
         {
             return;
@@ -1086,7 +1086,7 @@ public sealed class ToolboxWindow : Window
         var desinstalado = false;
         try
         {
-            string resumen = await Task.Run(() => Instalador.Desinstalar());
+            string resumen = await Task.Run(() => Instalador.DesinstalarLimpio());
             desinstalado = true;
             Tema.Avisar(
                 resumen + " La caja de herramientas se cierra: ya no queda " +

@@ -560,6 +560,47 @@ public static class Instalador
         return "Servicio desinstalado, sistema restaurado y procesos del agente cerrados.";
     }
 
+    /// <summary>
+    /// La desinstalación completa que piden el panel y la caja de
+    /// herramientas: la de siempre (servicio, tarea, restauración,
+    /// procesos) y además el barrido de la carpeta de instalación
+    /// — la que la instalación remota crea en C:\USBMonitor —,
+    /// encargado a un cmd desprendido que reintenta hasta que los
+    /// procesos del agente salgan, porque el ejecutable vive
+    /// dentro y ningún proceso puede borrar su propia casa en
+    /// marcha. La carpeta de datos de ProgramData se queda: es el
+    /// rastro (registros y diario), no la instalación.
+    /// </summary>
+    public static string DesinstalarLimpio()
+    {
+        var carpeta = Path.GetDirectoryName(RutaExeInstalado());
+        var resumen = Desinstalar();
+        if (!BarridoInstalacion.EsCarpetaSegura(carpeta))
+        {
+            LogInstalador.Advertencia(
+                $"Carpeta de instalación no barrida (ruta no segura): {carpeta}");
+            return resumen + " La carpeta de instalación no se borró: su ruta no se reconoció como segura.";
+        }
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                Arguments = BarridoInstalacion.ConstruirOrdenBarrido(carpeta!),
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WindowStyle = ProcessWindowStyle.Hidden,
+            });
+            LogInstalador.Info($"Barrido de la carpeta de instalación encargado: {carpeta}");
+            return resumen + $" La carpeta {carpeta} se borrará en cuanto salgan los procesos del agente.";
+        }
+        catch (Exception exc)
+        {
+            LogInstalador.Advertencia($"No se pudo encargar el barrido de {carpeta}: {exc.Message}");
+            return resumen + " La carpeta de instalación no se pudo borrar automáticamente.";
+        }
+    }
+
     // ── acceso directo en el escritorio ───────────────────────
 
     private const string NombreAccesoDirecto = "USB Monitor.lnk";
