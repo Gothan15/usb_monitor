@@ -5,6 +5,7 @@ import {
   METODO,
   estadoDesdeEtapaEmpujador,
   estadoFinalTarea,
+  resolverCredencialDestino,
   resolverMetodo,
   tareaPuedeBorrarse,
 } from "@/lib/installTasks";
@@ -58,6 +59,36 @@ describe("resolverMetodo", () => {
         umbralMs: UMBRAL,
       }),
     ).toBe(METODO.EMPUJE);
+  });
+});
+
+describe("resolverCredencialDestino", () => {
+  const base = { usuario: "admin", clave: "general" };
+
+  it("sin ajuste manda la general tal cual", () => {
+    expect(resolverCredencialDestino(base)).toEqual(base);
+    expect(resolverCredencialDestino(base, null)).toEqual(base);
+    expect(resolverCredencialDestino(base, {})).toEqual(base);
+  });
+
+  it("con clave propia manda esa clave y el usuario general", () => {
+    expect(resolverCredencialDestino(base, { clave: "suya" })).toEqual({
+      usuario: "admin",
+      clave: "suya",
+    });
+  });
+
+  it("con usuario propio manda ese usuario y la clave general", () => {
+    expect(resolverCredencialDestino(base, { usuario: "otro" })).toEqual({
+      usuario: "otro",
+      clave: "general",
+    });
+  });
+
+  it("un usuario en blanco no pisa el general", () => {
+    expect(
+      resolverCredencialDestino(base, { usuario: "   ", clave: "suya" }),
+    ).toEqual({ usuario: "admin", clave: "suya" });
   });
 });
 
