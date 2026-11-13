@@ -1,10 +1,18 @@
-// Sin IPs de redes concretas en el código: el origen público real se
-// define con ALLOWED_ORIGINS o APP_PUBLIC_HOST en el entorno.
+// Sin IPs de redes concretas en el código: además de los
+// orígenes de siempre, entran las direcciones del PROPIO equipo
+// (se descubren al arrancar, ver direccionesLocales.ts): la
+// dirección en la que el servidor se levanta queda autorizada
+// sola y un cambio de IP por DHCP no deja el panel fuera.
+// APP_PUBLIC_HOST y ALLOWED_ORIGINS siguen sumando los suyos.
+import { origenesLocales } from "./direccionesLocales";
+
 const APP_PUBLIC_HOST = (process.env.APP_PUBLIC_HOST || "").trim();
+const PUERTO_PANEL = Number(process.env.PORT) || 3000;
 const DEFAULT_ALLOWED_ORIGINS = [
   "https://usbmonitor.local",
   "http://localhost:3000",
   "https://localhost:3000",
+  ...origenesLocales(PUERTO_PANEL),
   ...(APP_PUBLIC_HOST ? [`https://${APP_PUBLIC_HOST}:3000`] : []),
 ];
 
