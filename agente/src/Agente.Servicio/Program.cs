@@ -248,14 +248,21 @@ internal static class Program
             return 2;
         }
 
-        var host = servidor.Trim();
-        var puerto = 3000;
-        var corte = host.LastIndexOf(':');
-        if (corte > 0 && int.TryParse(host[(corte + 1)..], out var puertoLeido))
+        // La dirección se interpreta con la misma regla que el
+        // resto del agente (DireccionServidor): el corte a mano
+        // que había aquí dejaba el host como «172.29.176.1:» si
+        // el servidor venía como «host::3000», y esa URL
+        // imposible ciega al agente entero.
+        var partes = DireccionServidor.IntentarInterpretar(servidor);
+        if (partes is null)
         {
-            host = host[..corte];
-            puerto = puertoLeido;
+            log.Error($"Dirección del panel inválida en --servidor («{servidor}»): no se toca nada.");
+            Console.WriteLine(
+                "La dirección del panel no es válida: usa host[:puerto].");
+            return 2;
         }
+        var host = partes.Host;
+        var puerto = partes.Puerto ?? 3000;
 
         // El código NO se escribe nunca en el registro: solo se
         // dice que llegó y dónde apunta el panel.
