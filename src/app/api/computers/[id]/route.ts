@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth";
 import { logError } from "@/lib/logger";
+import {
+  accionAlBorrarEquipo,
+  ESTADOS_ORDEN_ACTIVA,
+  TIPO_ORDEN_DESINSTALAR,
+} from "@/lib/agentCommands";
 
 type RouteContext = {
   params: Promise<{
@@ -29,6 +34,38 @@ export async function DELETE(req: Request, context: RouteContext) {
         { ok: false, error: "Equipo no encontrado" },
         { status: 404 }
       );
+    }
+
+    // Con agente enrolado, borrar el equipo también lo
+    // desinstala en su PC: se le deja la orden «desinstalar» y la
+    // fila se borra cuando el agente la informe HECHA (la orden
+    // le espera si la PC está apagada). La lista ya no lo enseña
+    // mientras la orden viva. Sin credencial, borrado directo.
+    const ordenActiva = computer.clavePublica
+      ? await db.agentCommand.findFirst({
+          where: {
+            computerId: id,
+            type: TIPO_ORDEN_DESINSTALAR,
+            status: { in: ESTADOS_ORDEN_ACTIVA },
+          },
+          select: { id: true },
+        })
+      : null;
+    const accion = accionAlBorrarEquipo(
+      Boolean(computer.clavePublica),
+      Boolean(ordenActiva),
+    );
+    if (accion !== "borrar") {
+      if (accion === "pedir-desinstalacion") {
+        await db.agentCommand.create({
+          data: { computerId: id, type: TIPO_ORDEN_DESINSTALAR },
+        });
+      }
+      return NextResponse.json({
+        ok: true,
+        item: computer,
+        desinstalacionPedida: true,
+      });
     }
 
     const [, deletedComputer] = await db.$transaction([

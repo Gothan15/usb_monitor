@@ -817,8 +817,12 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
               ¿Eliminar {pendingDelete?.name ?? "este equipo"}?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción removerá {pendingDelete?.name ?? "el equipo"} del
-              inventario y no se puede deshacer.
+              Si el equipo tiene el agente instalado, también se
+              desinstalará solo en esa PC y borrará su carpeta de
+              instalación; sale de la lista al instante y su fila se
+              borra cuando el agente lo confirme (si está apagado, se
+              desinstalará al volver a conectarse). Esta acción no se
+              puede deshacer.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

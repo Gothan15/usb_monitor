@@ -24,7 +24,7 @@ using USBMonitor.Agente.Core;
 
 namespace USBMonitor.Agente.Servicio;
 
-/// <summary>Procesa las órdenes «actualizar» que trae la configuración.</summary>
+/// <summary>Procesa las órdenes («actualizar» y «desinstalar») que trae la configuración.</summary>
 public sealed class ActualizadorAgente
 {
     /// <summary>El mismo tope que impone el panel al informar.</summary>
@@ -67,6 +67,12 @@ public sealed class ActualizadorAgente
 
     private async Task ProcesarAsync(OrdenAgente orden)
     {
+        if (string.Equals(orden.Tipo, "desinstalar", StringComparison.OrdinalIgnoreCase))
+        {
+            await EjecutarDesinstalacionAsync(orden).ConfigureAwait(false);
+            return;
+        }
+
         if (!string.Equals(orden.Tipo, "actualizar", StringComparison.OrdinalIgnoreCase))
         {
             if (!string.Equals(orden.Estado, "EN_CURSO", StringComparison.OrdinalIgnoreCase))
@@ -103,6 +109,58 @@ public sealed class ActualizadorAgente
         }
 
         await EjecutarActualizacionAsync(orden).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// La orden «desinstalar»: el equipo se borró en el panel y el
+    /// agente tiene que desinstalarse solo, con su carpeta. Como
+    /// en la actualización, el trabajo lo hace una COPIA temporal
+    /// del exe (modo «desinstalar-orden»): esta instancia es el
+    /// servicio que la copia va a parar y desregistrar. La copia
+    /// informa HECHA antes de tocar nada — tras desinstalar ya no
+    /// hay agente que pueda informar — y el panel borra la fila
+    /// del equipo al recibirla.
+    /// </summary>
+    private async Task EjecutarDesinstalacionAsync(OrdenAgente orden)
+    {
+        if (orden.Intentos >= MaxIntentos)
+        {
+            await _cliente.InformarOrdenAsync(orden.Id, "ERROR",
+                "La desinstalación agotó sus intentos.").ConfigureAwait(false);
+            return;
+        }
+        var aceptada = await _cliente.InformarOrdenAsync(orden.Id, "EN_CURSO")
+            .ConfigureAwait(false);
+        if (!aceptada)
+        {
+            Log.Error("El panel no aceptó el inicio de la desinstalación; se deja para el próximo ciclo.");
+            return;
+        }
+        try
+        {
+            var instalado = Instalador.RutaExeInstalado();
+            if (string.IsNullOrWhiteSpace(instalado) || !File.Exists(instalado))
+                throw new InvalidOperationException("No se localizó el ejecutable instalado.");
+            var carpeta = Path.Combine(Path.GetTempPath(), "USBMonitorActualizacion");
+            Directory.CreateDirectory(carpeta);
+            var copia = Path.Combine(carpeta, "USBMonitorDesinstalador.exe");
+            File.Copy(instalado, copia, overwrite: true);
+            var proceso = Process.Start(new ProcessStartInfo
+            {
+                FileName = copia,
+                Arguments = $"desinstalar-orden {orden.Id}",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory = carpeta,
+            });
+            if (proceso is null) throw new InvalidOperationException("Process.Start devolvió null.");
+            Log.Info("Desinstalación pedida por el panel en marcha: la copia desinstaladora tomará el relevo.");
+        }
+        catch (Exception exc)
+        {
+            await _cliente.InformarOrdenAsync(orden.Id, "ERROR",
+                $"No se pudo lanzar la desinstalación: {exc.Message}").ConfigureAwait(false);
+        }
     }
 
     private async Task EjecutarActualizacionAsync(OrdenAgente orden)

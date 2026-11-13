@@ -24,6 +24,30 @@ export type EstadoOrden = (typeof ESTADO_ORDEN)[keyof typeof ESTADO_ORDEN];
 
 export const TIPO_ORDEN_ACTUALIZAR = "actualizar";
 
+export const TIPO_ORDEN_DESINSTALAR = "desinstalar";
+
+/** Qué hace DELETE /api/computers/:id según el estado del equipo. */
+export type AccionBorradoEquipo =
+  | "borrar"
+  | "pedir-desinstalacion"
+  | "ya-pedida";
+
+/**
+ * Al borrar un equipo CON agente enrolado no basta con borrar la
+ * fila: se le deja una orden «desinstalar» y la fila la borra el
+ * panel cuando el agente informe HECHA (el agente se desinstala
+ * solo, con su carpeta; si está apagado, la orden le espera). Sin
+ * credencial no hay agente que desinstalar: borrado directo. Y si
+ * la orden ya vive, no se duplica.
+ */
+export function accionAlBorrarEquipo(
+  tieneCredencial: boolean,
+  ordenDesinstalarActiva: boolean,
+): AccionBorradoEquipo {
+  if (!tieneCredencial) return "borrar";
+  return ordenDesinstalarActiva ? "ya-pedida" : "pedir-desinstalacion";
+}
+
 /** Tope de intentos de una orden antes de darla por fallida. */
 export const MAX_INTENTOS_ORDEN = 3;
 

@@ -8,11 +8,28 @@ import { getCurrentDate } from "@/lib/time";
 import { manifiestoPaquete } from "@/lib/paqueteAgente";
 import { necesitaActualizacion } from "@/lib/versionesAgente";
 import { normalizeComputerName } from "@/lib/utils";
+import {
+  ESTADOS_ORDEN_ACTIVA,
+  TIPO_ORDEN_DESINSTALAR,
+} from "@/lib/agentCommands";
 
 export async function GET(req: Request) {
   try {
     await requireAuth(req, { role: "admin", enforceCsrf: false });
+    // Los equipos con la desinstalación pedida ya no salen: para
+    // quien mira la lista están borrados; su fila desaparece del
+    // todo cuando el agente confirme la orden.
     const computers = await db.computer.findMany({
+      where: {
+        NOT: {
+          agentCommands: {
+            some: {
+              type: TIPO_ORDEN_DESINSTALAR,
+              status: { in: ESTADOS_ORDEN_ACTIVA },
+            },
+          },
+        },
+      },
       orderBy: { lastSeen: "desc" },
     });
 

@@ -7,6 +7,7 @@ import { registrarContactoAgente } from "@/lib/agentDebug";
 import {
   ESTADO_ORDEN,
   MAX_INTENTOS_ORDEN,
+  TIPO_ORDEN_DESINSTALAR,
   transicionInformeValida,
 } from "@/lib/agentCommands";
 import { getCurrentDate } from "@/lib/time";
@@ -57,7 +58,13 @@ export async function POST(
 
     const comando = await db.agentCommand.findUnique({
       where: { id },
-      select: { id: true, computerId: true, status: true, attempts: true },
+      select: {
+        id: true,
+        computerId: true,
+        type: true,
+        status: true,
+        attempts: true,
+      },
     });
     if (!comando || comando.computerId !== serviceAuth.computerId) {
       return NextResponse.json(
@@ -103,6 +110,28 @@ export async function POST(
       },
       select: { id: true, status: true, attempts: true },
     });
+    // Órdenes «desinstalar»: la HECHA confirma que el agente se
+    // está desinstalando, así que la fila del equipo se borra
+    // aquí, en este informe — después ya no habrá agente que
+    // pueda hablar —. Un ERROR definitivo retira la orden para
+    // que el equipo reaparezca en la lista y se pueda reintentar.
+    if (comando.type === TIPO_ORDEN_DESINSTALAR) {
+      try {
+        if (estado === ESTADO_ORDEN.HECHA) {
+          await db.$transaction([
+            db.user.updateMany({
+              where: { computerId: comando.computerId },
+              data: { computerId: null },
+            }),
+            db.computer.delete({ where: { id: comando.computerId } }),
+          ]);
+        } else if (estado === ESTADO_ORDEN.ERROR) {
+          await db.agentCommand.delete({ where: { id } });
+        }
+      } catch (errorCierre) {
+        logError("Error cerrando la desinstalación del equipo", errorCierre);
+      }
+    }
     registrarContactoAgente(null, "/api/agent/comandos", 200);
     const res = NextResponse.json({ ok: true, comando: actualizado });
     res.headers.set("Cache-Control", "no-store");

@@ -212,7 +212,7 @@ model AgentCommand {
   id            String    @id @default(cuid())
   computerId    String
   computer      Computer  @relation(fields: [computerId], references: [id], onDelete: Cascade)
-  type          String // actualizar
+  type          String // actualizar | desinstalar
   status        String    @default("ESPERA")
   detail        String? // resultado o causa del error, según el estado
   targetVersion String? // versión que la orden «actualizar» debe dejar instalada
