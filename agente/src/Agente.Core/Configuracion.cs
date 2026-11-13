@@ -232,45 +232,7 @@ public sealed class Configuracion
 
     // ── Valores efectivos ────────────────────────────────────────
 
-    // El último serverHost avisado como corregido o inválido:
-    // el aviso sale una vez por valor distinto, no en cada
-    // lectura (esta propiedad se lee en cada petición).
-    private static string? _ultimoHostAvisado;
-
-    public string HostServidor
-    {
-        get
-        {
-            var bruto = Texto("serverHost", HostPorDefecto);
-            // Autocuración al leer: un server.json guardado con
-            // un dedazo («172.29.176.1:», de antes de que guardar
-            // validara) no puede tumbar al agente entero con una
-            // URL imposible: se interpreta y se usa su host. Si
-            // ni interpretándolo vale, se cae al defecto y se
-            // avisa — el fallo se ve como «no conecta», no como
-            // una excepción en cada petición.
-            var partes = DireccionServidor.IntentarInterpretar(bruto);
-            if (partes is null)
-            {
-                AvisarHostUnaVez(bruto,
-                    $"serverHost inválido en server.json («{bruto}»): se usa {HostPorDefecto}.");
-                return HostPorDefecto;
-            }
-            if (partes.Host != bruto)
-            {
-                AvisarHostUnaVez(bruto,
-                    $"serverHost corregido al leerlo: «{bruto}» → «{partes.Host}».");
-            }
-            return partes.Host;
-        }
-    }
-
-    private static void AvisarHostUnaVez(string bruto, string mensaje)
-    {
-        if (_ultimoHostAvisado == bruto) return;
-        _ultimoHostAvisado = bruto;
-        Log.Advertencia(mensaje);
-    }
+    public string HostServidor => Texto("serverHost", HostPorDefecto) is { Length: > 0 } h ? h : HostPorDefecto;
 
     public int PuertoServidor
     {
