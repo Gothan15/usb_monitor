@@ -8,6 +8,7 @@ import next from "next";
 import nextPackage from "next/package.json" with { type: "json" };
 import { Server } from "socket.io";
 import { imprimirBannerPanel } from "./src/lib/banner";
+import { origenesLocales } from "./src/lib/direccionesLocales";
 import { withContainer } from "@/lib/di/container";
 import { iniciarLatidoDepuracionAgente } from "@/lib/agentDebug";
 import { recuperarTareasInterrumpidas } from "@/lib/installExecutor";
@@ -23,10 +24,15 @@ const currentPort = Number(process.env.PORT);
 const hostname = (process.env.APP_HOST || "").trim() || "0.0.0.0";
 const nextVersion = (nextPackage as { version?: string }).version ?? "dev";
 
-// Orígenes por defecto del socket: localhost y el nombre interno.
-// Los orígenes reales de la red (la IP del servidor en la LAN) se
-// definen con ALLOWED_ORIGINS o con APP_PUBLIC_HOST (p. ej.
-// la IP del hotspot); nada de IPs de una red concreta en el código.
+// Orígenes por defecto del socket: localhost, el nombre interno
+// y LAS DIRECCIONES DEL PROPIO EQUIPO: el panel escucha en todas
+// sus interfaces, así que la dirección en la que se levanta ya
+// queda autorizada sola — si el DHCP le cambia la IP al servidor
+// al reiniciar, el tiempo real sigue entrando sin tocar el .env.
+// APP_PUBLIC_HOST y ALLOWED_ORIGINS siguen valiendo para sumar
+// nombres u orígenes de fuera; nada de IPs de una red concreta
+// escritas en el código: las de este equipo se descubren al
+// arrancar.
 const APP_PUBLIC_HOST = (process.env.APP_PUBLIC_HOST || "").trim();
 const PUERTO_SOCKET = Number(process.env.PORT) || 3000;
 const DEFAULT_SOCKET_ORIGINS = [
@@ -35,6 +41,7 @@ const DEFAULT_SOCKET_ORIGINS = [
   `https://localhost:${PUERTO_SOCKET}`,
   `http://127.0.0.1:${PUERTO_SOCKET}`,
   `https://127.0.0.1:${PUERTO_SOCKET}`,
+  ...origenesLocales(PUERTO_SOCKET),
   ...(APP_PUBLIC_HOST
     ? [
         `http://${APP_PUBLIC_HOST}:${PUERTO_SOCKET}`,
