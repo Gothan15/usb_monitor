@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireAdminUser } from "@/lib/admin";
 import { db } from "@/lib/db";
 import { logError } from "@/lib/logger";
+import { normalizeComputerName } from "@/lib/utils";
 import { reintentarTarea } from "@/lib/installExecutor";
 
 /**
@@ -10,7 +11,9 @@ import { reintentarTarea } from "@/lib/installExecutor";
  * de una tarea. La clave se pide otra vez a propósito: nunca
  * quedó guardada, así que un reintento es también una
  * confirmación de credenciales frescas.
- *   { clave }
+ *   { clave, credenciales?: [{pcName, ip, usuario?, clave}] }
+ *   `credenciales` trae la clave propia de los destinos que no
+ *   usan la general, igual que al crear la tarea.
  */
 export async function POST(
   req: Request,
@@ -47,7 +50,10 @@ export async function POST(
   try {
     const tarea = await db.installTask.findUnique({
       where: { id },
-      select: { id: true },
+      select: {
+        id: true,
+        targets: { select: { id: true, pcName: true, ipAddress: true } },
+      },
     });
     if (!tarea) {
       return NextResponse.json(
@@ -55,7 +61,58 @@ export async function POST(
         { status: 404 },
       );
     }
-    const relanzada = await reintentarTarea(id, clave);
+    // Las claves propias de destinos concretos, si vienen: se
+    // enlazan con la fila del destino, como al crear la tarea.
+    const porDestino = new Map<
+      string,
+      { usuario?: string; clave: string }
+    >();
+    if (body?.credenciales !== undefined) {
+      if (!Array.isArray(body.credenciales)) {
+        return NextResponse.json(
+          { ok: false, error: "Credenciales por destino inválidas." },
+          { status: 400 },
+        );
+      }
+      for (const entrada of body.credenciales) {
+        const pcName = normalizeComputerName(
+          typeof entrada?.pcName === "string" ? entrada.pcName : "",
+        );
+        const ip =
+          typeof entrada?.ip === "string"
+            ? entrada.ip.trim()
+            : typeof entrada?.ipAddress === "string"
+              ? entrada.ipAddress.trim()
+              : "";
+        const claveDestino =
+          typeof entrada?.clave === "string" ? entrada.clave : "";
+        const usuarioDestino =
+          typeof entrada?.usuario === "string"
+            ? entrada.usuario.trim()
+            : "";
+        const destino = tarea.targets.find(
+          (t) => t.pcName === pcName && t.ipAddress === ip,
+        );
+        if (!destino || !claveDestino) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error:
+                "Credenciales por destino inválidas: cada entrada debe ser de un destino de la tarea y traer su clave.",
+            },
+            { status: 400 },
+          );
+        }
+        porDestino.set(destino.id, {
+          ...(usuarioDestino ? { usuario: usuarioDestino } : {}),
+          clave: claveDestino,
+        });
+      }
+    }
+    const relanzada = await reintentarTarea(id, {
+      general: clave,
+      porDestino,
+    });
     if (!relanzada) {
       return NextResponse.json(
         {

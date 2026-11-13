@@ -99,6 +99,11 @@ export function InstallTasksTab() {
   const [expandida, setExpandida] = useState<ReadonlySet<string>>(new Set());
   const [reintentando, setReintentando] = useState<string | null>(null);
   const [claveReintento, setClaveReintento] = useState("");
+  // Clave propia por destino al reintentar (clave del registro:
+  // el id del destino), para los equipos que no usan la general.
+  const [clavesDestinoReintento, setClavesDestinoReintento] = useState<
+    Record<string, string>
+  >({});
   const [enviando, setEnviando] = useState(false);
   const [avisoReintento, setAvisoReintento] = useState<string | null>(null);
   // Borrado de tareas: «confirmandoBorrado» guarda el id de la
@@ -218,23 +223,37 @@ export function InstallTasksTab() {
     }
   };
 
-  const reintentar = async (tareaId: string) => {
+  const reintentar = async (tarea: TareaVista) => {
     const csrfToken = getCsrfTokenFromDocument();
     if (!csrfToken) {
       setAvisoReintento("Sesión sin token de seguridad. Inicia sesión nuevamente.");
       return;
     }
+    // Las claves propias escritas para destinos que se van a
+    // reintentar (los demás van con la general).
+    const credenciales = tarea.targets
+      .filter((d) => d.status === "ERROR" || d.status === "INTERRUMPIDO")
+      .map((d) => {
+        const propia = clavesDestinoReintento[d.id];
+        return propia
+          ? { pcName: d.pcName, ip: d.ipAddress, clave: propia }
+          : null;
+      })
+      .filter(Boolean);
     try {
       setEnviando(true);
       setAvisoReintento(null);
-      const res = await fetch(`/api/install-tasks/${tareaId}/reintentar`, {
+      const res = await fetch(`/api/install-tasks/${tarea.id}/reintentar`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-csrf-token": csrfToken,
         },
         credentials: "include",
-        body: JSON.stringify({ clave: claveReintento }),
+        body: JSON.stringify({
+          clave: claveReintento,
+          ...(credenciales.length > 0 ? { credenciales } : {}),
+        }),
       });
       const datos = await res.json().catch(() => null);
       if (!res.ok || !datos?.ok) {
@@ -242,6 +261,7 @@ export function InstallTasksTab() {
         return;
       }
       setClaveReintento("");
+      setClavesDestinoReintento({});
       setReintentando(null);
       void load();
     } catch {
@@ -472,7 +492,7 @@ export function InstallTasksTab() {
                   <Button
                     size="sm"
                     disabled={enviando || claveReintento.length === 0}
-                    onClick={() => void reintentar(tarea.id)}
+                    onClick={() => void reintentar(tarea)}
                   >
                     {enviando ? <Spinner size={14} /> : "Reintentar"}
                   </Button>
@@ -482,10 +502,54 @@ export function InstallTasksTab() {
                     onClick={() => {
                       setReintentando(null);
                       setClaveReintento("");
+                      setClavesDestinoReintento({});
                     }}
                   >
                     Cancelar
                   </Button>
+                  {tarea.targets.some(
+                    (d) => d.status === "ERROR" || d.status === "INTERRUMPIDO",
+                  ) && (
+                    <div className="w-full space-y-2 border-t border-border/60 pt-3">
+                      <p className="text-xs text-muted-foreground">
+                        Si algún equipo tiene otra contraseña, escribe
+                        la suya: se reintenta con esa. Los que dejes en
+                        blanco van con la general.
+                      </p>
+                      {tarea.targets
+                        .filter(
+                          (d) =>
+                            d.status === "ERROR" ||
+                            d.status === "INTERRUMPIDO",
+                        )
+                        .map((d) => (
+                          <div
+                            key={d.id}
+                            className="flex flex-wrap items-center gap-2"
+                          >
+                            <span className="text-sm font-medium text-foreground">
+                              {d.pcName}
+                            </span>
+                            <span className="font-mono text-xs text-muted-foreground">
+                              {d.ipAddress}
+                            </span>
+                            <Input
+                              type="password"
+                              value={clavesDestinoReintento[d.id] ?? ""}
+                              onChange={(e) =>
+                                setClavesDestinoReintento((prev) => ({
+                                  ...prev,
+                                  [d.id]: e.target.value,
+                                }))
+                              }
+                              placeholder="Su contraseña (si difiere)"
+                              className="w-56"
+                              autoComplete="off"
+                            />
+                          </div>
+                        ))}
+                    </div>
+                  )}
                   {avisoReintento && (
                     <p className="w-full text-xs text-rose-600">
                       {avisoReintento}

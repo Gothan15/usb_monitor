@@ -70,6 +70,40 @@ export function resolverMetodo(datos: DatosMetodo): MetodoInstalacion {
     : METODO.EMPUJE;
 }
 
+/** Credencial efectiva para empujar a un destino. */
+export interface CredencialDestino {
+  usuario: string;
+  clave: string;
+}
+
+/**
+ * Ajuste opcional de credencial para UN destino concreto:
+ * lo que traiga manda sobre la credencial general de la
+ * tarea solo para ese equipo.
+ */
+export interface AjusteCredencialDestino {
+  usuario?: string;
+  clave?: string;
+}
+
+/**
+ * La credencial con la que se empuja a un destino: la
+ * general de la tarea, salvo que ese destino traiga la suya.
+ * Así una misma tarea puede instalar a la vez en equipos con
+ * contraseñas de administrador distintas, sin fallar en los
+ * que no coinciden con la general.
+ */
+export function resolverCredencialDestino(
+  base: CredencialDestino,
+  ajuste?: AjusteCredencialDestino | null,
+): CredencialDestino {
+  if (!ajuste) return base;
+  return {
+    usuario: ajuste.usuario?.trim() ? ajuste.usuario.trim() : base.usuario,
+    clave: ajuste.clave ? ajuste.clave : base.clave,
+  };
+}
+
 /** Estado final de la tarea según cómo acabaron sus destinos. */
 export function estadoFinalTarea(
   estados: string[],

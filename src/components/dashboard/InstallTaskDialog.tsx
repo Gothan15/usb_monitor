@@ -37,8 +37,9 @@ interface Props {
  * la tarea y el ejecutor del panel trabaja en segundo plano;
  * el progreso se sigue en la vista de Tareas.
  *
- * La clave se escribe aquí una vez por tarea y vive solo en la
- * memoria del servidor mientras la tarea corre: no se guarda.
+ * Las claves se escriben aquí (la general y, si algún equipo
+ * tiene otra, la suya) y viven solo en la memoria del servidor
+ * mientras la tarea corre: no se guardan.
  */
 export function InstallTaskDialog({
   open,
@@ -48,6 +49,11 @@ export function InstallTaskDialog({
 }: Props) {
   const [usuario, setUsuario] = useState("");
   const [clave, setClave] = useState("");
+  // Credencial propia por destino (clave del registro:
+  // «pcName|ip»), para los equipos que no usan la general.
+  const [ajustes, setAjustes] = useState<
+    Record<string, { usuario: string; clave: string }>
+  >({});
   const [omitir, setOmitir] = useState(true);
   const [intentos, setIntentos] = useState(2);
   const [creando, setCreando] = useState(false);
@@ -57,10 +63,13 @@ export function InstallTaskDialog({
     if (creando) return;
     if (!nuevo) {
       setClave("");
+      setAjustes({});
       setError(null);
     }
     onOpenChange(nuevo);
   };
+
+  const claveDeDestino = (d: DestinoTarea) => `${d.pcName}|${d.ip}`;
 
   const crear = async () => {
     setError(null);
@@ -69,6 +78,22 @@ export function InstallTaskDialog({
       setError("Sesión sin token de seguridad. Inicia sesión nuevamente.");
       return;
     }
+    // Solo viajan los destinos con clave propia escrita; el
+    // usuario propio solo si se escribió (si no, el general).
+    const credenciales = destinos
+      .map((d) => {
+        const ajuste = ajustes[claveDeDestino(d)];
+        if (!ajuste?.clave) return null;
+        return {
+          pcName: d.pcName,
+          ip: d.ip,
+          ...(ajuste.usuario.trim()
+            ? { usuario: ajuste.usuario.trim() }
+            : {}),
+          clave: ajuste.clave,
+        };
+      })
+      .filter(Boolean);
     try {
       setCreando(true);
       const res = await fetch("/api/install-tasks", {
@@ -82,6 +107,7 @@ export function InstallTaskDialog({
           destinos,
           usuario: usuario.trim(),
           clave,
+          ...(credenciales.length > 0 ? { credenciales } : {}),
           omitirSiInstalado: omitir,
           intentosMaximos: intentos,
         }),
@@ -92,6 +118,7 @@ export function InstallTaskDialog({
         return;
       }
       setClave("");
+      setAjustes({});
       onOpenChange(false);
       onCreada?.();
     } catch {
@@ -169,7 +196,7 @@ export function InstallTaskDialog({
                   type="password"
                   value={clave}
                   onChange={(e) => setClave(e.target.value)}
-                  placeholder="La de los destinos"
+                  placeholder="La general"
                   className="pl-9"
                   autoComplete="off"
                 />
@@ -182,6 +209,66 @@ export function InstallTaskDialog({
             reinicia a mitad, la tarea se marca interrumpida y al
             reintentar te la pide otra vez.
           </p>
+
+          {destinos.length > 1 && (
+            <div>
+              <p className="smallcaps text-muted-foreground">
+                Credenciales por equipo (solo si difieren)
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                Si algún equipo tiene otra contraseña de
+                administrador —u otro usuario—, escribe la suya:
+                se usa solo para ese equipo, también en sus
+                reintentos automáticos. Los que dejes en blanco
+                van con la general de arriba.
+              </p>
+              <ul className="mt-2 max-h-48 space-y-2 overflow-y-auto border border-border/60 bg-muted/20 px-3 py-2">
+                {destinos.map((d) => {
+                  const k = claveDeDestino(d);
+                  const ajuste = ajustes[k] ?? { usuario: "", clave: "" };
+                  return (
+                    <li key={k} className="flex items-center gap-2">
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium text-foreground">
+                          {d.pcName}
+                        </span>
+                        <span className="block font-mono text-xs text-muted-foreground">
+                          {d.ip}
+                        </span>
+                      </span>
+                      <Input
+                        value={ajuste.usuario}
+                        onChange={(e) =>
+                          setAjustes((prev) => ({
+                            ...prev,
+                            [k]: { ...ajuste, usuario: e.target.value },
+                          }))
+                        }
+                        placeholder="Usuario"
+                        className="w-28"
+                        autoComplete="off"
+                        aria-label={`Usuario propio de ${d.pcName}`}
+                      />
+                      <Input
+                        type="password"
+                        value={ajuste.clave}
+                        onChange={(e) =>
+                          setAjustes((prev) => ({
+                            ...prev,
+                            [k]: { ...ajuste, clave: e.target.value },
+                          }))
+                        }
+                        placeholder="Su contraseña"
+                        className="w-32"
+                        autoComplete="off"
+                        aria-label={`Contraseña propia de ${d.pcName}`}
+                      />
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
 
           <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
             <label className="flex cursor-pointer items-center gap-2 text-sm">

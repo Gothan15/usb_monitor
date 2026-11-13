@@ -20,7 +20,10 @@ import {
   METODO,
   estadoDesdeEtapaEmpujador,
   estadoFinalTarea,
+  resolverCredencialDestino,
   resolverMetodo,
+  type AjusteCredencialDestino,
+  type CredencialDestino,
   type EstadoDestino,
 } from "@/lib/installTasks";
 import {
@@ -35,13 +38,25 @@ import {
  * INSTALADO, OMITIDO o ERROR, con concurrencia 2 entre todos
  * los destinos de todas las tareas.
  *
- * La contraseña de la cuenta vive SOLO en este mapa en memoria
- * mientras la tarea corre. Si el panel se reinicia a mitad, los
- * destinos en curso quedan INTERRUMPIDO (nada se finge
- * completado) y el reintento pide la clave otra vez.
+ * Las contraseñas viven SOLO en este mapa en memoria mientras
+ * la tarea corre: la general de la tarea y, por destino, la
+ * suya si ese equipo tiene otra (ver ClavesTarea). Si el panel
+ * se reinicia a mitad, los destinos en curso quedan
+ * INTERRUMPIDO (nada se finge completado) y el reintento pide
+ * las claves otra vez.
  */
 
-const credencialesEnMemoria = new Map<string, string>();
+/**
+ * Las claves de una tarea: `general` es la de la cuenta de la
+ * tarea y `porDestino` guarda el ajuste de los equipos con
+ * credencial propia (la clave del mapa es el id del destino).
+ */
+export interface ClavesTarea {
+  general: string;
+  porDestino: Map<string, AjusteCredencialDestino>;
+}
+
+const credencialesEnMemoria = new Map<string, ClavesTarea>();
 const tareasEnEjecucion = new Set<string>();
 
 // ── Semáforo global de instalaciones simultáneas ─────────────
@@ -269,7 +284,7 @@ async function flujoViaAgente(
 async function intentoInstalacion(
   task: { id: string; username: string; omitIfInstalled: boolean },
   destino: { id: string; pcName: string; ipAddress: string },
-  clave: string,
+  credencial: CredencialDestino,
 ): Promise<ResultadoIntento> {
   const settings = await readAppSettings();
   const umbralMs = Math.max(2, settings.silenceThresholdMinutes || 5) * 60_000;
@@ -310,7 +325,11 @@ async function intentoInstalacion(
   });
   const comprobacion: ResultadoEmpujador = await ejecutarEmpujador(
     "--comprobar",
-    { ip: destino.ipAddress, usuario: task.username, clave },
+    {
+      ip: destino.ipAddress,
+      usuario: credencial.usuario,
+      clave: credencial.clave,
+    },
   );
   if (comprobacion.checks) {
     await actualizarDestino(destino.id, { checks: comprobacion.checks });
@@ -420,8 +439,8 @@ async function intentoInstalacion(
     "--instalar",
     {
       ip: destino.ipAddress,
-      usuario: task.username,
-      clave,
+      usuario: credencial.usuario,
+      clave: credencial.clave,
       codigo,
       servidor: hostServidorParaAgente(),
       exeAgente: manifiesto ? rutaExePaquete() : undefined,
@@ -472,13 +491,19 @@ async function intentoInstalacion(
 async function ejecutarDestino(
   task: { id: string; username: string; omitIfInstalled: boolean; maxAttempts: number },
   destinoId: string,
-  clave: string,
+  claves: ClavesTarea,
 ): Promise<void> {
   const destino = await db.installTaskTarget.findUnique({
     where: { id: destinoId },
     select: { id: true, pcName: true, ipAddress: true, attempts: true },
   });
   if (!destino) return;
+  // La credencial de ESTE destino: la suya si la tarea la
+  // traía, y si no, la general. Es la misma en cada intento.
+  const credencial = resolverCredencialDestino(
+    { usuario: task.username, clave: claves.general },
+    claves.porDestino.get(destinoId),
+  );
   let intentos = destino.attempts;
   while (true) {
     intentos++;
@@ -490,7 +515,7 @@ async function ejecutarDestino(
     });
     let resultado: ResultadoIntento;
     try {
-      resultado = await intentoInstalacion(task, destino, clave);
+      resultado = await intentoInstalacion(task, destino, credencial);
     } catch (error) {
       logError("Fallo inesperado instalando un destino de tarea", error);
       resultado = {
@@ -525,7 +550,7 @@ async function ejecutarTarea(taskId: string): Promise<void> {
   if (tareasEnEjecucion.has(taskId)) return;
   tareasEnEjecucion.add(taskId);
   try {
-    const clave = credencialesEnMemoria.get(taskId);
+    const claves = credencialesEnMemoria.get(taskId);
     const task = await db.installTask.findUnique({
       where: { id: taskId },
       select: {
@@ -536,7 +561,7 @@ async function ejecutarTarea(taskId: string): Promise<void> {
       },
     });
     if (!task) return;
-    if (!clave) {
+    if (!claves) {
       // Sin clave en memoria (reinicio) no hay forma de empujar:
       // lo que quedaba en cola queda interrumpido, no fingido.
       await db.installTaskTarget.updateMany({
@@ -560,7 +585,7 @@ async function ejecutarTarea(taskId: string): Promise<void> {
       enCola.map(async (destino) => {
         await adquirirTurno();
         try {
-          await ejecutarDestino(task, destino.id, clave);
+          await ejecutarDestino(task, destino.id, claves);
         } finally {
           liberarTurno();
         }
@@ -583,16 +608,16 @@ export function tareaEnEjecucion(taskId: string): boolean {
   return tareasEnEjecucion.has(taskId);
 }
 
-/** Registra la clave en memoria y pone la tarea en marcha. */
-export function lanzarTarea(taskId: string, clave: string): void {
-  credencialesEnMemoria.set(taskId, clave);
+/** Registra las claves en memoria y pone la tarea en marcha. */
+export function lanzarTarea(taskId: string, claves: ClavesTarea): void {
+  credencialesEnMemoria.set(taskId, claves);
   void ejecutarTarea(taskId);
 }
 
 /** Reintenta los destinos fallidos o interrumpidos de una tarea. */
 export async function reintentarTarea(
   taskId: string,
-  clave: string,
+  claves: ClavesTarea,
 ): Promise<boolean> {
   const previos = await db.installTaskTarget.updateMany({
     where: {
@@ -615,7 +640,7 @@ export async function reintentarTarea(
     data: { status: ESTADO_TAREA.EN_CURSO, finishedAt: null },
   });
   broadcastInstallChange();
-  lanzarTarea(taskId, clave);
+  lanzarTarea(taskId, claves);
   return true;
 }
 
