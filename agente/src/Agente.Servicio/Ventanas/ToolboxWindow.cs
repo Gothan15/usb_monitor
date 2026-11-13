@@ -1142,19 +1142,36 @@ public sealed class ToolboxWindow : Window
 
     private void GuardarServidor()
     {
-        if (!int.TryParse(_puerto.Text.Trim(), out int puerto) ||
-            puerto < 1 || puerto > 65535)
+        // Igual que en el asistente: la dirección se interpreta
+        // antes de guardarla (ver DireccionServidor). Lo que no
+        // se puede interpretar no se guarda: un dedazo aquí dejaba
+        // al agente con una URL imposible y todas sus peticiones
+        // morían en silencio («Invalid port specified»).
+        var partes = DireccionServidor.IntentarInterpretar(_host.Text);
+        if (partes is null)
+        {
+            Tema.AvisarError(
+                "La dirección del servidor no es válida. Escribe la IP o el " +
+                "nombre del equipo del panel (por ejemplo 192.168.1.50); " +
+                "el puerto va en su campo.",
+                "Dirección inválida");
+            return;
+        }
+
+        int puerto;
+        if (partes.Puerto is int puertoPegado)
+        {
+            puerto = puertoPegado;
+        }
+        else if (!int.TryParse(_puerto.Text.Trim(), out puerto) ||
+                 puerto < 1 || puerto > 65535)
         {
             Tema.AvisarError("El puerto debe ser un número entre 1 y 65535.", "Puerto inválido");
             return;
         }
 
-        string host = _host.Text.Trim();
-        if (string.IsNullOrWhiteSpace(host))
-        {
-            host = "localhost";
-        }
-        string esquema = _esquema.SelectedItem?.ToString() ?? "http";
+        string host = partes.Host;
+        string esquema = partes.Esquema ?? (_esquema.SelectedItem?.ToString() ?? "http");
 
         bool ok = _config.Guardar(new Dictionary<string, object?>
         {

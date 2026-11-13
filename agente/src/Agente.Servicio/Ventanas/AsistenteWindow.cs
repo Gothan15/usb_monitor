@@ -513,19 +513,40 @@ public sealed class AsistenteWindow : Window
     /// </summary>
     private bool GuardarServidorDesdeCampos()
     {
-        if (!int.TryParse(_puerto.Text.Trim(), out int puerto) ||
-            puerto < 1 || puerto > 65535)
+        // La dirección se interpreta antes de guardarla: quien
+        // pega la dirección entera («http://172.29.176.1:3000») o
+        // deja un dedazo («172.29.176.1:») no puede dejar al
+        // agente con una URL imposible — el registro del
+        // 2026-11-13 enseñó que guardarla tal cual tumba TODAS
+        // las peticiones con «Invalid port specified». Si la
+        // dirección escrita trae puerto o esquema propios,
+        // mandan ellos: eran parte de lo que se escribió a
+        // propósito.
+        var partes = DireccionServidor.IntentarInterpretar(_host.Text);
+        if (partes is null)
+        {
+            Tema.AvisarError(
+                "La dirección del servidor no es válida. Escribe la IP o el " +
+                "nombre del equipo del panel (por ejemplo 192.168.1.50); " +
+                "el puerto va en su campo.",
+                "Dirección inválida");
+            return false;
+        }
+
+        int puerto;
+        if (partes.Puerto is int puertoPegado)
+        {
+            puerto = puertoPegado;
+        }
+        else if (!int.TryParse(_puerto.Text.Trim(), out puerto) ||
+                 puerto < 1 || puerto > 65535)
         {
             Tema.AvisarError("El puerto debe ser un número entre 1 y 65535.", "Puerto inválido");
             return false;
         }
 
-        string host = _host.Text.Trim();
-        if (string.IsNullOrWhiteSpace(host))
-        {
-            host = "localhost";
-        }
-        string esquema = _esquema.SelectedItem?.ToString() ?? "http";
+        string host = partes.Host;
+        string esquema = partes.Esquema ?? (_esquema.SelectedItem?.ToString() ?? "http");
 
         bool ok = _config.Guardar(new Dictionary<string, object?>
         {
