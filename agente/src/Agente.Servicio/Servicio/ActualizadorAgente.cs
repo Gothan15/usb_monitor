@@ -67,6 +67,15 @@ public sealed class ActualizadorAgente
 
     private async Task ProcesarAsync(OrdenAgente orden)
     {
+        // Una orden cancelada no se ejecuta ni se informa: el
+        // panel la da por terminal y cualquier informe sería
+        // rechazado. Solo queda anotarlo.
+        if (string.Equals(orden.Estado, "CANCELADA", StringComparison.OrdinalIgnoreCase))
+        {
+            Log.Info($"Orden {orden.Tipo} {orden.Id} cancelada en el panel: se ignora.");
+            return;
+        }
+
         if (string.Equals(orden.Tipo, "desinstalar", StringComparison.OrdinalIgnoreCase))
         {
             await EjecutarDesinstalacionAsync(orden).ConfigureAwait(false);
@@ -136,6 +145,7 @@ public sealed class ActualizadorAgente
             Log.Error("El panel no aceptó el inicio de la desinstalación; se deja para el próximo ciclo.");
             return;
         }
+        if (await OrdenCanceladaAsync(orden).ConfigureAwait(false)) return;
         try
         {
             var instalado = Instalador.RutaExeInstalado();
@@ -172,6 +182,10 @@ public sealed class ActualizadorAgente
                 "El panel no tiene paquete de actualización.").ConfigureAwait(false);
             return;
         }
+
+        // Punto de control: si el administrador canceló mientras
+        // tanto, no se informa nada más y no se descarga nada.
+        if (await OrdenCanceladaAsync(orden).ConfigureAwait(false)) return;
 
         var versionActual = ClientePanel.VersionAgente;
         if (manifiesto.Version is not null &&
@@ -224,6 +238,17 @@ public sealed class ActualizadorAgente
             return;
         }
 
+        // Último punto de control: la descarga ya está verificada
+        // y lo siguiente es lanzar la copia aplicadora; desde que
+        // el intercambio arranca, la actualización ya no se puede
+        // cancelar. Si la cancelación llegó durante la descarga,
+        // se abandona aquí y el temporal se borra.
+        if (await OrdenCanceladaAsync(orden).ConfigureAwait(false))
+        {
+            try { File.Delete(rutaNuevo); } catch { /* temporal */ }
+            return;
+        }
+
         string instalado;
         try
         {
@@ -270,6 +295,23 @@ public sealed class ActualizadorAgente
         }
         // Sin informe final aquí: el servicio va a parar. La orden
         // queda EN_CURSO y se concilia al rearrancar (ver arriba).
+    }
+
+    /// <summary>
+    /// True si el panel canceló la orden: se abandona sin
+    /// informar (la orden es terminal y el informe sería
+    /// rechazado). Un silencio del panel NO cancela: sin
+    /// respuesta, la orden sigue su curso.
+    /// </summary>
+    private async Task<bool> OrdenCanceladaAsync(OrdenAgente orden)
+    {
+        var viva = await _cliente.OrdenSigueVivaAsync(orden.Id).ConfigureAwait(false);
+        if (viva == false)
+        {
+            Log.Info($"La orden {orden.Tipo} {orden.Id} fue cancelada en el panel: se abandona.");
+            return true;
+        }
+        return false;
     }
 
     private static string Sha256DeArchivo(string ruta)

@@ -8,6 +8,7 @@ import { logError } from "@/lib/logger";
 import { db } from "@/lib/db";
 import {
   asegurarOrdenActualizacion,
+  canceladaServible,
   ESTADO_ORDEN,
   ESTADOS_ORDEN_ACTIVA,
 } from "@/lib/agentCommands";
@@ -104,6 +105,32 @@ export async function GET(req: Request) {
             deliveredAt: getCurrentDate(),
           },
         });
+      }
+      // Las canceladas hace poco también viajan, marcadas: si el
+      // agente está ejecutando esa orden, la abandona en su
+      // siguiente punto de control; si nunca la empezó, ya no
+      // está en las activas y ni la ve.
+      const canceladas = await db.agentCommand.findMany({
+        where: {
+          computerId: serviceAuth.computerId,
+          status: ESTADO_ORDEN.CANCELADA,
+        },
+        orderBy: { finishedAt: "desc" },
+        take: 5,
+        select: {
+          id: true,
+          type: true,
+          status: true,
+          targetVersion: true,
+          attempts: true,
+          finishedAt: true,
+        },
+      });
+      const ahoraConfig = getCurrentDate();
+      for (const c of canceladas) {
+        if (canceladaServible(c.finishedAt, ahoraConfig)) {
+          activas.push(c);
+        }
       }
       comandos = activas.map((c) => ({
         id: c.id,

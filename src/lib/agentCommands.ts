@@ -10,6 +10,9 @@ import { manifiestoPaquete } from "@/lib/paqueteAgente";
  * ESPERA → ENTREGADA → EN_CURSO → HECHA | ERROR
  * EN_CURSO → EN_CURSO es un reintento tras un reinicio del servicio
  * (la actualización se confirma al volver con la versión nueva).
+ * CANCELADA la pone el administrador desde cualquier estado vivo;
+ * el agente la ve en su siguiente configuración y abandona la
+ * orden en su siguiente punto de control.
  */
 
 export const ESTADO_ORDEN = {
@@ -18,6 +21,7 @@ export const ESTADO_ORDEN = {
   EN_CURSO: "EN_CURSO",
   HECHA: "HECHA",
   ERROR: "ERROR",
+  CANCELADA: "CANCELADA",
 } as const;
 
 export type EstadoOrden = (typeof ESTADO_ORDEN)[keyof typeof ESTADO_ORDEN];
@@ -86,6 +90,41 @@ export function transicionInformeValida(
   }
 }
 
+/**
+ * ¿Puede el administrador cancelar esta orden? Solo mientras
+ * viva: una orden terminada (HECHA, ERROR o ya CANCELADA) no se
+ * toca. Cancelar una «desinstalar» además hace que el equipo
+ * reaparezca en la lista, porque su fila solo se borra con la
+ * HECHA.
+ */
+export function sePuedeCancelar(estado: string): boolean {
+  return (ESTADOS_ORDEN_ACTIVA as string[]).includes(estado);
+}
+
+/** Minutos durante los que una orden cancelada se sigue sirviendo al agente. */
+export const MINUTOS_CANCELADA_SERVIDA = 10;
+
+/**
+ * Una orden recién cancelada viaja en la configuración durante
+ * unos minutos, marcada CANCELADA, para que el agente que la
+ * está ejecutando la abandone; si nunca la empezó, ya no está
+ * en las activas y ni la ve. Pasada la ventana deja de servirse:
+ * el agente que vuelva tarde ya no la encuentra viva y la
+ * ignora igual.
+ */
+export function canceladaServible(
+  finishedAt: Date | string | null,
+  ahora: Date,
+): boolean {
+  if (!finishedAt) return false;
+  const fin =
+    finishedAt instanceof Date
+      ? finishedAt.getTime()
+      : new Date(finishedAt).getTime();
+  if (Number.isNaN(fin)) return false;
+  return ahora.getTime() - fin <= MINUTOS_CANCELADA_SERVIDA * 60_000;
+}
+
 /** Compara dos versiones «X.Y.Z»: -1, 0 o 1. Lo ilegible cuenta como 0.0.0. */
 export function compararVersiones(a: string | null, b: string | null): number {
   const partes = (v: string | null): number[] => {
@@ -107,6 +146,7 @@ export const ETIQUETA_ESTADO_ORDEN: Record<string, string> = {
   [ESTADO_ORDEN.EN_CURSO]: "En curso",
   [ESTADO_ORDEN.HECHA]: "Hecha",
   [ESTADO_ORDEN.ERROR]: "Error",
+  [ESTADO_ORDEN.CANCELADA]: "Cancelada",
 };
 
 /** Una fila de `agent_commands` tal como sale de la base de datos. */
@@ -128,6 +168,7 @@ export interface OrdenActualizacionFila {
 export interface VistaOrdenActualizacion {
   id: string;
   pcName: string;
+  tipo: string;
   estado: string;
   etiquetaEstado: string;
   viva: boolean;
@@ -155,6 +196,7 @@ export function vistaOrdenActualizacion(
   return {
     id: fila.id,
     pcName: fila.pcName,
+    tipo: fila.type,
     estado: fila.status,
     etiquetaEstado: ETIQUETA_ESTADO_ORDEN[fila.status] ?? fila.status,
     viva: (ESTADOS_ORDEN_ACTIVA as string[]).includes(fila.status),

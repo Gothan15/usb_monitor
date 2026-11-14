@@ -7,7 +7,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   accionAlBorrarEquipo,
+  canceladaServible,
   ESTADOS_ORDEN_ACTIVA,
+  sePuedeCancelar,
   transicionInformeValida,
   vistaOrdenActualizacion,
   type OrdenActualizacionFila,
@@ -159,5 +161,37 @@ describe("accionAlBorrarEquipo", () => {
 
   it("con la orden ya viva no se duplica", () => {
     expect(accionAlBorrarEquipo(true, true)).toBe("ya-pedida");
+  });
+});
+
+describe("sePuedeCancelar", () => {
+  it("una orden viva se puede cancelar en cualquier estado", () => {
+    expect(sePuedeCancelar("ESPERA")).toBe(true);
+    expect(sePuedeCancelar("ENTREGADA")).toBe(true);
+    expect(sePuedeCancelar("EN_CURSO")).toBe(true);
+  });
+
+  it("una orden terminada no se toca", () => {
+    expect(sePuedeCancelar("HECHA")).toBe(false);
+    expect(sePuedeCancelar("ERROR")).toBe(false);
+    expect(sePuedeCancelar("CANCELADA")).toBe(false);
+  });
+});
+
+describe("canceladaServible", () => {
+  const ahora = new Date("2026-11-14T12:00:00.000Z");
+
+  it("recién cancelada se sirve", () => {
+    expect(canceladaServible(new Date("2026-11-14T11:55:00.000Z"), ahora)).toBe(true);
+    expect(canceladaServible("2026-11-14T11:59:00.000Z", ahora)).toBe(true);
+  });
+
+  it("pasada la ventana deja de servirse", () => {
+    expect(canceladaServible(new Date("2026-11-14T11:49:00.000Z"), ahora)).toBe(false);
+  });
+
+  it("sin fecha de fin no se sirve", () => {
+    expect(canceladaServible(null, ahora)).toBe(false);
+    expect(canceladaServible("no-es-fecha", ahora)).toBe(false);
   });
 });
