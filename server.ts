@@ -2,13 +2,16 @@
 import { createServer as createHttpServer } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import next from "next";
 import nextPackage from "next/package.json" with { type: "json" };
 import { Server } from "socket.io";
 import { imprimirBannerPanel } from "./src/lib/banner";
-import { origenesLocales } from "./src/lib/direccionesLocales";
+import {
+  direccionPrincipal,
+  direccionesIpv4Locales,
+  origenesDeDireccion,
+} from "./src/lib/direccionesLocales";
 import { withContainer } from "@/lib/di/container";
 import { iniciarLatidoDepuracionAgente } from "@/lib/agentDebug";
 import { recuperarTareasInterrumpidas } from "@/lib/installExecutor";
@@ -24,45 +27,62 @@ const currentPort = Number(process.env.PORT);
 const hostname = (process.env.APP_HOST || "").trim() || "0.0.0.0";
 const nextVersion = (nextPackage as { version?: string }).version ?? "dev";
 
-// Orígenes por defecto del socket: localhost, el nombre interno
-// y LAS DIRECCIONES DEL PROPIO EQUIPO: el panel escucha en todas
-// sus interfaces, así que la dirección en la que se levanta ya
-// queda autorizada sola — si el DHCP le cambia la IP al servidor
-// al reiniciar, el tiempo real sigue entrando sin tocar el .env.
-// APP_PUBLIC_HOST y ALLOWED_ORIGINS siguen valiendo para sumar
-// nombres u orígenes de fuera; nada de IPs de una red concreta
-// escritas en el código: las de este equipo se descubren al
-// arrancar.
+// UNA sola dirección de acceso al panel: la del propio equipo
+// por su ruta por defecto, la que le asigna el DHCP a su
+// adaptador de red. Ni localhost, ni el nombre interno, ni las
+// demás interfaces (Tailscale, adaptadores virtuales…): entrar
+// al panel es entrar por esa dirección. Se descubre al
+// arrancar, así que un cambio de IP por DHCP no pide tocar el
+// .env. APP_PUBLIC_HOST y ALLOWED_ORIGINS siguen valiendo para
+// sumar una dirección u orígenes a mano si algún día hicieran
+// falta; sin ellos, la lista es la dirección y nada más.
 const APP_PUBLIC_HOST = (process.env.APP_PUBLIC_HOST || "").trim();
 const PUERTO_SOCKET = Number(process.env.PORT) || 3000;
-const DEFAULT_SOCKET_ORIGINS = [
-  "https://usbmonitor.local",
-  `http://localhost:${PUERTO_SOCKET}`,
-  `https://localhost:${PUERTO_SOCKET}`,
-  `http://127.0.0.1:${PUERTO_SOCKET}`,
-  `https://127.0.0.1:${PUERTO_SOCKET}`,
-  ...origenesLocales(PUERTO_SOCKET),
-  ...(APP_PUBLIC_HOST
-    ? [
-        `http://${APP_PUBLIC_HOST}:${PUERTO_SOCKET}`,
-        `https://${APP_PUBLIC_HOST}:${PUERTO_SOCKET}`,
-      ]
-    : []),
-];
 
-function parseSocketOrigins() {
+function parseSocketOrigins(direccionPanel: string) {
+  const porDefecto = [
+    ...origenesDeDireccion(direccionPanel, PUERTO_SOCKET),
+    ...(APP_PUBLIC_HOST
+      ? [
+          `http://${APP_PUBLIC_HOST}:${PUERTO_SOCKET}`,
+          `https://${APP_PUBLIC_HOST}:${PUERTO_SOCKET}`,
+        ]
+      : []),
+  ];
   const raw = process.env.ALLOWED_ORIGINS ?? "";
   const entries = raw
     .split(/[,\s]+/)
     .map((value) => value.trim())
     .filter(Boolean);
   if (entries.length === 0) {
-    return DEFAULT_SOCKET_ORIGINS;
+    return porDefecto;
   }
   // ALLOWED_ORIGINS AÑADE orígenes a los de por defecto, no los
-  // sustituye: sustituirlos dejaba fuera hasta localhost y el
-  // canal en vivo se caía desde el propio servidor sin aviso.
-  return Array.from(new Set([...DEFAULT_SOCKET_ORIGINS, ...entries]));
+  // sustituye: sustituirlos dejaba fuera hasta la dirección
+  // del panel y el canal en vivo se caía sin aviso.
+  return Array.from(new Set([...porDefecto, ...entries]));
+}
+
+/**
+ * Los Host que el navegador puede traer al pedir el panel: los
+ * de los orígenes permitidos, con puerto y sin él. Lo que no
+ * sea /api (el canal de los agentes va firmado y entra por la
+ * dirección que cada agente tenga guardada) y no traiga uno de
+ * estos Host no está pidiendo el panel: está pidiendo otra
+ * dirección del mismo equipo.
+ */
+function hostsPermitidos(origenes: string[]): Set<string> {
+  const hosts = new Set<string>();
+  for (const origen of origenes) {
+    try {
+      const url = new URL(origen);
+      hosts.add(url.host);
+      hosts.add(url.hostname);
+    } catch {
+      // Un origen mal escrito en el .env no tumba el arranque.
+    }
+  }
+  return hosts;
 }
 
 function readFileMaybe(filePath: string | undefined) {
@@ -96,21 +116,6 @@ function buildTlsOptions() {
   return undefined;
 }
 
-function getNetworkAddress() {
-  const interfaces = os.networkInterfaces();
-  for (const entries of Object.values(interfaces)) {
-    if (!entries) continue;
-    for (const detail of entries) {
-      if (!detail || detail.internal) continue;
-      const family = detail.family;
-      if (family !== "IPv4") continue;
-      if (!detail.address || detail.address.startsWith("169.254.")) continue;
-      return detail.address;
-    }
-  }
-  return null;
-}
-
 // Custom server with Socket.IO integration
 async function createCustomServer() {
   try {
@@ -128,12 +133,41 @@ async function createCustomServer() {
     const tlsOptions = buildTlsOptions();
     const protocol = tlsOptions ? "https" : "http";
 
+    // La dirección única de acceso: la de la ruta por defecto
+    // (la del DHCP). Sin ruta, la primera dirección del equipo;
+    // sin ninguna, localhost — nunca una lista vacía que deje
+    // el panel sin ninguna puerta.
+    const direccionPanel =
+      (await direccionPrincipal()) ??
+      direccionesIpv4Locales()[0] ??
+      "localhost";
+    const allowedOrigins = parseSocketOrigins(direccionPanel);
+    const hostsDelPanel = hostsPermitidos(allowedOrigins);
+
     const requestHandler = (
       req: Parameters<typeof handle>[0],
       res: Parameters<typeof handle>[1],
     ) => {
       if (req.url?.startsWith("/api/socketio")) {
         return;
+      }
+      // Una sola dirección de acceso: si el navegador pide el
+      // panel por otra dirección de este equipo (localhost,
+      // Tailscale…), se le dice cuál es la buena en vez de
+      // servirle un panel a medias. Las rutas /api no entran
+      // aquí: los agentes hablan firmado y llegan por la
+      // dirección que tengan configurada.
+      if (!req.url?.startsWith("/api/")) {
+        const host = req.headers.host;
+        if (host && !hostsDelPanel.has(host)) {
+          res.writeHead(403, {
+            "Content-Type": "text/plain; charset=utf-8",
+          });
+          res.end(
+            `El panel solo se sirve en ${protocol}://${direccionPanel}:${PUERTO_SOCKET}.`,
+          );
+          return;
+        }
       }
       // La IP verdadera del cliente, tomada del socket: las rutas
       // la leen como x-client-ip (el login la usa para comprobar
@@ -154,8 +188,6 @@ async function createCustomServer() {
 
     // Create HTTP server that will handle both Next.js and Socket.IO
     const server = baseServer;
-
-    const allowedOrigins = parseSocketOrigins();
 
     const corsOrigin = (
       origin: string | undefined,
@@ -193,7 +225,7 @@ async function createCustomServer() {
         hostname && hostname !== "0.0.0.0" && hostname !== "::"
           ? hostname
           : "localhost";
-      const networkAddress = getNetworkAddress();
+      const networkAddress = direccionPanel;
       const mode = tlsOptions ? "TLS • HTTP/1.1" : "HTTP/1.1";
 
       const localUrl = `${protocol}://${displayHost}:${currentPort}`;

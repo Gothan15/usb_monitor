@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  direccionPrincipal,
   direccionesIpv4Locales,
+  origenesDeDireccion,
   origenesLocales,
 } from "@/lib/direccionesLocales";
 
@@ -28,5 +30,24 @@ describe("origenesLocales", () => {
       expect(origenes).toContain(`https://${ip}:4321`);
     }
     expect(origenes.length).toBe(direccionesIpv4Locales().length * 2);
+  });
+});
+
+describe("origenesDeDireccion", () => {
+  it("una sola dirección, dos orígenes: http y https con el puerto", () => {
+    expect(origenesDeDireccion("172.29.176.1", 3000)).toEqual([
+      "http://172.29.176.1:3000",
+      "https://172.29.176.1:3000",
+    ]);
+  });
+});
+
+describe("direccionPrincipal", () => {
+  it("devuelve una IPv4 o undefined, nunca otra cosa", async () => {
+    const direccion = await direccionPrincipal();
+    if (direccion !== undefined) {
+      expect(direccion).toMatch(/^\d{1,3}(\.\d{1,3}){3}$/);
+      expect(direccion.startsWith("127.")).toBe(false);
+    }
   });
 });
