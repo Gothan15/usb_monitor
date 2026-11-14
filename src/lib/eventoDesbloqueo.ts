@@ -113,7 +113,16 @@ async function candidatosDeEquipo(
   const filas = await db.pendingUnlock.findMany({
     where: {
       pcName,
-      status: "UNLOCKED",
+      // UNLOCKED y también CLOSED: al extraer el dispositivo el
+      // agente cierra el bloqueo, y ese es el final normal de
+      // TODO desbloqueo. Pedir solo UNLOCKED convertía el sello
+      // en una carrera entre la llegada del evento y el cierre:
+      // los dispositivos que se re-enumeran al liberarse (los
+      // discos duros USB, sobre todo) la perdían siempre y su
+      // evento se quedaba sin autor para siempre, porque el
+      // cruce de lectura filtraba igual. El nombre no se pierde
+      // al cerrar: unlockedById y unlockedAt quedan en la fila.
+      status: { in: ["UNLOCKED", "CLOSED"] },
       unlockedById: { not: null },
       unlockedAt: { gte: desde, lte: hasta },
     },
