@@ -215,10 +215,13 @@ async function createCustomServer() {
         socketLocal: localSocket,
         socketRed: networkSocket,
         origenes: allowedOrigins.join(", "),
+        // El aviso va DENTRO de la portada, como una fila más:
+        // nada de líneas sueltas bajo la caja.
+        aviso:
+          !tlsOptions && !dev
+            ? "TLS no configurado. El tráfico se sirve por HTTP."
+            : undefined,
       });
-      if (!tlsOptions && !dev) {
-        logWarn("TLS no configurado. El tráfico se sirve por HTTP.");
-      }
     });
   } catch (err) {
     logError("Error al iniciar servidor", err);

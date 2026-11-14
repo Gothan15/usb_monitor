@@ -427,9 +427,15 @@ internal static class Program
         var marco = new string('═', ancho - 2);
         string Fila(string texto)
         {
-            if (texto.Length > ancho - 4)
-                texto = texto[..(ancho - 4)];
-            return $"║  {texto.PadRight(ancho - 4)}  ║";
+            // Una sola cuenta de ancho: borde (1) + margen (2) +
+            // texto + margen (2) + borde (1) = ancho, así que el
+            // texto útil es ancho - 6. Con ancho - 4 las filas
+            // salían dos columnas más anchas que los bordes y el
+            // marco se veía roto por la derecha, como le pasaba
+            // a la portada del panel.
+            if (texto.Length > ancho - 6)
+                texto = texto[..(ancho - 6)];
+            return $"║  {texto.PadRight(ancho - 6)}  ║";
         }
         Console.WriteLine($"╔{marco}╗");
         Console.WriteLine(Fila("USBMONITOR · AGENTE DE MONITOREO USB"));
