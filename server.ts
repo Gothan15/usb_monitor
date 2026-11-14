@@ -233,20 +233,11 @@ async function createCustomServer() {
         ? `${protocol}://${networkAddress}:${currentPort}`
         : undefined;
 
-      const socketProtocol = protocol === "https" ? "wss" : "ws";
-      const localSocket = `${socketProtocol}://${displayHost}:${currentPort}/api/socketio`;
-      const networkSocket = networkAddress
-        ? `${socketProtocol}://${networkAddress}:${currentPort}/api/socketio`
-        : undefined;
-
       imprimirBannerPanel({
         versionNext: nextVersion,
         local: localUrl,
         red: networkUrl,
         modo: mode,
-        socketLocal: localSocket,
-        socketRed: networkSocket,
-        origenes: allowedOrigins.join(", "),
         // El aviso va DENTRO de la portada, como una fila más:
         // nada de líneas sueltas bajo la caja.
         aviso:
