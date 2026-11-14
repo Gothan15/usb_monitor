@@ -216,6 +216,7 @@ model AgentCommand {
   status        String    @default("ESPERA")
   detail        String? // resultado o causa del error, según el estado
   targetVersion String? // versión que la orden «actualizar» debe dejar instalada
+  targetSha256  String? // SHA-256 del paquete al crear la orden: si el paquete cambia a mitad de camino, el agente abandona la orden en vez de aplicar otro binario
   attempts      Int       @default(0)
   createdAt     DateTime  @default(now())
   deliveredAt   DateTime?

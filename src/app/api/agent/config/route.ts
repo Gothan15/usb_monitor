@@ -77,6 +77,10 @@ export async function GET(req: Request) {
           await asegurarOrdenActualizacion(
             serviceAuth.computerId,
             equipo.agentVersion,
+            {
+              automatica: true,
+              tamanoOleada: Number(settings.agentUpdateWaveSize) || 3,
+            },
           );
         }
       }
@@ -91,6 +95,7 @@ export async function GET(req: Request) {
           type: true,
           status: true,
           targetVersion: true,
+          targetSha256: true,
           attempts: true,
         },
       });
@@ -122,6 +127,7 @@ export async function GET(req: Request) {
           type: true,
           status: true,
           targetVersion: true,
+          targetSha256: true,
           attempts: true,
           finishedAt: true,
         },

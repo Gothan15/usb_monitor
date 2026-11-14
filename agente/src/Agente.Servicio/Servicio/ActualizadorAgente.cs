@@ -101,11 +101,40 @@ public sealed class ActualizadorAgente
             if (orden.VersionObjetivo is not null &&
                 string.Equals(orden.VersionObjetivo, versionActual, StringComparison.Ordinal))
             {
-                Log.Info($"Actualización confirmada: ya corre la versión {versionActual}.");
-                await _cliente.InformarOrdenAsync(orden.Id, "HECHA",
-                    $"Actualización confirmada tras el reinicio: versión {versionActual}.")
-                    .ConfigureAwait(false);
-                return;
+                // La versión coincide, pero ¿el binario es el del
+                // paquete de la orden? Si el paquete cambió a
+                // mitad de camino, este exe puede ser el viejo
+                // con el número nuevo (misma versión, otro
+                // binario): se comprueba el hash del instalado.
+                var binarioEsElDeLaOrden = string.IsNullOrEmpty(orden.ShaObjetivo);
+                if (!binarioEsElDeLaOrden)
+                {
+                    try
+                    {
+                        binarioEsElDeLaOrden = string.Equals(
+                            Sha256DeArchivo(Instalador.RutaExeInstalado()),
+                            orden.ShaObjetivo, StringComparison.OrdinalIgnoreCase);
+                    }
+                    catch { binarioEsElDeLaOrden = true; /* sin lectura, manda la versión */ }
+                }
+                if (binarioEsElDeLaOrden)
+                {
+                    Log.Info($"Actualización confirmada: ya corre la versión {versionActual}.");
+                    var confirmada = await _cliente.InformarOrdenAsync(orden.Id, "HECHA",
+                        $"Actualización confirmada tras el reinicio: versión {versionActual}.")
+                        .ConfigureAwait(false);
+                    if (confirmada)
+                    {
+                        // Asentada: el respaldo ya no hace falta y
+                        // el vigía de salud queda desarmado.
+                        try { File.Delete(Instalador.RutaExeInstalado() + ".anterior"); }
+                        catch { /* el borrado es lo de menos */ }
+                        SaludActualizacion.Borrar();
+                    }
+                    return;
+                }
+                Log.Advertencia(
+                    "La versión coincide pero el binario no es el del paquete de la orden: se aplica el paquete vigente.");
             }
             if (orden.Intentos >= MaxIntentos)
             {
@@ -187,6 +216,23 @@ public sealed class ActualizadorAgente
         // tanto, no se informa nada más y no se descarga nada.
         if (await OrdenCanceladaAsync(orden).ConfigureAwait(false)) return;
 
+        // Si el paquete cambió desde que esta orden nació, la
+        // orden ya no describe lo que hay que aplicar: se
+        // abandona con ERROR y el panel podrá crear una orden
+        // nueva contra el paquete vigente. No se aplica a la
+        // conciliación (orden ya EN_CURSO): esa se completa con
+        // el paquete que haya, que para eso su versión objetivo
+        // se actualiza al informar.
+        if (!string.Equals(orden.Estado, "EN_CURSO", StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrEmpty(orden.ShaObjetivo) &&
+            !string.Equals(orden.ShaObjetivo, manifiesto.Sha256, StringComparison.OrdinalIgnoreCase))
+        {
+            await _cliente.InformarOrdenAsync(orden.Id, "ERROR",
+                "El paquete del panel cambió desde que se creó esta orden; se abandona.")
+                .ConfigureAwait(false);
+            return;
+        }
+
         var versionActual = ClientePanel.VersionAgente;
         if (manifiesto.Version is not null &&
             string.Equals(manifiesto.Version, versionActual, StringComparison.Ordinal))
@@ -213,7 +259,14 @@ public sealed class ActualizadorAgente
 
         var carpeta = Path.Combine(Path.GetTempPath(), "USBMonitorActualizacion");
         var rutaNuevo = Path.Combine(carpeta, "USBMonitorService.exe.nuevo");
-        if (!await _cliente.DescargarPaqueteAsync(rutaNuevo).ConfigureAwait(false))
+        if (!await _cliente.DescargarPaqueteAsync(rutaNuevo, async pct =>
+            {
+                // Progreso en la propia orden (Tareas lo enseña):
+                // los informes EN_CURSO dentro del mismo intento
+                // no queman cupo de intentos en el panel.
+                await _cliente.InformarOrdenAsync(orden.Id, "EN_CURSO",
+                    $"Descargando el paquete ({pct} %).").ConfigureAwait(false);
+            }).ConfigureAwait(false))
         {
             await _cliente.InformarOrdenAsync(orden.Id, "ERROR",
                 "No se pudo descargar el paquete del panel.").ConfigureAwait(false);
@@ -268,6 +321,10 @@ public sealed class ActualizadorAgente
                 .ConfigureAwait(false);
             return;
         }
+
+        await _cliente.InformarOrdenAsync(orden.Id, "EN_CURSO",
+            "Aplicando la actualización: el servicio se reiniciará.")
+            .ConfigureAwait(false);
 
         // La copia aplicadora: el modo «aplicar-actualizacion» no
         // puede correr desde el archivo instalado (se renombra a

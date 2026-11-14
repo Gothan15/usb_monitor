@@ -140,6 +140,24 @@ internal static class Program
                     return 1;
                 }
 
+            case "revertir-actualizacion":
+                // Lo lanza el vigía de salud (una copia temporal)
+                // cuando la versión recién instalada arranca pero
+                // no logra hablar con el panel: restaura el exe
+                // anterior (.anterior) y arranca el servicio con él.
+                Registro.Configurar("agente.log");
+                try
+                {
+                    Console.WriteLine(Instalador.RevertirActualizacion());
+                    return 0;
+                }
+                catch (Exception exc)
+                {
+                    Console.WriteLine($"No se pudo revertir la actualización: {exc.Message}");
+                    Console.WriteLine("Ejecuta este programa como administrador.");
+                    return 1;
+                }
+
             case "desinstalar":
                 Registro.Configurar("agente.log");
                 try

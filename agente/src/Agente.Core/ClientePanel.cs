@@ -75,6 +75,16 @@ public sealed class ClientePanel : IDisposable
     private readonly object _cerrojoCola = new();
     private readonly List<EventoUsb> _cola;
 
+    private DateTime? _ultimoContactoOkUtc;
+
+    /// <summary>
+    /// Última respuesta buena (2xx) del panel a una petición
+    /// firmada de ESTE proceso. Lo usa el vigía de salud tras una
+    /// actualización: la versión recién instalada tiene que
+    /// lograr una dentro de su plazo o se restaura la anterior.
+    /// </summary>
+    public DateTime? UltimoContactoOkUtc => _ultimoContactoOkUtc;
+
     // Desfase entre el reloj de este equipo y el del panel, en
     // segundos, aprendido de la cabecera Date de las respuestas
     // del propio panel. Las marcas al firmar se compensan con
@@ -263,6 +273,7 @@ public sealed class ClientePanel : IDisposable
             reloj.Stop();
             var estado = (int)respuesta.StatusCode;
             var ok = estado is >= 200 and < 300;
+            if (ok) _ultimoContactoOkUtc = DateTime.UtcNow;
             RegistrarLlamada(metodo, ruta, ok, $"HTTP {estado}", reloj.Elapsed.TotalMilliseconds);
             if (ok)
                 Log.Debug($"{metodo} {ruta} -> HTTP {estado} en {reloj.ElapsedMilliseconds} ms");
@@ -1118,13 +1129,26 @@ public sealed class ClientePanel : IDisposable
     /// sobre una descarga a medias creyéndola completa (el tamaño
     /// y el hash se verifican después igualmente).
     /// </summary>
-    public async Task<bool> DescargarPaqueteAsync(string rutaDestino)
+    /// <summary>
+    /// Descarga el paquete de actualización REANUDANDO: lo ya
+    /// bajado vive en «<destino>.parcial» y, si la descarga se
+    /// corta (un apagón, la red), la siguiente vez pide el resto
+    /// con Range y sigue desde ahí en vez de empezar los ~95 MB
+    /// de cero. Solo al completarse se mueve el parcial sobre el
+    /// destino. El llamante verifica tamaño y SHA-256 después,
+    /// como siempre. El progreso (0–100) se avisa por la
+    /// retrollamada en pasos del 25 %.
+    /// </summary>
+    public async Task<bool> DescargarPaqueteAsync(
+        string rutaDestino, Func<int, Task>? progreso = null)
     {
+        var rutaParcial = rutaDestino + ".parcial";
         try
         {
             var carpeta = Path.GetDirectoryName(rutaDestino);
             if (!string.IsNullOrEmpty(carpeta))
                 Directory.CreateDirectory(carpeta);
+            long ya = File.Exists(rutaParcial) ? new FileInfo(rutaParcial).Length : 0;
             using var http = new HttpClient(
                 new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(4) })
             {
@@ -1133,26 +1157,57 @@ public sealed class ClientePanel : IDisposable
             using var solicitud = new HttpRequestMessage(
                 HttpMethod.Get, _config.UrlBase + "/api/agent/paquete");
             AplicarCredencial(solicitud, "GET", "/api/agent/paquete", Array.Empty<byte>());
+            var rango = DescargaParcial.CabeceraRango(ya);
+            if (rango is not null)
+                solicitud.Headers.TryAddWithoutValidation("Range", rango);
             using var respuesta = await http
                 .SendAsync(solicitud, HttpCompletionOption.ResponseHeadersRead)
                 .ConfigureAwait(false);
-            if (!respuesta.IsSuccessStatusCode)
+            var modo = DescargaParcial.ModoAlResponder(
+                (int)respuesta.StatusCode, rango is not null);
+            if (modo == ModoDescarga.Fallo)
             {
                 Log.Error($"Descarga del paquete: el panel respondió {(int)respuesta.StatusCode}.");
                 return false;
             }
+            long baseBytes = modo == ModoDescarga.Anexar ? ya : 0;
+            long restantes = respuesta.Content.Headers.ContentLength ?? -1;
+            long total = restantes >= 0 ? baseBytes + restantes : -1;
             await using var origen = await respuesta.Content
                 .ReadAsStreamAsync().ConfigureAwait(false);
             await using var destino = new FileStream(
-                rutaDestino, FileMode.Create, FileAccess.Write, FileShare.None);
-            await origen.CopyToAsync(destino).ConfigureAwait(false);
+                rutaParcial,
+                modo == ModoDescarga.Anexar ? FileMode.Append : FileMode.Create,
+                FileAccess.Write, FileShare.None);
+            var bufer = new byte[81920];
+            long escritos = 0;
+            var ultimoAviso = -1;
+            int leidos;
+            while ((leidos = await origen.ReadAsync(bufer, 0, bufer.Length)
+                        .ConfigureAwait(false)) > 0)
+            {
+                await destino.WriteAsync(bufer, 0, leidos).ConfigureAwait(false);
+                escritos += leidos;
+                if (progreso is not null && total > 0)
+                {
+                    var pct = DescargaParcial.Porcentaje(baseBytes + escritos, total);
+                    if (pct >= ultimoAviso + 25)
+                    {
+                        ultimoAviso = pct;
+                        await progreso(pct).ConfigureAwait(false);
+                    }
+                }
+            }
+            await destino.FlushAsync().ConfigureAwait(false);
+            destino.Close();
+            File.Move(rutaParcial, rutaDestino, overwrite: true);
             return true;
         }
         catch (Exception exc)
         {
-            Log.Error($"Descarga del paquete: {exc.Message}");
-            try { if (File.Exists(rutaDestino)) File.Delete(rutaDestino); }
-            catch { /* la limpieza no tapa el fallo original */ }
+            // El parcial SE QUEDA: la siguiente descarga reanuda
+            // desde él. Nada se borra aquí.
+            Log.Error($"Descarga del paquete: {exc.Message} (lo bajado se conserva para reanudar)");
             return false;
         }
     }

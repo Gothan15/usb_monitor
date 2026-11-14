@@ -8,6 +8,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   accionAlBorrarEquipo,
   canceladaServible,
+  hayDesinstalacionActiva,
+  informeSumaIntento,
+  puedeCrearOrdenAutomatica,
   ESTADOS_ORDEN_ACTIVA,
   sePuedeCancelar,
   transicionInformeValida,
@@ -193,5 +196,48 @@ describe("canceladaServible", () => {
   it("sin fecha de fin no se sirve", () => {
     expect(canceladaServible(null, ahora)).toBe(false);
     expect(canceladaServible("no-es-fecha", ahora)).toBe(false);
+  });
+});
+
+describe("puedeCrearOrdenAutomatica (oleadas)", () => {
+  it("con sitio en la oleada y sin errores, crea", () => {
+    expect(puedeCrearOrdenAutomatica(0, 0, 3)).toBe(true);
+    expect(puedeCrearOrdenAutomatica(2, 0, 3)).toBe(true);
+  });
+
+  it("oleada llena: espera", () => {
+    expect(puedeCrearOrdenAutomatica(3, 0, 3)).toBe(false);
+    expect(puedeCrearOrdenAutomatica(5, 0, 3)).toBe(false);
+  });
+
+  it("un solo error en la versión congela el despliegue", () => {
+    expect(puedeCrearOrdenAutomatica(0, 1, 3)).toBe(false);
+  });
+
+  it("tamaño ilegible cuenta como oleada de uno", () => {
+    expect(puedeCrearOrdenAutomatica(0, 0, 0)).toBe(true);
+    expect(puedeCrearOrdenAutomatica(1, 0, 0)).toBe(false);
+  });
+});
+
+describe("informeSumaIntento", () => {
+  it("abrir el intento suma; el progreso dentro del mismo, no", () => {
+    expect(informeSumaIntento("ENTREGADA", "EN_CURSO")).toBe(true);
+    expect(informeSumaIntento("ESPERA", "EN_CURSO")).toBe(true);
+    expect(informeSumaIntento("EN_CURSO", "EN_CURSO")).toBe(false);
+  });
+
+  it("los estados terminales no suman", () => {
+    expect(informeSumaIntento("EN_CURSO", "HECHA")).toBe(false);
+    expect(informeSumaIntento("ENTREGADA", "ERROR")).toBe(false);
+  });
+});
+
+describe("hayDesinstalacionActiva", () => {
+  it("detecta la desinstalación entre las órdenes vivas", () => {
+    expect(hayDesinstalacionActiva(["actualizar"])).toBe(false);
+    expect(hayDesinstalacionActiva(["desinstalar"])).toBe(true);
+    expect(hayDesinstalacionActiva(["actualizar", "desinstalar"])).toBe(true);
+    expect(hayDesinstalacionActiva([])).toBe(false);
   });
 });

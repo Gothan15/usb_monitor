@@ -7,6 +7,7 @@ import { normalizeComputerName } from "@/lib/utils";
 import {
   ESTADOS_ORDEN_ACTIVA,
   TIPO_ORDEN_ACTUALIZAR,
+  TIPO_ORDEN_DESINSTALAR,
   vistaOrdenActualizacion,
 } from "@/lib/agentCommands";
 import { manifiestoPaquete } from "@/lib/paqueteAgente";
@@ -91,6 +92,25 @@ export async function POST(req: Request) {
       );
     }
 
+    const desinstalando = await db.agentCommand.findFirst({
+      where: {
+        computerId: computer.id,
+        type: TIPO_ORDEN_DESINSTALAR,
+        status: { in: ESTADOS_ORDEN_ACTIVA },
+      },
+      select: { id: true },
+    });
+    if (desinstalando) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Ese equipo tiene una desinstalación pedida: no se le crea una actualización.",
+        },
+        { status: 409 },
+      );
+    }
+
     const activa = await db.agentCommand.findFirst({
       where: {
         computerId: computer.id,
@@ -115,6 +135,7 @@ export async function POST(req: Request) {
         computerId: computer.id,
         type: TIPO_ORDEN_ACTUALIZAR,
         targetVersion: manifiesto.version,
+        targetSha256: manifiesto.sha256,
       },
       select: { id: true, status: true, createdAt: true },
     });
