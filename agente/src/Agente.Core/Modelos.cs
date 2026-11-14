@@ -97,6 +97,7 @@ public sealed class OrdenAgente
     [JsonPropertyName("tipo")] public string Tipo { get; set; } = "";
     [JsonPropertyName("estado")] public string Estado { get; set; } = "";
     [JsonPropertyName("versionObjetivo")] public string? VersionObjetivo { get; set; }
+    [JsonPropertyName("shaObjetivo")] public string? ShaObjetivo { get; set; }
     [JsonPropertyName("intentos")] public int Intentos { get; set; }
 }
 
@@ -116,6 +117,7 @@ internal sealed class SolicitudInformeOrden
     [JsonPropertyName("estado")] public string Estado { get; set; } = "";
     [JsonPropertyName("detalle")] public string? Detalle { get; set; }
     [JsonPropertyName("versionObjetivo")] public string? VersionObjetivo { get; set; }
+    [JsonPropertyName("shaObjetivo")] public string? ShaObjetivo { get; set; }
 }
 
 /// <summary>Respuesta de GET /api/agent/owner-hash.</summary>
@@ -271,6 +273,7 @@ public sealed class RespuestaActualizacion
     [JsonPropertyName("ordenActiva")] public bool OrdenActiva { get; set; }
     [JsonPropertyName("estado")] public string? Estado { get; set; }
     [JsonPropertyName("versionObjetivo")] public string? VersionObjetivo { get; set; }
+    [JsonPropertyName("shaObjetivo")] public string? ShaObjetivo { get; set; }
     [JsonPropertyName("error")] public string? Error { get; set; }
 }
 

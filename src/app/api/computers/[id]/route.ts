@@ -6,7 +6,10 @@ import {
   accionAlBorrarEquipo,
   ESTADOS_ORDEN_ACTIVA,
   TIPO_ORDEN_DESINSTALAR,
+  ESTADO_ORDEN,
+  TIPO_ORDEN_ACTUALIZAR,
 } from "@/lib/agentCommands";
+import { getCurrentDate } from "@/lib/time";
 
 type RouteContext = {
   params: Promise<{
@@ -56,6 +59,22 @@ export async function DELETE(req: Request, context: RouteContext) {
       Boolean(ordenActiva),
     );
     if (accion !== "borrar") {
+      // Coherencia de órdenes: un equipo que se va a desinstalar
+      // no se actualiza. Sus actualizaciones vivas se cancelan
+      // aquí mismo; el agente las abandona en su siguiente punto
+      // de control (PR de cancelación) o ni las empieza.
+      await db.agentCommand.updateMany({
+        where: {
+          computerId: id,
+          type: TIPO_ORDEN_ACTUALIZAR,
+          status: { in: ESTADOS_ORDEN_ACTIVA },
+        },
+        data: {
+          status: ESTADO_ORDEN.CANCELADA,
+          finishedAt: getCurrentDate(),
+          detail: "Cancelada: el equipo se va a desinstalar.",
+        },
+      });
       if (accion === "pedir-desinstalacion") {
         await db.agentCommand.create({
           data: { computerId: id, type: TIPO_ORDEN_DESINSTALAR },

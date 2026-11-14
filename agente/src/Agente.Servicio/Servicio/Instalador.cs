@@ -374,6 +374,46 @@ public static class Instalador
     /// sola. El compañero en sesión de usuario se cierra antes del
     /// cambio: el servicio lo relanza al arrancar.
     /// </summary>
+    /// <summary>
+    /// Reversión por salud: la versión recién instalada no logró
+    /// hablar con el panel dentro de su plazo y el vigía lanza
+    /// una copia en este modo. Se restaura el respaldo «.anterior»
+    /// y se arranca con él; el marcador de salud se borra antes
+    /// de arrancar para que la versión restaurada no nazca
+    /// vigilada por un episodio que ya no es el suyo.
+    /// </summary>
+    public static string RevertirActualizacion()
+    {
+        var destino = RutaExeInstalado();
+        var respaldo = destino + ".anterior";
+        if (!File.Exists(respaldo))
+            throw new FileNotFoundException(
+                "No hay versión anterior que restaurar.", respaldo);
+        if (EstadoServicio() == "no instalado")
+            throw new InvalidOperationException("El servicio no está instalado.");
+
+        using var controlador = new ServiceController(NombreServicio);
+        if (controlador.Status != ServiceControllerStatus.Stopped)
+        {
+            try { controlador.Stop(); } catch { /* la espera fija el estado */ }
+            try
+            {
+                controlador.WaitForStatus(
+                    ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(60));
+            }
+            catch { /* el intercambio no depende de que haya parado */ }
+        }
+        CerrarProcesosDelExe(destino);
+        File.Delete(destino);
+        File.Move(respaldo, destino);
+        SaludActualizacion.Borrar();
+        controlador.Refresh();
+        controlador.Start();
+        controlador.WaitForStatus(
+            ServiceControllerStatus.Running, TimeSpan.FromSeconds(60));
+        return "Se restauró la versión anterior del agente.";
+    }
+
     public static string AplicarActualizacion(string rutaNuevo)
     {
         if (!File.Exists(rutaNuevo))
@@ -409,6 +449,15 @@ public static class Instalador
 
         if (File.Exists(respaldo))
             File.Delete(respaldo);
+        // Marcador de salud: la versión nueva nace obligada a
+        // hablar con el panel en 10 minutos; si no lo logra, su
+        // propio vigía restaura este respaldo. El marcador
+        // guarda el hash del exe que se va a instalar.
+        try
+        {
+            SaludActualizacion.Escribir(SaludActualizacion.ShaDeArchivo(rutaNuevo));
+        }
+        catch { /* sin marcador no hay vigía, pero la actualización sigue */ }
         File.Move(destino, respaldo);
         try
         {

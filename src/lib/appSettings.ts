@@ -25,6 +25,11 @@ export interface AppSettings {
   lockSessionOnInsert: boolean;
   /** Los agentes se actualizan solos cuando el panel sirve una versión mayor. */
   agentAutoUpdate: boolean;
+  /** Equipos por oleada en la actualización automática: cuántos
+   *  pueden estar actualizándose a la vez; la siguiente oleada
+   *  sale cuando la anterior termina. Si una orden de la versión
+   *  en curso acaba en error, el despliegue automático se para. */
+  agentUpdateWaveSize: number;
   /**
    * Apagar el equipo cliente cuando se inserta un dispositivo que
    * NO está en la lista blanca (cuenta atrás cancelable del agente).
@@ -49,6 +54,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   offlineEmergencyEnabled: true,
   lockSessionOnInsert: false,
   agentAutoUpdate: false,
+  agentUpdateWaveSize: 3,
   shutdownOnNonWhitelisted: false,
   shutdownCountdownSeconds: 60,
   captureEvidenceOnNonWhitelisted: false,

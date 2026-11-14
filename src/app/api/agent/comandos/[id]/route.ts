@@ -9,6 +9,7 @@ import {
   MAX_INTENTOS_ORDEN,
   TIPO_ORDEN_DESINSTALAR,
   transicionInformeValida,
+  informeSumaIntento,
 } from "@/lib/agentCommands";
 import { getCurrentDate } from "@/lib/time";
 
@@ -82,7 +83,7 @@ export async function POST(
       );
     }
     if (
-      estado === ESTADO_ORDEN.EN_CURSO &&
+      informeSumaIntento(comando.status, estado) &&
       comando.attempts >= MAX_INTENTOS_ORDEN
     ) {
       return NextResponse.json(
@@ -99,7 +100,12 @@ export async function POST(
         ...(detalle ? { detail: detalle } : {}),
         ...(estado === ESTADO_ORDEN.EN_CURSO
           ? {
-              attempts: { increment: 1 },
+              // El intento se suma solo al abrirlo: los informes
+              // de progreso dentro del mismo intento (la descarga
+              // al 25 %, al 50 %…) no queman cupo.
+              ...(informeSumaIntento(comando.status, estado)
+                ? { attempts: { increment: 1 } }
+                : {}),
               startedAt: comando.status === ESTADO_ORDEN.EN_CURSO ? undefined : ahora,
               ...(versionObjetivo ? { targetVersion: versionObjetivo } : {}),
             }

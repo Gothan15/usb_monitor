@@ -240,6 +240,8 @@ export function SettingsTab() {
   const [mensajePaquete, setMensajePaquete] = useState<string | null>(null);
   // Actualización automática de los agentes (ajuste del panel).
   const [autoUpdate, setAutoUpdate] = useState(false);
+  const [oleada, setOleada] = useState(3);
+  const [mensajeOleada, setMensajeOleada] = useState<string | null>(null);
   const [mensajeAutoUpdate, setMensajeAutoUpdate] = useState<string | null>(null);
   const [errorPaquete, setErrorPaquete] = useState<string | null>(null);
   const inputPaqueteRef = useRef<HTMLInputElement>(null);
@@ -276,6 +278,7 @@ export function SettingsTab() {
         setUnlock(unlockCargado);
         setUnlockInicial(unlockCargado);
         setAutoUpdate(Boolean(data.agentAutoUpdate));
+        setOleada(Math.max(1, Math.floor(Number(data.agentUpdateWaveSize) || 3)));
       })
       .catch((err) => console.error("Failed to load settings", err));
   }, []);
@@ -301,6 +304,36 @@ export function SettingsTab() {
 
 
 
+
+  const guardarOleada = async (valor: number) => {
+    const n = Math.max(1, Math.floor(Number(valor) || 1));
+    setOleada(n);
+    setMensajeOleada(null);
+    try {
+      const csrfToken = getCsrfTokenFromDocument();
+      if (!csrfToken) {
+        setMensajeOleada(
+          "La sesión no trae el token de seguridad: vuelve a iniciar sesión e inténtalo de nuevo.",
+        );
+        return;
+      }
+      const res = await fetch("/api/settings", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": csrfToken,
+        },
+        body: JSON.stringify({ agentUpdateWaveSize: n }),
+      });
+      if (!res.ok) throw new Error("Error");
+      setMensajeOleada(
+        `Oleada guardada: la actualización automática irá de ${n} en ${n}.`,
+      );
+    } catch {
+      setMensajeOleada("No se pudo guardar el ajuste.");
+    }
+  };
 
   const cambiarAutoUpdate = async (activo: boolean) => {
     setAutoUpdate(activo);
@@ -883,6 +916,36 @@ export function SettingsTab() {
               aria-label="Actualización automática de los agentes"
             />
           </div>
+
+          {autoUpdate && (
+            <div className="mt-3 flex max-w-3xl flex-wrap items-center gap-3 border border-border/60 bg-muted/20 px-4 py-3">
+              <label
+                htmlFor="oleada-agentes"
+                className="text-sm font-semibold text-foreground"
+              >
+                Equipos por oleada
+              </label>
+              <input
+                id="oleada-agentes"
+                type="number"
+                min={1}
+                max={50}
+                value={oleada}
+                onChange={(e) => setOleada(Number(e.target.value))}
+                onBlur={() => void guardarOleada(oleada)}
+                className="w-20 border border-border bg-background px-2 py-1 text-sm text-foreground"
+              />
+              <p className="max-w-md text-xs leading-relaxed text-muted-foreground">
+                Cuántos equipos se actualizan a la vez; la siguiente
+                oleada sale cuando la anterior termina. Si una orden
+                de la versión en curso acaba en error, el despliegue
+                automático se detiene hasta que se revise.
+              </p>
+              {mensajeOleada && (
+                <p className="w-full text-sm text-success">{mensajeOleada}</p>
+              )}
+            </div>
+          )}
         </section>
 
         <section

@@ -212,7 +212,49 @@ export type ResultadoOrdenActualizacion =
   | { resultado: "creada"; versionObjetivo: string }
   | { resultado: "ya-activa"; versionObjetivo: string | null }
   | { resultado: "al-dia"; versionObjetivo: string }
-  | { resultado: "sin-paquete" };
+  | { resultado: "sin-paquete" }
+  | { resultado: "en-espera-oleada"; versionObjetivo: string }
+  | { resultado: "conflicto-desinstalacion"; versionObjetivo: string };
+
+/**
+ * Oleadas de la actualización automática: ¿puede nacer otra
+ * orden automática para la versión en curso? Solo si la oleada
+ * actual no está llena (órdenes vivas de esa versión en toda la
+ * flota) y si ninguna orden de esa versión ha acabado en error:
+ * un error congela el despliegue automático de esa versión para
+ * que un paquete malo no caiga en cascada; el administrador
+ * sigue pudiendo ordenar equipo a equipo a mano.
+ */
+export function puedeCrearOrdenAutomatica(
+  activas: number,
+  errores: number,
+  tamanoOleada: number,
+): boolean {
+  if (errores > 0) return false;
+  return activas < Math.max(1, Math.floor(tamanoOleada) || 1);
+}
+
+/**
+ * ¿Suma intento un informe del agente? Solo el que ABRE un
+ * intento (la orden entra en EN_CURSO desde otro estado). Los
+ * informes de progreso dentro del mismo intento (la descarga al
+ * 25 %, al 50 %…) repiten EN_CURSO y no deben quemar el cupo de
+ * intentos ni chocar con su tope.
+ */
+export function informeSumaIntento(
+  estadoDesde: string,
+  estadoHacia: string,
+): boolean {
+  return (
+    estadoHacia === ESTADO_ORDEN.EN_CURSO &&
+    estadoDesde !== ESTADO_ORDEN.EN_CURSO
+  );
+}
+
+/** ¿Hay una desinstalación pedida entre los tipos de órdenes vivas? */
+export function hayDesinstalacionActiva(tiposActivos: string[]): boolean {
+  return tiposActivos.includes(TIPO_ORDEN_DESINSTALAR);
+}
 
 /**
  * Deja una orden «actualizar» en ESPERA para el equipo si el
@@ -225,28 +267,70 @@ export type ResultadoOrdenActualizacion =
 export async function asegurarOrdenActualizacion(
   computerId: string,
   agentVersion: string | null,
+  opciones?: { automatica?: boolean; tamanoOleada?: number },
 ): Promise<ResultadoOrdenActualizacion> {
   const manifiesto = await manifiestoPaquete();
   if (!manifiesto?.version) return { resultado: "sin-paquete" };
   if (compararVersiones(manifiesto.version, agentVersion) <= 0) {
     return { resultado: "al-dia", versionObjetivo: manifiesto.version };
   }
-  const activa = await db.agentCommand.findFirst({
+  const vivas = await db.agentCommand.findMany({
     where: {
       computerId,
-      type: TIPO_ORDEN_ACTUALIZAR,
       status: { in: ESTADOS_ORDEN_ACTIVA },
     },
-    select: { id: true },
+    select: { type: true },
   });
-  if (activa) {
+  // Una desinstalación pedida manda: actualizar un equipo que se
+  // va a desinstalar es trabajo (y descarga) tirado, y las dos
+  // órdenes se pisarían en el agente.
+  if (hayDesinstalacionActiva(vivas.map((v) => v.type))) {
+    return {
+      resultado: "conflicto-desinstalacion",
+      versionObjetivo: manifiesto.version,
+    };
+  }
+  if (vivas.some((v) => v.type === TIPO_ORDEN_ACTUALIZAR)) {
     return { resultado: "ya-activa", versionObjetivo: manifiesto.version };
+  }
+  if (opciones?.automatica) {
+    // Oleadas: se cuenta contra la versión en curso en TODA la
+    // flota, no por equipo.
+    const [activasFlota, erroresFlota] = await Promise.all([
+      db.agentCommand.count({
+        where: {
+          type: TIPO_ORDEN_ACTUALIZAR,
+          status: { in: ESTADOS_ORDEN_ACTIVA },
+          targetVersion: manifiesto.version,
+        },
+      }),
+      db.agentCommand.count({
+        where: {
+          type: TIPO_ORDEN_ACTUALIZAR,
+          status: ESTADO_ORDEN.ERROR,
+          targetVersion: manifiesto.version,
+        },
+      }),
+    ]);
+    if (
+      !puedeCrearOrdenAutomatica(
+        activasFlota,
+        erroresFlota,
+        opciones.tamanoOleada ?? 3,
+      )
+    ) {
+      return {
+        resultado: "en-espera-oleada",
+        versionObjetivo: manifiesto.version,
+      };
+    }
   }
   await db.agentCommand.create({
     data: {
       computerId,
       type: TIPO_ORDEN_ACTUALIZAR,
       targetVersion: manifiesto.version,
+      targetSha256: manifiesto.sha256,
     },
   });
   return { resultado: "creada", versionObjetivo: manifiesto.version };
