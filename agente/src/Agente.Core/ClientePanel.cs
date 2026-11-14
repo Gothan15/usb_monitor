@@ -614,6 +614,26 @@ public sealed class ClientePanel : IDisposable
                IntentarJson<RespuestaBasica>(respuesta) is { Ok: true };
     }
 
+    /// <summary>
+    /// ¿Sigue viva una orden? Se mira en la configuración: viva
+    /// si el panel la sigue sirviendo y no viene marcada
+    /// CANCELADA (las canceladas recientes viajan marcadas para
+    /// que quien la ejecuta la abandone). Null si el panel no
+    /// respondió: no se sabe, y un silencio no cancela nada.
+    /// </summary>
+    public async Task<bool?> OrdenSigueVivaAsync(string id)
+    {
+        var remota = await ConfigRemotaAsync().ConfigureAwait(false);
+        if (remota?.Comandos is null) return null;
+        foreach (var orden in remota.Comandos)
+        {
+            if (orden.Id != id) continue;
+            return !string.Equals(
+                orden.Estado, "CANCELADA", StringComparison.OrdinalIgnoreCase);
+        }
+        return false;
+    }
+
     public async Task<bool> CerrarBloqueoAsync(string? letra, string? serial)
     {
         var respuesta = await PeticionAsync("POST", "/api/usb-event/pending-close", new SolicitudCierre

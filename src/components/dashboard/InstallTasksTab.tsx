@@ -52,6 +52,7 @@ interface TareaVista {
 interface OrdenVista {
   id: string;
   pcName: string;
+  tipo: string;
   estado: string;
   etiquetaEstado: string;
   viva: boolean;
@@ -68,6 +69,7 @@ const TONO_ESTADO_ORDEN: Record<string, string> = {
   EN_CURSO: "text-[var(--acero)]",
   ENTREGADA: "text-amber-600",
   ESPERA: "text-muted-foreground",
+  CANCELADA: "text-muted-foreground",
 };
 
 const TONO_ESTADO: Record<string, string> = {
@@ -95,6 +97,7 @@ export function InstallTasksTab() {
   // otro sistema que las tareas de instalación, pero esta es su
   // pestaña — aquí se ven con su estado y su detalle de error.
   const [ordenes, setOrdenes] = useState<OrdenVista[] | null>(null);
+  const [cancelandoId, setCancelandoId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expandida, setExpandida] = useState<ReadonlySet<string>>(new Set());
   const [reintentando, setReintentando] = useState<string | null>(null);
@@ -146,6 +149,34 @@ export function InstallTasksTab() {
       // Sin órdenes esta vez; la siguiente recarga lo reintenta.
     }
   }, []);
+
+  // Cancelar una orden viva (actualización o desinstalación):
+  // el panel la marca CANCELADA y el agente la abandona en su
+  // siguiente punto de control; si aún no la había empezado, no
+  // llega a ejecutarla. Una desinstalación cancelada devuelve
+  // el equipo a la lista de Equipos.
+  const cancelarOrden = useCallback(
+    async (orden: OrdenVista) => {
+      try {
+        setCancelandoId(orden.id);
+        const res = await fetch(
+          `/api/agent/comandos/${orden.id}/cancelar`,
+          { method: "POST", credentials: "include" },
+        );
+        const datos = await res.json().catch(() => null);
+        if (!res.ok || !datos?.ok) {
+          setError(datos?.error ?? "No se pudo cancelar la orden.");
+          return;
+        }
+        await load();
+      } catch {
+        setError("No se pudo contactar con el panel.");
+      } finally {
+        setCancelandoId(null);
+      }
+    },
+    [load],
+  );
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -683,9 +714,11 @@ export function InstallTasksTab() {
                     {orden.etiquetaEstado}
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    {orden.versionObjetivo
-                      ? `Actualización a la v${orden.versionObjetivo}`
-                      : "Actualización"}
+                    {orden.tipo === "desinstalar"
+                      ? "Desinstalación"
+                      : orden.versionObjetivo
+                        ? `Actualización a la v${orden.versionObjetivo}`
+                        : "Actualización"}
                     {orden.intentos > 0
                       ? ` · intento ${orden.intentos}`
                       : ""}
@@ -697,6 +730,22 @@ export function InstallTasksTab() {
                       : ""}
                   </span>
                 </div>
+                {orden.viva && (
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      onClick={() => void cancelarOrden(orden)}
+                      disabled={cancelandoId === orden.id}
+                      className="border border-border px-2.5 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                    >
+                      {cancelandoId === orden.id
+                        ? "Cancelando..."
+                        : orden.tipo === "desinstalar"
+                          ? "Cancelar desinstalación"
+                          : "Cancelar actualización"}
+                    </button>
+                  </div>
+                )}
                 {orden.detalle && (
                   <p
                     className={`mt-1 text-xs leading-relaxed ${
