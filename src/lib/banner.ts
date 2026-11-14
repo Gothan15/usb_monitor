@@ -29,7 +29,7 @@ const ANCHO = 68;
 const MARGEN = 2;
 /** Ancho útil del texto en cada fila: ANCHO − bordes − márgenes. */
 const ANCHO_TEXTO = ANCHO - 2 - MARGEN * 2;
-/** Columna de las etiquetas («Local», «Orígenes»…), espacios incluidos. */
+/** Columna de las etiquetas («Local», «Red»…), espacios incluidos. */
 const ETIQUETA = 11;
 
 function fila(texto: string): string {
@@ -75,9 +75,6 @@ export interface DatosBanner {
   local: string;
   red?: string;
   modo: string;
-  socketLocal: string;
-  socketRed?: string;
-  origenes: string;
   /** Aviso que va DENTRO de la caja, al final (p. ej. sin TLS). */
   aviso?: string;
 }
@@ -93,13 +90,6 @@ export function imprimirBannerPanel(datos: DatosBanner): void {
     ...filasEtiqueta("Local", datos.local),
     ...(datos.red ? filasEtiqueta("Red", datos.red) : []),
     ...filasEtiqueta("Modo", `${datos.modo} · Next.js ${datos.versionNext}`),
-    ...filasEtiqueta(
-      "Socket",
-      datos.socketRed
-        ? `${datos.socketLocal} ${datos.socketRed}`
-        : datos.socketLocal,
-    ),
-    ...filasEtiqueta("Orígenes", datos.origenes),
     ...(datos.aviso
       ? [`╠${marco}╣`, ...filasEtiqueta("Aviso", datos.aviso)]
       : []),
