@@ -35,6 +35,13 @@ export interface AppSettings {
    * NO está en la lista blanca (cuenta atrás cancelable del agente).
    */
   shutdownOnNonWhitelisted: boolean;
+  /**
+   * Escalera de respuesta: en vez de apagar a la primera, la
+   * respuesta ante un dispositivo fuera de la lista sube por
+   * peldaños según sus ofensas (aviso, bloqueo de sesión,
+   * apagado). Solo tiene efecto con el apagado activado.
+   */
+  shutdownEscalationEnabled: boolean;
   /** Segundos de cuenta atrás antes del apagado (10–600). */
   shutdownCountdownSeconds: number;
   /**
@@ -56,6 +63,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   agentAutoUpdate: false,
   agentUpdateWaveSize: 3,
   shutdownOnNonWhitelisted: false,
+  shutdownEscalationEnabled: false,
   shutdownCountdownSeconds: 60,
   captureEvidenceOnNonWhitelisted: false,
   silenceThresholdMinutes: 5,

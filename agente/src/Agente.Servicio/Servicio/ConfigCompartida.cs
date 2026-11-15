@@ -16,6 +16,7 @@ public sealed class ConfigCompartida
     private readonly object _lock = new();
     private bool _lockSessionOnInsert;
     private bool _shutdownOnNonWhitelisted;
+    private bool _shutdownEscalationEnabled;
     private bool _captureEvidenceOnNonWhitelisted;
     private int _startupNetworkDelay;
 
@@ -31,6 +32,17 @@ public sealed class ConfigCompartida
     {
         get { lock (_lock) return _shutdownOnNonWhitelisted; }
         set { lock (_lock) _shutdownOnNonWhitelisted = value; }
+    }
+
+    /// <summary>
+    /// Escalera de respuesta: en vez de apagar a la primera, la
+    /// respuesta sube por peldaños según las ofensas del
+    /// dispositivo (aviso, bloqueo de sesión, apagado).
+    /// </summary>
+    public bool ShutdownEscalationEnabled
+    {
+        get { lock (_lock) return _shutdownEscalationEnabled; }
+        set { lock (_lock) _shutdownEscalationEnabled = value; }
     }
 
     private int _shutdownCountdownSeconds = 60;
@@ -75,6 +87,7 @@ public sealed class ConfigCompartida
             // tal cual viene.
             _lockSessionOnInsert = remota.LockSessionOnInsert;
             _shutdownOnNonWhitelisted = remota.ShutdownOnNonWhitelisted;
+            _shutdownEscalationEnabled = remota.ShutdownEscalationEnabled;
             _captureEvidenceOnNonWhitelisted = remota.CaptureEvidenceOnNonWhitelisted;
             // La cuenta atrás es anulable: un panel sin el campo
             // (versión anterior) no pisa el valor vigente.

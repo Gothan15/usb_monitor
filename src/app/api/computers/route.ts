@@ -12,6 +12,10 @@ import {
   ESTADOS_ORDEN_ACTIVA,
   TIPO_ORDEN_DESINSTALAR,
 } from "@/lib/agentCommands";
+import {
+  EVENTOS_APAGADO,
+  apagadoEnCursoDesdeEvento,
+} from "@/lib/eventosUsb";
 
 export async function GET(req: Request) {
   try {
@@ -83,6 +87,27 @@ export async function GET(req: Request) {
     // latido (≤30 s).
     const presencias = await leerPresencias(computers.map((c) => c.id));
 
+    // ¿Hay una cuenta atrás de apagado corriendo en el equipo?
+    // Se deriva de su ÚLTIMO evento de la familia del apagado:
+    // los eventos se guardan con el nombre normalizado, igual
+    // que las conexiones USB de arriba. Sin evento conocido, no
+    // hay cuenta.
+    const eventosApagado = await db.uSBEvent.findMany({
+      where: {
+        pcName: { in: computers.map((c) => normalizeComputerName(c.name)) },
+        event: { in: [...EVENTOS_APAGADO] },
+      },
+      orderBy: { timestamp: "desc" },
+      take: 1000,
+      select: { pcName: true, event: true },
+    });
+    const ultimoApagadoPorPc = new Map<string, string>();
+    for (const e of eventosApagado) {
+      if (!ultimoApagadoPorPc.has(e.pcName)) {
+        ultimoApagadoPorPc.set(e.pcName, e.event);
+      }
+    }
+
     const conEstadoReal = computers.map((computer) => {
       const activo =
         (computer.lastSeen != null &&
@@ -94,6 +119,9 @@ export async function GET(req: Request) {
         serviceRunning: activo,
         usbConectados:
           usbPorPc.get(normalizeComputerName(computer.name)) ?? 0,
+        apagadoEnCurso: apagadoEnCursoDesdeEvento(
+          ultimoApagadoPorPc.get(normalizeComputerName(computer.name)),
+        ),
         versionPaquete,
         actualizacionDisponible: necesitaActualizacion(
           computer.agentVersion,

@@ -72,7 +72,7 @@ public static class ReconciliacionApagado
     /// </summary>
     public static (AccionReconciliacionApagado Accion, List<string> CausantesVivos) Decidir(
         EstadoApagado? estado,
-        IReadOnlyCollection<string> clavesPresentes,
+        IEnumerable<string> clavesPresentes,
         DateTime ahoraUtc)
     {
         var vivos = new List<string>();
