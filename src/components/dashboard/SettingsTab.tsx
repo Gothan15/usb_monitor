@@ -116,7 +116,7 @@ const PREGUNTAS_FRECUENTES: { pregunta: string; respuesta: string }[] = [
     pregunta:
       "¿Cómo preparo una máquina virtual o un equipo nuevo para la instalación remota?",
     respuesta:
-      "La instalación remota sigue el modelo de Kaspersky: el panel empuja el agente por SMB (recurso C$) y lo instala creando un servicio temporal por RPC, sin WinRM ni SSH. Para que el empujón entre en una red sin dominio hay que cumplir los pasos de la lista de verificación de aquí abajo en el destino: compartición activa con la red en perfil Privado, una cuenta administradora local con contraseña y LocalAccountTokenFilterPolicy=1 para que el administrador entre completo en remoto. No hace falta fiarse de memoria: al crear la tarea, el panel comprueba los requisitos en vivo contra cada destino y la vista de Tareas enseña qué paso falló y con qué comando se arregla.",
+      "La instalación remota empuja el agente por SMB (recurso C$) y lo instala creando un servicio temporal por RPC, sin WinRM ni SSH. Para que el empujón entre en una red sin dominio hay que cumplir los pasos de la lista de verificación de aquí abajo en el destino: compartición activa con la red en perfil Privado, una cuenta administradora local con contraseña y LocalAccountTokenFilterPolicy=1 para que el administrador entre completo en remoto. No hace falta fiarse de memoria: al crear la tarea, el panel comprueba los requisitos en vivo contra cada destino y la vista de Tareas enseña qué paso falló y con qué comando se arregla.",
   },
   {
     pregunta: "¿Qué hace el ajuste «Apagar el equipo si el dispositivo no está en la lista blanca»?",

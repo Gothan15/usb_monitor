@@ -61,6 +61,7 @@ interface AdminDashboardContextValue {
   computers: Computer[];
   whitelist: WhitelistEntry[];
   usersCount: number | null;
+  tareasActivas: number;
   user: {
     name?: string | null;
     role?: string | null;
@@ -118,6 +119,7 @@ export function AdminDashboardProvider({
       ),
       whitelist: ["overview", "whitelist"].includes(activeKey),
       users: ["overview", "users", "settings"].includes(activeKey),
+      tasks: ["overview", "tasks"].includes(activeKey),
     }),
     [activeKey]
   );
@@ -211,6 +213,26 @@ export function AdminDashboardProvider({
     refetchInterval: needs.users && isLiveSyncEnabled ? 120_000 : false,
   });
 
+  // Conteo de tareas de instalación EN CURSO, para el
+  // distintivo de la pestaña de Tareas como el de Equipos o
+  // Lista blanca con los suyos. La lista devuelve las últimas
+  // 20 tareas: de sobra para contar las que están en curso.
+  const tareasQuery = useQuery<number>({
+    queryKey: ["install-tasks", "activas"],
+    queryFn: async () => {
+      const datos = await fetchJson<{ tareas?: { status?: string }[] }>(
+        "/api/install-tasks",
+      );
+      return (datos?.tareas ?? []).filter(
+        (tarea) => tarea.status === "EN_CURSO",
+      ).length;
+    },
+    enabled: !checkingRole,
+    staleTime: 15_000,
+    refetchInterval: needs.tasks && isLiveSyncEnabled ? 30_000 : false,
+  });
+  const tareasActivas = tareasQuery.data ?? 0;
+
   // El conteo vive en un estado porque además de la query lo
   // escribe handleUsersSummaryChange; la query lo sincroniza con
   // un ajuste durante el render cuando llega un dato nuevo.
@@ -238,7 +260,8 @@ export function AdminDashboardProvider({
     eventsQuery.isRefetching ||
     computersQuery.isRefetching ||
     whitelistQuery.isRefetching ||
-    usersSummaryQuery.isRefetching;
+    usersSummaryQuery.isRefetching ||
+    tareasQuery.isRefetching;
 
   const lastUpdate = useMemo(() => {
     const timestamps = [
@@ -293,6 +316,9 @@ export function AdminDashboardProvider({
         queryClient.invalidateQueries({ queryKey: ["computers"] }),
         queryClient.invalidateQueries({ queryKey: ["whitelist"] }),
         queryClient.invalidateQueries({ queryKey: ["users", "summary"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["install-tasks", "activas"],
+        }),
       ]);
       const now = new Date();
       toast({
@@ -612,6 +638,7 @@ export function AdminDashboardProvider({
       computers,
       whitelist,
       usersCount,
+      tareasActivas,
       user,
       loading,
       refreshing,
@@ -649,6 +676,7 @@ export function AdminDashboardProvider({
       navigateTo,
       refreshComputers,
       refreshing,
+      tareasActivas,
       user,
       usersCount,
       whitelist,
