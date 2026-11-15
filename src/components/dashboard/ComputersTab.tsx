@@ -211,6 +211,65 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
     },
     [toast],
   );
+
+  // Detener el apagado desde el panel: se confirma en un
+  // diálogo y se crea la orden «cancelar-apagado»; el agente la
+  // recoge en segundos porque, con la cuenta en curso, su
+  // sondeo de configuración corre acelerado.
+  const [pendingDetener, setPendingDetener] = useState<Computer | null>(null);
+  const [deteniendoId, setDeteniendoId] = useState<string | null>(null);
+  const [apagadosDetenidos, setApagadosDetenidos] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
+
+  const detenerApagado = useCallback(
+    async (computer: Computer) => {
+      const csrfToken = getCsrfTokenFromDocument();
+      if (!csrfToken) {
+        toast({
+          title: "Sesión sin token de seguridad",
+          description: "Inicia sesión nuevamente.",
+          variant: "destructive",
+        });
+        return;
+      }
+      try {
+        setDeteniendoId(computer.id);
+        const res = await fetch(
+          `/api/computers/${computer.id}/cancelar-apagado`,
+          {
+            method: "POST",
+            headers: { "x-csrf-token": csrfToken },
+            credentials: "include",
+          },
+        );
+        const datos = await res.json().catch(() => null);
+        if (!res.ok || !datos?.ok) {
+          toast({
+            title: "No se pudo crear la orden",
+            description:
+              datos?.error || "El panel no aceptó la orden de detener el apagado.",
+            variant: "destructive",
+          });
+          return;
+        }
+        setApagadosDetenidos((prev) => new Set(prev).add(computer.id));
+        setPendingDetener(null);
+        toast({
+          title: "Orden de detener el apagado enviada",
+          description: `${computer.name} cancelará la cuenta atrás en cuanto recoja la orden (segundos).`,
+        });
+      } catch {
+        toast({
+          title: "No se pudo contactar con el panel",
+          variant: "destructive",
+        });
+      } finally {
+        setDeteniendoId(null);
+      }
+    },
+    [toast],
+  );
   const [busqueda, setBusqueda] = useState("");
   const [tokenAbierto, setTokenAbierto] = useState(false);
   const [tokenPc, setTokenPc] = useState("");
@@ -722,6 +781,34 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
                     >
                       {computer.usbConectados ?? 0}
                     </span>
+                    {computer.apagadoEnCurso && (
+                      <>
+                        <span className="mr-1 inline-flex items-center border border-rose-600/60 px-1.5 py-0.5 text-[11px] font-semibold text-rose-700 dark:text-rose-500">
+                          Apagado en curso
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={
+                            deteniendoId === computer.id ||
+                            apagadosDetenidos.has(computer.id)
+                          }
+                          onClick={() => setPendingDetener(computer)}
+                          aria-label={`Detener el apagado en ${computer.name}`}
+                          title="Detener la cuenta atrás de apagado"
+                          className="text-rose-700 hover:text-rose-700 dark:text-rose-500 dark:hover:text-rose-500"
+                        >
+                          {deteniendoId === computer.id ? (
+                            <Spinner size={14} />
+                          ) : apagadosDetenidos.has(computer.id) ? (
+                            "Orden enviada"
+                          ) : (
+                            "Detener"
+                          )}
+                        </Button>
+                      </>
+                    )}
                     <Button
                       type="button"
                       variant="ghost"
@@ -835,6 +922,45 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
               className="bg-rose-600 hover:bg-rose-700"
             >
               {deletingId !== null ? "Eliminando..." : "Eliminar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={Boolean(pendingDetener)}
+        onOpenChange={(open) => {
+          if (!open && deteniendoId === null) {
+            setPendingDetener(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              ¿Detener el apagado en {pendingDetener?.name ?? "este equipo"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Se enviará la orden de cancelar la cuenta atrás de
+              apagado a ese equipo. Mientras la cuenta corre, su
+              agente pregunta por órdenes cada pocos segundos, así
+              que la cancelación llega casi al momento. El
+              dispositivo que la causó seguirá bloqueado; solo se
+              detiene el apagado.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deteniendoId !== null}>
+              Volver
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() =>
+                pendingDetener && void detenerApagado(pendingDetener)
+              }
+              disabled={deteniendoId !== null}
+              className="bg-rose-600 hover:bg-rose-700"
+            >
+              {deteniendoId !== null ? "Enviando..." : "Detener el apagado"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

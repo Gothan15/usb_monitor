@@ -33,6 +33,8 @@ export interface Computer {
   actualizacionDisponible?: boolean;
   /** USB conectados ahora mismo (misma frescura que la hoja de «Ver USB»). */
   usbConectados?: number;
+  /** Hay una cuenta atrás de apagado corriendo en el equipo. */
+  apagadoEnCurso?: boolean;
 }
 
 export interface WhitelistEntry {

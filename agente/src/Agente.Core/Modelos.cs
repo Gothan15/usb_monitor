@@ -80,6 +80,7 @@ public sealed class ConfigRemota
     [JsonPropertyName("startupNetworkDelay")] public int? StartupNetworkDelay { get; set; }
     [JsonPropertyName("lockSessionOnInsert")] public bool LockSessionOnInsert { get; set; }
     [JsonPropertyName("shutdownOnNonWhitelisted")] public bool ShutdownOnNonWhitelisted { get; set; }
+    [JsonPropertyName("shutdownEscalationEnabled")] public bool ShutdownEscalationEnabled { get; set; }
     [JsonPropertyName("shutdownCountdownSeconds")] public int? ShutdownCountdownSeconds { get; set; }
     [JsonPropertyName("captureEvidenceOnNonWhitelisted")] public bool CaptureEvidenceOnNonWhitelisted { get; set; }
     [JsonPropertyName("comandos")] public List<OrdenAgente>? Comandos { get; set; }

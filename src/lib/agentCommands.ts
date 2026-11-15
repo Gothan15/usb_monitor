@@ -30,6 +30,15 @@ export const TIPO_ORDEN_ACTUALIZAR = "actualizar";
 
 export const TIPO_ORDEN_DESINSTALAR = "desinstalar";
 
+/**
+ * Orden de detener la cuenta atrás de apagado en curso en un
+ * equipo. La ejecuta el propio trabajador del agente (no el
+ * actualizador) en cuanto la configuración la sirve — y con
+ * una cuenta en curso, la configuración se sondea cada pocos
+ * segundos —.
+ */
+export const TIPO_ORDEN_CANCELAR_APAGADO = "cancelar-apagado";
+
 /** Qué hace DELETE /api/computers/:id según el estado del equipo. */
 export type AccionBorradoEquipo =
   | "borrar"

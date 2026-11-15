@@ -34,6 +34,12 @@ public sealed class CompaneroWindow : Window
     private readonly TextBlock _datosDispositivo;
     private readonly Border _bandaAviso;
     private readonly TextBlock _aviso;
+    private readonly Border _bandaEscalera;
+    private readonly TextBlock _avisoEscalera;
+    private readonly Border _bandaApagado;
+    private readonly TextBlock _textoApagado;
+    private ApagadoLocal? _cuentaAtras;
+    private string _firmaApagado = string.Empty;
     private readonly Border _bandaMensaje;
     private Border _bordeBandaMensaje = null!;
     private Ellipse _puntoPastilla = null!;
@@ -163,6 +169,43 @@ public sealed class CompaneroWindow : Window
         _bandaAviso.Visibility = Visibility.Collapsed;
         contenido.Children.Add(_bandaAviso);
 
+        // Banda de la escalera de respuesta: qué peldaño le ha
+        // tocado a este dispositivo y qué viene si se repite.
+        _avisoEscalera = new TextBlock
+        {
+            FontFamily = Tema.FuenteTexto,
+            FontSize = 13,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(Color.FromRgb(0x7A, 0x55, 0x10)),
+            TextWrapping = TextWrapping.Wrap
+        };
+        _bandaEscalera = CrearBanda(
+            _avisoEscalera,
+            new SolidColorBrush(Color.FromRgb(0xFA, 0xF1, 0xDC)),
+            Tema.Ambar);
+        _bandaEscalera.Margin = new Thickness(0, 12, 0, 0);
+        _bandaEscalera.Visibility = Visibility.Collapsed;
+        contenido.Children.Add(_bandaEscalera);
+
+        // Banda de la cuenta atrás de apagado: la pinta el
+        // sondeo de apagado_local.json (RevisarApagadoLocal),
+        // no la selección de dispositivo.
+        _textoApagado = new TextBlock
+        {
+            FontFamily = Tema.FuenteTexto,
+            FontSize = 13,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(Color.FromRgb(0x7A, 0x1F, 0x18)),
+            TextWrapping = TextWrapping.Wrap
+        };
+        _bandaApagado = CrearBanda(
+            _textoApagado,
+            new SolidColorBrush(Color.FromRgb(0xFA, 0xE9, 0xE6)),
+            Tema.Rojo);
+        _bandaApagado.Margin = new Thickness(0, 12, 0, 0);
+        _bandaApagado.Visibility = Visibility.Collapsed;
+        contenido.Children.Add(_bandaApagado);
+
         _formulario = new StackPanel { Margin = new Thickness(0, 14, 0, 0) };
         _formulario.Children.Add(Tema.EtiquetaCampo("Usuario"));
         _usuario = Tema.CampoTexto();
@@ -227,6 +270,7 @@ public sealed class CompaneroWindow : Window
         {
             await RevisarArchivoAsync();
             RevisarSolicitudesEvidencia();
+            RevisarApagadoLocal();
         };
 
         _latido = new DispatcherTimer
@@ -680,6 +724,69 @@ public sealed class CompaneroWindow : Window
         }
     }
 
+    /// <summary>
+    /// La banda de cuenta atrás sigue a apagado_local.json (lo
+    /// escribe el servicio al armar, adoptar o cancelar la
+    /// cuenta): si hay cuenta, la banda enseña los segundos que
+    /// quedan y cómo pararla; si el archivo desaparece, la
+    /// banda se va con él. Corre en el sondeo de 1 s.
+    /// </summary>
+    private void RevisarApagadoLocal()
+    {
+        try
+        {
+            var contenido = LeerArchivoCompartido(DatosVentanas.RutaApagadoLocal);
+            if (contenido != _firmaApagado)
+            {
+                _firmaApagado = contenido;
+                _cuentaAtras = string.IsNullOrWhiteSpace(contenido)
+                    ? null
+                    : JsonSerializer.Deserialize<ApagadoLocal>(contenido);
+            }
+        }
+        catch
+        {
+            // Un archivo a medio escribir se relee al segundo
+            // siguiente; la banda nunca tumba la ventana.
+            _cuentaAtras = null;
+        }
+        ActualizarBandaApagado();
+    }
+
+    private void ActualizarBandaApagado()
+    {
+        if (_cuentaAtras is null ||
+            !DateTime.TryParse(_cuentaAtras.VenceUtc, out var vence))
+        {
+            _bandaApagado.Visibility = Visibility.Collapsed;
+            return;
+        }
+        var restante = vence.ToUniversalTime() - DateTime.UtcNow;
+        if (restante <= TimeSpan.Zero)
+        {
+            _bandaApagado.Visibility = Visibility.Collapsed;
+            return;
+        }
+        var nombre = string.IsNullOrWhiteSpace(_cuentaAtras.Nombre)
+            ? "un dispositivo no autorizado"
+            : $"«{_cuentaAtras.Nombre}»";
+        _textoApagado.Text =
+            $"El equipo se apagará en {(int)restante.TotalMinutes}:{restante.Seconds:00} " +
+            $"por {nombre}. Extrae el dispositivo para cancelar la cuenta atrás.";
+        _bandaApagado.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>El texto de la banda de la escalera según el peldaño.</summary>
+    private static string TextoEscalera(int nivel) => nivel switch
+    {
+        1 => "Escalera de respuesta: primera ofensa de este dispositivo. " +
+             "Si vuelve a insertarse, se bloqueará la sesión; a la tercera, el equipo se apagará.",
+        2 => "Escalera de respuesta: segunda ofensa de este dispositivo; " +
+             "la sesión se ha bloqueado. Una más y el equipo se apagará al insertarlo.",
+        _ => "Escalera de respuesta: este dispositivo suma tres o más ofensas; " +
+             "al insertarlo se arma la cuenta atrás de apagado.",
+    };
+
     private void RefrescarVentana()
     {
         if (_bloqueos.Count == 0)
@@ -792,6 +899,18 @@ public sealed class CompaneroWindow : Window
             PintarPastilla("Bloqueado",
                 new SolidColorBrush(Color.FromRgb(0xC4, 0x45, 0x3A)),
                 new SolidColorBrush(Color.FromRgb(0x8E, 0x2F, 0x28)));
+        }
+
+        // La banda de la escalera solo existe si este bloqueo
+        // tuvo peldaño (la escalera activada en el panel).
+        if (actual.EnWhitelist == false && actual.Nivel is >= 1)
+        {
+            _avisoEscalera.Text = TextoEscalera(actual.Nivel.Value);
+            _bandaEscalera.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            _bandaEscalera.Visibility = Visibility.Collapsed;
         }
     }
 
@@ -1346,5 +1465,19 @@ public sealed class CompaneroWindow : Window
 
         [JsonPropertyName("en_whitelist")]
         public bool? EnWhitelist { get; set; }
+
+        /// <summary>Peldaño de la escalera aplicado a este bloqueo (0 = ninguno).</summary>
+        [JsonPropertyName("nivel")]
+        public int? Nivel { get; set; }
+    }
+
+    /// <summary>Forma exacta de apagado_local.json del servicio.</summary>
+    private sealed class ApagadoLocal
+    {
+        [JsonPropertyName("nombre")]
+        public string? Nombre { get; set; }
+
+        [JsonPropertyName("venceUtc")]
+        public string? VenceUtc { get; set; }
     }
 }
