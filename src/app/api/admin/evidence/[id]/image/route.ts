@@ -15,19 +15,35 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    await requireAuth(req, { role: "admin" });
+    const identidad = await requireAuth(req, { role: "admin" });
     const { id } = await params;
 
     const evidencia = await db.blockEvidence.findFirst({
       where: { pendingUnlockId: id, image: { not: null } },
       orderBy: { capturedAt: "desc" },
-      select: { image: true, imageMime: true },
+      select: { id: true, image: true, imageMime: true },
     });
     if (!evidencia?.image) {
       return NextResponse.json(
         { error: "Este bloqueo no tiene captura de pantalla" },
         { status: 404 }
       );
+    }
+
+    // Custodia: ver la imagen queda registrado (quién y cuándo,
+    // y cuántas veces va). Si la anotación falla, la imagen se
+    // sirve igual: la auditoría nunca bloquea la evidencia.
+    try {
+      await db.blockEvidence.update({
+        where: { id: evidencia.id },
+        data: {
+          viewCount: { increment: 1 },
+          lastViewedAt: new Date(),
+          lastViewedBy: identidad.username,
+        },
+      });
+    } catch (error: any) {
+      logError("No se pudo registrar la vista de la evidencia", error);
     }
 
     return new NextResponse(new Uint8Array(evidencia.image), {

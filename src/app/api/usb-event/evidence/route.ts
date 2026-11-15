@@ -82,6 +82,7 @@ export async function POST(req: Request) {
         nota: datos.nota,
         image: datos.image ? new Uint8Array(datos.image) : null,
         imageMime: datos.imageMime,
+        imageSha256: datos.imageSha256,
       },
     });
 

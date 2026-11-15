@@ -85,7 +85,8 @@ public sealed class AgenteWorker : BackgroundService
 
     // Captura de evidencia: el id del bloqueo en el panel por clave
     // (la subida del paquete lo necesita, también tras la extracción)
-    // y las claves con la foto ya solicitada en este arranque.
+    // y las instancias («clave|instancia») con la foto ya solicitada
+    // en este arranque: por bloqueo concreto, no por dispositivo.
     private readonly object _lockEvidencia = new();
     private readonly Dictionary<string, string> _idsBloqueoPanel = new();
     private readonly HashSet<string> _evidenciaSolicitada = new();
@@ -608,22 +609,28 @@ public sealed class AgenteWorker : BackgroundService
     /// por defecto). El servicio no puede capturar nada — sesión 0,
     /// sin escritorio —: escribe la solicitud en la carpeta
     /// `evidencia` y el compañero, que vive en la sesión del
-    /// usuario, captura y deja el paquete. Una por bloqueo: la
-    /// deduplicación vive aquí (memoria) y en la carpeta
-    /// (GestorEvidencia no crea la segunda).
+    /// usuario, captura y deja el paquete. Una por BLOQUEO: la
+    /// instancia es el id del bloqueo en el panel si ya consta
+    /// (el registro va antes en AlLlegarAsync) o el instante de
+    /// detección; otro bloqueo del mismo dispositivo crea otra
+    /// solicitud aunque la primera foto siga sin subir.
     /// </summary>
     private void SolicitarEvidencia(Dispositivo disp)
     {
         if (!_compartida.CaptureEvidenceOnNonWhitelisted) return;
+        var instante = DateTime.UtcNow.ToString("o");
+        string? bloqueoId;
+        lock (_lockEvidencia) _idsBloqueoPanel.TryGetValue(disp.Clave, out bloqueoId);
+        var instancia = !string.IsNullOrEmpty(bloqueoId) ? bloqueoId : instante;
         lock (_lockEvidencia)
         {
-            if (!_evidenciaSolicitada.Add(disp.Clave)) return;
+            if (!_evidenciaSolicitada.Add(disp.Clave + "|" + instancia)) return;
         }
         try
         {
             var carpeta = GestorEvidencia.Carpeta(Registro.DirectorioDatos);
-            var instante = DateTime.UtcNow.ToString("o");
-            if (GestorEvidencia.Solicitar(carpeta, disp.Clave, disp.Serial, instante))
+            if (GestorEvidencia.Solicitar(
+                    carpeta, disp.Clave, disp.Serial, instante, instancia, bloqueoId))
                 Log.Info($"Evidencia solicitada al compañero: {disp.Nombre} ({disp.Serial})");
         }
         catch (Exception exc)
@@ -677,8 +684,11 @@ public sealed class AgenteWorker : BackgroundService
         _cliente.Evento(EvDesconectado, disp.Letra, disp.Serial);
         _pendientesRegistrados.Remove(clave);
         // El bloqueo terminó: si el dispositivo vuelve a entrar,
-        // su foto del momento se pide de nuevo.
-        lock (_lockEvidencia) _evidenciaSolicitada.Remove(clave);
+        // su foto del momento se pide de nuevo (se olvidan todas
+        // las instancias pedidas de esta clave).
+        lock (_lockEvidencia)
+            _evidenciaSolicitada.RemoveWhere(
+                s => s.StartsWith(clave + "|", StringComparison.Ordinal));
         RefrescarPendientesLocales();
         return true;
     }
@@ -1262,15 +1272,29 @@ public sealed class AgenteWorker : BackgroundService
         }
         foreach (var paquete in GestorEvidencia.ListarPaquetes(carpeta))
         {
-            string? id;
-            lock (_lockEvidencia) _idsBloqueoPanel.TryGetValue(paquete.Clave, out id);
+            // Foto diferida dentro de su ventana de gracia
+            // (5 min): el compañero aún puede completarla al
+            // desbloquear la sesión; subir el paquete ya lo
+            // dejaría sin foto para siempre.
+            if (paquete.FotoPendiente &&
+                DateTime.TryParse(paquete.CapturedAt, out var captura) &&
+                DateTime.UtcNow - captura.ToUniversalTime() < TimeSpan.FromMinutes(5))
+                continue;
+            // El paquete sabe a qué bloqueo pertenece si el id
+            // constaba al pedir la foto; si no, manda el último
+            // id conocido del dispositivo.
+            string? id = paquete.BloqueoId;
+            if (string.IsNullOrEmpty(id))
+            {
+                lock (_lockEvidencia) _idsBloqueoPanel.TryGetValue(paquete.Clave, out id);
+            }
             if (string.IsNullOrEmpty(id)) continue;
             var resultado = await _cliente
                 .SubirEvidenciaAsync(id, paquete).ConfigureAwait(false);
             switch (resultado)
             {
                 case ClientePanel.ResultadoSubidaEvidencia.Subida:
-                    GestorEvidencia.BorrarPaquete(carpeta, paquete.Clave);
+                    GestorEvidencia.BorrarPaquete(carpeta, paquete.Clave, paquete.Instancia);
                     Log.Info(
                         $"Evidencia subida al panel: bloqueo {id}, serial {paquete.Serial}.");
                     break;
@@ -1279,7 +1303,7 @@ public sealed class AgenteWorker : BackgroundService
                     // purgado o id irrecuperable): reintentarlo
                     // solo envenena la cola. A descartadas, con
                     // constancia en el registro.
-                    if (GestorEvidencia.MoverPaqueteADescartadas(carpeta, paquete.Clave))
+                    if (GestorEvidencia.MoverPaqueteADescartadas(carpeta, paquete.Clave, paquete.Instancia))
                     {
                         Log.Advertencia(
                             "Evidencia descartada: el panel rechazó " +

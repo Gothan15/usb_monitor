@@ -45,6 +45,11 @@ export async function GET(
         nota: evidencia.nota,
         hasImage: evidencia.image !== null,
         imageMime: evidencia.imageMime,
+        // Custodia de la imagen: su huella y quién la ha visto.
+        imageSha256: evidencia.imageSha256,
+        viewCount: evidencia.viewCount,
+        lastViewedAt: evidencia.lastViewedAt,
+        lastViewedBy: evidencia.lastViewedBy,
       },
     });
   } catch (error: any) {
