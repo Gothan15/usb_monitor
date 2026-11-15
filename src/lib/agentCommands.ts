@@ -125,6 +125,28 @@ export function canceladaServible(
   return ahora.getTime() - fin <= MINUTOS_CANCELADA_SERVIDA * 60_000;
 }
 
+/**
+ * ¿Puede borrarse esta orden en la limpieza de terminadas de
+ * la pestaña de Tareas? Solo las terminales: HECHA y ERROR,
+ * siempre; CANCELADA, solo cuando ya no es servible al agente
+ * — borrarla dentro de su ventana de 10 minutos le quitaría
+ * al agente que la está abandonando la señal de que pare —.
+ * Las vivas (ESPERA, ENTREGADA, EN_CURSO) no se tocan nunca.
+ */
+export function ordenEliminable(
+  estado: string,
+  finishedAt: Date | string | null,
+  ahora: Date,
+): boolean {
+  if (estado === ESTADO_ORDEN.HECHA || estado === ESTADO_ORDEN.ERROR) {
+    return true;
+  }
+  if (estado === ESTADO_ORDEN.CANCELADA) {
+    return !canceladaServible(finishedAt, ahora);
+  }
+  return false;
+}
+
 /** Compara dos versiones «X.Y.Z»: -1, 0 o 1. Lo ilegible cuenta como 0.0.0. */
 export function compararVersiones(a: string | null, b: string | null): number {
   const partes = (v: string | null): number[] => {

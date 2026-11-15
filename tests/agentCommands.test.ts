@@ -10,6 +10,7 @@ import {
   canceladaServible,
   hayDesinstalacionActiva,
   informeSumaIntento,
+  ordenEliminable,
   puedeCrearOrdenAutomatica,
   ESTADOS_ORDEN_ACTIVA,
   sePuedeCancelar,
@@ -196,6 +197,26 @@ describe("canceladaServible", () => {
   it("sin fecha de fin no se sirve", () => {
     expect(canceladaServible(null, ahora)).toBe(false);
     expect(canceladaServible("no-es-fecha", ahora)).toBe(false);
+  });
+});
+
+describe("ordenEliminable", () => {
+  const ahora = new Date("2026-11-14T12:00:00.000Z");
+
+  it("las terminadas de verdad se pueden borrar", () => {
+    expect(ordenEliminable("HECHA", new Date("2026-11-14T11:00:00.000Z"), ahora)).toBe(true);
+    expect(ordenEliminable("ERROR", new Date("2026-11-14T11:00:00.000Z"), ahora)).toBe(true);
+  });
+
+  it("las vivas no se tocan nunca", () => {
+    expect(ordenEliminable("ESPERA", null, ahora)).toBe(false);
+    expect(ordenEliminable("ENTREGADA", null, ahora)).toBe(false);
+    expect(ordenEliminable("EN_CURSO", null, ahora)).toBe(false);
+  });
+
+  it("la cancelada reciente se respeta mientras aún se sirve al agente", () => {
+    expect(ordenEliminable("CANCELADA", new Date("2026-11-14T11:55:00.000Z"), ahora)).toBe(false);
+    expect(ordenEliminable("CANCELADA", new Date("2026-11-14T11:49:00.000Z"), ahora)).toBe(true);
   });
 });
 
