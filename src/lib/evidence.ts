@@ -7,6 +7,7 @@
  * tocar la base de datos, y la imagen se acepta solo si es JPEG o
  * PNG de verdad y no pasa de 4 MB.
  */
+import { createHash } from "crypto";
 
 export const MAX_IMAGEN_EVIDENCIA_BYTES = 4 * 1024 * 1024;
 const MAX_PROCESOS = 200;
@@ -35,6 +36,8 @@ export interface DatosEvidencia {
   nota: string | null;
   image: Buffer | null;
   imageMime: string | null;
+  /** SHA-256 de la imagen validada: la huella de custodia. */
+  imageSha256: string | null;
 }
 
 export type ResultadoValidacionEvidencia =
@@ -153,6 +156,9 @@ export function validarPaqueteEvidencia(
       nota: textoAcotado(datos.nota, 1000),
       image,
       imageMime,
+      imageSha256: image
+        ? createHash("sha256").update(image).digest("hex")
+        : null,
     },
   };
 }

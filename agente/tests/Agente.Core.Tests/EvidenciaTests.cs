@@ -221,6 +221,44 @@ public class EvidenciaTests
     }
 
     [Fact]
+    public void Solicitar_DosInstanciasDelMismoDispositivo_Conviven()
+    {
+        var carpeta = CarpetaNueva();
+        // El primer bloqueo pide su foto; el segundo, del mismo
+        // pendrive y con el primer paquete aún sin subir, pide
+        // la suya: ya no se queda sin foto.
+        Assert.True(GestorEvidencia.Solicitar(
+            carpeta, Clave, "S1", "2026-11-05T12:00:00Z", "bloqueo-1", "bloqueo-1"));
+        Assert.False(GestorEvidencia.Solicitar(
+            carpeta, Clave, "S1", "2026-11-05T12:00:01Z", "bloqueo-1", "bloqueo-1"));
+        Assert.True(GestorEvidencia.Solicitar(
+            carpeta, Clave, "S1", "2026-11-05T12:05:00Z", "bloqueo-2", "bloqueo-2"));
+        Assert.Equal(2, GestorEvidencia.ListarSolicitudes(carpeta).Count);
+    }
+
+    [Fact]
+    public void PaquetesPorInstancia_NoSePisanNiSeBorranJuntos()
+    {
+        var carpeta = CarpetaNueva();
+        GestorEvidencia.GuardarPaquete(carpeta, new PaqueteEvidencia
+        {
+            Clave = Clave, Instancia = "bloqueo-1", BloqueoId = "bloqueo-1",
+            CapturedAt = "2026-11-05T12:00:05Z",
+        });
+        GestorEvidencia.GuardarPaquete(carpeta, new PaqueteEvidencia
+        {
+            Clave = Clave, Instancia = "bloqueo-2", BloqueoId = "bloqueo-2",
+            CapturedAt = "2026-11-05T12:05:05Z",
+        });
+        Assert.Equal(2, GestorEvidencia.ListarPaquetes(carpeta).Count);
+
+        GestorEvidencia.BorrarPaquete(carpeta, Clave, "bloqueo-1");
+        var restante = Assert.Single(GestorEvidencia.ListarPaquetes(carpeta));
+        Assert.Equal("bloqueo-2", restante.Instancia);
+        Assert.Equal("bloqueo-2", restante.BloqueoId);
+    }
+
+    [Fact]
     public void MoverPaqueteADescartadas_SacaElPaqueteDeLaCola()
     {
         var carpeta = CarpetaNueva();

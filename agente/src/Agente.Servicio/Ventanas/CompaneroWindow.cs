@@ -356,7 +356,11 @@ public sealed class CompaneroWindow : Window
             var carpeta = GestorEvidencia.Carpeta(Registro.DirectorioDatos);
             foreach (var solicitud in GestorEvidencia.ListarSolicitudes(carpeta))
             {
-                var segura = GestorEvidencia.NombreSeguro(solicitud.Clave);
+                // La identidad tramitada es la de la INSTANCIA:
+                // dos bloqueos del mismo dispositivo son dos
+                // fotos, no una.
+                var segura = GestorEvidencia.ClaveArchivo(
+                    solicitud.Clave, solicitud.Instancia);
                 lock (_lockEvidencias)
                 {
                     if (!_evidenciasTramitadas.Add(segura)) continue;
@@ -364,10 +368,99 @@ public sealed class CompaneroWindow : Window
                 var pedida = solicitud;
                 _ = Task.Run(() => CapturarEvidencia(pedida));
             }
+            RevisarFotosDiferidas();
         }
         catch (Exception ex)
         {
             RegistroVentanas.Error("No se pudo revisar la carpeta de evidencia.", ex);
+        }
+    }
+
+    // Último intento de completar cada foto diferida: no hace
+    // falta reintentarlo en cada sondeo de un segundo.
+    private readonly Dictionary<string, DateTime> _intentosFotoDiferida = new();
+
+    /// <summary>
+    /// Las fotos que quedaron diferidas (la sesión estaba
+    /// bloqueada al capturar): si la sesión ya se desbloqueó,
+    /// la pantalla se deja fotografiar y el paquete se completa
+    /// en su carpeta, a la espera de que el servicio lo suba.
+    /// Solo se intenta con paquetes recientes (10 min): pasado
+    /// ese tiempo, el servicio sube el paquete tal cual.
+    /// </summary>
+    private void RevisarFotosDiferidas()
+    {
+        try
+        {
+            var carpeta = GestorEvidencia.Carpeta(Registro.DirectorioDatos);
+            foreach (var paquete in GestorEvidencia.ListarPaquetes(carpeta))
+            {
+                if (!paquete.FotoPendiente) continue;
+                if (!DateTime.TryParse(paquete.CapturedAt, out var captura)) continue;
+                if (DateTime.UtcNow - captura.ToUniversalTime() >
+                    TimeSpan.FromMinutes(10))
+                    continue;
+                var identidad = GestorEvidencia.ClaveArchivo(
+                    paquete.Clave, paquete.Instancia);
+                lock (_lockEvidencias)
+                {
+                    if (_intentosFotoDiferida.TryGetValue(identidad, out var ultimo) &&
+                        DateTime.UtcNow - ultimo < TimeSpan.FromSeconds(15))
+                        continue;
+                    _intentosFotoDiferida[identidad] = DateTime.UtcNow;
+                }
+                var pendiente = paquete;
+                _ = Task.Run(() => CompletarFotoDiferida(pendiente));
+            }
+        }
+        catch (Exception ex)
+        {
+            RegistroVentanas.Error("No se pudieron revisar las fotos diferidas.", ex);
+        }
+    }
+
+    /// <summary>
+    /// Completa la foto de un paquete diferido: el mismo baile
+    /// que la captura inicial (la ventana se retira un instante
+    /// para no salir en la foto) y el paquete se reescribe en
+    /// su carpeta.
+    /// </summary>
+    private void CompletarFotoDiferida(PaqueteEvidencia paquete)
+    {
+        var estabaVisible = false;
+        try
+        {
+            Dispatcher.Invoke(() =>
+            {
+                estabaVisible = IsVisible;
+                if (estabaVisible) Visibility = Visibility.Hidden;
+            });
+            if (estabaVisible) Thread.Sleep(120);
+
+            if (!CapturadorEvidencia.CompletarFoto(paquete)) return;
+            var carpeta = GestorEvidencia.Carpeta(Registro.DirectorioDatos);
+            // Si el servicio ya subió el paquete y lo borró, no
+            // se resucita: esa evidencia ya llegó al panel.
+            if (!File.Exists(GestorEvidencia.RutaPaquete(
+                    carpeta, paquete.Clave, paquete.Instancia)))
+                return;
+            GestorEvidencia.GuardarPaquete(carpeta, paquete);
+            RegistroVentanas.Info(
+                $"Foto diferida completada para el bloqueo del serial {paquete.Serial}.");
+        }
+        catch (Exception ex)
+        {
+            RegistroVentanas.Error("No se pudo completar la foto diferida.", ex);
+        }
+        finally
+        {
+            if (estabaVisible)
+            {
+                _ = Dispatcher.InvokeAsync(() =>
+                {
+                    if (_bloqueos.Count > 0) RefrescarVentana();
+                });
+            }
         }
     }
 
@@ -404,6 +497,8 @@ public sealed class CompaneroWindow : Window
                 {
                     Clave = solicitud.Clave,
                     Serial = solicitud.Serial,
+                    Instancia = solicitud.Instancia,
+                    BloqueoId = solicitud.BloqueoId,
                     CapturedAt = DateTime.UtcNow.ToString("o"),
                     Nota = $"La captura falló en el equipo: {ex.Message}",
                 };
@@ -411,7 +506,7 @@ public sealed class CompaneroWindow : Window
 
             var carpeta = GestorEvidencia.Carpeta(Registro.DirectorioDatos);
             GestorEvidencia.GuardarPaquete(carpeta, paquete);
-            GestorEvidencia.BorrarSolicitud(carpeta, solicitud.Clave);
+            GestorEvidencia.BorrarSolicitud(carpeta, solicitud.Clave, solicitud.Instancia);
             RegistroVentanas.Info(
                 $"Evidencia capturada para el bloqueo del serial {solicitud.Serial}.");
         }
