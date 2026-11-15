@@ -188,7 +188,9 @@ export function AppShell({
                             )}
                           />
                           {!lateralAbierta && item.badge !== undefined && (
-                            <span className="absolute -right-1.5 -top-1.5 size-2 rounded-full bg-[var(--acero)]" />
+                            <span className="absolute -right-2 -top-1.5 inline-flex min-w-4 items-center justify-center rounded-full border border-acero/50 bg-background px-1 py-px font-mono text-[9px] font-bold leading-none tabular-nums text-acero">
+                              {item.badge}
+                            </span>
                           )}
                         </span>
                         <AnimatePresence>
@@ -202,7 +204,7 @@ export function AppShell({
                             >
                               <span className="flex-1 truncate">{item.label}</span>
                               {item.badge !== undefined && (
-                                <span className="ml-2 font-mono text-[11px] font-semibold tabular-nums text-[var(--acero)]">
+                                <span className="ml-2 inline-flex items-center justify-center rounded-full border border-acero/40 bg-acero/10 px-1.5 py-px font-mono text-[10.5px] font-semibold tabular-nums text-acero">
                                   {item.badge}
                                 </span>
                               )}
@@ -456,7 +458,7 @@ export function AppShell({
                         />
                         {item.label}
                         {item.badge !== undefined && (
-                          <span className="font-mono text-[10.5px] font-semibold tabular-nums text-[var(--acero)]">
+                          <span className="inline-flex items-center justify-center rounded-full border border-acero/40 bg-acero/10 px-1.5 py-px font-mono text-[10px] font-semibold tabular-nums text-acero">
                             {item.badge}
                           </span>
                         )}
@@ -638,7 +640,7 @@ export function AppShell({
                           />
                           {item.label}
                           {item.badge !== undefined && (
-                            <span className="font-mono text-[10.5px] font-semibold tabular-nums text-[var(--acero)]">
+                            <span className="inline-flex items-center justify-center rounded-full border border-acero/40 bg-acero/10 px-1.5 py-px font-mono text-[10px] font-semibold tabular-nums text-acero">
                               {item.badge}
                             </span>
                           )}

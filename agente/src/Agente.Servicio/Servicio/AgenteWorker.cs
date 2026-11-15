@@ -111,11 +111,12 @@ public sealed class AgenteWorker : BackgroundService
     // tiene que salir en la primera vuelta del latido, no a los
     // 5 minutos. Con UtcNow aquí, un agente recién empujado no
     // podía enrolarse hasta pasados 5 min de servicio, y el
-    // panel —que espera la primera señal solo 3 min desde que
-    // empieza el empujón— daba la instalación por fallida
-    // siempre. El espaciado de 5 min entre reintentos se
-    // mantiene: el bloque del latido estampa la hora al intentar.
+    // panel —que entonces esperaba la primera señal solo 3 min—
+    // daba la instalación por fallida siempre. Los reintentos
+    // van graduados (ReintentoCredencial): pronto al principio
+    // y a 5 minutos cuando la cosa persiste.
     private DateTime _ultimoIntentoCredencial = DateTime.MinValue;
+    private int _fallosCredencial;
     private DateTime _ultimaConfig = DateTime.MinValue;
 
     // Transiciones del compañero para el latido de depuración.
@@ -1240,11 +1241,15 @@ public sealed class AgenteWorker : BackgroundService
                 // visite la PC: con el código de enrolamiento que
                 // dejó la instalación (un solo uso) o migrando el
                 // token antiguo (se presenta una última vez y se
-                // borra). Reintento cada 5 minutos si el panel no
-                // responde; una vez registrado, este bloque no
-                // vuelve a hacer nada.
+                // borra). Los reintentos van graduados si el panel
+                // no responde (30 s, 1 min, 2 min y luego cada
+                // 5 minutos): al instalar dos PC a la vez el panel
+                // va cargado, y un primer intento fallido por eso
+                // no debe costar la ventana de señal de la tarea.
+                // Una vez registrado, este bloque no vuelve a
+                // hacer nada.
                 if (_configuracion.EquipoId is null &&
-                    ahora - _ultimoIntentoCredencial >= TimeSpan.FromMinutes(5))
+                    ahora - _ultimoIntentoCredencial >= ReintentoCredencial.EsperaTrasFallos(_fallosCredencial))
                 {
                     _ultimoIntentoCredencial = ahora;
                     var codigoPendiente = _configuracion.CodigoEnrolamiento;
@@ -1252,12 +1257,14 @@ public sealed class AgenteWorker : BackgroundService
                     {
                         if (await _cliente.EnrolarConCodigoAsync(codigoPendiente).ConfigureAwait(false))
                         {
+                            _fallosCredencial = 0;
                             _configuracion.BorrarCodigoEnrolamiento();
                             Log.Info("Equipo enrolado con el código de la instalación.");
                         }
                         else
                         {
-                            Log.Advertencia("El enrolamiento con código falló; se reintenta en unos minutos (si el código caducó o ya se gastó, genera otro en Equipos).");
+                            _fallosCredencial++;
+                            Log.Advertencia("El enrolamiento con código falló; se reintentará (si el código caducó o ya se gastó, genera otro en Equipos).");
                         }
                     }
                 }

@@ -6,12 +6,15 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
+import { ListTodo } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { emitNotification } from "@/lib/notificationBus";
 import { fetchJson, HttpError } from "@/lib/http";
 import { getCsrfTokenFromDocument } from "@/lib/utils";
 import {
@@ -53,6 +56,14 @@ interface SessionResponse {
     username?: string | null;
     role?: string | null;
   };
+}
+
+/** Resumen de una tarea de instalación: lo justo para el
+ *  distintivo de la pestaña y el aviso cuando termina. */
+interface TareaResumen {
+  id: string;
+  status: string;
+  targets?: { status: string }[];
 }
 
 interface AdminDashboardContextValue {
@@ -119,7 +130,6 @@ export function AdminDashboardProvider({
       ),
       whitelist: ["overview", "whitelist"].includes(activeKey),
       users: ["overview", "users", "settings"].includes(activeKey),
-      tasks: ["overview", "tasks"].includes(activeKey),
     }),
     [activeKey]
   );
@@ -213,25 +223,91 @@ export function AdminDashboardProvider({
     refetchInterval: needs.users && isLiveSyncEnabled ? 120_000 : false,
   });
 
-  // Conteo de tareas de instalación EN CURSO, para el
-  // distintivo de la pestaña de Tareas como el de Equipos o
-  // Lista blanca con los suyos. La lista devuelve las últimas
-  // 20 tareas: de sobra para contar las que están en curso.
-  const tareasQuery = useQuery<number>({
-    queryKey: ["install-tasks", "activas"],
+  // Tareas de instalación (las últimas 20): de aquí salen el
+  // distintivo de la pestaña de Tareas — cuántas están EN
+  // CURSO, como el de Equipos o el de Lista blanca con los
+  // suyos — y el aviso cuando una tarea termina y no se está
+  // mirando esa pestaña. Mientras alguna corre, el sondeo va
+  // a 10 s para que el aviso llegue pronto; en reposo, a 60 s.
+  const tareasQuery = useQuery<TareaResumen[]>({
+    queryKey: ["install-tasks", "resumen"],
     queryFn: async () => {
-      const datos = await fetchJson<{ tareas?: { status?: string }[] }>(
+      const datos = await fetchJson<{ tareas?: TareaResumen[] }>(
         "/api/install-tasks",
       );
-      return (datos?.tareas ?? []).filter(
-        (tarea) => tarea.status === "EN_CURSO",
-      ).length;
+      return datos?.tareas ?? [];
     },
     enabled: !checkingRole,
-    staleTime: 15_000,
-    refetchInterval: needs.tasks && isLiveSyncEnabled ? 30_000 : false,
+    staleTime: 10_000,
+    refetchInterval: (query) => {
+      if (!isLiveSyncEnabled) return false;
+      const tareas = query.state.data ?? [];
+      return tareas.some((tarea) => tarea.status === "EN_CURSO")
+        ? 10_000
+        : 60_000;
+    },
   });
-  const tareasActivas = tareasQuery.data ?? 0;
+  const tareas = tareasQuery.data ?? [];
+  const tareasActivas = tareas.filter(
+    (tarea) => tarea.status === "EN_CURSO",
+  ).length;
+
+  // Aviso al terminar una tarea: se vigilan las transiciones
+  // de EN CURSO a COMPLETADA o CON_ERRORES. La primera carga
+  // solo siembra el mapa (las tareas viejas no avisan), y si
+  // la pestaña de Tareas es la que se está viendo no hace
+  // falta avisar: ya se está mirando. El aviso sale en una
+  // tarjeta y queda también en la campana de notificaciones.
+  const estadosTareasRef = useRef<Map<string, string> | null>(null);
+  const activeKeyRef = useRef(activeKey);
+  useEffect(() => {
+    activeKeyRef.current = activeKey;
+  }, [activeKey]);
+  useEffect(() => {
+    const previos = estadosTareasRef.current;
+    estadosTareasRef.current = new Map(
+      tareas.map((tarea) => [tarea.id, tarea.status]),
+    );
+    if (!previos || activeKeyRef.current === "tasks") return;
+    for (const tarea of tareas) {
+      if (previos.get(tarea.id) !== "EN_CURSO") continue;
+      const destinos = tarea.targets ?? [];
+      if (tarea.status === "COMPLETADA") {
+        const bien = destinos.filter(
+          (d) => d.status === "INSTALADO" || d.status === "OMITIDO",
+        ).length;
+        const descripcion = destinos.length
+          ? `${bien} de ${destinos.length} equipos quedaron instalados.`
+          : undefined;
+        toast({
+          title: "Tarea de instalación completada",
+          description: descripcion,
+        });
+        emitNotification({
+          title: "Tarea de instalación completada",
+          description: descripcion,
+          icon: ListTodo,
+          tone: "success",
+        });
+      } else if (tarea.status === "CON_ERRORES") {
+        const mal = destinos.filter((d) => d.status === "ERROR").length;
+        const descripcion = destinos.length
+          ? `${mal} de ${destinos.length} equipos fallaron.`
+          : undefined;
+        toast({
+          title: "Tarea de instalación con errores",
+          description: descripcion,
+          variant: "destructive",
+        });
+        emitNotification({
+          title: "Tarea de instalación con errores",
+          description: descripcion,
+          icon: ListTodo,
+          tone: "danger",
+        });
+      }
+    }
+  }, [tareas, toast]);
 
   // El conteo vive en un estado porque además de la query lo
   // escribe handleUsersSummaryChange; la query lo sincroniza con
@@ -317,7 +393,7 @@ export function AdminDashboardProvider({
         queryClient.invalidateQueries({ queryKey: ["whitelist"] }),
         queryClient.invalidateQueries({ queryKey: ["users", "summary"] }),
         queryClient.invalidateQueries({
-          queryKey: ["install-tasks", "activas"],
+          queryKey: ["install-tasks", "resumen"],
         }),
       ]);
       const now = new Date();
