@@ -769,9 +769,11 @@ export function InstallTasksTab() {
                   <span className="text-xs text-muted-foreground">
                     {orden.tipo === "desinstalar"
                       ? "Desinstalación"
-                      : orden.versionObjetivo
-                        ? `Actualización a la v${orden.versionObjetivo}`
-                        : "Actualización"}
+                      : orden.tipo === "cancelar-apagado"
+                        ? "Cancelar apagado"
+                        : orden.versionObjetivo
+                          ? `Actualización a la v${orden.versionObjetivo}`
+                          : "Actualización"}
                     {orden.intentos > 0
                       ? ` · intento ${orden.intentos}`
                       : ""}

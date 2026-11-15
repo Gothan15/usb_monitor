@@ -57,6 +57,7 @@ interface UnlockSettings {
   offlineEmergencyEnabled: boolean;
   lockSessionOnInsert: boolean;
   shutdownOnNonWhitelisted: boolean;
+  shutdownEscalationEnabled: boolean;
   shutdownCountdownSeconds: number;
   captureEvidenceOnNonWhitelisted: boolean;
   silenceThresholdMinutes: number;
@@ -224,6 +225,7 @@ export function SettingsTab() {
     offlineEmergencyEnabled: true,
     lockSessionOnInsert: false,
     shutdownOnNonWhitelisted: false,
+    shutdownEscalationEnabled: false,
     shutdownCountdownSeconds: 60,
     captureEvidenceOnNonWhitelisted: false,
     silenceThresholdMinutes: 5,
@@ -270,6 +272,7 @@ export function SettingsTab() {
           offlineEmergencyEnabled: data.offlineEmergencyEnabled ?? true,
           lockSessionOnInsert: data.lockSessionOnInsert ?? false,
           shutdownOnNonWhitelisted: data.shutdownOnNonWhitelisted ?? false,
+          shutdownEscalationEnabled: data.shutdownEscalationEnabled ?? false,
           shutdownCountdownSeconds: data.shutdownCountdownSeconds ?? 60,
           captureEvidenceOnNonWhitelisted:
             data.captureEvidenceOnNonWhitelisted ?? false,
@@ -643,6 +646,27 @@ export function SettingsTab() {
               <Switch
                 checked={unlock.shutdownOnNonWhitelisted}
                 onCheckedChange={(v) => setUnlock({ ...unlock, shutdownOnNonWhitelisted: v })}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-4 py-5">
+              <div>
+                <Label>Escalera de respuesta antes de apagar</Label>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  En vez de apagar a la primera, la respuesta sube por
+                  peldaños según las veces que el mismo dispositivo se
+                  ha bloqueado en ese equipo: la primera vez solo se
+                  avisa en la ventana del equipo, la segunda se bloquea
+                  la sesión y a la tercera se arma la cuenta atrás de
+                  apagado. El historial de cada dispositivo se olvida
+                  si entra en la lista blanca. Solo tiene efecto con
+                  el apagado de arriba activado. Desactivado por
+                  defecto.
+                </p>
+              </div>
+              <Switch
+                checked={unlock.shutdownEscalationEnabled}
+                disabled={!unlock.shutdownOnNonWhitelisted}
+                onCheckedChange={(v) => setUnlock({ ...unlock, shutdownEscalationEnabled: v })}
               />
             </div>
             <div className="flex items-center justify-between gap-4 py-5">

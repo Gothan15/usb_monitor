@@ -155,6 +155,7 @@ export async function GET(req: Request) {
       startupNetworkDelay,
       lockSessionOnInsert: settings.lockSessionOnInsert,
       shutdownOnNonWhitelisted: settings.shutdownOnNonWhitelisted,
+      shutdownEscalationEnabled: settings.shutdownEscalationEnabled,
       shutdownCountdownSeconds,
       captureEvidenceOnNonWhitelisted:
         settings.captureEvidenceOnNonWhitelisted,

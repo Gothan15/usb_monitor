@@ -42,6 +42,8 @@ public sealed class AgenteWorker : BackgroundService
     private const string EvApagadoCancelado = "SHUTDOWN_CANCELLED";
     private const string EvApagadoRecuperado = "SHUTDOWN_RECOVERED";
     private const string EvApagadoHuerfano = "SHUTDOWN_ORPHANED";
+    private const string EvEscaleraAviso = "ESCALATION_WARNING";
+    private const string EvEscaleraBloqueo = "ESCALATION_LOCK";
 
     private readonly Configuracion _configuracion = new();
     private readonly ClientePanel _cliente;
@@ -129,6 +131,20 @@ public sealed class AgenteWorker : BackgroundService
     private static string ArchivoPendientes =>
         Path.Combine(Registro.DirectorioDatos, "pending_local.json");
 
+    private static string ArchivoApagadoLocal =>
+        Path.Combine(Registro.DirectorioDatos, "apagado_local.json");
+
+    // Escalera de respuesta: las ofensas por dispositivo (en
+    // disco, sobreviven a los reinicios) y el peldaño aplicado a
+    // cada bloqueo vivo, que es lo que pending_local.json le
+    // cuenta a la ventana del compañero.
+    private readonly RegistroOfensas _ofensas = new(Registro.DirectorioDatos);
+    private readonly object _lockRespuesta = new();
+    private readonly Dictionary<string, int> _nivelPorClave = new();
+    // Nombre visible del causante de la cuenta en curso, para la
+    // banda de cuenta atrás del compañero (apagado_local.json).
+    private string? _apagadoNombreVisible;
+
     public AgenteWorker()
     {
         _cliente = new ClientePanel(_configuracion);
@@ -178,7 +194,7 @@ public sealed class AgenteWorker : BackgroundService
             // reinicio anterior (confirmarla exige poco: la
             // descarga, si toca, va en segundo plano).
             if (remota?.Comandos is { Count: > 0 } ordenesIniciales)
-                _actualizador.ProcesarEnSegundoPlano(ordenesIniciales);
+                await ProcesarOrdenesAsync(ordenesIniciales).ConfigureAwait(false);
             // Vigía de salud tras una actualización (si la hubo)
             // y barrido del respaldo viejo: corren siempre al
             // arrancar, haya o no órdenes en la configuración.
@@ -221,7 +237,7 @@ public sealed class AgenteWorker : BackgroundService
             // corriendo, su diario lo dice: se reconcilia antes
             // del barrido (adoptar, cancelar la huérfana o
             // registrar la vencida), nunca se ignora.
-            ReconciliarApagadoAlArrancar(iniciales.Keys);
+            ReconciliarApagadoAlArrancar(iniciales);
 
             // Fase 2: barrido inicial (bloquea lo presente salvo la base).
             foreach (var disp in iniciales.Values)
@@ -377,7 +393,15 @@ public sealed class AgenteWorker : BackgroundService
             letra = reg.Dispositivo.Letra,
             tipo = reg.Dispositivo.Tipo,
             en_whitelist = reg.EnWhitelist,
+            nivel = NivelRespuestaDe(reg.Dispositivo.Clave),
         }).ToList();
+    }
+
+    /// <summary>El peldaño de la escalera aplicado a este bloqueo (0 = ninguno).</summary>
+    private int NivelRespuestaDe(string clave)
+    {
+        lock (_lockRespuesta)
+            return _nivelPorClave.TryGetValue(clave, out var nivel) ? nivel : 0;
     }
 
     private void RefrescarPendientesLocales()
@@ -407,6 +431,7 @@ public sealed class AgenteWorker : BackgroundService
             letra = disp.Letra,
             tipo = disp.Tipo,
             en_whitelist = enWl,
+            nivel = 0,
         });
         EscribirPendientesLocales(pendientes);
     }
@@ -572,18 +597,27 @@ public sealed class AgenteWorker : BackgroundService
             RefrescarPendientesLocales();
             if (enWl is not null)
                 await RegistrarEnPanelAsync(disp, enWl.Value).ConfigureAwait(false);
+            if (enWl == true)
+            {
+                // El dispositivo está en la lista: su historial
+                // de ofensas se cierra y la escalera se olvida
+                // de él.
+                _ofensas.Olvidar(disp.Clave);
+                lock (_lockRespuesta) _nivelPorClave.Remove(disp.Clave);
+            }
             if (_compartida.LockSessionOnInsert)
             {
                 try { LockWorkStation(); } catch { /* bloquear sesión es best-effort */ }
             }
         }
-        // Veredicto confirmado de fuera de la lista: si el ajuste
-        // está activo, se arma el apagado (idempotente por equipo
-        // y dispositivo; ArmarApagado filtra tipos y línea base).
-        // Y con su ajuste propio, se pide la foto del momento.
+        // Veredicto confirmado de fuera de la lista: responde la
+        // escalera (o el apagado directo si la escalera está
+        // apagada; ResponderFueraDeLista filtra tipos y línea
+        // base). Y con su ajuste propio, se pide la foto del
+        // momento.
         if (enWl == false)
         {
-            ArmarApagado(disp);
+            ResponderFueraDeLista(disp);
             SolicitarEvidencia(disp);
         }
         RefrescarPendientesLocales();
@@ -679,6 +713,9 @@ public sealed class AgenteWorker : BackgroundService
         }
         _vetosExtraccionAvisados.Remove(clave);
         _motor.AlExtraer(clave);
+        // El peldaño era de este bloqueo: la ofensa queda en el
+        // registro persistente, pero el bloqueo vivo se olvida.
+        lock (_lockRespuesta) _nivelPorClave.Remove(clave);
         DesarmarApagado(clave, disp, "el dispositivo se extrajo");
         await _cliente.CerrarBloqueoAsync(disp.Letra, disp.Serial).ConfigureAwait(false);
         _cliente.Evento(EvDesconectado, disp.Letra, disp.Serial);
@@ -735,6 +772,50 @@ public sealed class AgenteWorker : BackgroundService
     private DateTime? _apagadoVenceUtc;
     private int _apagadoSegundos;
 
+    /// <summary>
+    /// La respuesta a un dispositivo confirmado fuera de la
+    /// lista blanca. Sin escalera (el ajuste por defecto), es el
+    /// apagado directo de siempre. Con la escalera activada, la
+    /// ofensa se anota en el registro persistente del dispositivo
+    /// y responde su peldaño: 1.º aviso en la ventana, 2.º
+    /// bloqueo de la sesión, 3.º la cuenta atrás de apagado. El
+    /// peldaño queda anotado por clave para que pending_local.json
+    /// se lo cuente al compañero.
+    /// </summary>
+    private void ResponderFueraDeLista(Dispositivo disp)
+    {
+        if (!_compartida.ShutdownOnNonWhitelisted) return;
+        if (disp.Tipo is not (TipoDispositivo.Disco or TipoDispositivo.Telefono or TipoDispositivo.Optico))
+            return;
+        if (!_compartida.ShutdownEscalationEnabled)
+        {
+            ArmarApagado(disp);
+            return;
+        }
+        var conteo = _ofensas.Registrar(disp.Clave, DateTime.UtcNow);
+        var nivel = RegistroOfensas.NivelPara(conteo);
+        lock (_lockRespuesta) _nivelPorClave[disp.Clave] = (int)nivel;
+        switch (nivel)
+        {
+            case NivelRespuesta.Aviso:
+                _cliente.Evento(EvEscaleraAviso, disp.Letra, disp.Serial);
+                Log.Advertencia(
+                    $"Escalera de respuesta: aviso (ofensa 1) por {disp.Nombre} ({disp.Serial}).");
+                break;
+            case NivelRespuesta.BloqueoSesion:
+                _cliente.Evento(EvEscaleraBloqueo, disp.Letra, disp.Serial);
+                Log.Advertencia(
+                    $"Escalera de respuesta: bloqueo de sesión (ofensa 2) por {disp.Nombre} ({disp.Serial}).");
+                try { LockWorkStation(); } catch { /* bloquear sesión es best-effort */ }
+                break;
+            case NivelRespuesta.Apagado:
+                Log.Advertencia(
+                    $"Escalera de respuesta: apagado (ofensa {conteo}) por {disp.Nombre} ({disp.Serial}).");
+                ArmarApagado(disp);
+                break;
+        }
+    }
+
     private void ArmarApagado(Dispositivo disp)
     {
         // Solo dispositivos gobernados por la lista blanca: las
@@ -762,6 +843,7 @@ public sealed class AgenteWorker : BackgroundService
                     _apagadoEnCurso = true;
                     _apagadoSegundos = segundos;
                     _apagadoVenceUtc = DateTime.UtcNow.AddSeconds(segundos);
+                    _apagadoNombreVisible = disp.NombreVisible;
                     armado = true;
                     cambio = true;
                 }
@@ -861,6 +943,66 @@ public sealed class AgenteWorker : BackgroundService
             GestorApagado.Borrar(Registro.DirectorioDatos);
         else
             GestorApagado.Guardar(Registro.DirectorioDatos, estado);
+        EscribirApagadoLocal();
+    }
+
+    /// <summary>
+    /// El archivo que la ventana del compañero vigila para
+    /// pintar la banda de cuenta atrás (apagado_local.json): con
+    /// cuenta en curso lleva el nombre del causante y el
+    /// vencimiento; sin cuenta, el archivo no existe. Se escribe
+    /// con el mismo patrón que pending_local.json (temporal +
+    /// renombrado con reintentos: el compañero lo lee cada
+    /// segundo y la lectura puede coincidir con el reemplazo).
+    /// </summary>
+    private void EscribirApagadoLocal()
+    {
+        try
+        {
+            bool enCurso;
+            DateTime? vence;
+            string? nombre;
+            lock (_lockApagado)
+            {
+                enCurso = _apagadoEnCurso;
+                vence = _apagadoVenceUtc;
+                nombre = _apagadoNombreVisible;
+            }
+            if (!enCurso)
+            {
+                if (File.Exists(ArchivoApagadoLocal))
+                    File.Delete(ArchivoApagadoLocal);
+                return;
+            }
+            var contenido = JsonSerializer.Serialize(new
+            {
+                nombre = nombre ?? "Dispositivo no autorizado",
+                venceUtc = vence?.ToString("o") ?? "",
+            });
+            Directory.CreateDirectory(Registro.DirectorioDatos);
+            for (int intento = 0; intento < 6; intento++)
+            {
+                try
+                {
+                    var temporal = ArchivoApagadoLocal + ".tmp";
+                    File.WriteAllText(temporal, contenido);
+                    File.Move(temporal, ArchivoApagadoLocal, overwrite: true);
+                    return;
+                }
+                catch (Exception exc) when (exc is IOException or UnauthorizedAccessException)
+                {
+                    if (intento == 5) throw;
+                    Thread.Sleep(50);
+                }
+            }
+        }
+        catch (Exception exc)
+        {
+            // La banda del compañero es un aviso, no un requisito:
+            // si el archivo no se deja escribir, el apagado sigue
+            // su curso y el fallo queda en el registro.
+            Log.Error($"No se pudo escribir apagado_local.json: {exc.Message}");
+        }
     }
 
     /// <summary>
@@ -871,12 +1013,13 @@ public sealed class AgenteWorker : BackgroundService
     /// corriendo sin agente —. La decisión pura vive en
     /// ReconciliacionApagado (Core); aquí solo se ejecuta.
     /// </summary>
-    private void ReconciliarApagadoAlArrancar(IReadOnlyCollection<string> clavesPresentes)
+    private void ReconciliarApagadoAlArrancar(
+        IReadOnlyDictionary<string, Dispositivo> iniciales)
     {
         var estado = GestorApagado.Leer(Registro.DirectorioDatos);
         if (estado is null) return;
         var (accion, vivos) = ReconciliacionApagado.Decidir(
-            estado, clavesPresentes, DateTime.UtcNow);
+            estado, iniciales.Keys, DateTime.UtcNow);
         switch (accion)
         {
             case AccionReconciliacionApagado.AdoptarCuenta:
@@ -896,7 +1039,13 @@ public sealed class AgenteWorker : BackgroundService
                         DateTimeOffset.TryParse(estado.VenceUtc, out var vence)
                             ? vence.UtcDateTime
                             : null;
+                    if (vivos.Count > 0 &&
+                        iniciales.TryGetValue(vivos[0], out var causante))
+                        _apagadoNombreVisible = causante.NombreVisible;
                 }
+                // La banda de cuenta atrás del compañero también
+                // se entera de la cuenta adoptada.
+                EscribirApagadoLocal();
                 Log.Advertencia(
                     "Apagado: cuenta atrás recuperada tras el reinicio " +
                     $"del agente ({vivos.Count} causante(s) siguen " +
@@ -924,6 +1073,10 @@ public sealed class AgenteWorker : BackgroundService
                 GestorApagado.Borrar(Registro.DirectorioDatos);
                 break;
         }
+        // Sea cual sea el desenlace, el archivo del compañero
+        // refleja el estado real tras reconciliar (sin cuenta,
+        // no hay archivo ni banda fantasma).
+        EscribirApagadoLocal();
     }
 
     private static bool EjecutarShutdownExe(params string[] argumentos)
@@ -1462,13 +1615,21 @@ public sealed class AgenteWorker : BackgroundService
                         }
                     }
                 }
-                if (ahora - _ultimaConfig >= TimeSpan.FromSeconds(600))
+                // Con una cuenta atrás en curso, la configuración
+                // (y con ella el canal de órdenes) se sondea cada
+                // pocos segundos: la orden de detener el apagado
+                // desde el panel tiene que llegar mientras la
+                // cuenta aún corre, no en el sondeo de 10 minutos.
+                var intervaloConfig = ApagadoEnCurso()
+                    ? TimeSpan.FromSeconds(5)
+                    : TimeSpan.FromSeconds(600);
+                if (ahora - _ultimaConfig >= intervaloConfig)
                 {
                     _ultimaConfig = ahora;
                     var remota = await _cliente.ConfigRemotaAsync().ConfigureAwait(false);
                     if (remota is not null) _compartida.AplicarRemota(remota);
                     if (remota?.Comandos is { Count: > 0 } ordenes)
-                        _actualizador.ProcesarEnSegundoPlano(ordenes);
+                        await ProcesarOrdenesAsync(ordenes).ConfigureAwait(false);
                 }
                 // Si el ajuste se apagó en el panel (por la config
                 // periódica o por el empuje en caliente), una cuenta
@@ -1480,8 +1641,76 @@ public sealed class AgenteWorker : BackgroundService
             {
                 Log.Error($"Latido: {exc.Message}");
             }
-            if (!await EsperarAsync(30000, ct).ConfigureAwait(false)) return;
+            // El latido también respira más rápido con la cuenta
+            // en curso, para que el sondeo de órdenes de arriba
+            // corra cada pocos segundos y no cada 30.
+            if (!await EsperarAsync(ApagadoEnCurso() ? 5000 : 30000, ct)
+                    .ConfigureAwait(false)) return;
         }
+    }
+
+    /// <summary>
+    /// Reparte las órdenes que trae la configuración: las de
+    /// «cancelar-apagado» las ejecuta este trabajador (son del
+    /// apagado, no del actualizador, que las rechazaría por tipo
+    /// desconocido) y el resto van al actualizador en segundo
+    /// plano, como siempre.
+    /// </summary>
+    private async Task ProcesarOrdenesAsync(List<OrdenAgente> ordenes)
+    {
+        var paraActualizador = new List<OrdenAgente>();
+        foreach (var orden in ordenes)
+        {
+            if (string.Equals(orden.Tipo, "cancelar-apagado",
+                    StringComparison.OrdinalIgnoreCase))
+                await EjecutarOrdenCancelarApagadoAsync(orden).ConfigureAwait(false);
+            else
+                paraActualizador.Add(orden);
+        }
+        if (paraActualizador.Count > 0)
+            _actualizador.ProcesarEnSegundoPlano(paraActualizador);
+    }
+
+    /// <summary>
+    /// Ejecuta una orden «cancelar-apagado» del panel: detiene la
+    /// cuenta atrás en curso (si la hay) y la da por hecha. Sin
+    /// cuenta, también es HECHA: la orden pide un estado («que
+    /// no haya apagado en curso») que ya se cumple.
+    /// </summary>
+    private async Task EjecutarOrdenCancelarApagadoAsync(OrdenAgente orden)
+    {
+        if (string.Equals(orden.Estado, "CANCELADA", StringComparison.OrdinalIgnoreCase))
+        {
+            Log.Info($"Orden {orden.Tipo} {orden.Id} cancelada en el panel: se ignora.");
+            return;
+        }
+        var aceptada = await _cliente.InformarOrdenAsync(orden.Id, "EN_CURSO")
+            .ConfigureAwait(false);
+        if (!aceptada) return;
+        var habia = HayApagadoQueCancelar();
+        if (habia)
+        {
+            CancelarApagado("cancelado desde el panel");
+            _cliente.Evento(EvApagadoCancelado);
+            Log.Advertencia("Cuenta atrás de apagado cancelada desde el panel.");
+        }
+        await _cliente.InformarOrdenAsync(
+            orden.Id, "HECHA",
+            habia
+                ? "La cuenta atrás de apagado se canceló."
+                : "No había cuenta atrás en curso.").ConfigureAwait(false);
+    }
+
+    /// <summary>¿Hay una cuenta atrás de apagado corriendo ahora?</summary>
+    private bool ApagadoEnCurso()
+    {
+        lock (_lockApagado) return _apagadoEnCurso;
+    }
+
+    /// <summary>¿Hay algo que cancelar (cuenta corriendo o causantes anotados)?</summary>
+    private bool HayApagadoQueCancelar()
+    {
+        lock (_lockApagado) return _apagadoEnCurso || _apagadoCausantes.Count > 0;
     }
 
     private static async Task<bool> EsperarAsync(int ms, CancellationToken ct)

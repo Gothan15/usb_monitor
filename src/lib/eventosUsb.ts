@@ -19,7 +19,30 @@ const ETIQUETAS_EVENTO: Record<string, string> = {
   SHUTDOWN_CANCELLED: "Apagado cancelado",
   SHUTDOWN_RECOVERED: "Apagado recuperado",
   SHUTDOWN_ORPHANED: "Apagado sin el agente",
+  ESCALATION_WARNING: "Escalera: aviso",
+  ESCALATION_LOCK: "Escalera: sesión bloqueada",
 };
+
+/** La familia de eventos que abre o cierra una cuenta atrás de apagado. */
+export const EVENTOS_APAGADO = [
+  "SHUTDOWN_ARMED",
+  "SHUTDOWN_RECOVERED",
+  "SHUTDOWN_CANCELLED",
+  "SHUTDOWN_ORPHANED",
+] as const;
+
+/**
+ * ¿Sigue en curso la cuenta atrás de un equipo, según su
+ * ÚLTIMO evento de la familia del apagado? La arma o la
+ * recupera → en curso; la cancela o quedó huérfana → no. Sin
+ * evento conocido, no.
+ */
+export function apagadoEnCursoDesdeEvento(
+  ultimoEvento: string | null | undefined,
+): boolean {
+  const codigo = (ultimoEvento ?? "").trim().toUpperCase();
+  return codigo === "SHUTDOWN_ARMED" || codigo === "SHUTDOWN_RECOVERED";
+}
 
 export function etiquetaEventoUsb(codigo: string | null | undefined): string {
   if (!codigo) return "Evento";
