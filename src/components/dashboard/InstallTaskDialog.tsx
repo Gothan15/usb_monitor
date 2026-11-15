@@ -16,13 +16,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { getCsrfTokenFromDocument } from "@/lib/utils";
 import { credencialesCompletas } from "@/lib/installTasks";
-import {
-  ChevronDown,
-  Info,
-  Lock,
-  Rocket,
-  User,
-} from "lucide-react";
+import { ChevronDown, Lock, Rocket, User } from "lucide-react";
 
 export interface DestinoTarea {
   pcName: string;
@@ -41,12 +35,14 @@ interface Props {
 type Ajuste = { usuario: string; clave: string };
 
 /**
- * Asistente de tarea de instalación: UNA lista de destinos y
- * cada fila con SU usuario y SU contraseña siempre a la vista,
- * porque lo normal en la red de Gothan es que ningún equipo
+ * Asistente de tarea de instalación: los destinos, numerados,
+ * cada uno con SU usuario y SU contraseña siempre a la vista
+ * — lo normal en la red de Gothan es que ningún equipo
  * comparta cuenta con otro. La cuenta general queda como
  * RESERVA opcional, plegada al final: solo hace falta si
- * algún equipo se deja sin la suya.
+ * algún equipo se deja sin la suya. Si a un equipo le falta
+ * su credencial, su número se marca en rojo y el aviso del
+ * pie lo nombra por ese número.
  *
  * Las claves viven solo en la memoria del servidor mientras
  * la tarea corre: no se guardan.
@@ -89,16 +85,23 @@ export function InstallTaskDialog({
     general,
     destinos.map((d) => ajustes[claveDeDestino(d)]),
   );
-  const sinCubrir = destinos.filter((d) => {
-    const ajuste = ajustes[claveDeDestino(d)];
-    const efectiva = ajuste?.clave
-      ? {
-          usuario: ajuste.usuario.trim() || general.usuario,
-          clave: ajuste.clave,
-        }
-      : general;
-    return !efectiva.usuario || !efectiva.clave;
-  }).length;
+  // Números (los de las filas) de los equipos sin cubrir.
+  const faltan = destinos
+    .map((d, i) => {
+      const ajuste = ajustes[claveDeDestino(d)];
+      const efectiva = ajuste?.clave
+        ? {
+            usuario: ajuste.usuario.trim() || general.usuario,
+            clave: ajuste.clave,
+          }
+        : general;
+      return !efectiva.usuario || !efectiva.clave ? i + 1 : null;
+    })
+    .filter((n): n is number => n !== null);
+  const listaFaltan =
+    faltan.length <= 2
+      ? faltan.join(" y ")
+      : `${faltan.slice(0, -1).join(", ")} y ${faltan[faltan.length - 1]}`;
 
   const ponerAjuste = (k: string, ajuste: Ajuste) =>
     setAjustes((prev) => ({ ...prev, [k]: ajuste }));
@@ -164,7 +167,7 @@ export function InstallTaskDialog({
 
   return (
     <Dialog open={open} onOpenChange={cerrar}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="max-w-xl gap-3 p-5">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Rocket className="size-5" />
@@ -176,103 +179,87 @@ export function InstallTaskDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-5">
+        <div className="space-y-4">
           <div>
             <p className="smallcaps text-muted-foreground">
               Destinos ({destinos.length})
             </p>
-            <ul className="mt-2 max-h-72 divide-y divide-border/60 overflow-y-auto border border-border/60 bg-muted/20 px-3">
-              {destinos.map((d) => {
+            <ul className="frame-double mt-2.5 max-h-72 divide-y divide-border/60 overflow-y-auto bg-muted/20 px-3">
+              {destinos.map((d, i) => {
                 const k = claveDeDestino(d);
                 const ajuste = ajustes[k] ?? { usuario: "", clave: "" };
-                const tienePropia = ajuste.clave.length > 0;
-                // La credencial efectiva de la fila: la suya si
-                // trae contraseña, completada con la reserva.
-                const efectiva = tienePropia
-                  ? {
-                      usuario: ajuste.usuario.trim() || general.usuario,
-                      clave: ajuste.clave,
-                    }
-                  : general;
-                const cubierta = !!efectiva.usuario && !!efectiva.clave;
+                const sinCubrir = faltan.includes(i + 1);
                 return (
-                  <li key={k} className="space-y-2 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <span className="min-w-0 flex-1">
-                        {d.pcName !== d.ip ? (
-                          <>
-                            <span className="block truncate text-sm font-medium text-foreground">
-                              {d.pcName}
-                            </span>
-                            <span className="block font-mono text-xs text-muted-foreground">
-                              {d.ip}
-                            </span>
-                          </>
-                        ) : (
-                          <span className="block truncate font-mono text-sm text-foreground">
+                  <li key={k} className="flex gap-2.5 py-2">
+                    <span
+                      aria-hidden
+                      className={`flex size-6 shrink-0 items-center justify-center border font-mono text-xs ${
+                        sinCubrir
+                          ? "border-destructive/60 font-semibold text-destructive"
+                          : "border-border bg-background text-muted-foreground"
+                      }`}
+                    >
+                      {i + 1}
+                    </span>
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      {d.pcName !== d.ip ? (
+                        <p className="truncate text-sm leading-6">
+                          <span className="font-medium text-foreground">
+                            {d.pcName}
+                          </span>{" "}
+                          <span className="font-mono text-xs text-muted-foreground">
                             {d.ip}
                           </span>
-                        )}
-                      </span>
-                      {!cubierta ? (
-                        <span className="shrink-0 border border-destructive/50 px-1.5 py-0.5 text-[11px] font-medium text-destructive">
-                          Incompleta
-                        </span>
-                      ) : tienePropia ? (
-                        <span className="shrink-0 border border-[var(--acero)] px-1.5 py-0.5 text-[11px] font-medium text-foreground">
-                          Propia
-                        </span>
+                        </p>
                       ) : (
-                        <span className="shrink-0 border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground">
-                          De reserva
-                        </span>
+                        <p className="truncate font-mono text-sm leading-6 text-foreground">
+                          {d.ip}
+                        </p>
                       )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="relative flex-1">
-                        <User className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input
-                          value={ajuste.usuario}
-                          onChange={(e) =>
-                            ponerAjuste(k, {
-                              ...ajuste,
-                              usuario: e.target.value,
-                            })
-                          }
-                          placeholder="Su usuario"
-                          className="h-9 pl-9 text-sm"
-                          autoComplete="off"
-                          aria-label={`Usuario de ${d.pcName}`}
-                        />
-                      </div>
-                      <div className="relative flex-1">
-                        <Lock className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input
-                          type="password"
-                          value={ajuste.clave}
-                          onChange={(e) =>
-                            ponerAjuste(k, {
-                              ...ajuste,
-                              clave: e.target.value,
-                            })
-                          }
-                          placeholder="Su contraseña"
-                          className="h-9 pl-9 text-sm"
-                          autoComplete="off"
-                          aria-label={`Contraseña de ${d.pcName}`}
-                        />
+                      <div className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                          <User className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                          <Input
+                            value={ajuste.usuario}
+                            onChange={(e) =>
+                              ponerAjuste(k, {
+                                ...ajuste,
+                                usuario: e.target.value,
+                              })
+                            }
+                            placeholder="Su usuario"
+                            className="h-8 pl-9 text-sm"
+                            autoComplete="off"
+                            aria-label={`Usuario del equipo ${i + 1} (${d.pcName})`}
+                          />
+                        </div>
+                        <div className="relative flex-1">
+                          <Lock className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                          <Input
+                            type="password"
+                            value={ajuste.clave}
+                            onChange={(e) =>
+                              ponerAjuste(k, {
+                                ...ajuste,
+                                clave: e.target.value,
+                              })
+                            }
+                            placeholder="Su contraseña"
+                            className="h-8 pl-9 text-sm"
+                            autoComplete="off"
+                            aria-label={`Contraseña del equipo ${i + 1} (${d.pcName})`}
+                          />
+                        </div>
                       </div>
                     </div>
                   </li>
                 );
               })}
             </ul>
-            <p className="mt-2 flex items-start gap-1.5 text-xs leading-relaxed text-muted-foreground">
-              <Info className="mt-0.5 size-3.5 shrink-0" />
-              Si su agente ya reporta, se actualiza por su canal;
-              si es nuevo, se empuja por SMB con su cuenta. Solo
-              se da por instalado cuando el agente da su primera
-              señal.
+            <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+              Se empuja por SMB con su cuenta; si su agente ya
+              reporta, se actualiza por su canal. Solo se da por
+              instalado cuando el agente da su primera señal.
             </p>
           </div>
 
@@ -289,9 +276,9 @@ export function InstallTaskDialog({
               Cuenta de reserva (opcional)
             </button>
             {reservaAbierta && (
-              <div className="mt-3 space-y-2">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
+              <div className="mt-2 space-y-1.5">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
                     <Label htmlFor="tarea-usuario">
                       Usuario administrador
                     </Label>
@@ -302,12 +289,12 @@ export function InstallTaskDialog({
                         value={usuario}
                         onChange={(e) => setUsuario(e.target.value)}
                         placeholder="Administrador local"
-                        className="pl-9"
+                        className="h-8 pl-9"
                         autoComplete="off"
                       />
                     </div>
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <Label htmlFor="tarea-clave">Contraseña</Label>
                     <div className="relative">
                       <Lock className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -317,13 +304,13 @@ export function InstallTaskDialog({
                         value={clave}
                         onChange={(e) => setClave(e.target.value)}
                         placeholder="La de reserva"
-                        className="pl-9"
+                        className="h-8 pl-9"
                         autoComplete="off"
                       />
                     </div>
                   </div>
                 </div>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-[11px] text-muted-foreground">
                   Solo para los equipos que dejes sin la suya.
                   Ninguna contraseña se guarda: viven solo en la
                   memoria del servidor mientras la tarea corre.
@@ -332,7 +319,7 @@ export function InstallTaskDialog({
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
             <label className="flex cursor-pointer items-center gap-2 text-sm">
               <input
                 type="checkbox"
@@ -360,7 +347,9 @@ export function InstallTaskDialog({
 
           {!completo && destinos.length > 0 && (
             <p className="text-xs text-destructive">
-              {`A ${sinCubrir} equipo${sinCubrir === 1 ? "" : "s"} le falta su usuario y su contraseña (o una cuenta de reserva completa).`}
+              {faltan.length === 1
+                ? `Al equipo ${listaFaltan} le falta su usuario y su contraseña (o una cuenta de reserva completa).`
+                : `A los equipos ${listaFaltan} les falta su usuario y su contraseña (o una cuenta de reserva completa).`}
             </p>
           )}
 
