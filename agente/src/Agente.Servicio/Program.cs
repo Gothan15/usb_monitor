@@ -29,6 +29,7 @@
 //                descargado y verificado, y rearranca el servicio;
 //                lo lanza el propio agente desde una COPIA temporal
 //                de sí mismo (el archivo en uso no se puede pisar)
+using System.IO;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -188,7 +189,23 @@ internal static class Program
                 }
                 try
                 {
-                    using var cliente = new ClientePanel(new Configuracion());
+                    // La copia corre desde la carpeta temporal, y
+                    // server.json no vive ni allí ni en la carpeta
+                    // de datos: vive junto al ejecutable INSTALADO.
+                    // Sin decirle dónde mirar, la copia leía una
+                    // configuración vacía (localhost, sin
+                    // credencial), el panel rechazaba su informe
+                    // HECHA y no se tocaba nada: la desinstalación
+                    // pedida desde el panel no se ejecutaba nunca.
+                    // El servicio pasa la carpeta de instalación
+                    // como tercer argumento; sin él, se averigua
+                    // por el servicio registrado.
+                    var directorioConfig =
+                        args.Length >= 3 && !string.IsNullOrWhiteSpace(args[2])
+                            ? args[2]
+                            : DirectorioDelServicioInstalado();
+                    using var cliente = new ClientePanel(
+                        new Configuracion(directorioApp: directorioConfig));
                     var aceptada = cliente.InformarOrdenAsync(
                         args[1].Trim(), "HECHA",
                         "Desinstalación aceptada: se ejecuta ahora.")
@@ -286,6 +303,26 @@ internal static class Program
             // escribía ni una línea: solo hablaba por una consola
             // que, corriendo como servicio, no existe.
             Registro.Vaciar();
+        }
+    }
+
+    /// <summary>
+    /// La carpeta del ejecutable instalado, según el servicio
+    /// registrado: es donde vive el server.json de verdad. Null
+    /// si no se puede averiguar (sin servicio, sin ruta).
+    /// </summary>
+    private static string? DirectorioDelServicioInstalado()
+    {
+        try
+        {
+            var ruta = Instalador.RutaExeInstalado();
+            return string.IsNullOrWhiteSpace(ruta)
+                ? null
+                : Path.GetDirectoryName(ruta);
+        }
+        catch
+        {
+            return null;
         }
     }
 
