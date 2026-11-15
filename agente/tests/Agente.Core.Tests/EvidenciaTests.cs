@@ -152,7 +152,9 @@ public class EvidenciaTests
             BrowserTabs = new(),
             TabsComplete = true,
         };
-        Assert.True(await cliente.SubirEvidenciaAsync("bloqueo-7", paquete));
+        Assert.Equal(
+            ClientePanel.ResultadoSubidaEvidencia.Subida,
+            await cliente.SubirEvidenciaAsync("bloqueo-7", paquete));
 
         var ruta = Assert.Single(manejador.Rutas);
         Assert.Equal("/api/usb-event/evidence", ruta);
@@ -167,12 +169,92 @@ public class EvidenciaTests
     }
 
     [Fact]
-    public async Task SubirEvidencia_SiElPanelRechazaDevuelveFalse()
+    public async Task SubirEvidencia_BloqueoInexistenteEsRechazoPermanente()
     {
         var manejador = new ManejadorFalso(_ => ManejadorFalso.Json(404, """{"ok":false}"""));
         var (config, datos) = Fabrica.ConfiguracionEnPuerto(9);
         using var cliente = new ClientePanel(config, manejador, datos);
         var paquete = new PaqueteEvidencia { Clave = Clave, CapturedAt = "2026-11-05T12:00:05Z" };
-        Assert.False(await cliente.SubirEvidenciaAsync("no-existe", paquete));
+        Assert.Equal(
+            ClientePanel.ResultadoSubidaEvidencia.Permanente,
+            await cliente.SubirEvidenciaAsync("no-existe", paquete));
+    }
+
+    [Fact]
+    public async Task SubirEvidencia_ErrorDelPanelEsFalloPasajero()
+    {
+        var manejador = new ManejadorFalso(_ => ManejadorFalso.Json(500, """{"ok":false}"""));
+        var (config, datos) = Fabrica.ConfiguracionEnPuerto(9);
+        using var cliente = new ClientePanel(config, manejador, datos);
+        var paquete = new PaqueteEvidencia { Clave = Clave, CapturedAt = "2026-11-05T12:00:05Z" };
+        Assert.Equal(
+            ClientePanel.ResultadoSubidaEvidencia.Pasajera,
+            await cliente.SubirEvidenciaAsync("bloqueo-7", paquete));
+    }
+
+    [Fact]
+    public void ClasificarSubida_Solo400Y404SonPermanentes()
+    {
+        Assert.Equal(
+            ClientePanel.ResultadoSubidaEvidencia.Subida,
+            ClientePanel.ClasificarSubidaEvidencia(200, aceptada: true));
+        Assert.Equal(
+            ClientePanel.ResultadoSubidaEvidencia.Permanente,
+            ClientePanel.ClasificarSubidaEvidencia(400, aceptada: false));
+        Assert.Equal(
+            ClientePanel.ResultadoSubidaEvidencia.Permanente,
+            ClientePanel.ClasificarSubidaEvidencia(404, aceptada: false));
+        // Ni la red caída, ni un 429, ni un 401 (la credencial se
+        // arregla re-enrolando) condenan la evidencia.
+        Assert.Equal(
+            ClientePanel.ResultadoSubidaEvidencia.Pasajera,
+            ClientePanel.ClasificarSubidaEvidencia(null, aceptada: false));
+        Assert.Equal(
+            ClientePanel.ResultadoSubidaEvidencia.Pasajera,
+            ClientePanel.ClasificarSubidaEvidencia(429, aceptada: false));
+        Assert.Equal(
+            ClientePanel.ResultadoSubidaEvidencia.Pasajera,
+            ClientePanel.ClasificarSubidaEvidencia(401, aceptada: false));
+        Assert.Equal(
+            ClientePanel.ResultadoSubidaEvidencia.Pasajera,
+            ClientePanel.ClasificarSubidaEvidencia(200, aceptada: false));
+    }
+
+    [Fact]
+    public void MoverPaqueteADescartadas_SacaElPaqueteDeLaCola()
+    {
+        var carpeta = CarpetaNueva();
+        GestorEvidencia.GuardarPaquete(carpeta,
+            new PaqueteEvidencia { Clave = Clave, CapturedAt = "2026-11-05T12:00:05Z" });
+
+        Assert.True(GestorEvidencia.MoverPaqueteADescartadas(carpeta, Clave));
+        Assert.Empty(GestorEvidencia.ListarPaquetes(carpeta));
+        var descartadas = GestorEvidencia.CarpetaDescartadas(carpeta);
+        Assert.Single(GestorEvidencia.ListarPaquetes(descartadas));
+        // Sin paquete no hay nada que mover.
+        Assert.False(GestorEvidencia.MoverPaqueteADescartadas(carpeta, Clave));
+    }
+
+    [Fact]
+    public void AplicarTopeEdad_MueveSoloLosPaquetesViejos()
+    {
+        var carpeta = CarpetaNueva();
+        var ahora = new DateTime(2026, 11, 15, 12, 0, 0, DateTimeKind.Utc);
+        GestorEvidencia.GuardarPaquete(carpeta,
+            new PaqueteEvidencia { Clave = Clave, CapturedAt = "2026-11-05T12:00:05Z" });
+        GestorEvidencia.GuardarPaquete(carpeta,
+            new PaqueteEvidencia { Clave = "USB\\VID_0002", CapturedAt = "2026-11-14T12:00:05Z" });
+        // El viejo lleva 10 días en disco; el nuevo, 1.
+        File.SetLastWriteTimeUtc(
+            GestorEvidencia.RutaPaquete(carpeta, Clave), ahora.AddDays(-10));
+        File.SetLastWriteTimeUtc(
+            GestorEvidencia.RutaPaquete(carpeta, "USB\\VID_0002"), ahora.AddDays(-1));
+
+        var movidas = GestorEvidencia.AplicarTopeEdad(carpeta, dias: 7, ahora);
+
+        Assert.Equal(new[] { Clave }, movidas);
+        Assert.Single(GestorEvidencia.ListarPaquetes(carpeta));
+        Assert.Single(GestorEvidencia.ListarPaquetes(
+            GestorEvidencia.CarpetaDescartadas(carpeta)));
     }
 }

@@ -40,6 +40,8 @@ public sealed class AgenteWorker : BackgroundService
     private const string EvParada = "SERVICE_STOP";
     private const string EvApagadoArmado = "SHUTDOWN_ARMED";
     private const string EvApagadoCancelado = "SHUTDOWN_CANCELLED";
+    private const string EvApagadoRecuperado = "SHUTDOWN_RECOVERED";
+    private const string EvApagadoHuerfano = "SHUTDOWN_ORPHANED";
 
     private readonly Configuracion _configuracion = new();
     private readonly ClientePanel _cliente;
@@ -214,6 +216,11 @@ public sealed class AgenteWorker : BackgroundService
             lock (_lockApagado)
                 foreach (var clave in iniciales.Keys)
                     _clavesDelArranque.Add(clave);
+            // Si el agente anterior murió con una cuenta atrás
+            // corriendo, su diario lo dice: se reconcilia antes
+            // del barrido (adoptar, cancelar la huérfana o
+            // registrar la vencida), nunca se ignora.
+            ReconciliarApagadoAlArrancar(iniciales.Keys);
 
             // Fase 2: barrido inicial (bloquea lo presente salvo la base).
             foreach (var disp in iniciales.Values)
@@ -701,12 +708,22 @@ public sealed class AgenteWorker : BackgroundService
     //    el ajuste se desactiva en el panel o si el servicio se
     //    detiene. Windows además permite abortarla a mano con
     //    «shutdown /a» durante la cuenta.
+    //  - El estado se refleja en un diario en disco
+    //    (apagado.json): si el proceso muere con la cuenta
+    //    corriendo, el siguiente agente la reconcilia al
+    //    arrancar (ReconciliarApagadoAlArrancar) en vez de
+    //    dejarla huérfana.
     // La cuenta atrás la define el panel (shutdownCountdownSeconds,
     // 60 por defecto, acotada a 10–600 en ConfigCompartida).
     private readonly object _lockApagado = new();
     private readonly HashSet<string> _apagadoCausantes = new();
     private readonly HashSet<string> _clavesDelArranque = new();
     private bool _apagadoEnCurso;
+    // Vencimiento y duración de la cuenta en curso: el diario en
+    // disco (apagado.json) los necesita para reconciliar al
+    // arrancar si este proceso muere con la cuenta corriendo.
+    private DateTime? _apagadoVenceUtc;
+    private int _apagadoSegundos;
 
     private void ArmarApagado(Dispositivo disp)
     {
@@ -718,21 +735,36 @@ public sealed class AgenteWorker : BackgroundService
         if (!_compartida.ShutdownOnNonWhitelisted) return;
         var segundos = _compartida.ShutdownCountdownSeconds;
         var armado = false;
+        var intentoFallido = false;
+        var cambio = false;
         lock (_lockApagado)
         {
             if (_clavesDelArranque.Contains(disp.Clave)) return;
-            _apagadoCausantes.Add(disp.Clave);
-            if (_apagadoEnCurso) return;
-            var mensaje =
-                $"USBMonitor: dispositivo no autorizado ({disp.Nombre}). " +
-                $"El equipo se apagara en {segundos} segundos.";
-            if (EjecutarShutdownExe("/s", "/t",
-                    segundos.ToString(), "/c", mensaje))
+            cambio = _apagadoCausantes.Add(disp.Clave);
+            if (!_apagadoEnCurso)
             {
-                _apagadoEnCurso = true;
-                armado = true;
+                var mensaje =
+                    $"USBMonitor: dispositivo no autorizado ({disp.Nombre}). " +
+                    $"El equipo se apagara en {segundos} segundos.";
+                if (EjecutarShutdownExe("/s", "/t",
+                        segundos.ToString(), "/c", mensaje))
+                {
+                    _apagadoEnCurso = true;
+                    _apagadoSegundos = segundos;
+                    _apagadoVenceUtc = DateTime.UtcNow.AddSeconds(segundos);
+                    armado = true;
+                    cambio = true;
+                }
+                else
+                {
+                    intentoFallido = true;
+                }
             }
         }
+        // El estado (causante nuevo o cuenta recién armada) se
+        // refleja en el diario en disco: si este proceso muere,
+        // el siguiente agente hereda la verdad y no una amnesia.
+        if (cambio) GuardarDiarioApagado();
         if (armado)
         {
             _cliente.Evento(EvApagadoArmado, disp.Letra, disp.Serial);
@@ -740,7 +772,7 @@ public sealed class AgenteWorker : BackgroundService
                 $"Apagado ARMADO ({segundos} s) por dispositivo " +
                 $"fuera de la lista blanca: {disp.Nombre} ({disp.Serial})");
         }
-        else
+        else if (intentoFallido)
         {
             Log.Error($"No se pudo armar el apagado por {disp.Nombre}");
         }
@@ -750,14 +782,20 @@ public sealed class AgenteWorker : BackgroundService
     private void DesarmarApagado(string clave, Dispositivo? disp, string motivo)
     {
         var cancelado = false;
+        var cambio = false;
         lock (_lockApagado)
         {
             if (!_apagadoCausantes.Remove(clave)) return;
-            if (_apagadoCausantes.Count > 0 || !_apagadoEnCurso) return;
-            EjecutarShutdownExe("/a");
-            _apagadoEnCurso = false;
-            cancelado = true;
+            cambio = true;
+            if (_apagadoCausantes.Count == 0 && _apagadoEnCurso)
+            {
+                EjecutarShutdownExe("/a");
+                _apagadoEnCurso = false;
+                _apagadoVenceUtc = null;
+                cancelado = true;
+            }
         }
+        if (cambio) GuardarDiarioApagado();
         if (cancelado)
         {
             if (disp is not null)
@@ -773,12 +811,109 @@ public sealed class AgenteWorker : BackgroundService
         lock (_lockApagado)
         {
             _apagadoCausantes.Clear();
-            if (!_apagadoEnCurso) return;
-            EjecutarShutdownExe("/a");
-            _apagadoEnCurso = false;
-            cancelado = true;
+            _apagadoVenceUtc = null;
+            if (_apagadoEnCurso)
+            {
+                EjecutarShutdownExe("/a");
+                _apagadoEnCurso = false;
+                cancelado = true;
+            }
         }
+        GuardarDiarioApagado();
         if (cancelado) Log.Info($"Apagado cancelado: {motivo}");
+    }
+
+    /// <summary>
+    /// Refleja el estado del apagado en su diario en disco
+    /// (apagado.json, junto al resto del estado del agente): sin
+    /// causantes ni cuenta, el diario se borra. Se llama tras
+    /// cada cambio de estado; toma el candado por su cuenta
+    /// (reentrante si ya se tenía) para fotografiar un estado
+    /// coherente.
+    /// </summary>
+    private void GuardarDiarioApagado()
+    {
+        EstadoApagado? estado = null;
+        lock (_lockApagado)
+        {
+            if (_apagadoCausantes.Count > 0 || _apagadoEnCurso)
+            {
+                estado = new EstadoApagado
+                {
+                    Causantes = _apagadoCausantes.ToList(),
+                    CuentaEnCurso = _apagadoEnCurso,
+                    VenceUtc = _apagadoVenceUtc?.ToString("o") ?? "",
+                    Segundos = _apagadoSegundos,
+                };
+            }
+        }
+        if (estado is null)
+            GestorApagado.Borrar(Registro.DirectorioDatos);
+        else
+            GestorApagado.Guardar(Registro.DirectorioDatos, estado);
+    }
+
+    /// <summary>
+    /// Reconciliación del apagado al arrancar: si el agente
+    /// anterior murió con una cuenta atrás en marcha (un
+    /// cuelgue, un kill), su diario lo dice y aquí se resuelve —
+    /// la cuenta de Windows es del sistema operativo y sigue
+    /// corriendo sin agente —. La decisión pura vive en
+    /// ReconciliacionApagado (Core); aquí solo se ejecuta.
+    /// </summary>
+    private void ReconciliarApagadoAlArrancar(IReadOnlyCollection<string> clavesPresentes)
+    {
+        var estado = GestorApagado.Leer(Registro.DirectorioDatos);
+        if (estado is null) return;
+        var (accion, vivos) = ReconciliacionApagado.Decidir(
+            estado, clavesPresentes, DateTime.UtcNow);
+        switch (accion)
+        {
+            case AccionReconciliacionApagado.AdoptarCuenta:
+                lock (_lockApagado)
+                {
+                    foreach (var clave in vivos)
+                    {
+                        // El causante adoptado deja de ser línea
+                        // base: su cuenta sigue viva y tiene que
+                        // poder cancelarse al extraerlo.
+                        _clavesDelArranque.Remove(clave);
+                        _apagadoCausantes.Add(clave);
+                    }
+                    _apagadoEnCurso = true;
+                    _apagadoSegundos = estado.Segundos;
+                    _apagadoVenceUtc =
+                        DateTimeOffset.TryParse(estado.VenceUtc, out var vence)
+                            ? vence.UtcDateTime
+                            : null;
+                }
+                Log.Advertencia(
+                    "Apagado: cuenta atrás recuperada tras el reinicio " +
+                    $"del agente ({vivos.Count} causante(s) siguen " +
+                    $"conectados); vencía a las {estado.VenceUtc}.");
+                _cliente.Evento(EvApagadoRecuperado);
+                break;
+            case AccionReconciliacionApagado.CancelarCuenta:
+                lock (_lockApagado) EjecutarShutdownExe("/a");
+                GestorApagado.Borrar(Registro.DirectorioDatos);
+                Log.Advertencia(
+                    "Apagado: la cuenta atrás heredada quedó sin " +
+                    "causantes conectados; cancelada al arrancar.");
+                _cliente.Evento(EvApagadoHuerfano);
+                break;
+            case AccionReconciliacionApagado.RegistrarVencida:
+                GestorApagado.Borrar(Registro.DirectorioDatos);
+                Log.Advertencia(
+                    "Apagado: una cuenta atrás venció mientras el " +
+                    "agente no estaba en marcha; no se rearma (lo " +
+                    "conectado al arrancar es línea base).");
+                _cliente.Evento(EvApagadoHuerfano);
+                break;
+            default:
+                // Sin cuenta viva: el diario es un resto y se olvida.
+                GestorApagado.Borrar(Registro.DirectorioDatos);
+                break;
+        }
     }
 
     private static bool EjecutarShutdownExe(params string[] argumentos)
@@ -1103,11 +1238,21 @@ public sealed class AgenteWorker : BackgroundService
     /// hubo red al bloquear) el paquete espera al siguiente ciclo,
     /// con la misma filosofía que la cola de eventos. Subido =
     /// borrado. El tope de 20 paquetes protege el disco de una PC
-    /// que pasa mucho tiempo sin red.
+    /// que pasa mucho tiempo sin red, el tope por edad (7 días)
+    /// saca de la cola lo que ya no subirá, y un rechazo
+    /// permanente del panel manda el paquete a la carpeta de
+    /// descartadas en vez de reintentarlo para siempre.
     /// </summary>
     private async Task SubirEvidenciasPendientesAsync()
     {
         var carpeta = GestorEvidencia.Carpeta(Registro.DirectorioDatos);
+        var vencidas = GestorEvidencia.AplicarTopeEdad(carpeta, 7, DateTime.UtcNow);
+        if (vencidas.Count > 0)
+        {
+            Log.Advertencia(
+                "Evidencia: paquetes con más de 7 días sin subir " +
+                $"movidos a descartadas ({vencidas.Count}).");
+        }
         var borradas = GestorEvidencia.AplicarTopePaquetes(carpeta, 20);
         if (borradas.Count > 0)
         {
@@ -1120,13 +1265,38 @@ public sealed class AgenteWorker : BackgroundService
             string? id;
             lock (_lockEvidencia) _idsBloqueoPanel.TryGetValue(paquete.Clave, out id);
             if (string.IsNullOrEmpty(id)) continue;
-            if (await _cliente.SubirEvidenciaAsync(id, paquete).ConfigureAwait(false))
+            var resultado = await _cliente
+                .SubirEvidenciaAsync(id, paquete).ConfigureAwait(false);
+            switch (resultado)
             {
-                GestorEvidencia.BorrarPaquete(carpeta, paquete.Clave);
-                Log.Info(
-                    $"Evidencia subida al panel: bloqueo {id}, serial {paquete.Serial}.");
+                case ClientePanel.ResultadoSubidaEvidencia.Subida:
+                    GestorEvidencia.BorrarPaquete(carpeta, paquete.Clave);
+                    Log.Info(
+                        $"Evidencia subida al panel: bloqueo {id}, serial {paquete.Serial}.");
+                    break;
+                case ClientePanel.ResultadoSubidaEvidencia.Permanente:
+                    // El panel lo rechaza para siempre (bloqueo
+                    // purgado o id irrecuperable): reintentarlo
+                    // solo envenena la cola. A descartadas, con
+                    // constancia en el registro.
+                    if (GestorEvidencia.MoverPaqueteADescartadas(carpeta, paquete.Clave))
+                    {
+                        Log.Advertencia(
+                            "Evidencia descartada: el panel rechazó " +
+                            $"el paquete del bloqueo {id} (serial " +
+                            $"{paquete.Serial}) de forma permanente; " +
+                            "queda en la carpeta de descartadas.");
+                    }
+                    break;
+                default:
+                    // Pasajera: el paquete espera al próximo ciclo.
+                    break;
             }
         }
+        // La carpeta de descartadas también tiene tope: es una
+        // papelera de revisión, no un archivo infinito.
+        GestorEvidencia.AplicarTopePaquetes(
+            GestorEvidencia.CarpetaDescartadas(carpeta), 20);
     }
 
     /// <summary>Firma comparable de un conjunto conectado.</summary>

@@ -604,7 +604,7 @@ public sealed class ClientePanel : IDisposable
     /// ante cualquier fallo (sin red, bloqueo aún no registrado),
     /// el paquete se queda en disco y se reintenta en otro ciclo.
     /// </summary>
-    public async Task<bool> SubirEvidenciaAsync(
+    public async Task<ResultadoSubidaEvidencia> SubirEvidenciaAsync(
         string pendingUnlockId, PaqueteEvidencia paquete)
     {
         var respuesta = await PeticionAsync("POST", "/api/usb-event/evidence",
@@ -621,8 +621,30 @@ public sealed class ClientePanel : IDisposable
                 Nota = paquete.Nota,
                 ImagenBase64 = paquete.ImagenBase64,
             }).ConfigureAwait(false);
-        return respuesta is { Estado: 200 } &&
+        var aceptada = respuesta is { Estado: 200 } &&
                IntentarJson<RespuestaBasica>(respuesta) is { Ok: true };
+        return ClasificarSubidaEvidencia(respuesta?.Estado, aceptada);
+    }
+
+    /// <summary>
+    /// Cómo clasificar el resultado de una subida de evidencia.
+    /// Permanente: el panel lo rechaza hoy y lo rechazará
+    /// siempre (400, el cuerpo no vale; 404, el bloqueo ya no
+    /// existe) — reintentarlo solo envenena la cola de paquetes.
+    /// Todo lo demás es pasajero: sin red, 429, 5xx, y también
+    /// 401/403 (la credencial se arregla re-enrolando; la
+    /// evidencia no se tira por un fallo de credencial, la
+    /// acota el tope por edad de la cola).
+    /// </summary>
+    public static ResultadoSubidaEvidencia ClasificarSubidaEvidencia(
+        int? estadoHttp, bool aceptada)
+    {
+        if (aceptada) return ResultadoSubidaEvidencia.Subida;
+        return estadoHttp switch
+        {
+            400 or 404 => ResultadoSubidaEvidencia.Permanente,
+            _ => ResultadoSubidaEvidencia.Pasajera,
+        };
     }
 
     /// <summary>
@@ -986,6 +1008,17 @@ public sealed class ClientePanel : IDisposable
         }
 
         return pasos;
+    }
+
+    /// <summary>Cómo terminó una subida de evidencia al panel.</summary>
+    public enum ResultadoSubidaEvidencia
+    {
+        /// <summary>El panel la aceptó: el paquete se borra de la cola.</summary>
+        Subida,
+        /// <summary>Fallo pasajero (red, 429, 5xx, credencial): el paquete espera al próximo ciclo.</summary>
+        Pasajera,
+        /// <summary>Rechazo permanente (400/404): el paquete sale de la cola a la carpeta de descartadas.</summary>
+        Permanente,
     }
 
     /// <summary>Resultado de comprobar la credencial contra el panel.</summary>

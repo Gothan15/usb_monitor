@@ -194,6 +194,66 @@ public static class GestorEvidencia
         return borradas;
     }
 
+    /// <summary>
+    /// Carpeta de paquetes descartados, dentro de la de
+    /// evidencia: lo que el panel rechaza para siempre y lo que
+    /// envejece sin subir va aquí, no a la basura — queda en el
+    /// disco para revisión manual, acotada por el mismo tope
+    /// FIFO de paquetes.
+    /// </summary>
+    public static string CarpetaDescartadas(string carpeta) =>
+        Path.Combine(carpeta, "descartadas");
+
+    /// <summary>
+    /// Mueve el paquete de una clave a la carpeta de
+    /// descartadas. Devuelve false si no había paquete o el
+    /// movimiento falló (el paquete se queda y se reintenta).
+    /// </summary>
+    public static bool MoverPaqueteADescartadas(string carpeta, string clave)
+    {
+        try
+        {
+            var origen = RutaPaquete(carpeta, clave);
+            if (!File.Exists(origen)) return false;
+            var destino = CarpetaDescartadas(carpeta);
+            Directory.CreateDirectory(destino);
+            File.Move(
+                origen,
+                Path.Combine(destino, Path.GetFileName(origen)),
+                overwrite: true);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Tope por edad: los paquetes que llevan más de `dias`
+    /// sin subir (por la fecha del archivo) se mueven a la
+    /// carpeta de descartadas y se devuelven sus claves. Sin
+    /// esto, un paquete que el panel nunca acepta — o una PC
+    /// que nunca recupera la red — se reintentaría eternamente.
+    /// </summary>
+    public static List<string> AplicarTopeEdad(
+        string carpeta, int dias, DateTime ahoraUtc)
+    {
+        var movidas = new List<string>();
+        if (!Directory.Exists(carpeta)) return movidas;
+        var limite = ahoraUtc.AddDays(-dias);
+        foreach (var ruta in Directory.EnumerateFiles(carpeta, "*" + SufijoPaquete))
+        {
+            if (ruta.EndsWith(SufijoSolicitud, StringComparison.OrdinalIgnoreCase)) continue;
+            if (File.GetLastWriteTimeUtc(ruta) >= limite) continue;
+            var paquete = ArchivoJson.Leer<PaqueteEvidencia>(ruta);
+            if (paquete is null || string.IsNullOrEmpty(paquete.Clave)) continue;
+            if (MoverPaqueteADescartadas(carpeta, paquete.Clave))
+                movidas.Add(paquete.Clave);
+        }
+        return movidas;
+    }
+
     private static void BorrarSiExiste(string ruta)
     {
         try
