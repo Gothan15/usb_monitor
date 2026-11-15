@@ -1,24 +1,31 @@
+import { createInterface } from "node:readline/promises";
+
 import { db } from "@/lib/db";
 
 /*
-  vaciarDatos script — Vacía TODAS las tablas del panel menos
-  la de usuarios: equipos, eventos, conexiones, lista blanca,
-  bloqueos, intentos, órdenes del agente, tareas de
-  instalación y evidencias se borran enteros; las cuentas
-  (User) se quedan tal cual.
+  vaciarDatos script — Vacía las tablas de datos del panel
+  conservando las cuentas (User) y la lista blanca
+  (USBWhitelist): equipos, eventos, conexiones, bloqueos,
+  intentos, órdenes del agente, tareas de instalación y
+  evidencias se borran enteros.
 
-  Formas de uso:
-    Ver qué se borraría, sin tocar nada (modo de prueba):
-      npm run db:vaciar
-    Borrar de verdad:
-      npm run db:vaciar -- --confirmar
+  Forma de uso:
+    npm run db:vaciar
+  Primero enseña el resumen — cuántas cuentas y cuántas
+  entradas de la lista blanca se conservan, y cuántas filas
+  caerían por tabla — y después pregunta: para borrar hay
+  que escribir VACIAR y dar Enter. Cualquier otra respuesta
+  (o cerrar sin escribir) no borra nada. La confirmación es
+  tecleada a propósito: la versión anterior pedía una marca
+  en el comando y esa marca no siempre llegaba al script.
 
   Avisos honestos:
   - NO hay deshacer: haz una copia de la base antes si los
     datos te importan algo.
   - Los usuarios pierden el equipo asignado: sin equipos, la
     asignación no puede seguir apuntando a ninguno (la cuenta
-    en sí — nombre, clave, rol — no se toca).
+    en sí — nombre, clave, rol — no se toca). La lista blanca
+    sí se queda entera, con su «creada por» incluido.
   - Los agentes de las PC se quedan con su credencial
     huérfana: al no existir ya su equipo en el panel, tendrán
     que enrolarse de nuevo, como equipos nuevos.
@@ -36,7 +43,6 @@ const TABLAS = [
   { nombre: "Equipos", contar: () => db.computer.count(), borrar: () => db.computer.deleteMany() },
   { nombre: "Eventos USB", contar: () => db.uSBEvent.count(), borrar: () => db.uSBEvent.deleteMany() },
   { nombre: "Conexiones USB", contar: () => db.uSBConnection.count(), borrar: () => db.uSBConnection.deleteMany() },
-  { nombre: "Lista blanca", contar: () => db.uSBWhitelist.count(), borrar: () => db.uSBWhitelist.deleteMany() },
   { nombre: "Bloqueos", contar: () => db.pendingUnlock.count(), borrar: () => db.pendingUnlock.deleteMany() },
   { nombre: "Intentos de desbloqueo", contar: () => db.unlockAttempt.count(), borrar: () => db.unlockAttempt.deleteMany() },
   { nombre: "Órdenes del agente", contar: () => db.agentCommand.count(), borrar: () => db.agentCommand.deleteMany() },
@@ -46,13 +52,11 @@ const TABLAS = [
 ] as const;
 
 async function main() {
-  const confirmar = process.argv.slice(2).includes("--confirmar");
-
-  // El resumen primero: cuántas cuentas se quedan y cuántas
-  // filas se van por tabla. Sirve igual para el modo de prueba
-  // y para dejar constancia en el modo de verdad.
+  // El resumen primero: lo que se conserva y lo que se va.
   const usuarios = await db.user.count();
+  const listaBlanca = await db.uSBWhitelist.count();
   console.log(`Cuentas que se CONSERVAN (tabla de usuarios): ${usuarios}`);
+  console.log(`Entradas que se CONSERVAN (lista blanca): ${listaBlanca}`);
   console.log("Filas que se borran:");
   let total = 0;
   for (const tabla of TABLAS) {
@@ -62,11 +66,22 @@ async function main() {
   }
   console.log(`  TOTAL: ${total}`);
 
-  if (!confirmar) {
-    console.log(
-      "\nEsto ha sido solo el resumen: no se ha borrado nada.\n" +
-        "Para vaciar de verdad: npm run db:vaciar -- --confirmar",
+  // La confirmación tecleada: sin VACIAR en mayúsculas, nada.
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  let respuesta = "";
+  try {
+    respuesta = await rl.question(
+      "\nPara borrar todo eso, escribe VACIAR y pulsa Enter: ",
     );
+  } catch {
+    // Entrada cerrada sin respuesta (Ctrl+C, tubería cortada…):
+    // se trata como un «no», que es el lado seguro.
+    respuesta = "";
+  } finally {
+    rl.close();
+  }
+  if (respuesta.trim() !== "VACIAR") {
+    console.log("No se ha borrado nada.");
     return;
   }
 
@@ -89,9 +104,10 @@ async function main() {
     console.log(`  ${tabla.nombre}: ${count} filas borradas`);
   }
 
-  const quedan = await db.user.count();
+  const quedanUsuarios = await db.user.count();
+  const quedaLista = await db.uSBWhitelist.count();
   console.log(
-    `\nHecho. La base queda vacía salvo las cuentas: ${quedan} usuarios.`,
+    `\nHecho. Se conservan ${quedanUsuarios} usuarios y ${quedaLista} entradas de la lista blanca; el resto quedó vacío.`,
   );
 }
 
