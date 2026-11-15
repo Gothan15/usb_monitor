@@ -17,6 +17,8 @@ const ETIQUETAS_EVENTO: Record<string, string> = {
   SERVICE_STOP: "Servicio detenido",
   SHUTDOWN_ARMED: "Apagado programado",
   SHUTDOWN_CANCELLED: "Apagado cancelado",
+  SHUTDOWN_RECOVERED: "Apagado recuperado",
+  SHUTDOWN_ORPHANED: "Apagado sin el agente",
 };
 
 export function etiquetaEventoUsb(codigo: string | null | undefined): string {

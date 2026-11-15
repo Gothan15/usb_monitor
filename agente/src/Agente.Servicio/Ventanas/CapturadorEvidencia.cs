@@ -27,6 +27,8 @@ internal static class CapturadorEvidencia
 {
     private const int AnchoMaximoCaptura = 1920;
     private const int MaximoProcesos = 200;
+    /// <summary>Presupuesto total (s) para enumerar pestañas por UI Automation.</summary>
+    private const int PresupuestoPestanasSegundos = 6;
 
     private static readonly Dictionary<string, string> Navegadores = new()
     {
@@ -302,9 +304,25 @@ internal static class CapturadorEvidencia
             }
         }
 
+        // Presupuesto total para UI Automation: un navegador
+        // colgado puede dejar la enumeración esperando para
+        // siempre, y con ella la captura entera. Cada ventana se
+        // enumera en una tarea con el tiempo que quede; si se
+        // agota, esa ventana y las siguientes se quedan con su
+        // pestaña activa y el paquete va marcado como parcial.
+        // La tarea abandonada sigue en segundo plano hasta que
+        // el navegador responda o muera: no bloquea a nadie más.
+        var limite = DateTime.UtcNow.AddSeconds(PresupuestoPestanasSegundos);
         foreach (var (navegador, titulo, handle) in ventanas)
         {
-            var deLaVentana = EnumerarPestanas(handle, navegador);
+            List<PestanaNavegador>? deLaVentana = null;
+            var restante = limite - DateTime.UtcNow;
+            if (restante > TimeSpan.Zero)
+            {
+                var tarea = Task.Run(() => EnumerarPestanas(handle, navegador));
+                if (tarea.Wait(restante))
+                    deLaVentana = tarea.Result;
+            }
             if (deLaVentana is null)
             {
                 completas = false;
