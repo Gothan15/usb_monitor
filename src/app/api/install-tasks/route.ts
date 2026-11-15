@@ -5,7 +5,11 @@ import { db } from "@/lib/db";
 import { logError } from "@/lib/logger";
 import { normalizeComputerName } from "@/lib/utils";
 import { lanzarTarea, tareaEnEjecucion } from "@/lib/installExecutor";
-import { ESTADO_TAREA, tareaPuedeBorrarse } from "@/lib/installTasks";
+import {
+  ESTADO_TAREA,
+  credencialesCompletas,
+  tareaPuedeBorrarse,
+} from "@/lib/installTasks";
 
 /**
  * Tareas de instalación (fase D, capa de Kaspersky).
@@ -20,6 +24,11 @@ import { ESTADO_TAREA, tareaPuedeBorrarse } from "@/lib/installTasks";
  *   `credenciales` trae la credencial PROPIA de los destinos
  *   que no usan la general (equipos con otra contraseña de
  *   administrador); manda sobre la general solo en su equipo.
+ *   La general es la cuenta de RESERVA: usuario y clave
+ *   pueden venir vacíos si CADA destino trae la suya
+ *   completa — hay redes donde ningún equipo comparte
+ *   cuenta con otro. Lo que no puede faltar es que todo
+ *   destino resuelva a usuario y contraseña.
  * GET (admin): las tareas recientes con sus destinos.
  */
 
@@ -131,16 +140,6 @@ export async function POST(req: Request) {
   const usuario =
     typeof body?.usuario === "string" ? body.usuario.trim() : "";
   const clave = typeof body?.clave === "string" ? body.clave : "";
-  if (!usuario || !clave) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error:
-          "La cuenta administradora de los destinos y su clave son requeridas (la clave no se guarda: vive solo en memoria mientras la tarea corre).",
-      },
-      { status: 400 },
-    );
-  }
   const credenciales = leerCredenciales(body, destinos);
   if (credenciales === null) {
     return NextResponse.json(
@@ -148,6 +147,29 @@ export async function POST(req: Request) {
         ok: false,
         error:
           "Credenciales por destino inválidas: cada entrada debe ser de un destino de la tarea y traer su clave.",
+      },
+      { status: 400 },
+    );
+  }
+  // Cobertura: con la cuenta de reserva y las propias, TODO
+  // destino tiene que resolver a usuario y contraseña. Si a
+  // alguno le falta una pieza, su empujón nacería condenado:
+  // la tarea no se crea.
+  const entradaPorDestino = new Map(
+    (credenciales ?? []).map((c) => [c.destinoKey, c]),
+  );
+  const cubierto = credencialesCompletas(
+    { usuario, clave },
+    destinos.map((d) =>
+      entradaPorDestino.get(`${d.pcName}|${d.ipAddress}`),
+    ),
+  );
+  if (!cubierto) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "Falta credencial: dale a cada equipo la suya (usuario y contraseña), o escribe una cuenta de reserva completa para los que no tengan.",
       },
       { status: 400 },
     );

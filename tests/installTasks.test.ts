@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   ESTADO_DESTINO,
   METODO,
+  credencialesCompletas,
   estadoDesdeEtapaEmpujador,
   estadoFinalTarea,
   resolverCredencialDestino,
@@ -89,6 +90,66 @@ describe("resolverCredencialDestino", () => {
     expect(
       resolverCredencialDestino(base, { usuario: "   ", clave: "suya" }),
     ).toEqual({ usuario: "admin", clave: "suya" });
+  });
+});
+
+describe("credencialesCompletas", () => {
+  const general = { usuario: "admin", clave: "general" };
+
+  it("sin destinos no hay tarea que crear", () => {
+    expect(credencialesCompletas(general, [])).toBe(false);
+  });
+
+  it("con la general completa, todos van cubiertos sin ajustes", () => {
+    expect(credencialesCompletas(general, [undefined, null, {}])).toBe(true);
+  });
+
+  it("sin general, cada destino necesita la suya", () => {
+    const vacia = { usuario: "", clave: "" };
+    expect(
+      credencialesCompletas(vacia, [
+        { usuario: "robertico", clave: "suya" },
+        { clave: "otra" },
+      ]),
+    ).toBe(false);
+    expect(
+      credencialesCompletas(
+        { usuario: "admin", clave: "" },
+        [
+          { usuario: "robertico", clave: "suya" },
+          { clave: "otra" },
+        ],
+      ),
+    ).toBe(true);
+  });
+
+  it("una clave propia sin usuario se completa con el usuario general", () => {
+    expect(credencialesCompletas(general, [{ clave: "suya" }])).toBe(true);
+    expect(
+      credencialesCompletas({ usuario: "", clave: "general" }, [
+        { clave: "suya" },
+      ]),
+    ).toBe(false);
+  });
+
+  it("un usuario suelto sin clave no forma ajuste: manda la general", () => {
+    expect(
+      credencialesCompletas({ usuario: "", clave: "" }, [
+        { usuario: "robertico" },
+      ]),
+    ).toBe(false);
+    expect(credencialesCompletas(general, [{ usuario: "robertico" }])).toBe(
+      true,
+    );
+  });
+
+  it("basta un destino sin cubrir para bloquear la creación", () => {
+    expect(
+      credencialesCompletas({ usuario: "", clave: "" }, [
+        { usuario: "uno", clave: "suya" },
+        undefined,
+      ]),
+    ).toBe(false);
   });
 });
 

@@ -15,7 +15,8 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { getCsrfTokenFromDocument } from "@/lib/utils";
-import { Info, Lock, Rocket, User } from "lucide-react";
+import { credencialesCompletas } from "@/lib/installTasks";
+import { ChevronDown, Lock, Rocket, User } from "lucide-react";
 
 export interface DestinoTarea {
   pcName: string;
@@ -31,15 +32,20 @@ interface Props {
   onCreada?: () => void;
 }
 
+type Ajuste = { usuario: string; clave: string };
+
 /**
- * Asistente de tarea de instalación (fase D): una sola pantalla
- * con destinos, credenciales y opciones. Al confirmar se crea
- * la tarea y el ejecutor del panel trabaja en segundo plano;
- * el progreso se sigue en la vista de Tareas.
+ * Asistente de tarea de instalación: los destinos, numerados,
+ * cada uno con SU usuario y SU contraseña siempre a la vista
+ * — lo normal en la red de Gothan es que ningún equipo
+ * comparta cuenta con otro. La cuenta general queda como
+ * RESERVA opcional, plegada al final: solo hace falta si
+ * algún equipo se deja sin la suya. Si a un equipo le falta
+ * su credencial, su número se marca en rojo y el aviso del
+ * pie lo nombra por ese número.
  *
- * Las claves se escriben aquí (la general y, si algún equipo
- * tiene otra, la suya) y viven solo en la memoria del servidor
- * mientras la tarea corre: no se guardan.
+ * Las claves viven solo en la memoria del servidor mientras
+ * la tarea corre: no se guardan.
  */
 export function InstallTaskDialog({
   open,
@@ -47,13 +53,13 @@ export function InstallTaskDialog({
   destinos,
   onCreada,
 }: Props) {
+  // Credencial propia por destino (clave del registro:
+  // «pcName|ip»): la de cada equipo, escrita en su fila.
+  const [ajustes, setAjustes] = useState<Record<string, Ajuste>>({});
+  // Cuenta de reserva (la «general» de siempre), opcional.
   const [usuario, setUsuario] = useState("");
   const [clave, setClave] = useState("");
-  // Credencial propia por destino (clave del registro:
-  // «pcName|ip»), para los equipos que no usan la general.
-  const [ajustes, setAjustes] = useState<
-    Record<string, { usuario: string; clave: string }>
-  >({});
+  const [reservaAbierta, setReservaAbierta] = useState(false);
   const [omitir, setOmitir] = useState(true);
   const [intentos, setIntentos] = useState(2);
   const [creando, setCreando] = useState(false);
@@ -71,6 +77,35 @@ export function InstallTaskDialog({
 
   const claveDeDestino = (d: DestinoTarea) => `${d.pcName}|${d.ip}`;
 
+  const general = { usuario: usuario.trim(), clave };
+  // La tarea solo puede nacer si TODO destino queda con una
+  // credencial efectiva completa (regla pura, la misma cuenta
+  // que hará el servidor con lo que se le mande).
+  const completo = credencialesCompletas(
+    general,
+    destinos.map((d) => ajustes[claveDeDestino(d)]),
+  );
+  // Números (los de las filas) de los equipos sin cubrir.
+  const faltan = destinos
+    .map((d, i) => {
+      const ajuste = ajustes[claveDeDestino(d)];
+      const efectiva = ajuste?.clave
+        ? {
+            usuario: ajuste.usuario.trim() || general.usuario,
+            clave: ajuste.clave,
+          }
+        : general;
+      return !efectiva.usuario || !efectiva.clave ? i + 1 : null;
+    })
+    .filter((n): n is number => n !== null);
+  const listaFaltan =
+    faltan.length <= 2
+      ? faltan.join(" y ")
+      : `${faltan.slice(0, -1).join(", ")} y ${faltan[faltan.length - 1]}`;
+
+  const ponerAjuste = (k: string, ajuste: Ajuste) =>
+    setAjustes((prev) => ({ ...prev, [k]: ajuste }));
+
   const crear = async () => {
     setError(null);
     const csrfToken = getCsrfTokenFromDocument();
@@ -78,8 +113,10 @@ export function InstallTaskDialog({
       setError("Sesión sin token de seguridad. Inicia sesión nuevamente.");
       return;
     }
-    // Solo viajan los destinos con clave propia escrita; el
-    // usuario propio solo si se escribió (si no, el general).
+    // Viajan los destinos con contraseña propia escrita: es
+    // lo que el servidor guarda como ajuste (el usuario
+    // propio acompaña si se escribió; si no, manda el de la
+    // reserva, si lo hay).
     const credenciales = destinos
       .map((d) => {
         const ajuste = ajustes[claveDeDestino(d)];
@@ -130,7 +167,7 @@ export function InstallTaskDialog({
 
   return (
     <Dialog open={open} onOpenChange={cerrar}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-xl gap-3 p-5">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Rocket className="size-5" />
@@ -142,135 +179,147 @@ export function InstallTaskDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-5">
+        <div className="space-y-4">
           <div>
             <p className="smallcaps text-muted-foreground">
               Destinos ({destinos.length})
             </p>
-            <ul className="mt-2 max-h-32 space-y-1 overflow-y-auto border border-border/60 bg-muted/20 px-3 py-2">
-              {destinos.map((d) => (
-                <li
-                  key={`${d.pcName}|${d.ip}`}
-                  className="flex items-baseline justify-between gap-3 text-sm"
-                >
-                  <span className="truncate font-medium text-foreground">
-                    {d.pcName}
-                  </span>
-                  <span className="font-mono text-xs text-muted-foreground">
-                    {d.ip}
-                  </span>
-                </li>
-              ))}
+            <ul className="frame-double mt-2.5 max-h-72 divide-y divide-border/60 overflow-y-auto bg-muted/20 px-3">
+              {destinos.map((d, i) => {
+                const k = claveDeDestino(d);
+                const ajuste = ajustes[k] ?? { usuario: "", clave: "" };
+                const sinCubrir = faltan.includes(i + 1);
+                return (
+                  <li key={k} className="flex gap-2.5 py-2">
+                    <span
+                      aria-hidden
+                      className={`flex size-6 shrink-0 items-center justify-center border font-mono text-xs ${
+                        sinCubrir
+                          ? "border-destructive/60 font-semibold text-destructive"
+                          : "border-border bg-background text-muted-foreground"
+                      }`}
+                    >
+                      {i + 1}
+                    </span>
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      {d.pcName !== d.ip ? (
+                        <p className="truncate text-sm leading-6">
+                          <span className="font-medium text-foreground">
+                            {d.pcName}
+                          </span>{" "}
+                          <span className="font-mono text-xs text-muted-foreground">
+                            {d.ip}
+                          </span>
+                        </p>
+                      ) : (
+                        <p className="truncate font-mono text-sm leading-6 text-foreground">
+                          {d.ip}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                          <User className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                          <Input
+                            value={ajuste.usuario}
+                            onChange={(e) =>
+                              ponerAjuste(k, {
+                                ...ajuste,
+                                usuario: e.target.value,
+                              })
+                            }
+                            placeholder="Su usuario"
+                            className="h-8 pl-9 text-sm"
+                            autoComplete="off"
+                            aria-label={`Usuario del equipo ${i + 1} (${d.pcName})`}
+                          />
+                        </div>
+                        <div className="relative flex-1">
+                          <Lock className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                          <Input
+                            type="password"
+                            value={ajuste.clave}
+                            onChange={(e) =>
+                              ponerAjuste(k, {
+                                ...ajuste,
+                                clave: e.target.value,
+                              })
+                            }
+                            placeholder="Su contraseña"
+                            className="h-8 pl-9 text-sm"
+                            autoComplete="off"
+                            aria-label={`Contraseña del equipo ${i + 1} (${d.pcName})`}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
-            <p className="mt-2 flex items-start gap-1.5 text-xs leading-relaxed text-muted-foreground">
-              <Info className="mt-0.5 size-3.5 shrink-0" />
-              Cada equipo va por donde le toca: si su agente ya
-              reporta, se actualiza por su canal sin credenciales;
-              si es un equipo nuevo, se empuja por SMB con la
-              cuenta de abajo. En ambos casos solo se da por
+            <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+              Se empuja por SMB con su cuenta; si su agente ya
+              reporta, se actualiza por su canal. Solo se da por
               instalado cuando el agente da su primera señal.
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="tarea-usuario">Usuario administrador</Label>
-              <div className="relative">
-                <User className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  id="tarea-usuario"
-                  value={usuario}
-                  onChange={(e) => setUsuario(e.target.value)}
-                  placeholder="Administrador local"
-                  className="pl-9"
-                  autoComplete="off"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="tarea-clave">Contraseña</Label>
-              <div className="relative">
-                <Lock className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  id="tarea-clave"
-                  type="password"
-                  value={clave}
-                  onChange={(e) => setClave(e.target.value)}
-                  placeholder="La general"
-                  className="pl-9"
-                  autoComplete="off"
-                />
-              </div>
-            </div>
-          </div>
-          <p className="-mt-3 text-xs text-muted-foreground">
-            La contraseña no se guarda: vive solo en la memoria
-            del servidor mientras la tarea corre. Si el panel se
-            reinicia a mitad, la tarea se marca interrumpida y al
-            reintentar te la pide otra vez.
-          </p>
-
-          {destinos.length > 1 && (
-            <div>
-              <p className="smallcaps text-muted-foreground">
-                Credenciales por equipo (solo si difieren)
-              </p>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                Si algún equipo tiene otra contraseña de
-                administrador —u otro usuario—, escribe la suya:
-                se usa solo para ese equipo, también en sus
-                reintentos automáticos. Los que dejes en blanco
-                van con la general de arriba.
-              </p>
-              <ul className="mt-2 max-h-48 space-y-2 overflow-y-auto border border-border/60 bg-muted/20 px-3 py-2">
-                {destinos.map((d) => {
-                  const k = claveDeDestino(d);
-                  const ajuste = ajustes[k] ?? { usuario: "", clave: "" };
-                  return (
-                    <li key={k} className="flex items-center gap-2">
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium text-foreground">
-                          {d.pcName}
-                        </span>
-                        <span className="block font-mono text-xs text-muted-foreground">
-                          {d.ip}
-                        </span>
-                      </span>
+          <div>
+            <button
+              type="button"
+              onClick={() => setReservaAbierta((v) => !v)}
+              aria-expanded={reservaAbierta}
+              className="flex items-center gap-1.5 text-sm text-muted-foreground underline-offset-2 hover:text-foreground"
+            >
+              <ChevronDown
+                className={`size-4 transition-transform ${reservaAbierta ? "rotate-180" : ""}`}
+              />
+              Cuenta de reserva (opcional)
+            </button>
+            {reservaAbierta && (
+              <div className="mt-2 space-y-1.5">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="tarea-usuario">
+                      Usuario administrador
+                    </Label>
+                    <div className="relative">
+                      <User className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
-                        value={ajuste.usuario}
-                        onChange={(e) =>
-                          setAjustes((prev) => ({
-                            ...prev,
-                            [k]: { ...ajuste, usuario: e.target.value },
-                          }))
-                        }
-                        placeholder="Usuario"
-                        className="w-28"
+                        id="tarea-usuario"
+                        value={usuario}
+                        onChange={(e) => setUsuario(e.target.value)}
+                        placeholder="Administrador local"
+                        className="h-8 pl-9"
                         autoComplete="off"
-                        aria-label={`Usuario propio de ${d.pcName}`}
                       />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="tarea-clave">Contraseña</Label>
+                    <div className="relative">
+                      <Lock className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
+                        id="tarea-clave"
                         type="password"
-                        value={ajuste.clave}
-                        onChange={(e) =>
-                          setAjustes((prev) => ({
-                            ...prev,
-                            [k]: { ...ajuste, clave: e.target.value },
-                          }))
-                        }
-                        placeholder="Su contraseña"
-                        className="w-32"
+                        value={clave}
+                        onChange={(e) => setClave(e.target.value)}
+                        placeholder="La de reserva"
+                        className="h-8 pl-9"
                         autoComplete="off"
-                        aria-label={`Contraseña propia de ${d.pcName}`}
                       />
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
+                    </div>
+                  </div>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Solo para los equipos que dejes sin la suya.
+                  Ninguna contraseña se guarda: viven solo en la
+                  memoria del servidor mientras la tarea corre.
+                </p>
+              </div>
+            )}
+          </div>
 
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
             <label className="flex cursor-pointer items-center gap-2 text-sm">
               <input
                 type="checkbox"
@@ -296,6 +345,14 @@ export function InstallTaskDialog({
             </label>
           </div>
 
+          {!completo && destinos.length > 0 && (
+            <p className="text-xs text-destructive">
+              {faltan.length === 1
+                ? `Al equipo ${listaFaltan} le falta su usuario y su contraseña (o una cuenta de reserva completa).`
+                : `A los equipos ${listaFaltan} les falta su usuario y su contraseña (o una cuenta de reserva completa).`}
+            </p>
+          )}
+
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
@@ -313,12 +370,7 @@ export function InstallTaskDialog({
           </Button>
           <Button
             onClick={() => void crear()}
-            disabled={
-              creando ||
-              destinos.length === 0 ||
-              !usuario.trim() ||
-              clave.length === 0
-            }
+            disabled={creando || !completo}
           >
             {creando ? (
               <Spinner size={14} />

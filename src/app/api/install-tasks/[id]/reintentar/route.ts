@@ -5,6 +5,10 @@ import { db } from "@/lib/db";
 import { logError } from "@/lib/logger";
 import { normalizeComputerName } from "@/lib/utils";
 import { reintentarTarea } from "@/lib/installExecutor";
+import {
+  ESTADO_DESTINO,
+  credencialesCompletas,
+} from "@/lib/installTasks";
 
 /**
  * POST (admin): reintenta los destinos en ERROR o INTERRUMPIDO
@@ -13,7 +17,10 @@ import { reintentarTarea } from "@/lib/installExecutor";
  * confirmación de credenciales frescas.
  *   { clave, credenciales?: [{pcName, ip, usuario?, clave}] }
  *   `credenciales` trae la clave propia de los destinos que no
- *   usan la general, igual que al crear la tarea.
+ *   usan la general, igual que al crear la tarea. La clave
+ *   general es la de RESERVA: puede venir vacía si cada
+ *   destino a reintentar trae la suya completa (su usuario o
+ *   el de la tarea, y su clave).
  */
 export async function POST(
   req: Request,
@@ -37,22 +44,15 @@ export async function POST(
     );
   }
   const clave = typeof body?.clave === "string" ? body.clave : "";
-  if (!clave) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error:
-          "La clave de la cuenta es requerida para reintentar (no se guardó de la vez anterior).",
-      },
-      { status: 400 },
-    );
-  }
   try {
     const tarea = await db.installTask.findUnique({
       where: { id },
       select: {
         id: true,
-        targets: { select: { id: true, pcName: true, ipAddress: true } },
+        username: true,
+        targets: {
+          select: { id: true, pcName: true, ipAddress: true, status: true },
+        },
       },
     });
     if (!tarea) {
@@ -108,6 +108,32 @@ export async function POST(
           clave: claveDestino,
         });
       }
+    }
+    // Cobertura del reintento: cada destino a reintentar
+    // tiene que resolver a usuario y contraseña entre la
+    // cuenta de reserva (el usuario de la tarea y la clave
+    // que llega) y la suya. Si a alguno le falta una pieza,
+    // su empujón nacería condenado: no se lanza.
+    const reintentables = tarea.targets.filter(
+      (t) =>
+        t.status === ESTADO_DESTINO.ERROR ||
+        t.status === ESTADO_DESTINO.INTERRUMPIDO,
+    );
+    if (
+      reintentables.length > 0 &&
+      !credencialesCompletas(
+        { usuario: tarea.username, clave },
+        reintentables.map((t) => porDestino.get(t.id)),
+      )
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Falta credencial para reintentar: escribe la propia de cada equipo (su contraseña y, si difiere, su usuario), o una clave de reserva completa.",
+        },
+        { status: 400 },
+      );
     }
     const relanzada = await reintentarTarea(id, {
       general: clave,
