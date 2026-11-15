@@ -14,14 +14,14 @@
     "db:migrate": "prisma migrate dev",
     "db:reset": "prisma migrate reset",
     "db:force-reset": "prisma db push --force-reset",
+    "db:vaciar": "tsx scripts/vaciarDatos.ts",
     "user:create": "tsx scripts/createUser.ts",
     "user:list": "tsx scripts/listUsers.ts",
     "user:delete": "tsx scripts/deleteUser.ts",
     "user:rotate-key": "tsx scripts/rotateApiKey.ts",
     "user:assign-computer": "tsx scripts/assignComputer.ts",
     "computer:list": "tsx scripts/listComputers.ts",
-    "test": "vitest run",
-    "db:vaciar": "tsx scripts/vaciarDatos.ts"
+    "test": "vitest run"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.1",

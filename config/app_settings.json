@@ -1,1 +1,9 @@
-{}
+{
+  "passwordUnlockEnabled": true,
+  "offlineEmergencyEnabled": true,
+  "lockSessionOnInsert": false,
+  "shutdownOnNonWhitelisted": false,
+  "shutdownCountdownSeconds": 60,
+  "captureEvidenceOnNonWhitelisted": true,
+  "silenceThresholdMinutes": 5
+}
