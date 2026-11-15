@@ -468,14 +468,7 @@ async function intentoInstalacion(
     status: ESTADO_DESTINO.ESPERANDO_SENAL,
     message: "Instalado en el destino: esperando la primera señal del agente…",
   });
-  // 10 minutos, no 3: con dos instalaciones a la vez el
-  // panel va cargado y un primer intento de enrolamiento
-  // fallido se reintenta a los 30 s, al minuto… pero la
-  // ventana vieja de 3 minutos moría antes que el reintento
-  // bueno y la tarea salía con error aunque el agente se
-  // enrolara poco después (visto el 2026-11-15 instalando
-  // dos PC a la vez: una llegó y la otra, no «a tiempo»).
-  const llego = await esperarSenalAgente(equipo.id, inicio, 10 * 60_000);
+  const llego = await esperarSenalAgente(equipo.id, inicio, 3 * 60_000);
   if (llego) {
     await db.computer.update({
       where: { id: equipo.id },
@@ -490,7 +483,7 @@ async function intentoInstalacion(
   return {
     estado: ESTADO_DESTINO.ERROR,
     message:
-      "El instalador terminó bien en el destino, pero el agente no dio señal en 10 minutos. El código de enrolamiento sigue vigente 12 h: si el servicio arranca más tarde, el agente se enrolará solo. Revisa en ese equipo que el servicio USBMonitorService esté en marcha y su registro en C:\\ProgramData\\USBMonitor\\agente.log (las líneas del instalador-remoto cuentan la instalación paso a paso).",
+      "El instalador terminó bien en el destino, pero el agente no dio señal en 3 minutos. El código de enrolamiento sigue vigente 12 h: si el servicio arranca más tarde, el agente se enrolará solo. Revisa en ese equipo que el servicio USBMonitorService esté en marcha y su registro en C:\\ProgramData\\USBMonitor\\agente.log (las líneas del instalador-remoto cuentan la instalación paso a paso).",
     reintentable: false,
   };
 }
