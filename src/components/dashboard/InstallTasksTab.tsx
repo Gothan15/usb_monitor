@@ -11,7 +11,10 @@ import {
   EmpujeChecklist,
   type RequisitoEmpujeVista,
 } from "@/components/dashboard/EmpujeChecklist";
-import { ETIQUETA_ESTADO_DESTINO } from "@/lib/installTasks";
+import {
+  ETIQUETA_ESTADO_DESTINO,
+  credencialesCompletas,
+} from "@/lib/installTasks";
 import { formatDateTime } from "@/components/dashboard/types";
 import {
   AlertTriangle,
@@ -102,10 +105,11 @@ export function InstallTasksTab() {
   const [expandida, setExpandida] = useState<ReadonlySet<string>>(new Set());
   const [reintentando, setReintentando] = useState<string | null>(null);
   const [claveReintento, setClaveReintento] = useState("");
-  // Clave propia por destino al reintentar (clave del registro:
-  // el id del destino), para los equipos que no usan la general.
-  const [clavesDestinoReintento, setClavesDestinoReintento] = useState<
-    Record<string, string>
+  // Credencial propia por destino al reintentar (clave del
+  // registro: el id del destino), para los equipos con la
+  // suya: cada PC tiene su usuario y su contraseña.
+  const [ajustesReintento, setAjustesReintento] = useState<
+    Record<string, { usuario: string; clave: string }>
   >({});
   const [enviando, setEnviando] = useState(false);
   const [avisoReintento, setAvisoReintento] = useState<string | null>(null);
@@ -254,21 +258,40 @@ export function InstallTasksTab() {
     }
   };
 
+  // ¿Puede lanzarse el reintento de esta tarea? Cada destino
+  // a reintentar tiene que resolver a usuario y contraseña
+  // entre la suya y la de reserva (el usuario de la tarea y
+  // la clave escrita arriba): la misma regla pura que al
+  // crear la tarea y que el servidor vuelve a comprobar.
+  const coberturaReintento = (tarea: TareaVista) =>
+    credencialesCompletas(
+      { usuario: tarea.username, clave: claveReintento },
+      tarea.targets
+        .filter((d) => d.status === "ERROR" || d.status === "INTERRUMPIDO")
+        .map((d) => ajustesReintento[d.id]),
+    );
+
   const reintentar = async (tarea: TareaVista) => {
     const csrfToken = getCsrfTokenFromDocument();
     if (!csrfToken) {
       setAvisoReintento("Sesión sin token de seguridad. Inicia sesión nuevamente.");
       return;
     }
-    // Las claves propias escritas para destinos que se van a
-    // reintentar (los demás van con la general).
+    // Las credenciales propias escritas para destinos que se
+    // van a reintentar (los demás van con la de reserva).
     const credenciales = tarea.targets
       .filter((d) => d.status === "ERROR" || d.status === "INTERRUMPIDO")
       .map((d) => {
-        const propia = clavesDestinoReintento[d.id];
-        return propia
-          ? { pcName: d.pcName, ip: d.ipAddress, clave: propia }
-          : null;
+        const propia = ajustesReintento[d.id];
+        if (!propia?.clave) return null;
+        return {
+          pcName: d.pcName,
+          ip: d.ipAddress,
+          ...(propia.usuario.trim()
+            ? { usuario: propia.usuario.trim() }
+            : {}),
+          clave: propia.clave,
+        };
       })
       .filter(Boolean);
     try {
@@ -292,7 +315,7 @@ export function InstallTasksTab() {
         return;
       }
       setClaveReintento("");
-      setClavesDestinoReintento({});
+      setAjustesReintento({});
       setReintentando(null);
       void load();
     } catch {
@@ -435,8 +458,10 @@ export function InstallTasksTab() {
                       : "Con errores"}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  {instalados}/{tarea.targets.length} instalados · cuenta{" "}
-                  {tarea.username}
+                  {instalados}/{tarea.targets.length} instalados ·{" "}
+                  {tarea.username
+                    ? `cuenta ${tarea.username}`
+                    : "cuenta propia en cada equipo"}
                   {tarea.createdBy ? ` · creada por ${tarea.createdBy}` : ""} ·
                   hasta {tarea.maxAttempts} intento
                   {tarea.maxAttempts === 1 ? "" : "s"} por equipo
@@ -509,20 +534,22 @@ export function InstallTasksTab() {
               {reintentando === tarea.id && (
                 <div className="mt-3 flex flex-wrap items-center gap-3 border border-border/60 bg-background px-3 py-3">
                   <p className="text-sm text-muted-foreground">
-                    La clave no se guardó: vuelve a escribir la de la
-                    cuenta {tarea.username}.
+                    Las claves no se guardaron: escribe la de cada
+                    equipo en su fila. La de reserva solo hace falta
+                    si algún equipo va con ella.
                   </p>
                   <Input
                     type="password"
                     value={claveReintento}
                     onChange={(e) => setClaveReintento(e.target.value)}
-                    placeholder="Contraseña"
-                    className="w-56"
+                    placeholder="Contraseña de reserva (opcional)"
+                    className="w-64"
                     autoComplete="off"
+                    aria-label="Contraseña de reserva para el reintento"
                   />
                   <Button
                     size="sm"
-                    disabled={enviando || claveReintento.length === 0}
+                    disabled={enviando || !coberturaReintento(tarea)}
                     onClick={() => void reintentar(tarea)}
                   >
                     {enviando ? <Spinner size={14} /> : "Reintentar"}
@@ -533,7 +560,7 @@ export function InstallTasksTab() {
                     onClick={() => {
                       setReintentando(null);
                       setClaveReintento("");
-                      setClavesDestinoReintento({});
+                      setAjustesReintento({});
                     }}
                   >
                     Cancelar
@@ -543,9 +570,10 @@ export function InstallTasksTab() {
                   ) && (
                     <div className="w-full space-y-2 border-t border-border/60 pt-3">
                       <p className="text-xs text-muted-foreground">
-                        Si algún equipo tiene otra contraseña, escribe
-                        la suya: se reintenta con esa. Los que dejes en
-                        blanco van con la general.
+                        Cada equipo se reintenta con la suya: su
+                        usuario y su contraseña. Los que dejes en
+                        blanco van con la cuenta de reserva (el
+                        usuario de la tarea y la clave de arriba).
                       </p>
                       {tarea.targets
                         .filter(
@@ -553,32 +581,60 @@ export function InstallTasksTab() {
                             d.status === "ERROR" ||
                             d.status === "INTERRUMPIDO",
                         )
-                        .map((d) => (
-                          <div
-                            key={d.id}
-                            className="flex flex-wrap items-center gap-2"
-                          >
-                            <span className="text-sm font-medium text-foreground">
-                              {d.pcName}
-                            </span>
-                            <span className="font-mono text-xs text-muted-foreground">
-                              {d.ipAddress}
-                            </span>
-                            <Input
-                              type="password"
-                              value={clavesDestinoReintento[d.id] ?? ""}
-                              onChange={(e) =>
-                                setClavesDestinoReintento((prev) => ({
-                                  ...prev,
-                                  [d.id]: e.target.value,
-                                }))
-                              }
-                              placeholder="Su contraseña (si difiere)"
-                              className="w-56"
-                              autoComplete="off"
-                            />
-                          </div>
-                        ))}
+                        .map((d) => {
+                          const ajuste = ajustesReintento[d.id] ?? {
+                            usuario: "",
+                            clave: "",
+                          };
+                          return (
+                            <div
+                              key={d.id}
+                              className="flex flex-wrap items-center gap-2"
+                            >
+                              <span className="min-w-0">
+                                <span className="block truncate text-sm font-medium text-foreground">
+                                  {d.pcName}
+                                </span>
+                                <span className="block font-mono text-xs text-muted-foreground">
+                                  {d.ipAddress}
+                                </span>
+                              </span>
+                              <Input
+                                value={ajuste.usuario}
+                                onChange={(e) =>
+                                  setAjustesReintento((prev) => ({
+                                    ...prev,
+                                    [d.id]: {
+                                      ...ajuste,
+                                      usuario: e.target.value,
+                                    },
+                                  }))
+                                }
+                                placeholder="Su usuario"
+                                className="w-40"
+                                autoComplete="off"
+                                aria-label={`Usuario de ${d.pcName} para reintentar`}
+                              />
+                              <Input
+                                type="password"
+                                value={ajuste.clave}
+                                onChange={(e) =>
+                                  setAjustesReintento((prev) => ({
+                                    ...prev,
+                                    [d.id]: {
+                                      ...ajuste,
+                                      clave: e.target.value,
+                                    },
+                                  }))
+                                }
+                                placeholder="Su contraseña"
+                                className="w-48"
+                                autoComplete="off"
+                                aria-label={`Contraseña de ${d.pcName} para reintentar`}
+                              />
+                            </div>
+                          );
+                        })}
                     </div>
                   )}
                   {avisoReintento && (
