@@ -20,7 +20,8 @@
     "user:rotate-key": "tsx scripts/rotateApiKey.ts",
     "user:assign-computer": "tsx scripts/assignComputer.ts",
     "computer:list": "tsx scripts/listComputers.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:vaciar": "tsx scripts/vaciarDatos.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.1",
