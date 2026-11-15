@@ -35,6 +35,11 @@ public sealed class ActualizadorAgente
     private readonly ClientePanel _cliente;
     private int _enCurso;
 
+    // Cuándo se lanzó la copia desinstaladora de cada orden: la
+    // configuración vuelve a traer la orden mientras siga
+    // EN_CURSO, y no deben trabajar dos copias a la vez.
+    private readonly Dictionary<string, DateTime> _desinstalacionesLanzadas = new();
+
     public ActualizadorAgente(ClientePanel cliente) => _cliente = cliente;
 
     /// <summary>
@@ -167,6 +172,23 @@ public sealed class ActualizadorAgente
                 "La desinstalación agotó sus intentos.").ConfigureAwait(false);
             return;
         }
+        // Guarda anti-doble-lanzamiento (condición de carrera):
+        // la orden sigue EN_CURSO y la configuración la vuelve a
+        // traer en cada ciclo (10 min) hasta que se cierra, así
+        // que sin esta guarda el servicio lanzaba copia tras
+        // copia; dos desinstaladoras a la vez se pisan — las dos
+        // pueden colar su informe HECHA a la vez y la segunda
+        // encuentra el servicio ya borrado a mitad de su
+        // trabajo —. Con una copia viva, o lanzada hace menos de
+        // 15 min, no se lanza otra; si la copia murió sin
+        // terminar, pasado el margen se reintenta.
+        if (HayCopiaDesinstaladoraEnMarcha() ||
+            (_desinstalacionesLanzadas.TryGetValue(orden.Id, out var lanzada) &&
+             DateTime.UtcNow - lanzada < TimeSpan.FromMinutes(15)))
+        {
+            Log.Info("La desinstalación ya tiene una copia trabajando: no se lanza otra.");
+            return;
+        }
         var aceptada = await _cliente.InformarOrdenAsync(orden.Id, "EN_CURSO")
             .ConfigureAwait(false);
         if (!aceptada)
@@ -187,18 +209,38 @@ public sealed class ActualizadorAgente
             var proceso = Process.Start(new ProcessStartInfo
             {
                 FileName = copia,
-                Arguments = $"desinstalar-orden {orden.Id}",
+                // La carpeta de instalación viaja como tercer
+                // argumento: la copia corre desde la temporal y
+                // su server.json (con la dirección del panel y
+                // la credencial) vive junto al ejecutable
+                // instalado; sin esto, su informe HECHA salía
+                // sin firmar y el panel lo rechazaba.
+                Arguments = $"desinstalar-orden {orden.Id} \"{Path.GetDirectoryName(instalado)}\"",
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 WorkingDirectory = carpeta,
             });
             if (proceso is null) throw new InvalidOperationException("Process.Start devolvió null.");
+            _desinstalacionesLanzadas[orden.Id] = DateTime.UtcNow;
             Log.Info("Desinstalación pedida por el panel en marcha: la copia desinstaladora tomará el relevo.");
         }
         catch (Exception exc)
         {
             await _cliente.InformarOrdenAsync(orden.Id, "ERROR",
                 $"No se pudo lanzar la desinstalación: {exc.Message}").ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>¿Sigue viva una copia desinstaladora (el ejecutable temporal de la orden)?</summary>
+    private static bool HayCopiaDesinstaladoraEnMarcha()
+    {
+        try
+        {
+            return Process.GetProcessesByName("USBMonitorDesinstalador").Length > 0;
+        }
+        catch
+        {
+            return false;
         }
     }
 

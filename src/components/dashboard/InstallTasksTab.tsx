@@ -22,6 +22,7 @@ import {
   ChevronDown,
   ChevronRight,
   ListTodo,
+  OctagonX,
   RotateCcw,
   Trash2,
 } from "lucide-react";
@@ -161,11 +162,27 @@ export function InstallTasksTab() {
   // el equipo a la lista de Equipos.
   const cancelarOrden = useCallback(
     async (orden: OrdenVista) => {
+      // Como el resto de acciones de esta vista, la llamada
+      // lleva la cabecera con el token de seguridad: sin ella,
+      // el panel responde «No autorizado» aunque la sesión sea
+      // la del administrador (así nació este botón, y por eso
+      // detener una orden fallaba siempre con ese mensaje).
+      const csrfToken = getCsrfTokenFromDocument();
+      if (!csrfToken) {
+        setError(
+          "Sesión sin token de seguridad. Inicia sesión nuevamente.",
+        );
+        return;
+      }
       try {
         setCancelandoId(orden.id);
         const res = await fetch(
           `/api/agent/comandos/${orden.id}/cancelar`,
-          { method: "POST", credentials: "include" },
+          {
+            method: "POST",
+            credentials: "include",
+            headers: { "x-csrf-token": csrfToken },
+          },
         );
         const datos = await res.json().catch(() => null);
         if (!res.ok || !datos?.ok) {
@@ -721,13 +738,14 @@ export function InstallTasksTab() {
           <div className="flex flex-col">
             <p className="smallcaps text-acero">Canal del agente</p>
             <h3 className="font-display mt-2 text-[1.35rem] font-bold leading-none text-foreground">
-              Actualizaciones del agente
+              Órdenes del agente
             </h3>
             <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-              Las órdenes de actualización que el panel deja a los
-              equipos y que cada agente recoge y aplica solo. Si una
-              falla, aquí queda escrito el motivo que el propio
-              agente informó.
+              Las órdenes que el panel deja a los equipos —
+              actualizaciones y desinstalaciones — y que cada
+              agente recoge y ejecuta solo. Si una falla, aquí
+              queda escrito el motivo que el propio agente
+              informó.
             </p>
           </div>
 
@@ -735,25 +753,27 @@ export function InstallTasksTab() {
             <div className="flex items-start gap-3 border-t border-border pt-6 text-sm text-muted-foreground">
               <ListTodo className="mt-0.5 size-4 shrink-0 text-[var(--acero)]" />
               <p>
-                Todavía no hay actualizaciones. Se crean desde
-                Equipos, con el botón Actualizar de cada equipo, o
-                solas si la actualización automática está encendida.
+                Todavía no hay órdenes. Las de actualización se
+                crean desde Equipos, con el botón Actualizar de
+                cada equipo, o solas si la actualización
+                automática está encendida; las de desinstalación,
+                al borrar un equipo enrolado.
               </p>
             </div>
           )}
 
-          <div className="space-y-3">
+          <div className="space-y-8">
             {ordenes.map((orden) => (
               <article
                 key={orden.id}
-                className="border border-border/60 bg-muted/10 px-4 py-3"
+                className="border border-border/60 bg-muted/10 px-4 py-4"
               >
-                <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-                  <p className="font-display text-base font-bold text-foreground">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <p className="font-display text-lg font-bold text-foreground">
                     {orden.pcName}
                   </p>
                   <span
-                    className={`inline-flex items-center gap-1.5 text-xs font-semibold ${
+                    className={`inline-flex items-center gap-1.5 text-sm font-medium ${
                       TONO_ESTADO_ORDEN[orden.estado] ??
                       "text-muted-foreground"
                     }`}
@@ -778,33 +798,32 @@ export function InstallTasksTab() {
                     {orden.intentos > 0
                       ? ` · intento ${orden.intentos}`
                       : ""}
-                  </span>
-                  <span className="ml-auto text-xs text-muted-foreground">
+                    {" · "}
                     {formatDateTime(orden.creadaEn)}
                     {orden.terminadaEn
                       ? ` → ${formatDateTime(orden.terminadaEn)}`
                       : ""}
                   </span>
-                </div>
-                {orden.viva && (
-                  <div className="mt-2">
-                    <button
-                      type="button"
+                  {orden.viva && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="ml-auto"
                       onClick={() => void cancelarOrden(orden)}
                       disabled={cancelandoId === orden.id}
-                      className="border border-border px-2.5 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-50"
                     >
-                      {cancelandoId === orden.id
-                        ? "Cancelando..."
-                        : orden.tipo === "desinstalar"
-                          ? "Cancelar desinstalación"
-                          : "Cancelar actualización"}
-                    </button>
-                  </div>
-                )}
+                      {cancelandoId === orden.id ? (
+                        <Spinner size={14} />
+                      ) : (
+                        <OctagonX className="mr-1.5 size-3.5" />
+                      )}
+                      Detener
+                    </Button>
+                  )}
+                </div>
                 {orden.detalle && (
                   <p
-                    className={`mt-1 text-xs leading-relaxed ${
+                    className={`mt-2 text-xs leading-relaxed ${
                       orden.estado === "ERROR"
                         ? "text-rose-600"
                         : "text-muted-foreground"
