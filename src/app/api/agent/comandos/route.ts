@@ -5,12 +5,15 @@ import { db } from "@/lib/db";
 import { logError } from "@/lib/logger";
 import { normalizeComputerName } from "@/lib/utils";
 import {
+  ESTADO_ORDEN,
   ESTADOS_ORDEN_ACTIVA,
   TIPO_ORDEN_ACTUALIZAR,
   TIPO_ORDEN_DESINSTALAR,
+  ordenEliminable,
   vistaOrdenActualizacion,
 } from "@/lib/agentCommands";
 import { manifiestoPaquete } from "@/lib/paqueteAgente";
+import { getCurrentDate } from "@/lib/time";
 
 /**
  * Órdenes del canal del agente, lado del panel (solo administrador).
@@ -24,6 +27,9 @@ import { manifiestoPaquete } from "@/lib/paqueteAgente";
  * GET sin pcName -> las órdenes recientes de TODOS los equipos
  *   (50, con forma de vista): la lista que pinta la pestaña de
  *   Tareas, donde estas órdenes viven junto a las de instalación.
+ * DELETE -> la limpieza de terminadas: borra las órdenes ya
+ *   terminales (la regla `ordenEliminable` manda: las canceladas
+ *   recientes se respetan hasta que dejan de servirse al agente).
  */
 export async function POST(req: Request) {
   const admin = await requireAdminUser(req);
@@ -222,6 +228,46 @@ export async function GET(req: Request) {
     return res;
   } catch (error: any) {
     logError("Error listando órdenes del agente", error);
+    return NextResponse.json(
+      { ok: false, error: error.message },
+      { status: 500 },
+    );
+  }
+}
+
+export async function DELETE(req: Request) {
+  const admin = await requireAdminUser(req);
+  if (!admin) {
+    return NextResponse.json(
+      { ok: false, error: "No autorizado" },
+      { status: 401 },
+    );
+  }
+  try {
+    const ahora = getCurrentDate();
+    const candidatas = await db.agentCommand.findMany({
+      where: {
+        status: {
+          in: [
+            ESTADO_ORDEN.HECHA,
+            ESTADO_ORDEN.ERROR,
+            ESTADO_ORDEN.CANCELADA,
+          ],
+        },
+      },
+      select: { id: true, status: true, finishedAt: true },
+    });
+    const ids = candidatas
+      .filter((c) => ordenEliminable(c.status, c.finishedAt, ahora))
+      .map((c) => c.id);
+    const resultado = ids.length
+      ? await db.agentCommand.deleteMany({ where: { id: { in: ids } } })
+      : { count: 0 };
+    const res = NextResponse.json({ ok: true, eliminadas: resultado.count });
+    res.headers.set("Cache-Control", "no-store");
+    return res;
+  } catch (error: any) {
+    logError("Error limpiando las órdenes terminadas", error);
     return NextResponse.json(
       { ok: false, error: error.message },
       { status: 500 },

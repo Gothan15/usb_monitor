@@ -4,6 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { getCsrfTokenFromDocument } from "@/lib/utils";
 import { useLiveData } from "@/components/providers/LiveDataProvider";
@@ -114,11 +122,13 @@ export function InstallTasksTab() {
   >({});
   const [enviando, setEnviando] = useState(false);
   const [avisoReintento, setAvisoReintento] = useState<string | null>(null);
-  // Borrado de tareas: «confirmandoBorrado» guarda el id de la
-  // tarea a la espera de confirmación (o "todas" para la
-  // limpieza de terminadas); el servidor es quien decide si
-  // una tarea se puede borrar (una en curso, jamás).
-  const [confirmandoBorrado, setConfirmandoBorrado] = useState<string | null>(
+  // Borrado de tareas: «borradoObjetivo» guarda el id de la
+  // tarea que el diálogo de confirmación propone borrar (o
+  // "todas" para la limpieza de terminadas, que alcanza
+  // también a las órdenes del agente); el servidor es quien
+  // decide si algo se puede borrar (lo que está en curso,
+  // jamás).
+  const [borradoObjetivo, setBorradoObjetivo] = useState<string | null>(
     null,
   );
   const [borrando, setBorrando] = useState(false);
@@ -266,7 +276,26 @@ export function InstallTasksTab() {
         setAvisoBorrado(datos?.error || "No se pudo borrar la tarea.");
         return;
       }
-      setConfirmandoBorrado(null);
+      if (esLimpieza) {
+        // La limpieza alcanza también a las órdenes del agente
+        // ya terminadas (actualizaciones y desinstalaciones):
+        // mismo botón y misma confirmación.
+        const resOrdenes = await fetch("/api/agent/comandos", {
+          method: "DELETE",
+          headers: { "x-csrf-token": csrfToken },
+          credentials: "include",
+        });
+        const datosOrdenes = await resOrdenes.json().catch(() => null);
+        if (!resOrdenes.ok || !datosOrdenes?.ok) {
+          setAvisoBorrado(
+            datosOrdenes?.error ||
+              "Las tareas se limpiaron, pero las órdenes terminadas no se pudieron borrar.",
+          );
+          void load();
+          return;
+        }
+      }
+      setBorradoObjetivo(null);
       void load();
     } catch {
       setAvisoBorrado("No se pudo contactar con el panel.");
@@ -342,6 +371,13 @@ export function InstallTasksTab() {
     }
   };
 
+  // La tarea que el diálogo de borrado propone eliminar (la
+  // limpieza de terminadas no es una tarea concreta).
+  const tareaEnDialogo =
+    borradoObjetivo !== null && borradoObjetivo !== "todas"
+      ? (tareas ?? []).find((t) => t.id === borradoObjetivo)
+      : undefined;
+
   return (
     <div className="animate-view-in space-y-10 p-6" data-tour="tasks-main">
       <div className="flex items-end justify-between gap-4">
@@ -360,19 +396,20 @@ export function InstallTasksTab() {
           </p>
         </div>
         <div className="flex gap-2">
-          {tareas !== null &&
-            tareas.some((t) => t.status !== "EN_CURSO") && (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setConfirmandoBorrado("todas");
-                  setAvisoBorrado(null);
-                }}
-              >
-                <Trash2 className="mr-1.5 size-3.5" />
-                Limpiar terminadas
-              </Button>
-            )}
+          {((tareas !== null &&
+            tareas.some((t) => t.status !== "EN_CURSO")) ||
+            (ordenes !== null && ordenes.some((o) => !o.viva))) && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                setBorradoObjetivo("todas");
+                setAvisoBorrado(null);
+              }}
+            >
+              <Trash2 className="mr-1.5 size-3.5" />
+              Limpiar terminadas
+            </Button>
+          )}
           {/* Sin botón de «Actualizar»: la lista se recarga
               sola con cada aviso `install:change` del socket
               (el contador no pasa por el interruptor de
@@ -381,34 +418,6 @@ export function InstallTasksTab() {
               error de abajo, con su «Reintentar». */}
         </div>
       </div>
-
-      {confirmandoBorrado === "todas" && (
-        <div className="flex flex-wrap items-center gap-3 border border-border/60 bg-background px-3 py-3">
-          <p className="text-sm text-muted-foreground">
-            Se borrarán todas las tareas ya terminadas (completadas y
-            con errores) con sus destinos. Las que sigan en curso se
-            quedan. No se puede deshacer.
-          </p>
-          <Button
-            size="sm"
-            variant="destructive"
-            disabled={borrando}
-            onClick={() => void borrar("todas")}
-          >
-            {borrando ? <Spinner size={14} /> : "Borrar terminadas"}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setConfirmandoBorrado(null)}
-          >
-            Cancelar
-          </Button>
-          {avisoBorrado && (
-            <p className="w-full text-xs text-rose-600">{avisoBorrado}</p>
-          )}
-        </div>
-      )}
 
       {error && (
         <Alert variant="destructive">
@@ -498,55 +507,23 @@ export function InstallTasksTab() {
                     Reintentar ({reintentables})
                   </Button>
                 )}
-                {tarea.status !== "EN_CURSO" &&
-                  confirmandoBorrado !== tarea.id && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className={
-                        reintentables > 0 ? "" : "ml-auto"
-                      }
-                      onClick={() => {
-                        setConfirmandoBorrado(tarea.id);
-                        setAvisoBorrado(null);
-                      }}
-                    >
-                      <Trash2 className="mr-1.5 size-3.5" />
-                      Eliminar
-                    </Button>
-                  )}
-              </div>
-
-              {confirmandoBorrado === tarea.id && (
-                <div className="mt-3 flex flex-wrap items-center gap-3 border border-border/60 bg-background px-3 py-3">
-                  <p className="text-sm text-muted-foreground">
-                    Se borrará esta tarea con el resultado de sus{" "}
-                    {tarea.targets.length} destino
-                    {tarea.targets.length === 1 ? "" : "s"}. No se
-                    puede deshacer.
-                  </p>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    disabled={borrando}
-                    onClick={() => void borrar(tarea.id)}
-                  >
-                    {borrando ? <Spinner size={14} /> : "Eliminar"}
-                  </Button>
+                {tarea.status !== "EN_CURSO" && (
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => setConfirmandoBorrado(null)}
+                    className={
+                      reintentables > 0 ? "" : "ml-auto"
+                    }
+                    onClick={() => {
+                      setBorradoObjetivo(tarea.id);
+                      setAvisoBorrado(null);
+                    }}
                   >
-                    Cancelar
+                    <Trash2 className="mr-1.5 size-3.5" />
+                    Eliminar
                   </Button>
-                  {avisoBorrado && (
-                    <p className="w-full text-xs text-rose-600">
-                      {avisoBorrado}
-                    </p>
-                  )}
-                </div>
-              )}
+                )}
+              </div>
 
               {reintentando === tarea.id && (
                 <div className="mt-3 flex flex-wrap items-center gap-3 border border-border/60 bg-background px-3 py-3">
@@ -837,6 +814,81 @@ export function InstallTasksTab() {
           </div>
         </section>
       )}
+
+      {/* Confirmación de borrado: un diálogo, no un cuadro en
+          línea. Sirve para la limpieza de terminadas (tareas y
+          órdenes del agente) y para eliminar una tarea suelta. */}
+      <Dialog
+        open={borradoObjetivo !== null}
+        onOpenChange={(abierto) => {
+          if (!abierto && !borrando) {
+            setBorradoObjetivo(null);
+            setAvisoBorrado(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {borradoObjetivo === "todas"
+                ? "Limpiar terminadas"
+                : "Eliminar tarea"}
+            </DialogTitle>
+            <DialogDescription>
+              {borradoObjetivo === "todas" ? (
+                <>
+                  Se borrarán todas las tareas de instalación ya
+                  terminadas (completadas y con errores) con sus
+                  destinos, y también las órdenes del agente ya
+                  terminadas: actualizaciones y desinstalaciones
+                  hechas, con error o canceladas hace más de 10
+                  minutos. Lo que siga en curso se queda. No se
+                  puede deshacer.
+                </>
+              ) : (
+                <>
+                  Se borrará esta tarea con el resultado de sus{" "}
+                  {tareaEnDialogo?.targets.length ?? 0} destino
+                  {(tareaEnDialogo?.targets.length ?? 0) === 1
+                    ? ""
+                    : "s"}
+                  . No se puede deshacer.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          {avisoBorrado && (
+            <p className="text-sm text-rose-600">{avisoBorrado}</p>
+          )}
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setBorradoObjetivo(null);
+                setAvisoBorrado(null);
+              }}
+              disabled={borrando}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (borradoObjetivo) void borrar(borradoObjetivo);
+              }}
+              disabled={borrando}
+            >
+              {borrando ? (
+                <Spinner size={14} />
+              ) : borradoObjetivo === "todas" ? (
+                "Borrar terminadas"
+              ) : (
+                "Eliminar"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
