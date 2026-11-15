@@ -104,6 +104,33 @@ export function resolverCredencialDestino(
   };
 }
 
+/**
+ * ¿Puede crearse la tarea con estas credenciales? Cada
+ * destino necesita una credencial efectiva completa
+ * (usuario y clave) tras resolver la suya contra la
+ * general; si a alguno le falta una pieza, su empujón
+ * nacería condenado y la tarea no debe ni crearse.
+ *
+ * Ojo a la asimetría, que es la del servidor: un ajuste
+ * propio solo existe si trae su clave (el usuario propio
+ * es el acompañante opcional). Un usuario escrito sin
+ * clave NO forma ajuste: ese destino va con la general
+ * entera, tal cual lo guarda la ruta de creación.
+ */
+export function credencialesCompletas(
+  general: CredencialDestino,
+  ajustes: (AjusteCredencialDestino | null | undefined)[],
+): boolean {
+  if (ajustes.length === 0) return false;
+  return ajustes.every((ajuste) => {
+    const efectiva = resolverCredencialDestino(
+      general,
+      ajuste?.clave ? ajuste : undefined,
+    );
+    return efectiva.usuario.trim().length > 0 && efectiva.clave.length > 0;
+  });
+}
+
 /** Estado final de la tarea según cómo acabaron sus destinos. */
 export function estadoFinalTarea(
   estados: string[],
