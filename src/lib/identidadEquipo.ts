@@ -238,6 +238,31 @@ export async function fusionarEquipos(
 }
 
 /**
+ * Renombra una fila al nombre que presenta el agente, sin
+ * que un choque con el índice único de nombre tumbe la
+ * resolución: dos agentes enrolándose a la vez pueden pedir
+ * nombres que se pisan entre la lectura y la escritura, y el
+ * enrolamiento vale más que el nombre bonito — la fila
+ * conserva su nombre actual y ya se renombrará cuando se
+ * pueda. Devuelve el nombre que la fila tiene al salir.
+ */
+async function renombrarEquipo(
+  fila: FilaEquipo,
+  nombre: string,
+): Promise<string> {
+  if (fila.name === nombre) return fila.name;
+  try {
+    await (db as any).computer.update({
+      where: { id: fila.id },
+      data: { name: nombre },
+    });
+    return nombre;
+  } catch {
+    return fila.name;
+  }
+}
+
+/**
  * Resolución de identidad cuando un agente se presenta por
  * nombre: devuelve LA fila del equipo, fusionando antes las
  * filas candidatas si son dos (o tres) filas distintas de la
@@ -255,6 +280,18 @@ export async function fusionarEquipos(
  * renombra (el nombre está libre: la fila que lo tuviera era
  * candidata y se acaba de fusionar). Devuelve null si no hay
  * ninguna fila que emparejar.
+ *
+ * Dos PC DISTINTAS pueden compartir nombre (clonadas de la
+ * misma imagen y nunca renombradas): si esta PC trae su
+ * marcador (localizado por el código o por su IP) y la fila
+ * del nombre ya guarda la credencial de la OTRA — sin
+ * declarar ninguna IP de esta —, la del nombre no entra
+ * como candidata ni se toca — son dos máquinas, cada una se
+ * queda con su fila y su credencial, y esta se enrola en su
+ * marcador conservando el nombre-IP. Sin esta guarda, al
+ * instalar dos PC a la vez una robaba la fila de la otra
+ * (la credencial quedaba pisada) o el renombrado simultáneo
+ * chocaba con el índice único y el enrolamiento caía.
  */
 export async function resolverEquipoParaAgente(datos: {
   nombre: string;
@@ -313,9 +350,31 @@ export async function resolverEquipoParaAgente(datos: {
     }
   }
 
+  // La guarda de las dos PC con el mismo nombre: esta PC
+  // trae su marcador (la fila-IP que la instalación creó
+  // para ella, localizada por el código o por su IP) y la
+  // fila del nombre ya tiene la credencial de OTRA PC — la
+  // suya no declara ninguna IP de esta — → la del nombre
+  // queda fuera de las candidatas: ni se fusiona ni se
+  // renombra sobre ella. Si la fila del nombre declarara
+  // una IP de esta PC, sería la misma máquina con varios
+  // adaptadores y la fusión de siempre sigue valiendo.
+  const marcadorDeEstaPc =
+    porCodigo ??
+    (porIp && esNombreIp(porIp.name) && !porIp.clavePublica ? porIp : null);
+  const nombreDeOtraPc = Boolean(
+    marcadorDeEstaPc &&
+      porNombre &&
+      porNombre.id !== marcadorDeEstaPc.id &&
+      porNombre.clavePublica &&
+      !ipsCandidatas.includes((porNombre.ipAddress ?? "").trim()),
+  );
+
   const candidatas: FilaEquipo[] = [];
   for (const fila of [porNombre, porIp, porCodigo]) {
-    if (fila && !candidatas.some((c) => c.id === fila.id)) {
+    if (!fila) continue;
+    if (nombreDeOtraPc && fila.id === porNombre?.id) continue;
+    if (!candidatas.some((c) => c.id === fila.id)) {
       candidatas.push(fila);
     }
   }
@@ -340,16 +399,12 @@ export async function resolverEquipoParaAgente(datos: {
       }
     }
     // Si sobrevivió la fila bautizada con la IP, adopta el
-    // nombre real del agente (está libre: la otra fila ya no
-    // existe y el nombre pedido no lo tiene nadie más).
-    if (sobreviviente.name !== nombre) {
-      await (db as any).computer.update({
-        where: { id: sobreviviente.id },
-        data: { name: nombre },
-      });
-      return { id: sobreviviente.id, name: nombre };
-    }
-    return { id: sobreviviente.id, name: sobreviviente.name };
+    // nombre real del agente. Normalmente está libre (la
+    // otra fila ya no existe); si otra PC lo tiene o un
+    // renombrado simultáneo gana la carrera, el renombrado
+    // cede sin tumbar la resolución.
+    const nombreFinal = await renombrarEquipo(sobreviviente, nombre);
+    return { id: sobreviviente.id, name: nombreFinal };
   }
   const unica = candidatas[0] ?? null;
   if (!unica) return null;
@@ -357,13 +412,12 @@ export async function resolverEquipoParaAgente(datos: {
   // emparejó por una IP o por el código): adopta el nombre
   // real del agente — su nombre guardado es un marcador o el
   // nombre viejo de esta misma PC, y el bueno está libre
-  // porque ninguna otra fila lo tiene.
-  if (!porNombre && unica.name !== nombre) {
-    await (db as any).computer.update({
-      where: { id: unica.id },
-      data: { name: nombre },
-    });
-    return { id: unica.id, name: nombre };
+  // porque ninguna otra fila lo tiene. Si el nombre lo tiene
+  // la otra PC del choque de clones, no se renombra: esta se
+  // queda con su marcador hasta que alguien la renombre.
+  if (!porNombre && !nombreDeOtraPc && unica.name !== nombre) {
+    const nombreFinal = await renombrarEquipo(unica, nombre);
+    return { id: unica.id, name: nombreFinal };
   }
   return { id: unica.id, name: unica.name };
 }
@@ -373,7 +427,9 @@ export async function resolverEquipoParaAgente(datos: {
  * (requireAgentAuth resolvió su fila por el id de la cabecera),
  * así que esa fila es la identidad. Si el nombre que reporta
  * existe como OTRA fila (la duplicada), se fusiona en la
- * acreditada. Y si la fila acreditada sigue bautizada con una
+ * acreditada — salvo que la otra tenga credencial propia y
+ * esta también: entonces son dos PC distintas con el mismo
+ * nombre y no se toca ninguna. Y si la fila acreditada sigue bautizada con una
  * IP —la creó una instalación remota y el enrolamiento no la
  * renombró—, adopta el nombre real que el agente reporta:
  * autocura en el primer contacto firmado, sin esperar a que
@@ -389,12 +445,26 @@ export async function fusionarDuplicadoDeReporte(
     if (!nombre) return;
     const otra = await (db as any).computer.findUnique({
       where: { name: nombre },
-      select: { id: true },
+      select: { id: true, clavePublica: true },
     });
+    // Si la otra fila tiene credencial PROPIA y esta también,
+    // no son duplicados de una PC: son dos PC distintas que
+    // comparten nombre (clones de la misma imagen). Fusionar
+    // dejaría a una de las dos sin identidad, así que el
+    // nombre queda ocupado y tampoco se renombra sobre él.
+    let nombreOcupado = false;
     if (otra && otra.id !== computerIdAutenticado) {
-      await fusionarEquipos(computerIdAutenticado, otra.id);
+      const acreditada = await (db as any).computer.findUnique({
+        where: { id: computerIdAutenticado },
+        select: { id: true, clavePublica: true },
+      });
+      if (otra.clavePublica && acreditada?.clavePublica) {
+        nombreOcupado = true;
+      } else {
+        await fusionarEquipos(computerIdAutenticado, otra.id);
+      }
     }
-    if (!esNombreIp(nombre)) {
+    if (!esNombreIp(nombre) && !nombreOcupado) {
       const propia = await (db as any).computer.findUnique({
         where: { id: computerIdAutenticado },
         select: { id: true, name: true },

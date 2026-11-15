@@ -1,9 +1,9 @@
 // ──────────────────────────────────────────────
 //  Lista de verificación del empujón SMB — máquina recién creada
 //  Los pasos que hay que cumplir EN EL DESTINO (una VM o un
-//  equipo nuevo) para que la instalación forzada estilo
-//  Kaspersky (SMB al recurso C$ + servicio temporal por RPC)
-//  funcione en una red sin dominio. Sustituye a la vieja lista
+//  equipo nuevo) para que la instalación forzada (SMB al
+//  recurso C$ + servicio temporal por RPC) funcione en una
+//  red sin dominio. Sustituye a la vieja lista
 //  de WinRM: el empujador (USBMonitorEmpujador.exe --comprobar)
 //  verifica en vivo los requisitos puerto445, sesion, scm e
 //  instalado, y cada paso declara cuáles lo verifican.

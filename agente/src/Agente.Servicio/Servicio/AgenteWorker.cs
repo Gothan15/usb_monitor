@@ -1242,7 +1242,11 @@ public sealed class AgenteWorker : BackgroundService
                 // token antiguo (se presenta una última vez y se
                 // borra). Reintento cada 5 minutos si el panel no
                 // responde; una vez registrado, este bloque no
-                // vuelve a hacer nada.
+                // vuelve a hacer nada. El intento va por la vía
+                // DETALLADA y el rechazo se escribe en el registro
+                // con el motivo y la frase del panel: cuando un
+                // equipo no se enrola nunca, su agente.log tiene
+                // que decir por qué, sin tener que adivinarlo.
                 if (_configuracion.EquipoId is null &&
                     ahora - _ultimoIntentoCredencial >= TimeSpan.FromMinutes(5))
                 {
@@ -1250,14 +1254,17 @@ public sealed class AgenteWorker : BackgroundService
                     var codigoPendiente = _configuracion.CodigoEnrolamiento;
                     if (codigoPendiente is not null)
                     {
-                        if (await _cliente.EnrolarConCodigoAsync(codigoPendiente).ConfigureAwait(false))
+                        var intento = await _cliente.EnrolarDetalladoAsync(codigoPendiente).ConfigureAwait(false);
+                        if (intento.Ok)
                         {
                             _configuracion.BorrarCodigoEnrolamiento();
                             Log.Info("Equipo enrolado con el código de la instalación.");
                         }
                         else
                         {
-                            Log.Advertencia("El enrolamiento con código falló; se reintenta en unos minutos (si el código caducó o ya se gastó, genera otro en Equipos).");
+                            Log.Advertencia($"El enrolamiento con código falló: {intento.Detalle ?? "sin detalle del panel"}" +
+                                (intento.Motivo is not null ? $" (motivo: {intento.Motivo})" : "") +
+                                " Se reintenta en unos minutos (si el código caducó o ya se gastó, genera otro en Equipos).");
                         }
                     }
                 }

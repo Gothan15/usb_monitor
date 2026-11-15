@@ -12,7 +12,7 @@ import {
 } from "@/lib/installTasks";
 
 /**
- * Tareas de instalación (fase D, capa de Kaspersky).
+ * Tareas de instalación (fase D).
  *
  * POST (admin): crea la tarea con sus destinos y la pone en
  *   marcha en segundo plano. La contraseña llega aquí una vez y

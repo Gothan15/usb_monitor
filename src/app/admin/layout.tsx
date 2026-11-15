@@ -70,6 +70,7 @@ function AdminLayoutContent({
     computers,
     whitelist,
     usersCount,
+    tareasActivas,
     user,
     refreshing,
     checkingRole,
@@ -136,6 +137,7 @@ function AdminLayoutContent({
         label: "Tareas",
         description: "Instalaciones del agente en curso y su historial",
         icon: ListTodo,
+        badge: tareasActivas || undefined,
         href: viewKeyToHref.tasks,
       },
       {

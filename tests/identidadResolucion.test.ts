@@ -284,3 +284,122 @@ describe("fusionarDuplicadoDeReporte — autocura del nombre al reportar", () =>
     expect(equipos()[0].name).toBe("PC-VIEJA");
   });
 });
+
+describe("resolverEquipoParaAgente — dos PC distintas con el mismo nombre", () => {
+  // El fallo al instalar dos PC a la vez: salieron de la
+  // misma imagen clonada y las dos se llaman igual. La
+  // primera ya se enroló (su fila lleva el nombre compartido
+  // y su credencial); la segunda trae el marcador que su
+  // instalación remota creó, con su propio código.
+  function filaDeLaOtraPc() {
+    return filaEquipo({
+      id: "fila-otra",
+      name: "PC-TALLER",
+      ipAddress: "172.29.186.171",
+      clavePublica: "SPKI-DE-LA-OTRA",
+      credencialAt: new Date(),
+    });
+  }
+  function marcadorDeEstaPc() {
+    return filaEquipo({
+      id: "fila-esta",
+      name: "172.29.190.32",
+      ipAddress: "172.29.190.32",
+      codigoEnrolamientoHash: "hash-codigo-esta",
+      codigoEnrolamientoExpira: EN_UNA_HORA,
+      serviceInstalled: true,
+    });
+  }
+
+  it("con el marcador localizado por el código: se enrola en su marcador y la otra PC queda intacta", async () => {
+    equipos().push(filaDeLaOtraPc(), marcadorDeEstaPc());
+    const resuelto = await resolverEquipoParaAgente({
+      nombre: "pc-taller",
+      ip: "10.0.2.15",
+      ips: ["10.0.2.15"],
+      filaDelCodigoId: "fila-esta",
+    });
+    // Su fila es el marcador, SIN renombrar (el nombre lo
+    // tiene la otra PC) y con su código vivo para validarlo.
+    expect(resuelto).toEqual({ id: "fila-esta", name: "172.29.190.32" });
+    expect(equipos()).toHaveLength(2);
+    const otra = equipos().find((e) => e.id === "fila-otra");
+    expect(otra?.name).toBe("PC-TALLER");
+    expect(otra?.clavePublica).toBe("SPKI-DE-LA-OTRA");
+    const esta = equipos().find((e) => e.id === "fila-esta");
+    expect(esta?.codigoEnrolamientoHash).toBe("hash-codigo-esta");
+  });
+
+  it("con el marcador localizado por su IP (la del empuje entre las declaradas): tampoco se fusiona con la del nombre", async () => {
+    equipos().push(filaDeLaOtraPc(), marcadorDeEstaPc());
+    const resuelto = await resolverEquipoParaAgente({
+      nombre: "pc-taller",
+      ip: "172.29.190.32",
+      ips: ["172.29.190.32"],
+    });
+    expect(resuelto).toEqual({ id: "fila-esta", name: "172.29.190.32" });
+    expect(equipos()).toHaveLength(2);
+    expect(
+      equipos().find((e) => e.id === "fila-otra")?.clavePublica,
+    ).toBe("SPKI-DE-LA-OTRA");
+  });
+
+  it("si la fila del nombre declara una IP de ESTA PC, es la misma máquina: la fusión de siempre sigue valiendo", async () => {
+    // La misma PC con dos adaptadores: su fila real guarda
+    // la IP del segundo adaptador, que el agente declara.
+    equipos().push(
+      filaEquipo({
+        id: "fila-real",
+        name: "PC-TALLER",
+        ipAddress: "192.168.1.50",
+        clavePublica: "SPKI-PROPIA",
+        credencialAt: new Date(),
+      }),
+      marcadorDeEstaPc(),
+    );
+    const resuelto = await resolverEquipoParaAgente({
+      nombre: "pc-taller",
+      ip: "172.29.190.32",
+      ips: ["172.29.190.32", "192.168.1.50"],
+      filaDelCodigoId: "fila-esta",
+    });
+    expect(equipos()).toHaveLength(1);
+    expect(resuelto?.id).toBe("fila-real");
+    expect(equipos()[0].clavePublica).toBe("SPKI-PROPIA");
+    // El código del marcador se hereda en la fusión: es el
+    // que el enrolamiento valida a continuación.
+    expect(equipos()[0].codigoEnrolamientoHash).toBe("hash-codigo-esta");
+  });
+});
+
+describe("fusionarDuplicadoDeReporte — dos PC con el mismo nombre ya enroladas", () => {
+  it("no fusiona la fila de la otra PC si ambas tienen credencial", async () => {
+    equipos().push(
+      filaEquipo({
+        id: "acreditada",
+        name: "172.29.190.32",
+        ipAddress: "172.29.190.32",
+        clavePublica: "SPKI-ESTA",
+        credencialAt: new Date(),
+      }),
+      filaEquipo({
+        id: "la-otra",
+        name: "PC-TALLER",
+        ipAddress: "172.29.186.171",
+        clavePublica: "SPKI-DE-LA-OTRA",
+        credencialAt: new Date(),
+      }),
+    );
+    await fusionarDuplicadoDeReporte("acreditada", "pc-taller");
+    // Las dos filas sobreviven, cada una con su credencial, y
+    // la acreditada conserva su nombre-IP (el compartido lo
+    // tiene la otra).
+    expect(equipos()).toHaveLength(2);
+    expect(equipos().find((e) => e.id === "acreditada")?.name).toBe(
+      "172.29.190.32",
+    );
+    expect(equipos().find((e) => e.id === "la-otra")?.clavePublica).toBe(
+      "SPKI-DE-LA-OTRA",
+    );
+  });
+});

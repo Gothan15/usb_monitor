@@ -330,7 +330,7 @@ export function InstallTasksTab() {
       <div className="flex items-end justify-between gap-4">
         <div className="flex flex-1 flex-col">
           <p className="smallcaps text-acero">
-            Instalación remota · Modelo Kaspersky
+            Instalación remota
           </p>
           <h2 className="font-display mt-2 text-[1.7rem] font-bold leading-none text-foreground">
             Tareas de instalación
