@@ -44,6 +44,8 @@ internal static class CapturadorEvidencia
         {
             Clave = solicitud.Clave,
             Serial = solicitud.Serial,
+            Instancia = solicitud.Instancia,
+            BloqueoId = solicitud.BloqueoId,
             CapturedAt = DateTime.UtcNow.ToString("o"),
         };
         var notas = new List<string>();
@@ -52,7 +54,13 @@ internal static class CapturadorEvidencia
         {
             paquete.ImagenBase64 = CapturarPantallaBase64();
             if (paquete.ImagenBase64 is null)
-                notas.Add("No se pudo capturar la pantalla (sin escritorio disponible).");
+            {
+                // Sin escritorio (lo normal: la sesión está
+                // bloqueada): la foto queda DIFERIDA, no perdida.
+                // El compañero la completa al desbloquear.
+                paquete.FotoPendiente = true;
+                notas.Add("La pantalla no estaba disponible al conectar el dispositivo.");
+            }
         }
         catch (Exception ex)
         {
@@ -94,6 +102,43 @@ internal static class CapturadorEvidencia
         if (notas.Count > 0)
             paquete.Nota = string.Join(" ", notas);
         return paquete;
+    }
+
+    /// <summary>
+    /// Segundo intento de la foto de un paquete que quedó con
+    /// FotoPendiente (no había escritorio al capturar, sesión
+    /// bloqueada): si ahora la pantalla se deja capturar,
+    /// completa la imagen, anota el retraso respecto a la
+    /// captura original y devuelve true. Si sigue sin haber
+    /// escritorio, devuelve false y el paquete no se toca.
+    /// </summary>
+    public static bool CompletarFoto(PaqueteEvidencia paquete)
+    {
+        string? imagen;
+        try
+        {
+            imagen = CapturarPantallaBase64();
+        }
+        catch
+        {
+            return false;
+        }
+        if (imagen is null) return false;
+
+        paquete.ImagenBase64 = imagen;
+        paquete.FotoPendiente = false;
+        var retraso = "";
+        if (DateTime.TryParse(paquete.CapturedAt, out var captura))
+        {
+            var minutos = (DateTime.UtcNow - captura.ToUniversalTime()).TotalMinutes;
+            if (minutos >= 1)
+                retraso = $" ({(int)minutos} min después del bloqueo)";
+        }
+        var nota = $"La foto se capturó al desbloquear la sesión{retraso}.";
+        paquete.Nota = string.IsNullOrEmpty(paquete.Nota)
+            ? nota
+            : paquete.Nota + " " + nota;
+        return true;
     }
 
     // ── captura de pantalla (GDI → WPF → JPEG) ───────────────────

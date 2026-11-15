@@ -40,6 +40,11 @@ interface EvidenceData {
   tabsComplete: boolean;
   nota: string | null;
   hasImage: boolean;
+  // Custodia de la imagen: huella y registro de vistas.
+  imageSha256: string | null;
+  viewCount: number;
+  lastViewedAt: string | null;
+  lastViewedBy: string | null;
 }
 
 interface Attempt {
@@ -555,6 +560,22 @@ export function UnlocksTab() {
                 <p className="border border-border/60 bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
                   Este bloqueo no tiene captura de pantalla
                   {evidencia.nota ? `: ${evidencia.nota}` : "."}
+                </p>
+              )}
+
+              {evidencia.hasImage && (
+                <p className="-mt-3 text-xs text-muted-foreground">
+                  Huella SHA-256 de la imagen:{" "}
+                  <span className="font-mono">
+                    {evidencia.imageSha256
+                      ? `${evidencia.imageSha256.slice(0, 16)}…`
+                      : "sin registrar (evidencia anterior a la custodia)"}
+                  </span>
+                  {" · "}
+                  {evidencia.viewCount > 0
+                    ? `vista ${evidencia.viewCount} ${evidencia.viewCount === 1 ? "vez" : "veces"}${evidencia.lastViewedBy ? `, la última por ${evidencia.lastViewedBy}` : ""}${evidencia.lastViewedAt ? ` el ${fmt(evidencia.lastViewedAt)}` : ""}`
+                    : "sin vistas registradas"}
+                  .
                 </p>
               )}
 

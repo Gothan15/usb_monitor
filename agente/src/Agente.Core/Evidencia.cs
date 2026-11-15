@@ -28,6 +28,18 @@ public sealed class SolicitudEvidencia
     [JsonPropertyName("serial")] public string? Serial { get; set; }
     /// <summary>Instante ISO en que el servicio detectó el bloqueo.</summary>
     [JsonPropertyName("instante")] public string Instante { get; set; } = "";
+    /// <summary>
+    /// Identidad de ESTE bloqueo concreto (el id del bloqueo en
+    /// el panel si ya consta; si no, el instante de detección).
+    /// Dos bloqueos del mismo dispositivo son dos instancias:
+    /// cada una tiene su solicitud y su foto, aunque la primera
+    /// aún no haya subido.
+    /// </summary>
+    [JsonPropertyName("instancia")] public string Instancia { get; set; } = "";
+    /// <summary>Id del bloqueo en el panel, si ya constaba al pedir la foto.</summary>
+    [JsonPropertyName("bloqueoId")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? BloqueoId { get; set; }
 }
 
 /// <summary>Un proceso de la sesión en el momento de la captura.</summary>
@@ -59,6 +71,24 @@ public sealed class PaqueteEvidencia
 {
     [JsonPropertyName("clave")] public string Clave { get; set; } = "";
     [JsonPropertyName("serial")] public string? Serial { get; set; }
+    /// <summary>La instancia de bloqueo de la solicitud que lo originó.</summary>
+    [JsonPropertyName("instancia")] public string Instancia { get; set; } = "";
+    /// <summary>
+    /// Id del bloqueo en el panel si constaba al pedir la foto:
+    /// el servicio sube el paquete contra este id, no contra el
+    /// último bloqueo del dispositivo. No viaja al panel: es la
+    /// dirección local de entrega.
+    /// </summary>
+    [JsonPropertyName("bloqueoId")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? BloqueoId { get; set; }
+    /// <summary>
+    /// True si la foto no se pudo hacer porque no había
+    /// escritorio (sesión bloqueada) y queda pendiente: el
+    /// compañero la completa al desbloquear, y el servicio
+    /// espera unos minutos antes de subir el paquete sin ella.
+    /// </summary>
+    [JsonPropertyName("fotoPendiente")] public bool FotoPendiente { get; set; }
     /// <summary>Instante ISO de la captura.</summary>
     [JsonPropertyName("capturedAt")] public string CapturedAt { get; set; } = "";
     [JsonPropertyName("foregroundProcess")] public string? ForegroundProcess { get; set; }
@@ -104,27 +134,45 @@ public static class GestorEvidencia
         return Convert.ToHexString(huella)[..32].ToLowerInvariant();
     }
 
-    public static string RutaSolicitud(string carpeta, string clave) =>
-        Path.Combine(carpeta, NombreSeguro(clave) + SufijoSolicitud);
+    /// <summary>
+    /// Nombre de archivo de una instancia de bloqueo: la huella
+    /// de la clave a secas para los archivos heredados (sin
+    /// instancia), y la de «clave|instancia» cuando el bloqueo
+    /// tiene identidad propia — así dos bloqueos del mismo
+    /// dispositivo conviven en la carpeta sin pisarse.
+    /// </summary>
+    public static string ClaveArchivo(string clave, string instancia) =>
+        string.IsNullOrEmpty(instancia)
+            ? NombreSeguro(clave)
+            : NombreSeguro(clave + "|" + instancia);
 
-    public static string RutaPaquete(string carpeta, string clave) =>
-        Path.Combine(carpeta, NombreSeguro(clave) + SufijoPaquete);
+    public static string RutaSolicitud(string carpeta, string clave, string instancia = "") =>
+        Path.Combine(carpeta, ClaveArchivo(clave, instancia) + SufijoSolicitud);
+
+    public static string RutaPaquete(string carpeta, string clave, string instancia = "") =>
+        Path.Combine(carpeta, ClaveArchivo(clave, instancia) + SufijoPaquete);
 
     /// <summary>
     /// Deja una solicitud de captura para un bloqueo. Devuelve
-    /// false si ya había una solicitud o un paquete para esa clave
-    /// (una sola foto por bloqueo mientras siga bloqueado).
+    /// false si ya había una solicitud o un paquete para esa
+    /// INSTANCIA de bloqueo (una sola foto por bloqueo); otro
+    /// bloqueo del mismo dispositivo, con otra instancia, sí
+    /// crea la suya aunque la primera siga sin subir.
     /// </summary>
-    public static bool Solicitar(string carpeta, string clave, string? serial, string instanteIso)
+    public static bool Solicitar(
+        string carpeta, string clave, string? serial, string instanteIso,
+        string instancia = "", string? bloqueoId = null)
     {
-        if (File.Exists(RutaSolicitud(carpeta, clave)) ||
-            File.Exists(RutaPaquete(carpeta, clave)))
+        if (File.Exists(RutaSolicitud(carpeta, clave, instancia)) ||
+            File.Exists(RutaPaquete(carpeta, clave, instancia)))
             return false;
-        ArchivoJson.EscribirAtomico(RutaSolicitud(carpeta, clave), new SolicitudEvidencia
+        ArchivoJson.EscribirAtomico(RutaSolicitud(carpeta, clave, instancia), new SolicitudEvidencia
         {
             Clave = clave,
             Serial = serial,
             Instante = instanteIso,
+            Instancia = instancia,
+            BloqueoId = bloqueoId,
         });
         return true;
     }
@@ -160,13 +208,13 @@ public static class GestorEvidencia
 
     /// <summary>El compañero guarda el paquete capturado (atómico).</summary>
     public static void GuardarPaquete(string carpeta, PaqueteEvidencia paquete) =>
-        ArchivoJson.EscribirAtomico(RutaPaquete(carpeta, paquete.Clave), paquete);
+        ArchivoJson.EscribirAtomico(RutaPaquete(carpeta, paquete.Clave, paquete.Instancia), paquete);
 
-    public static void BorrarSolicitud(string carpeta, string clave) =>
-        BorrarSiExiste(RutaSolicitud(carpeta, clave));
+    public static void BorrarSolicitud(string carpeta, string clave, string instancia = "") =>
+        BorrarSiExiste(RutaSolicitud(carpeta, clave, instancia));
 
-    public static void BorrarPaquete(string carpeta, string clave) =>
-        BorrarSiExiste(RutaPaquete(carpeta, clave));
+    public static void BorrarPaquete(string carpeta, string clave, string instancia = "") =>
+        BorrarSiExiste(RutaPaquete(carpeta, clave, instancia));
 
     /// <summary>
     /// Tope de paquetes sin subir: si hay más de `maximo`, se
@@ -209,11 +257,11 @@ public static class GestorEvidencia
     /// descartadas. Devuelve false si no había paquete o el
     /// movimiento falló (el paquete se queda y se reintenta).
     /// </summary>
-    public static bool MoverPaqueteADescartadas(string carpeta, string clave)
+    public static bool MoverPaqueteADescartadas(string carpeta, string clave, string instancia = "")
     {
         try
         {
-            var origen = RutaPaquete(carpeta, clave);
+            var origen = RutaPaquete(carpeta, clave, instancia);
             if (!File.Exists(origen)) return false;
             var destino = CarpetaDescartadas(carpeta);
             Directory.CreateDirectory(destino);
@@ -248,7 +296,7 @@ public static class GestorEvidencia
             if (File.GetLastWriteTimeUtc(ruta) >= limite) continue;
             var paquete = ArchivoJson.Leer<PaqueteEvidencia>(ruta);
             if (paquete is null || string.IsNullOrEmpty(paquete.Clave)) continue;
-            if (MoverPaqueteADescartadas(carpeta, paquete.Clave))
+            if (MoverPaqueteADescartadas(carpeta, paquete.Clave, paquete.Instancia))
                 movidas.Add(paquete.Clave);
         }
         return movidas;

@@ -296,6 +296,10 @@ model BlockEvidence {
   nota              String? // p. ej. por qué falta la captura de pantalla
   image             Bytes?
   imageMime         String?
+  imageSha256       String? // huella de la imagen al guardarla: la custodia empieza aquí
+  viewCount         Int      @default(0) // veces que un administrador ha visto la imagen
+  lastViewedAt      DateTime?
+  lastViewedBy      String? // usuario del panel que la vio por última vez
   createdAt         DateTime @default(now())
 
   @@index([pendingUnlockId])

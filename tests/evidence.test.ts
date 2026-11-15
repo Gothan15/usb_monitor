@@ -1,3 +1,5 @@
+import { createHash } from "crypto";
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -68,6 +70,22 @@ describe("validarPaqueteEvidencia", () => {
       "2026-11-05T12:00:00.000Z",
     );
     expect(resultado.datos.tabsComplete).toBe(false);
+  });
+
+  it("calcula la huella SHA-256 de la imagen (custodia)", () => {
+    const resultado = validarPaqueteEvidencia(paqueteValido());
+    expect(resultado.ok).toBe(true);
+    if (!resultado.ok) return;
+    expect(resultado.datos.imageSha256).toBe(
+      createHash("sha256").update(JPEG_MINIMO).digest("hex"),
+    );
+    const sinImagen = validarPaqueteEvidencia({
+      ...paqueteValido(),
+      imagenBase64: undefined,
+    });
+    expect(sinImagen.ok).toBe(true);
+    if (!sinImagen.ok) return;
+    expect(sinImagen.datos.imageSha256).toBeNull();
   });
 
   it("sin imagen también es válido (sesión bloqueada al conectar)", () => {
