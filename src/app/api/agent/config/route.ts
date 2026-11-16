@@ -11,6 +11,7 @@ import {
   canceladaServible,
   ESTADO_ORDEN,
   ESTADOS_ORDEN_ACTIVA,
+  TIPO_ORDEN_DESINSTALAR,
 } from "@/lib/agentCommands";
 import { getCurrentDate } from "@/lib/time";
 
@@ -84,10 +85,14 @@ export async function GET(req: Request) {
           );
         }
       }
+      // Las órdenes «desinstalar» no se sirven: la
+      // desinstalación remota está retirada (2026-11-16) y una
+      // orden viva de antes no debe llegar nunca al agente.
       const activas = await db.agentCommand.findMany({
         where: {
           computerId: serviceAuth.computerId,
           status: { in: ESTADOS_ORDEN_ACTIVA },
+          type: { not: TIPO_ORDEN_DESINSTALAR },
         },
         orderBy: { createdAt: "asc" },
         select: {
@@ -119,6 +124,7 @@ export async function GET(req: Request) {
         where: {
           computerId: serviceAuth.computerId,
           status: ESTADO_ORDEN.CANCELADA,
+          type: { not: TIPO_ORDEN_DESINSTALAR },
         },
         orderBy: { finishedAt: "desc" },
         take: 5,

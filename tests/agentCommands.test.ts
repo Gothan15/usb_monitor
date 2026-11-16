@@ -6,9 +6,7 @@ import path from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  accionAlBorrarEquipo,
   canceladaServible,
-  hayDesinstalacionActiva,
   informeSumaIntento,
   ordenEliminable,
   puedeCrearOrdenAutomatica,
@@ -153,21 +151,6 @@ describe("vistaOrdenActualizacion", () => {
   });
 });
 
-describe("accionAlBorrarEquipo", () => {
-  it("sin credencial no hay agente que desinstalar: borrado directo", () => {
-    expect(accionAlBorrarEquipo(false, false)).toBe("borrar");
-    expect(accionAlBorrarEquipo(false, true)).toBe("borrar");
-  });
-
-  it("con credencial se pide la desinstalación al agente", () => {
-    expect(accionAlBorrarEquipo(true, false)).toBe("pedir-desinstalacion");
-  });
-
-  it("con la orden ya viva no se duplica", () => {
-    expect(accionAlBorrarEquipo(true, true)).toBe("ya-pedida");
-  });
-});
-
 describe("sePuedeCancelar", () => {
   it("una orden viva se puede cancelar en cualquier estado", () => {
     expect(sePuedeCancelar("ESPERA")).toBe(true);
@@ -254,11 +237,3 @@ describe("informeSumaIntento", () => {
   });
 });
 
-describe("hayDesinstalacionActiva", () => {
-  it("detecta la desinstalación entre las órdenes vivas", () => {
-    expect(hayDesinstalacionActiva(["actualizar"])).toBe(false);
-    expect(hayDesinstalacionActiva(["desinstalar"])).toBe(true);
-    expect(hayDesinstalacionActiva(["actualizar", "desinstalar"])).toBe(true);
-    expect(hayDesinstalacionActiva([])).toBe(false);
-  });
-});

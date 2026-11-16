@@ -41,8 +41,15 @@ export const ESTADOS_DESTINO_FINALES: EstadoDestino[] = [
   ESTADO_DESTINO.INTERRUMPIDO,
 ];
 
-/** Cuántas instalaciones corren a la vez en todo el panel. */
-export const CONCURRENCIA_INSTALACION = 2;
+/**
+ * Cuántas instalaciones corren a la vez en todo el panel: UNA.
+ * Hasta el 2026-11-16 eran dos, pero las instalaciones en
+ * paralelo coincidían con fallos de enrolamiento (de dos PCs
+ * a la vez, una enrolaba y la otra nunca), así que Gothan
+ * mandó hacerlas de una en una: cada equipo termina de
+ * instalarse y enrolarse antes de que empiece el siguiente.
+ */
+export const CONCURRENCIA_INSTALACION = 1;
 
 /** Datos mínimos de un equipo para decidir por dónde se instala. */
 export interface DatosMetodo {

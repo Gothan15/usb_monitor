@@ -28,6 +28,16 @@ export type EstadoOrden = (typeof ESTADO_ORDEN)[keyof typeof ESTADO_ORDEN];
 
 export const TIPO_ORDEN_ACTUALIZAR = "actualizar";
 
+/**
+ * Tipo de la desinstalación remota, retirada por ahora
+ * (2026-11-16): las desinstalaciones por orden fallaban en la
+ * práctica y Gothan mandó quitarlas. Ya no nace ninguna orden
+ * de este tipo y la configuración del agente no las sirve
+ * aunque quede alguna viva de antes en la tabla; la constante
+ * queda para que las filas históricas se sigan etiquetando
+ * bien en Tareas. El agente conserva su modo desinstalador
+ * por si algún día vuelve.
+ */
 export const TIPO_ORDEN_DESINSTALAR = "desinstalar";
 
 /**
@@ -38,28 +48,6 @@ export const TIPO_ORDEN_DESINSTALAR = "desinstalar";
  * segundos —.
  */
 export const TIPO_ORDEN_CANCELAR_APAGADO = "cancelar-apagado";
-
-/** Qué hace DELETE /api/computers/:id según el estado del equipo. */
-export type AccionBorradoEquipo =
-  | "borrar"
-  | "pedir-desinstalacion"
-  | "ya-pedida";
-
-/**
- * Al borrar un equipo CON agente enrolado no basta con borrar la
- * fila: se le deja una orden «desinstalar» y la fila la borra el
- * panel cuando el agente informe HECHA (el agente se desinstala
- * solo, con su carpeta; si está apagado, la orden le espera). Sin
- * credencial no hay agente que desinstalar: borrado directo. Y si
- * la orden ya vive, no se duplica.
- */
-export function accionAlBorrarEquipo(
-  tieneCredencial: boolean,
-  ordenDesinstalarActiva: boolean,
-): AccionBorradoEquipo {
-  if (!tieneCredencial) return "borrar";
-  return ordenDesinstalarActiva ? "ya-pedida" : "pedir-desinstalacion";
-}
 
 /** Tope de intentos de una orden antes de darla por fallida. */
 export const MAX_INTENTOS_ORDEN = 3;
@@ -102,9 +90,7 @@ export function transicionInformeValida(
 /**
  * ¿Puede el administrador cancelar esta orden? Solo mientras
  * viva: una orden terminada (HECHA, ERROR o ya CANCELADA) no se
- * toca. Cancelar una «desinstalar» además hace que el equipo
- * reaparezca en la lista, porque su fila solo se borra con la
- * HECHA.
+ * toca.
  */
 export function sePuedeCancelar(estado: string): boolean {
   return (ESTADOS_ORDEN_ACTIVA as string[]).includes(estado);
@@ -244,8 +230,7 @@ export type ResultadoOrdenActualizacion =
   | { resultado: "ya-activa"; versionObjetivo: string | null }
   | { resultado: "al-dia"; versionObjetivo: string }
   | { resultado: "sin-paquete" }
-  | { resultado: "en-espera-oleada"; versionObjetivo: string }
-  | { resultado: "conflicto-desinstalacion"; versionObjetivo: string };
+  | { resultado: "en-espera-oleada"; versionObjetivo: string };
 
 /**
  * Oleadas de la actualización automática: ¿puede nacer otra
@@ -282,11 +267,6 @@ export function informeSumaIntento(
   );
 }
 
-/** ¿Hay una desinstalación pedida entre los tipos de órdenes vivas? */
-export function hayDesinstalacionActiva(tiposActivos: string[]): boolean {
-  return tiposActivos.includes(TIPO_ORDEN_DESINSTALAR);
-}
-
 /**
  * Deja una orden «actualizar» en ESPERA para el equipo si el
  * paquete del panel es más nuevo que su versión, sin duplicar la
@@ -312,15 +292,6 @@ export async function asegurarOrdenActualizacion(
     },
     select: { type: true },
   });
-  // Una desinstalación pedida manda: actualizar un equipo que se
-  // va a desinstalar es trabajo (y descarga) tirado, y las dos
-  // órdenes se pisarían en el agente.
-  if (hayDesinstalacionActiva(vivas.map((v) => v.type))) {
-    return {
-      resultado: "conflicto-desinstalacion",
-      versionObjetivo: manifiesto.version,
-    };
-  }
   if (vivas.some((v) => v.type === TIPO_ORDEN_ACTUALIZAR)) {
     return { resultado: "ya-activa", versionObjetivo: manifiesto.version };
   }
