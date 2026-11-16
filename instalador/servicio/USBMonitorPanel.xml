@@ -8,7 +8,7 @@
 -->
 <service>
   <id>USBMonitorPanel</id>
-  <name>USB Monitor — Panel</name>
+  <name>USB Monitor - Panel</name>
   <description>Panel web de USB Monitor. Depende de la base de datos integrada (USBMonitorPostgreSQL) y del Redis integrado (USBMonitorRedis).</description>
 
   <executable>%BASE%\..\node\node.exe</executable>
