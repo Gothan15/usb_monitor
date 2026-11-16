@@ -1,4 +1,4 @@
-# ================================================================
+﻿# ================================================================
 # USB Monitor — Panel · configuración tras instalar los archivos
 # ----------------------------------------------------------------
 # Acción diferida del MSI (SYSTEM), después de Instalar-BaseDatos.

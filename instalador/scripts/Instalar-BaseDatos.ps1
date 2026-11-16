@@ -1,4 +1,4 @@
-# ================================================================
+﻿# ================================================================
 # USB Monitor — Panel · instalación de la base de datos integrada
 # ----------------------------------------------------------------
 # Acción diferida del MSI (se ejecuta como SYSTEM). Lee TODA su
