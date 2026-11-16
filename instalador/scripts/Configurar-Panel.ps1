@@ -153,8 +153,25 @@ try {
     $env:CHECKPOINT_DISABLE = '1'
     $env:PRISMA_HIDE_UPDATE_MESSAGE = '1'
     $env:DATABASE_URL = $urlBd
-    $salidaPrisma = & $nodo (Join-Path $app 'node_modules\prisma\build\index.js') db push `
-        --schema (Join-Path $app 'prisma\schema.prisma') 2>&1 | Out-String
+    # OJO con $ErrorActionPreference = 'Stop' y los comandos
+    # nativos: en PowerShell 5.1, la PRIMERA línea que un programa
+    # escribe por su salida de error se convierte en un error
+    # terminante del script. Prisma escribe casi todo por ahí
+    # (empezando por «Prisma schema loaded from...», que no es un
+    # error): el paso moría al instante, Prisma ni trabajaba y el
+    # registro se quedaba con esa línea como si fuera la causa
+    # (instalación real, 2026-11-16). La misma trampa que el PING
+    # de Instalar-Redis. Se baja a Continue SOLO durante la
+    # llamada y el éxito lo decide el código de salida, como con
+    # cualquier programa nativo.
+    $eapAntes = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $salidaPrisma = & $nodo (Join-Path $app 'node_modules\prisma\build\index.js') db push `
+            --schema (Join-Path $app 'prisma\schema.prisma') 2>&1 | Out-String
+    } finally {
+        $ErrorActionPreference = $eapAntes
+    }
     foreach ($lineaPrisma in ($salidaPrisma -split "`r?`n")) {
         if ($lineaPrisma.Trim()) { Escribir-Log "prisma: $lineaPrisma" }
     }
@@ -164,7 +181,15 @@ try {
     # --- 4. Administrador inicial ---
     $env:INST_ADMIN_USER = $adminUsuario
     $env:INST_ADMIN_PASS = $adminClave
-    $salidaAdmin = & $nodo (Join-Path $app 'crear-admin-instalador.mjs') 2>&1 | Out-String
+    # La misma protección que con Prisma: Node escribe sus avisos
+    # por la salida de error y con 'Stop' matarían el paso.
+    $eapAntes = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $salidaAdmin = & $nodo (Join-Path $app 'crear-admin-instalador.mjs') 2>&1 | Out-String
+    } finally {
+        $ErrorActionPreference = $eapAntes
+    }
     Escribir-Log "crear-admin: $($salidaAdmin.Trim())"
     if ($claveGenerada -and $salidaAdmin -match 'ADMIN_CREADO') {
         $rutaPrimerAcceso = Join-Path $datos 'PRIMER-ACCESO.txt'
@@ -194,7 +219,14 @@ try {
     if ($servicioPanel) {
         if ($servicioPanel.Status -eq 'Running') { Stop-Service -Name 'USBMonitorPanel' -Force }
     } else {
-        $salidaWinSw = & (Join-Path $carpetaServicio 'USBMonitorPanel.exe') install 2>&1 | Out-String
+        # Ídem: WinSW también puede avisar por la salida de error.
+        $eapAntes = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            $salidaWinSw = & (Join-Path $carpetaServicio 'USBMonitorPanel.exe') install 2>&1 | Out-String
+        } finally {
+            $ErrorActionPreference = $eapAntes
+        }
         if ($salidaWinSw.Trim()) { Escribir-Log "WinSW (panel): $($salidaWinSw.Trim())" }
         if ($LASTEXITCODE -ne 0) { throw "WinSW install falló ($LASTEXITCODE)" }
         Escribir-Log 'Servicio del panel instalado.'
