@@ -17,7 +17,9 @@
 #   3. Registra el servicio «USBMonitorPostgreSQL» (LocalSystem,
 #      arranque automático) y lo arranca.
 #   4. Crea el rol y la base de datos de la aplicación.
-# Todo queda registrado en Registros\instalacion.log.
+# Todo queda registrado en Registros\instalacion.log y en su
+# espejo C:\ProgramData\USBMonitor-instalacion.log, que sobrevive
+# a la reversión de una instalación fallida.
 # ================================================================
 $ErrorActionPreference = 'Stop'
 
@@ -25,6 +27,12 @@ function Escribir-Log([string]$Mensaje) {
     $linea = "[{0}] [BD] {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Mensaje
     Write-Host $linea
     try { Add-Content -LiteralPath $script:RutaLog -Value $linea -Encoding UTF8 } catch { }
+    # Espejo FUERA del árbol de datos: si la instalación falla, la
+    # reversión se lleva las carpetas que el MSI creó (Registros\
+    # entre ellas) y con ellas el registro de arriba. Este archivo
+    # vive suelto en C:\ProgramData, que el instalador no gestiona,
+    # y es el que hay que mirar (o enviar) cuando algo sale mal.
+    try { Add-Content -LiteralPath $script:RutaLogEspejo -Value $linea -Encoding UTF8 } catch { }
 }
 
 function Nueva-Clave([int]$Longitud = 32) {
@@ -36,15 +44,30 @@ function Nueva-Clave([int]$Longitud = 32) {
 }
 
 try {
+    # El registro se apunta PRIMERO a la ruta estándar, antes de
+    # leer nada más: si la lectura del registro (o cualquier paso
+    # previo) falla, el error tiene que poder escribirse en algún
+    # sitio. Con la ruta dependiendo de esa misma lectura, un
+    # fallo ahí dejaba la instalación muda y sin registro.
+    $programData = [Environment]::GetFolderPath('CommonApplicationData')
+    $datosEstandar = Join-Path $programData 'USBMonitor'
+    New-Item -ItemType Directory -Force -Path (Join-Path $datosEstandar 'Registros') | Out-Null
+    $script:RutaLog = Join-Path $datosEstandar 'Registros\instalacion.log'
+    $script:RutaLogEspejo = Join-Path $programData 'USBMonitor-instalacion.log'
+    Escribir-Log 'Arranque del script de la base de datos.'
+
     $reg = Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\USBMonitor\Panel'
     $puertoBd = [int]$reg.PgPort
     $datos = [string]$reg.DataDir
     $instalacion = [string]$reg.InstallDir
     $pgBin = Join-Path $instalacion 'pgsql\bin'
     $pgDatos = Join-Path $datos 'Datos'
+    New-Item -ItemType Directory -Force -Path (Join-Path $datos 'Registros') | Out-Null
     $script:RutaLog = Join-Path $datos 'Registros\instalacion.log'
+    $script:RutaLogEspejo = Join-Path (Split-Path $datos -Parent) 'USBMonitor-instalacion.log'
 
     Escribir-Log "Inicio. Puerto BD=$puertoBd, datos=$pgDatos"
+    Escribir-Log "Ejecutando como $([System.Security.Principal.WindowsIdentity]::GetCurrent().Name); instalacion=$instalacion"
 
     # --- 1. Contraseñas internas ---
     $rutaSecretos = Join-Path $datos 'secretos.json'
@@ -71,8 +94,13 @@ try {
             $pwfile = Join-Path $env:TEMP 'usbmonitor-pw.txt'
             Set-Content -LiteralPath $pwfile -Value $secretos.superClave -NoNewline -Encoding ASCII
             try {
-                & (Join-Path $pgBin 'initdb.exe') -D $pgDatos -U postgres `
-                    --auth=scram-sha-256 --pwfile=$pwfile -E UTF8
+                # La salida de initdb va al registro: si el clúster
+                # no nace, su propio texto es la causa raíz.
+                $salidaInitdb = & (Join-Path $pgBin 'initdb.exe') -D $pgDatos -U postgres `
+                    --auth=scram-sha-256 --pwfile=$pwfile -E UTF8 2>&1 | Out-String
+                foreach ($lineaInitdb in ($salidaInitdb -split "`r?`n")) {
+                    if ($lineaInitdb.Trim()) { Escribir-Log "initdb: $lineaInitdb" }
+                }
                 if ($LASTEXITCODE -ne 0) { throw "initdb falló ($LASTEXITCODE)" }
             } finally {
                 Remove-Item -LiteralPath $pwfile -Force -ErrorAction SilentlyContinue
@@ -85,7 +113,8 @@ try {
             )
             Escribir-Log 'Clúster creado con initdb.'
         }
-        & (Join-Path $pgBin 'pg_ctl.exe') register -N $nombreServicio -D $pgDatos -S auto
+        $salidaRegistro = & (Join-Path $pgBin 'pg_ctl.exe') register -N $nombreServicio -D $pgDatos -S auto 2>&1 | Out-String
+        if ($salidaRegistro.Trim()) { Escribir-Log "pg_ctl register: $($salidaRegistro.Trim())" }
         if ($LASTEXITCODE -ne 0) { throw "pg_ctl register falló ($LASTEXITCODE)" }
         Escribir-Log "Servicio $nombreServicio registrado."
         $servicio = Get-Service -Name $nombreServicio
@@ -111,13 +140,15 @@ try {
     $baseArgs = @('-h', '127.0.0.1', '-p', "$puertoBd", '-U', 'postgres', '-v', 'ON_ERROR_STOP=1', '-tA')
     $existeRol = & $psql @baseArgs -c "SELECT 1 FROM pg_roles WHERE rolname='usbmonitor'"
     if ($existeRol -ne '1') {
-        & $psql @baseArgs -c "CREATE USER usbmonitor WITH PASSWORD '$($secretos.appClave)'"
+        $salidaRol = & $psql @baseArgs -c "CREATE USER usbmonitor WITH PASSWORD '$($secretos.appClave)'" 2>&1 | Out-String
+        if ($salidaRol.Trim()) { Escribir-Log "psql (rol): $($salidaRol.Trim())" }
         if ($LASTEXITCODE -ne 0) { throw 'No se pudo crear el rol de la aplicación.' }
         Escribir-Log 'Rol de la aplicación creado.'
     }
     $existeBd = & $psql @baseArgs -c "SELECT 1 FROM pg_database WHERE datname='usbmonitor'"
     if ($existeBd -ne '1') {
-        & $psql @baseArgs -c "CREATE DATABASE usbmonitor OWNER usbmonitor"
+        $salidaBd = & $psql @baseArgs -c "CREATE DATABASE usbmonitor OWNER usbmonitor" 2>&1 | Out-String
+        if ($salidaBd.Trim()) { Escribir-Log "psql (base): $($salidaBd.Trim())" }
         if ($LASTEXITCODE -ne 0) { throw 'No se pudo crear la base de datos.' }
         Escribir-Log 'Base de datos creada.'
     }
