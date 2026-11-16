@@ -56,23 +56,17 @@ export async function POST(req: Request) {
       select: { id: true },
     });
 
-    // Un bloqueo nuevo en la misma unidad sustituye al anterior que
-    // siguiera esperando contraseña (p. ej. reinicio del servicio).
-    await db.pendingUnlock.updateMany({
-      where: {
-        pcName: normalizedPcName,
-        ...(normalizedDriveLetter
-          ? { driveLetter: normalizedDriveLetter }
-          : { serialNumber: serialNumber.trim() }),
-        status: "BLOCKED",
-      },
-      data: {
-        status: "CLOSED",
-        closedAt: new Date(),
-        closeReason: "REPLACED",
-      },
-    });
-
+    // Cada conexión es SU bloqueo y nada sustituye al anterior
+    // (regla de Gothan, 2026-11-16): antes, un bloqueo nuevo en
+    // la misma unidad cerraba el que siguiera esperando como
+    // REPLACED, y ese cierre lo sacaba de la pestaña de
+    // Desbloqueos con su evidencia colgando — al reconectar la
+    // misma memoria, el bloqueo viejo «desaparecía» y el nuevo
+    // salía sin foto ni datos. Los bloqueos viejos salen de
+    // BLOCKED por la extracción (pending-close los cierra todos
+    // de una vez) o por la caducidad de 24 h; si un reinicio del
+    // servicio registra dos veces el mismo episodio, quedan dos
+    // filas y cada una conserva su evidencia.
     const pendingUnlock = await db.pendingUnlock.create({
       data: {
         computerId: computer?.id ?? null,
