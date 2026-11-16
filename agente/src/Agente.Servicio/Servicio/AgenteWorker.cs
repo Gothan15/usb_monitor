@@ -152,9 +152,6 @@ public sealed class AgenteWorker : BackgroundService
         _actualizador = new ActualizadorAgente(_cliente);
     }
 
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool LockWorkStation();
-
     // ── ciclo de vida ─────────────────────────────────────────────
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
@@ -605,9 +602,7 @@ public sealed class AgenteWorker : BackgroundService
                 lock (_lockRespuesta) _nivelPorClave.Remove(disp.Clave);
             }
             if (_compartida.LockSessionOnInsert)
-            {
-                try { LockWorkStation(); } catch { /* bloquear sesión es best-effort */ }
-            }
+                SolicitarBloqueoSesion("inserción de dispositivo");
         }
         // Veredicto confirmado de fuera de la lista: responde la
         // escalera (o el apagado directo si la escalera está
@@ -633,6 +628,29 @@ public sealed class AgenteWorker : BackgroundService
             // El id se guarda también tras la extracción: el
             // paquete de evidencia puede tardar más que el bloqueo.
             lock (_lockEvidencia) _idsBloqueoPanel[disp.Clave] = pid;
+        }
+    }
+
+    /// <summary>
+    /// Pide el bloqueo de la sesión del usuario. El servicio NO
+    /// puede bloquearla él: corre en la sesión 0, aislada del
+    /// escritorio, y su LockWorkStation no bloquea nada que el
+    /// usuario vea (la llamada ni siquiera falla: no pasa
+    /// nada). Deja la petición en disco y el compañero, que
+    /// vive en la sesión del usuario, la ejecuta en su sondeo
+    /// de cada segundo. Antes esto se llamaba directo desde el
+    /// servicio y el ajuste nunca funcionó en silencio.
+    /// </summary>
+    private void SolicitarBloqueoSesion(string motivo)
+    {
+        try
+        {
+            GestorBloqueoSesion.Solicitar(Registro.DirectorioDatos, motivo, DateTime.UtcNow);
+            Log.Info($"Bloqueo de sesión solicitado al compañero ({motivo}).");
+        }
+        catch (Exception ex)
+        {
+            Log.Advertencia($"No se pudo solicitar el bloqueo de sesión ({motivo}): {ex.Message}");
         }
     }
 
@@ -805,7 +823,7 @@ public sealed class AgenteWorker : BackgroundService
                 _cliente.Evento(EvEscaleraBloqueo, disp.Letra, disp.Serial);
                 Log.Advertencia(
                     $"Escalera de respuesta: bloqueo de sesión (ofensa 2) por {disp.Nombre} ({disp.Serial}).");
-                try { LockWorkStation(); } catch { /* bloquear sesión es best-effort */ }
+                SolicitarBloqueoSesion("escalera de respuesta (ofensa 2)");
                 break;
             case NivelRespuesta.Apagado:
                 Log.Advertencia(

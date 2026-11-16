@@ -215,6 +215,7 @@ internal static class DatosVentanas
 
     public static string RutaBloqueosLocales => Path.Combine(CarpetaDatos, "pending_local.json");
     public static string RutaApagadoLocal => Path.Combine(CarpetaDatos, "apagado_local.json");
+    public static string RutaBloqueoSesion => Path.Combine(CarpetaDatos, "bloqueo_sesion.json");
     public static string RutaAgenteLog => Path.Combine(CarpetaDatos, "agente.log");
     public static string RutaCompaneroLog => Path.Combine(CarpetaDatos, "companero.log");
 
