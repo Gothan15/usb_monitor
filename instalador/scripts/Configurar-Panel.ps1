@@ -164,15 +164,30 @@ try {
     # de Instalar-Redis. Se baja a Continue SOLO durante la
     # llamada y el éxito lo decide el código de salida, como con
     # cualquier programa nativo.
+    # Y la carpeta de trabajo tiene que ser la de la aplicación:
+    # Prisma 7 busca su prisma.config.ts (donde vive la URL de la
+    # base de datos) desde la carpeta actual, no desde la del
+    # esquema. Sin esto, lanzado desde otra carpeta, Prisma no
+    # encuentra su configuración y se niega: «The datasource.url
+    # property is required in your Prisma config file» (le pasó a
+    # la 1.5.5 lanzando el script desde fuera, 2026-11-16).
     $eapAntes = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
+    Push-Location $app
     try {
         $salidaPrisma = & $nodo (Join-Path $app 'node_modules\prisma\build\index.js') db push `
             --schema (Join-Path $app 'prisma\schema.prisma') 2>&1 | Out-String
     } finally {
+        Pop-Location
         $ErrorActionPreference = $eapAntes
     }
     foreach ($lineaPrisma in ($salidaPrisma -split "`r?`n")) {
+        # La decoración que PowerShell añade a cada línea de la
+        # salida de error de un programa nativo (el «node.exe :»,
+        # CategoryInfo, FullyQualifiedErrorId...) no aporta nada:
+        # se registra la línea de Prisma, limpia.
+        if ($lineaPrisma -match '^\S+\.exe : (.*)$') { $lineaPrisma = $Matches[1] }
+        if ($lineaPrisma -match 'CategoryInfo|FullyQualifiedErrorId|RemoteException|^\s*\+|^\s*~+\s*$') { continue }
         if ($lineaPrisma.Trim()) { Escribir-Log "prisma: $lineaPrisma" }
     }
     if ($LASTEXITCODE -ne 0) { throw "prisma db push falló ($LASTEXITCODE)" }
