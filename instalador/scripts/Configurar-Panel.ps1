@@ -119,8 +119,16 @@ try {
             Select-Object -First 1 -ExpandProperty IPAddress
         $origenes = @("http://localhost:$puerto", "http://127.0.0.1:$puerto", "http://${nombrePc}:$puerto")
         if ($ipLan) { $origenes += "http://${ipLan}:$puerto" }
-        $secretoSesion = [Convert]::ToHexString(
-            [System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).ToLower()
+        # El secreto de sesión: 32 bytes al azar en hexadecimal.
+        # OJO: nada de RandomNumberGenerator.GetBytes() estático ni
+        # de [Convert]::ToHexString — son de .NET moderno y en
+        # PowerShell 5.1 (.NET Framework) NO existen: el script
+        # moría aquí en la primera instalación real (2026-11-16).
+        # La vía compatible con los dos es la de Nueva-Clave:
+        # Create().GetBytes() sobre un array + BitConverter.
+        $bytesSecreto = New-Object byte[] 32
+        [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytesSecreto)
+        $secretoSesion = ([BitConverter]::ToString($bytesSecreto) -replace '-', '').ToLower()
         @(
             "# Generado por el instalador de USB Monitor — Panel ($(Get-Date -Format 'yyyy-MM-dd'))"
             "DATABASE_URL=$urlBd"

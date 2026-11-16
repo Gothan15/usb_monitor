@@ -12,7 +12,7 @@
 -->
 <service>
   <id>USBMonitorRedis</id>
-  <name>USB Monitor — Redis</name>
+  <name>USB Monitor - Redis</name>
   <description>Redis privado del panel de USB Monitor (presencia de agentes y límites de intentos). Solo escucha en local.</description>
 
   <executable>%BASE%\..\redis\redis-server.exe</executable>
