@@ -1,20 +1,21 @@
-# Panel: construir el instalador .msi y publicarlo.
+# Panel: construir el instalador y publicarlo.
 #
 # Cómo se usa:
 #   · Release nueva: crea una etiqueta «panel-vX.Y.Z» y empújala
 #     (git tag panel-v1.0.0 && git push origin panel-v1.0.0).
-#     La acción construye el .msi y lo deja en la Release de esa
-#     etiqueta. La versión del instalador sale de la etiqueta.
-#   · A mano: pestaña Actions → «Panel — instalador MSI» →
-#     Run workflow, indicando la versión. El .msi queda como
+#     La acción construye el instalador y lo deja en la Release de
+#     esa etiqueta. La versión del instalador sale de la etiqueta.
+#   · A mano: pestaña Actions → «Panel — instalador Inno Setup» →
+#     Run workflow, indicando la versión. El instalador queda como
 #     artefacto de la ejecución (30 días), sin crear Release.
 #
 # La construcción llama al MISMO Construir-Instalador.ps1 que se
 # usa en local (compila el panel, descarga las versiones fijadas
-# de PostgreSQL/Node/WinSW y compila el .msi con WiX): lo que sale
-# de aquí es el mismo procedimiento de siempre, en una máquina
-# Windows de GitHub. Las etiquetas del agente son «agente-v*» y
-# las del panel «panel-v*»: no se pisan.
+# de PostgreSQL/Node/Redis/WinSW y compila el instalador con
+# Inno Setup, que el propio script se descarga si falta): lo que
+# sale de aquí es el mismo procedimiento de siempre, en una
+# máquina Windows de GitHub. Las etiquetas del agente son
+# «agente-v*» y las del panel «panel-v*»: no se pisan.
 #
 # Cada Release del panel lleva DOS instaladores: el ligero de
 # siempre y el «completo», que trae dentro el paquete del agente
@@ -22,7 +23,7 @@
 # en las carpetas del panel). El paso de preparación descarga la
 # Release del agente más reciente y deja el PaqueteDir que la
 # variante -Completo de Construir-Instalador.ps1 espera.
-name: Panel — instalador MSI
+name: Panel — instalador Inno Setup
 
 on:
   push:
@@ -49,11 +50,6 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: "22"
-
-      - name: Instalar .NET 8 (para la herramienta WiX)
-        uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: "8.0.x"
 
       - name: Calcular la versión del instalador
         id: version
@@ -106,8 +102,8 @@ jobs:
           @{ version = $versionAgente } | ConvertTo-Json | Set-Content "$dir\manifiesto.json" -Encoding utf8
           "dir=$dir" >> $env:GITHUB_OUTPUT
 
-      # Primero el ligero: su .msi se compila antes de que la
-      # variante completo copie el paquete al árbol preparado.
+      # Primero el ligero: su instalador se compila antes de que
+      # la variante completo copie el paquete al árbol preparado.
       - name: Construir el instalador (ligero)
         shell: pwsh
         run: ./instalador/Construir-Instalador.ps1 -Version ${{ steps.version.outputs.version }}
@@ -116,20 +112,20 @@ jobs:
         shell: pwsh
         run: ./instalador/Construir-Instalador.ps1 -Version ${{ steps.version.outputs.version }} -Completo -PaqueteDir ${{ steps.paquete.outputs.dir }}
 
-      - name: Guardar los .msi como artefacto de la ejecución
+      - name: Guardar los instaladores como artefacto de la ejecución
         uses: actions/upload-artifact@v6
         with:
           name: USBMonitor-Panel-${{ steps.version.outputs.version }}
           path: |
-            salida-instalador/USBMonitor-Panel-${{ steps.version.outputs.version }}.msi
-            salida-instalador/USBMonitor-Panel-${{ steps.version.outputs.version }}-completo.msi
+            salida-instalador/USBMonitor-Panel-${{ steps.version.outputs.version }}.exe
+            salida-instalador/USBMonitor-Panel-${{ steps.version.outputs.version }}-completo.exe
           retention-days: 30
 
-      - name: Publicar los .msi en la Release de la etiqueta
+      - name: Publicar los instaladores en la Release de la etiqueta
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            salida-instalador/USBMonitor-Panel-${{ steps.version.outputs.version }}.msi
-            salida-instalador/USBMonitor-Panel-${{ steps.version.outputs.version }}-completo.msi
+            salida-instalador/USBMonitor-Panel-${{ steps.version.outputs.version }}.exe
+            salida-instalador/USBMonitor-Panel-${{ steps.version.outputs.version }}-completo.exe
           generate_release_notes: true
