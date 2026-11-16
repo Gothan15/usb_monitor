@@ -382,43 +382,13 @@ public static class Instalador
     /// de arrancar para que la versión restaurada no nazca
     /// vigilada por un episodio que ya no es el suyo.
     /// </summary>
-    public static string RevertirActualizacion()
-    {
-        var destino = RutaExeInstalado();
-        var respaldo = destino + ".anterior";
-        if (!File.Exists(respaldo))
-            throw new FileNotFoundException(
-                "No hay versión anterior que restaurar.", respaldo);
-        if (EstadoServicio() == "no instalado")
-            throw new InvalidOperationException("El servicio no está instalado.");
-
-        using var controlador = new ServiceController(NombreServicio);
-        if (controlador.Status != ServiceControllerStatus.Stopped)
-        {
-            try { controlador.Stop(); } catch { /* la espera fija el estado */ }
-            try
-            {
-                controlador.WaitForStatus(
-                    ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(60));
-            }
-            catch { /* el intercambio no depende de que haya parado */ }
-        }
-        CerrarProcesosDelExe(destino);
-        File.Delete(destino);
-        File.Move(respaldo, destino);
-        SaludActualizacion.Borrar();
-        controlador.Refresh();
-        controlador.Start();
-        controlador.WaitForStatus(
-            ServiceControllerStatus.Running, TimeSpan.FromSeconds(60));
-        return "Se restauró la versión anterior del agente.";
-    }
-
     public static string AplicarActualizacion(string rutaNuevo)
     {
         if (!File.Exists(rutaNuevo))
             throw new FileNotFoundException("No existe el ejecutable nuevo.", rutaNuevo);
         var destino = RutaExeInstalado();
+        LogInstalador.Info(
+            $"Aplicar actualización: entra {rutaNuevo} y se sustituye el instalado en {destino}.");
         if (string.Equals(
                 Path.GetFullPath(rutaNuevo), Path.GetFullPath(destino),
                 StringComparison.OrdinalIgnoreCase))
@@ -444,27 +414,24 @@ public static class Instalador
             }
             catch { /* el renombrado no depende de que haya parado */ }
         }
+        controlador.Refresh();
+        LogInstalador.Info($"Estado del servicio tras pedir la parada: {controlador.Status}.");
 
         CerrarProcesosDelExe(destino);
+        LogInstalador.Info("Procesos del agente cerrados: empieza el intercambio del ejecutable.");
 
         if (File.Exists(respaldo))
             File.Delete(respaldo);
-        // Marcador de salud: la versión nueva nace obligada a
-        // hablar con el panel en 10 minutos; si no lo logra, su
-        // propio vigía restaura este respaldo. El marcador
-        // guarda el hash del exe que se va a instalar.
-        try
-        {
-            SaludActualizacion.Escribir(SaludActualizacion.ShaDeArchivo(rutaNuevo));
-        }
-        catch { /* sin marcador no hay vigía, pero la actualización sigue */ }
+        LogInstalador.Info("El ejecutable actual pasa a «.anterior» y el nuevo ocupa su sitio.");
         File.Move(destino, respaldo);
         try
         {
             File.Copy(rutaNuevo, destino);
         }
-        catch
+        catch (Exception excCopia)
         {
+            LogInstalador.Error(
+                $"La copia del ejecutable nuevo falló ({excCopia.Message}): se restaura el anterior.");
             File.Move(respaldo, destino);
             if (estabaEnMarcha)
             {
@@ -480,10 +447,13 @@ public static class Instalador
             controlador.Start();
             controlador.WaitForStatus(
                 ServiceControllerStatus.Running, TimeSpan.FromSeconds(60));
+            LogInstalador.Info("Servicio en marcha con el ejecutable nuevo.");
         }
         catch (Exception exc)
         {
             // Vuelta atrás: la versión anterior sigue en el respaldo.
+            LogInstalador.Error(
+                $"La versión nueva no arrancó ({exc.Message}): se restaura la anterior.");
             try
             {
                 controlador.Refresh();
@@ -569,6 +539,7 @@ public static class Instalador
         // después, el barrido de procesos ya no sabría qué
         // ejecutable buscar en el registro.
         var rutaExe = RutaExeInstalado();
+        LogInstalador.Info($"Desinstalación: parando el servicio (ejecutable en {rutaExe})…");
         try
         {
             using var controlador = new ServiceController(NombreServicio);
@@ -578,13 +549,17 @@ public static class Instalador
                 controlador.WaitForStatus(
                     ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(30));
             }
+            LogInstalador.Info("Servicio parado.");
         }
         catch (Exception)
         {
             // Como en el Python: se sigue con la restauración igualmente.
+            LogInstalador.Advertencia(
+                "No se pudo parar el servicio limpiamente; se sigue con la desinstalación.");
         }
 
         RestaurarSinServicio();
+        LogInstalador.Info("Sistema restaurado: lo anotado en el diario quedó revertido.");
 
         var scm = OpenSCManager(null, null, ScManagerAllAccess);
         if (scm != IntPtr.Zero)
@@ -603,9 +578,12 @@ public static class Instalador
                 CloseServiceHandle(scm);
             }
         }
+        LogInstalador.Info("Servicio desregistrado del SCM.");
         Ejecutar("schtasks.exe", "/Delete", "/TN", NombreTarea, "/F");
         BorrarAccesoDirectoEscritorio();
         CerrarProcesosDelExe(rutaExe);
+        LogInstalador.Info(
+            "Desinstalación terminada: tarea del compañero y acceso directo retirados, procesos cerrados.");
         return "Servicio desinstalado, sistema restaurado y procesos del agente cerrados.";
     }
 

@@ -195,10 +195,9 @@ public sealed class AgenteWorker : BackgroundService
             // descarga, si toca, va en segundo plano).
             if (remota?.Comandos is { Count: > 0 } ordenesIniciales)
                 await ProcesarOrdenesAsync(ordenesIniciales).ConfigureAwait(false);
-            // Vigía de salud tras una actualización (si la hubo)
-            // y barrido del respaldo viejo: corren siempre al
-            // arrancar, haya o no órdenes en la configuración.
-            _ = VigilarSaludTrasActualizarAsync(ct);
+            // Barrido del respaldo viejo de una actualización:
+            // corre siempre al arrancar, haya o no órdenes en la
+            // configuración.
             LimpiarRespaldoAnterior();
             var espera = _compartida.StartupNetworkDelay;
             if (espera > 0)
@@ -1272,89 +1271,21 @@ public sealed class AgenteWorker : BackgroundService
         }
     }
 
-    /// <summary>
-    /// Vigía de salud tras una actualización: si la copia
-    /// aplicadora dejó marcador y este exe es el recién
-    /// instalado, la versión nueva tiene 10 minutos para lograr
-    /// una respuesta buena del panel (este proceso ya sondea y
-    /// late con normalidad: cualquier 2xx firmado cuenta). Si lo
-    /// logra, el marcador se borra. Si no —arranca pero no
-    /// habla—, se lanza una copia en modo «revertir-actualizacion»
-    /// que restaura el exe anterior: una versión muda es peor
-    /// que la vieja. Si el panel está caído justo en esos 10
-    /// minutos también se revierte: quedarse en la versión
-    /// anterior es el lado seguro, y la orden de actualización
-    /// sigue su curso con sus reintentos.
-    /// </summary>
-    private async Task VigilarSaludTrasActualizarAsync(CancellationToken ct)
-    {
-        try
-        {
-            var marcador = SaludActualizacion.Leer();
-            if (marcador is null) return;
-            var instalado = Instalador.RutaExeInstalado();
-            var shaActual = SaludActualizacion.ShaDeArchivo(instalado);
-            if (!SaludActualizacion.VigiaArmado(marcador, shaActual, DateTime.UtcNow))
-            {
-                // Marcador de otro episodio (o caducado): se retira.
-                SaludActualizacion.Borrar();
-                return;
-            }
-            Log.Info("Vigía de salud: versión recién instalada; debe confirmar contacto con el panel en 10 minutos.");
-            while (!ct.IsCancellationRequested)
-            {
-                if (SaludActualizacion.SaludConfirmada(_cliente.UltimoContactoOkUtc, marcador))
-                {
-                    SaludActualizacion.Borrar();
-                    Log.Info("Vigía de salud: contacto confirmado; la actualización queda asentada.");
-                    return;
-                }
-                if (SaludActualizacion.PlazoVencido(marcador.CreadoEnUtc, DateTime.UtcNow))
-                {
-                    Log.Error("Vigía de salud: la versión nueva no logró hablar con el panel tras actualizarse; se restaura la anterior.");
-                    var carpeta = Path.Combine(Path.GetTempPath(), "USBMonitorActualizacion");
-                    Directory.CreateDirectory(carpeta);
-                    var reversor = Path.Combine(carpeta, "USBMonitorReversor.exe");
-                    File.Copy(instalado, reversor, overwrite: true);
-                    var proceso = Process.Start(new ProcessStartInfo
-                    {
-                        FileName = reversor,
-                        Arguments = "revertir-actualizacion",
-                        UseShellExecute = false,
-                        CreateNoWindow = true,
-                        WorkingDirectory = carpeta,
-                    });
-                    if (proceso is null)
-                        Log.Error("Vigía de salud: no se pudo lanzar la reversión.");
-                    return;
-                }
-                await Task.Delay(TimeSpan.FromSeconds(20), ct).ConfigureAwait(false);
-            }
-        }
-        catch (OperationCanceledException) { /* parada del servicio */ }
-        catch (Exception exc)
-        {
-            Log.Error($"Vigía de salud: {exc.Message}");
-        }
-    }
 
     /// <summary>
     /// El respaldo «.anterior» (~95 MB) no se queda para siempre:
     /// confirmada la actualización, el ejecutor de órdenes lo
     /// borra al momento; este barrido de arranque retira el que
-    /// lleve más de 7 días sin vigía de salud pendiente.
+    /// lleve más de 7 días olvidado (una actualización que nunca
+    /// se confirmó ni se reintentó).
     /// </summary>
     private void LimpiarRespaldoAnterior()
     {
         try
         {
             var respaldo = Instalador.RutaExeInstalado() + ".anterior";
-            var existe = File.Exists(respaldo);
-            if (SaludActualizacion.RespaldoTocaBorrar(
-                    existe,
-                    SaludActualizacion.Leer() is not null,
-                    existe ? File.GetCreationTimeUtc(respaldo) : null,
-                    DateTime.UtcNow))
+            if (File.Exists(respaldo) &&
+                File.GetCreationTimeUtc(respaldo) < DateTime.UtcNow.AddDays(-7))
             {
                 File.Delete(respaldo);
                 Log.Info("Limpieza: retirado el ejecutable anterior (.anterior) de hace más de 7 días.");
@@ -1658,6 +1589,16 @@ public sealed class AgenteWorker : BackgroundService
     /// </summary>
     private async Task ProcesarOrdenesAsync(List<OrdenAgente> ordenes)
     {
+        // Cada orden que llega queda escrita: si una se queda
+        // sin avanzar, el registro dice al menos que llegó, con
+        // su tipo, su estado y su versión objetivo.
+        foreach (var orden in ordenes)
+        {
+            Log.Info(
+                $"Orden recibida del panel: {orden.Tipo} {orden.Id} " +
+                $"(estado {orden.Estado}, intentos {orden.Intentos}, " +
+                $"versión objetivo {orden.VersionObjetivo ?? "—"}).");
+        }
         var paraActualizador = new List<OrdenAgente>();
         foreach (var orden in ordenes)
         {

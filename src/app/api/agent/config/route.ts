@@ -146,6 +146,10 @@ export async function GET(req: Request) {
             ? ESTADO_ORDEN.ENTREGADA
             : c.status,
         versionObjetivo: c.targetVersion,
+        // El agente declara shaObjetivo en su DTO y la columna
+        // se selecciona arriba: sin esta línea el hash de la
+        // orden nunca salía del panel.
+        shaObjetivo: c.targetSha256,
         intentos: c.attempts,
       }));
     }

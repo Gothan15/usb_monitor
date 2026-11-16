@@ -122,40 +122,42 @@ internal static class Program
                 return InstalarRemoto(args);
 
             case "aplicar-actualizacion":
+                // Lo lanza el propio agente desde una copia
+                // temporal: para el servicio, renombra el exe
+                // instalado a «.anterior», copia el nuevo y
+                // reinicia. Corre sin ventana y su consola no la
+                // ve nadie: cada paso va a agente.log (etiqueta
+                // «aplicador») y el búfer se vuelca antes de
+                // salir, que un proceso corto no puede fiarse del
+                // vuelco cada 2 s.
                 Registro.Configurar("agente.log");
+                var logAplicador = Registro.Obtener("aplicador");
                 if (args.Length < 2 || string.IsNullOrWhiteSpace(args[1]))
                 {
+                    logAplicador.Error(
+                        "Aplicar actualización sin la ruta del ejecutable nuevo: no se toca nada.");
                     Console.WriteLine(
                         "Falta el ejecutable nuevo: USBMonitorService.exe aplicar-actualizacion <ruta>");
+                    Registro.Vaciar();
                     return 1;
                 }
                 try
                 {
-                    Console.WriteLine(Instalador.AplicarActualizacion(args[1].Trim()));
+                    logAplicador.Info(
+                        $"Aplicando la actualización desde {args[1].Trim()}: " +
+                        "se para el servicio, se cambia el ejecutable y se reinicia.");
+                    var resumenAplicacion = Instalador.AplicarActualizacion(args[1].Trim());
+                    logAplicador.Info(resumenAplicacion);
+                    Console.WriteLine(resumenAplicacion);
+                    Registro.Vaciar();
                     return 0;
                 }
                 catch (Exception exc)
                 {
+                    logAplicador.Error($"No se pudo actualizar: {exc.Message}");
                     Console.WriteLine($"No se pudo actualizar: {exc.Message}");
                     Console.WriteLine("Ejecuta este programa como administrador.");
-                    return 1;
-                }
-
-            case "revertir-actualizacion":
-                // Lo lanza el vigía de salud (una copia temporal)
-                // cuando la versión recién instalada arranca pero
-                // no logra hablar con el panel: restaura el exe
-                // anterior (.anterior) y arranca el servicio con él.
-                Registro.Configurar("agente.log");
-                try
-                {
-                    Console.WriteLine(Instalador.RevertirActualizacion());
-                    return 0;
-                }
-                catch (Exception exc)
-                {
-                    Console.WriteLine($"No se pudo revertir la actualización: {exc.Message}");
-                    Console.WriteLine("Ejecuta este programa como administrador.");
+                    Registro.Vaciar();
                     return 1;
                 }
 
@@ -174,54 +176,55 @@ internal static class Program
                 }
 
             case "desinstalar-orden":
-                // Lo lanza el propio agente (una copia temporal)
-                // cuando el panel ordena desinstalar este equipo:
-                // informa HECHA — el panel borra la fila al
-                // recibirla — y después desinstala limpio, carpeta
-                // incluida. Tras la desinstalación ya no hay
-                // agente que pueda informar: por eso el orden.
+                // El espejo de «instalar-remoto»: lo lanza el
+                // propio agente (una copia temporal) cuando el
+                // panel ordena desinstalar este equipo. El
+                // servicio ya informó HECHA al panel ANTES de
+                // lanzar esta copia —la fila del equipo ya no
+                // existe—, así que aquí no se habla con el panel:
+                // solo mano de obra, en este orden:
+                //   1. Temporizador de cortesía (los segundos del
+                //      segundo argumento, 30 por defecto): que el
+                //      aviso de «desinstalado» llegue al servidor
+                //      y se asiente, y que el servicio vuelque su
+                //      registro antes de que lo paren.
+                //   2. Parar el servicio y desregistrarlo.
+                //   3. Borrar la carpeta de instalación.
+                // Cada paso queda en agente.log (etiqueta
+                // «desinstalador»): tras la desinstalación, ese
+                // registro de ProgramData es el único testigo.
                 Registro.Configurar("agente.log");
-                if (args.Length < 2 || string.IsNullOrWhiteSpace(args[1]))
-                {
-                    Console.WriteLine(
-                        "Falta el id de la orden: USBMonitorService.exe desinstalar-orden <id>");
-                    return 1;
-                }
+                var logDesinstalador = Registro.Obtener("desinstalador");
+                var idOrdenDesinstalar =
+                    args.Length >= 2 ? args[1].Trim() : "";
+                var esperaDesinstalar =
+                    args.Length >= 3 &&
+                    int.TryParse(args[2], out var segundosDesinstalar) &&
+                    segundosDesinstalar >= 0
+                        ? Math.Min(segundosDesinstalar, 600)
+                        : 30;
                 try
                 {
-                    // La copia corre desde la carpeta temporal, y
-                    // server.json no vive ni allí ni en la carpeta
-                    // de datos: vive junto al ejecutable INSTALADO.
-                    // Sin decirle dónde mirar, la copia leía una
-                    // configuración vacía (localhost, sin
-                    // credencial), el panel rechazaba su informe
-                    // HECHA y no se tocaba nada: la desinstalación
-                    // pedida desde el panel no se ejecutaba nunca.
-                    // El servicio pasa la carpeta de instalación
-                    // como tercer argumento; sin él, se averigua
-                    // por el servicio registrado.
-                    var directorioConfig =
-                        args.Length >= 3 && !string.IsNullOrWhiteSpace(args[2])
-                            ? args[2]
-                            : DirectorioDelServicioInstalado();
-                    using var cliente = new ClientePanel(
-                        new Configuracion(directorioApp: directorioConfig));
-                    var aceptada = cliente.InformarOrdenAsync(
-                        args[1].Trim(), "HECHA",
-                        "Desinstalación aceptada: se ejecuta ahora.")
-                        .GetAwaiter().GetResult();
-                    if (!aceptada)
-                    {
-                        Console.WriteLine(
-                            "El panel no aceptó el informe de la desinstalación; no se toca nada.");
-                        return 1;
-                    }
-                    Console.WriteLine(Instalador.DesinstalarLimpio());
+                    logDesinstalador.Info(
+                        $"Desinstalación por orden del panel ({idOrdenDesinstalar}): " +
+                        $"esperando {esperaDesinstalar} s antes de tocar nada, " +
+                        "para que el aviso de desinstalado llegue al servidor.");
+                    if (esperaDesinstalar > 0)
+                        Thread.Sleep(TimeSpan.FromSeconds(esperaDesinstalar));
+                    logDesinstalador.Info(
+                        "Empieza la desinstalación: se para el servicio, " +
+                        "se desregistra y se borra la carpeta de instalación.");
+                    var resumenDesinstalacion = Instalador.DesinstalarLimpio();
+                    logDesinstalador.Info(resumenDesinstalacion);
+                    Console.WriteLine(resumenDesinstalacion);
+                    Registro.Vaciar();
                     return 0;
                 }
                 catch (Exception exc)
                 {
+                    logDesinstalador.Error($"No se pudo desinstalar: {exc.Message}");
                     Console.WriteLine($"No se pudo desinstalar: {exc.Message}");
+                    Registro.Vaciar();
                     return 1;
                 }
 
@@ -303,26 +306,6 @@ internal static class Program
             // escribía ni una línea: solo hablaba por una consola
             // que, corriendo como servicio, no existe.
             Registro.Vaciar();
-        }
-    }
-
-    /// <summary>
-    /// La carpeta del ejecutable instalado, según el servicio
-    /// registrado: es donde vive el server.json de verdad. Null
-    /// si no se puede averiguar (sin servicio, sin ruta).
-    /// </summary>
-    private static string? DirectorioDelServicioInstalado()
-    {
-        try
-        {
-            var ruta = Instalador.RutaExeInstalado();
-            return string.IsNullOrWhiteSpace(ruta)
-                ? null
-                : Path.GetDirectoryName(ruta);
-        }
-        catch
-        {
-            return null;
         }
     }
 
