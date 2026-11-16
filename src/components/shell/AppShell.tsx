@@ -661,7 +661,7 @@ export function AppShell({
 
         {/* ═══ CONTENIDO ═══ */}
         <main className="scrollbar-thin relative flex-1 overflow-y-auto">
-          <div className="relative mx-auto flex min-h-full w-full max-w-[1360px] flex-col px-4 pb-10 pt-8 lg:px-8 lg:pt-10">
+          <div className="relative flex min-h-full w-full flex-col px-4 pb-10 pt-8 lg:px-8 lg:pt-10">
             {children}
 
             <footer className="mt-14 flex items-center justify-between border-t border-border pt-4 text-[11px] text-muted-foreground/80">
