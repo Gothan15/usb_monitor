@@ -93,8 +93,13 @@ Source: "{#Preparado}\scripts\*"; DestDir: "{app}\scripts"; Flags: recursesubdir
 Source: "{#Preparado}\raiz\*"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\src\app\favicon.ico"; DestDir: "{app}"; DestName: "favicon.ico"; Flags: ignoreversion
 #ifdef IncluirPaquete
-Source: "{#Preparado}\paquete-agente\*"; DestDir: "{app}\paquete-agente"; Flags: recursesubdirs createallsubdirs ignoreversion
-Source: "{#Preparado}\empujador\*"; DestDir: "{app}\empujador"; Flags: recursesubdirs createallsubdirs ignoreversion
+; OJO: el destino es la carpeta app\ de dentro de la instalación,
+; NO la raíz. El panel busca el paquete y el empujador junto a su
+; carpeta de trabajo (process.cwd() = la app): dejarlos en la raíz
+; hacía que el panel dijera que no había paquete tras instalar el
+; completo, hasta que se subía el zip a mano desde Ajustes.
+Source: "{#Preparado}\paquete-agente\*"; DestDir: "{app}\app\paquete-agente"; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "{#Preparado}\empujador\*"; DestDir: "{app}\app\empujador"; Flags: recursesubdirs createallsubdirs ignoreversion
 #endif
 
 [Icons]
