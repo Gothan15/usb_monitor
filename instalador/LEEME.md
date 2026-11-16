@@ -62,8 +62,8 @@ La cuenta se crea con `crear-admin-instalador.mjs`, que replica el formato exact
 
 ## Actualizar y desinstalar
 
-- **Actualizar:** ejecutar el instalador nuevo encima (mismo `AppId`, se reconoce solo): sustituye los programas, conserva la carpeta de datos, el `.env` (solo refresca el puerto), los secretos y todas las cuentas. Tras actualizar, los servicios quedan arrancados. **Ojo al venir de una versión `.msi` (≤1.4.1):** desinstala primero la entrada vieja desde «Aplicaciones instaladas» (la carpeta de datos se conserva, como siempre) y luego ejecuta el `.exe`; no lo hagas al revés, porque desinstalar el MSI después retiraría los servicios que el `.exe` acaba de registrar.
-- **Desinstalar:** quita programas, servicios y la regla de cortafuegos. **La carpeta `C:\ProgramData\USBMonitor` se conserva a propósito** (ahí está la base de datos): para una limpieza total, se borra a mano después.
+- **Actualizar:** ejecutar el instalador nuevo encima (mismo `AppId`, se reconoce solo): sustituye los programas, conserva la carpeta de datos, el `.env` (solo refresca el puerto), los secretos y todas las cuentas. Tras actualizar, los servicios quedan arrancados. **Ojo al venir de una versión `.msi` (≤1.4.1):** desinstala primero la entrada vieja desde «Aplicaciones instaladas» (el desinstalador del MSI conserva la carpeta de datos) y luego ejecuta el `.exe`; no lo hagas al revés, porque desinstalar el MSI después retiraría los servicios que el `.exe` acaba de registrar.
+- **Desinstalar:** quita **todo** lo que el instalador crea — programas, los tres servicios, la regla de cortafuegos, la tarea de la copia semanal, la clave del registro **y la carpeta `C:\ProgramData\USBMonitor` entera** (base de datos, secretos, datos de Redis, registros y copias), con su registro espejo `C:\ProgramData\USBMonitor-instalacion.log`. Desinstalar es empezar de cero. (El desinstalador de las versiones `.msi` ≤1.4.1 sí conservaba la carpeta de datos; el de Inno no.)
 
 ## Construir el instalador
 
