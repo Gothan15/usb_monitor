@@ -116,7 +116,8 @@ const
   ClavePanel = 'SOFTWARE\USBMonitor\Panel';
 
 var
-  PaginaConfig: TInputQueryWizardPage;
+  PaginaCuenta: TInputQueryWizardPage;
+  PaginaPuertos: TInputQueryWizardPage;
   EsActualizacion: Boolean;
   PasoFallido: String;
   PuertoPanel: Integer;
@@ -132,30 +133,39 @@ end;
 procedure InitializeWizard;
 begin
   EsActualizacion := DetectarActualizacion;
-  PaginaConfig := CreateInputQueryPage(wpSelectDir,
-    'Configuración del panel',
-    'Cuenta de administrador y puertos',
-    'La cuenta se crea al terminar la instalación y es la que ' +
-    'usarás para entrar al panel. Si dejas la contraseña vacía, ' +
-    'el instalador generará una y la dejará en PRIMER-ACCESO.txt ' +
-    'dentro de la carpeta de datos. El puerto de la base de datos ' +
-    'es interno (solo lo usa el propio panel). Al terminar se ' +
-    'abrirá el puerto del panel en el Firewall de Windows ' +
-    '(perfiles privado y de dominio).');
-  PaginaConfig.Add('Usuario administrador:', False);
-  PaginaConfig.Add('Contraseña:', True);
-  PaginaConfig.Add('Repite la contraseña:', True);
-  PaginaConfig.Add('Puerto del panel (la web):', False);
-  PaginaConfig.Add('Puerto de la base de datos (interno):', False);
-  PaginaConfig.Values[0] := 'admin';
-  PaginaConfig.Values[3] := '3000';
-  PaginaConfig.Values[4] := '5433';
+  // La configuración va en DOS páginas, no en una: con los cinco
+  // campos juntos y el texto de explicación, la página de la
+  // 1.5.0 desbordaba la ventana y el último campo quedaba cortado
+  // bajo los botones (visto en el PC de Gothan). Cuenta en una y
+  // puertos en otra, cada una con su texto corto.
+  PaginaCuenta := CreateInputQueryPage(wpSelectDir,
+    'Cuenta de administrador',
+    'La cuenta con la que entrarás al panel',
+    'Se crea al terminar la instalación. Si dejas la contraseña ' +
+    'vacía, se generará una y quedará en PRIMER-ACCESO.txt, ' +
+    'dentro de la carpeta de datos.');
+  PaginaCuenta.Add('Usuario administrador:', False);
+  PaginaCuenta.Add('Contraseña:', True);
+  PaginaCuenta.Add('Repite la contraseña:', True);
+  PaginaCuenta.Values[0] := 'admin';
+
+  PaginaPuertos := CreateInputQueryPage(PaginaCuenta.ID,
+    'Puertos del panel',
+    'Dónde escuchará cada pieza',
+    'El puerto de la base de datos es interno: solo lo usa el ' +
+    'propio panel. Al terminar se abrirá el puerto del panel en ' +
+    'el Firewall de Windows (perfiles privado y de dominio).');
+  PaginaPuertos.Add('Puerto del panel (la web):', False);
+  PaginaPuertos.Add('Puerto de la base de datos (interno):', False);
+  PaginaPuertos.Values[0] := '3000';
+  PaginaPuertos.Values[1] := '5433';
 end;
 
 function ShouldSkipPage(PageID: Integer): Boolean;
 begin
   Result := False;
-  if (PageID = PaginaConfig.ID) and EsActualizacion then
+  if EsActualizacion and
+     ((PageID = PaginaCuenta.ID) or (PageID = PaginaPuertos.ID)) then
     Result := True;
 end;
 
@@ -180,53 +190,60 @@ var
   Usuario, Clave1, Clave2: String;
 begin
   Result := True;
-  if CurPageID <> PaginaConfig.ID then Exit;
-  Usuario := Trim(PaginaConfig.Values[0]);
-  Clave1 := PaginaConfig.Values[1];
-  Clave2 := PaginaConfig.Values[2];
-  PuertoPanel := StrToIntDef(Trim(PaginaConfig.Values[3]), -1);
-  PuertoBd := StrToIntDef(Trim(PaginaConfig.Values[4]), -1);
 
-  if Clave1 <> Clave2 then
+  if CurPageID = PaginaCuenta.ID then
   begin
-    MsgBox('Las contraseñas no coinciden. Escríbela dos veces igual, ' +
-      'o déjala vacía en los dos campos para que el instalador ' +
-      'genere una.', mbError, MB_OK);
-    Result := False;
-    Exit;
+    Usuario := Trim(PaginaCuenta.Values[0]);
+    Clave1 := PaginaCuenta.Values[1];
+    Clave2 := PaginaCuenta.Values[2];
+    if Clave1 <> Clave2 then
+    begin
+      MsgBox('Las contraseñas no coinciden. Escríbela dos veces ' +
+        'igual, o déjala vacía en los dos campos para que el ' +
+        'instalador genere una.', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+    if Usuario = '' then
+      PaginaCuenta.Values[0] := 'admin';
   end;
-  if (PuertoPanel < 1) or (PuertoPanel > 65535) or
-     (PuertoBd < 1) or (PuertoBd > 65535) then
+
+  if CurPageID = PaginaPuertos.ID then
   begin
-    MsgBox('Los puertos tienen que ser números entre 1 y 65535.',
-      mbError, MB_OK);
-    Result := False;
-    Exit;
+    PuertoPanel := StrToIntDef(Trim(PaginaPuertos.Values[0]), -1);
+    PuertoBd := StrToIntDef(Trim(PaginaPuertos.Values[1]), -1);
+    if (PuertoPanel < 1) or (PuertoPanel > 65535) or
+       (PuertoBd < 1) or (PuertoBd > 65535) then
+    begin
+      MsgBox('Los puertos tienen que ser números entre 1 y 65535.',
+        mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+    if PuertoPanel = PuertoBd then
+    begin
+      MsgBox('El puerto del panel y el de la base de datos no ' +
+        'pueden ser el mismo.', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+    if PuertoOcupado(PuertoPanel) then
+    begin
+      MsgBox('El puerto ' + IntToStr(PuertoPanel) + ' ya está en ' +
+        'uso en este equipo. Elige otro para el panel.',
+        mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+    if PuertoOcupado(PuertoBd) then
+    begin
+      MsgBox('El puerto ' + IntToStr(PuertoBd) + ' ya está en uso ' +
+        'en este equipo. Elige otro para la base de datos.',
+        mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
   end;
-  if PuertoPanel = PuertoBd then
-  begin
-    MsgBox('El puerto del panel y el de la base de datos no pueden ' +
-      'ser el mismo.', mbError, MB_OK);
-    Result := False;
-    Exit;
-  end;
-  if PuertoOcupado(PuertoPanel) then
-  begin
-    MsgBox('El puerto ' + IntToStr(PuertoPanel) + ' ya está en uso ' +
-      'en este equipo. Elige otro para el panel.', mbError, MB_OK);
-    Result := False;
-    Exit;
-  end;
-  if PuertoOcupado(PuertoBd) then
-  begin
-    MsgBox('El puerto ' + IntToStr(PuertoBd) + ' ya está en uso ' +
-      'en este equipo. Elige otro para la base de datos.',
-      mbError, MB_OK);
-    Result := False;
-    Exit;
-  end;
-  if Usuario = '' then
-    PaginaConfig.Values[0] := 'admin';
 end;
 
 procedure DetenerServiciosSiExisten;
@@ -268,10 +285,10 @@ begin
   RegWriteStringValue(HKLM, ClavePanel, 'FirewallOk', '1');
   if not EsActualizacion then
   begin
-    Usuario := Trim(PaginaConfig.Values[0]);
+    Usuario := Trim(PaginaCuenta.Values[0]);
     if Usuario = '' then Usuario := 'admin';
     RegWriteStringValue(HKLM, ClavePanel, 'AdminUser', Usuario);
-    Clave := PaginaConfig.Values[1];
+    Clave := PaginaCuenta.Values[1];
     if Clave <> '' then
     begin
       // El relevo de GuardarAdmin.vbs: la contraseña va en un
