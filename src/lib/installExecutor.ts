@@ -35,8 +35,10 @@ import {
 /**
  * Ejecutor de tareas de instalación (fase D): el proceso en
  * segundo plano del panel que lleva cada destino de EN_COLA a
- * INSTALADO, OMITIDO o ERROR, con concurrencia 2 entre todos
- * los destinos de todas las tareas.
+ * INSTALADO, OMITIDO o ERROR, de uno en uno entre todos los
+ * destinos de todas las tareas (CONCURRENCIA_INSTALACION = 1:
+ * las instalaciones en paralelo coincidían con fallos de
+ * enrolamiento).
  *
  * Las contraseñas viven SOLO en este mapa en memoria mientras
  * la tarea corre: la general de la tarea y, por destino, la

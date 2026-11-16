@@ -904,12 +904,13 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
               ¿Eliminar {pendingDelete?.name ?? "este equipo"}?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Si el equipo tiene el agente instalado, también se
-              desinstalará solo en esa PC y borrará su carpeta de
-              instalación; sale de la lista al instante y su fila se
-              borra cuando el agente lo confirme (si está apagado, se
-              desinstalará al volver a conectarse). Esta acción no se
-              puede deshacer.
+              El equipo desaparece del panel y sus usuarios
+              asignados quedan sin equipo. El agente de esa PC NO
+              se desinstala: sigue instalado, pero su credencial
+              deja de valer y ya no podrá hablar con el panel. Para
+              quitarlo de la PC hay que desinstalarlo allí mismo
+              (USBMonitorService.exe desinstalar) o volver a
+              enrolar el equipo. Esta acción no se puede deshacer.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

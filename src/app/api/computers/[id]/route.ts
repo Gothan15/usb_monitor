@@ -2,14 +2,6 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth";
 import { logError } from "@/lib/logger";
-import {
-  accionAlBorrarEquipo,
-  ESTADOS_ORDEN_ACTIVA,
-  TIPO_ORDEN_DESINSTALAR,
-  ESTADO_ORDEN,
-  TIPO_ORDEN_ACTUALIZAR,
-} from "@/lib/agentCommands";
-import { getCurrentDate } from "@/lib/time";
 
 type RouteContext = {
   params: Promise<{
@@ -39,54 +31,13 @@ export async function DELETE(req: Request, context: RouteContext) {
       );
     }
 
-    // Con agente enrolado, borrar el equipo también lo
-    // desinstala en su PC: se le deja la orden «desinstalar» y la
-    // fila se borra cuando el agente la informe HECHA (la orden
-    // le espera si la PC está apagada). La lista ya no lo enseña
-    // mientras la orden viva. Sin credencial, borrado directo.
-    const ordenActiva = computer.clavePublica
-      ? await db.agentCommand.findFirst({
-          where: {
-            computerId: id,
-            type: TIPO_ORDEN_DESINSTALAR,
-            status: { in: ESTADOS_ORDEN_ACTIVA },
-          },
-          select: { id: true },
-        })
-      : null;
-    const accion = accionAlBorrarEquipo(
-      Boolean(computer.clavePublica),
-      Boolean(ordenActiva),
-    );
-    if (accion !== "borrar") {
-      // Coherencia de órdenes: un equipo que se va a desinstalar
-      // no se actualiza. Sus actualizaciones vivas se cancelan
-      // aquí mismo; el agente las abandona en su siguiente punto
-      // de control (PR de cancelación) o ni las empieza.
-      await db.agentCommand.updateMany({
-        where: {
-          computerId: id,
-          type: TIPO_ORDEN_ACTUALIZAR,
-          status: { in: ESTADOS_ORDEN_ACTIVA },
-        },
-        data: {
-          status: ESTADO_ORDEN.CANCELADA,
-          finishedAt: getCurrentDate(),
-          detail: "Cancelada: el equipo se va a desinstalar.",
-        },
-      });
-      if (accion === "pedir-desinstalacion") {
-        await db.agentCommand.create({
-          data: { computerId: id, type: TIPO_ORDEN_DESINSTALAR },
-        });
-      }
-      return NextResponse.json({
-        ok: true,
-        item: computer,
-        desinstalacionPedida: true,
-      });
-    }
-
+    // Borrar un equipo es solo borrar su fila: la
+    // desinstalación remota está retirada (2026-11-16), así
+    // que el agente de esa PC NO se desinstala — queda
+    // instalado, pero su credencial deja de valer al irse la
+    // fila y ya no puede hablar con el panel. Para quitarlo
+    // de la PC hay que desinstalarlo allí mismo
+    // (USBMonitorService.exe desinstalar) o re-enrolarlo.
     const [, deletedComputer] = await db.$transaction([
       db.user.updateMany({
         where: { computerId: id },
