@@ -100,16 +100,15 @@ begin
   begin
     MsgBox('No se ha encontrado una instalación del panel en ' +
       'este equipo, y este paquete solo actualiza: no instala ' +
-      'de cero.' + #13#10#13#10 +
-      'Usa el instalador completo de la misma versión.',
+      'de cero.' + #13#10#13#10 + 'Usa el instalador completo ' +
+      'de la misma versión.',
       mbError, MB_OK);
     Exit;
   end;
   if not DirExists(Instalacion) then
   begin
     MsgBox('La instalación del panel que consta en el registro ' +
-      'ya no está en su sitio (' + Instalacion + ').' +
-      #13#10#13#10 +
+      'ya no está en su sitio (' + Instalacion + ').' + #13#10#13#10 +
       'Usa el instalador completo de la misma versión.',
       mbError, MB_OK);
     Exit;
@@ -158,9 +157,8 @@ begin
   if PasoFallido <> '' then
     MsgBox('El paso de ' + PasoFallido + ' ha fallado y la ' +
       'actualización no ha quedado completa.' + #13#10#13#10 +
-      'Nada se ha borrado: el motivo está en el registro:' +
-      #13#10 + 'C:\ProgramData\USBMonitor-instalacion.log' +
-      #13#10#13#10 +
+      'Nada se ha borrado: el motivo está en el registro:' + #13#10 +
+      'C:\ProgramData\USBMonitor-instalacion.log' + #13#10#13#10 +
       'Corrige la causa y vuelve a ejecutar este paquete: los ' +
       'pasos ya hechos se detectan y no se repiten.',
       mbError, MB_OK);
@@ -187,8 +185,7 @@ begin
         'vuelve a ejecutar este paquete.'
     else
       WizardForm.FinishedLabel.Caption :=
-        'El panel se ha actualizado a la versión {#PanelVersion}.' +
-        #13#10#13#10 +
+        'El panel se ha actualizado a la versión {#PanelVersion}.' + #13#10#13#10 +
         'Los datos, las cuentas y la configuración se conservan ' +
         'tal como estaban.';
   end;
