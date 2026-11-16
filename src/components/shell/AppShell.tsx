@@ -154,7 +154,7 @@ export function AppShell({
 
               {/* Navegación vertical, con aire y filete entre secciones */}
               <nav
-                className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-4"
+                className="scrollbar-none flex-1 overflow-y-auto overflow-x-hidden px-3 py-4"
                 aria-label="Secciones"
               >
                 {navItems.map((item, indice) => {

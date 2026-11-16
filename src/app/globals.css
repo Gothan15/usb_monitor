@@ -439,6 +439,16 @@
   .scrollbar-thin:hover::-webkit-scrollbar-thumb {
     background-color: color-mix(in oklch, var(--acero) 45%, transparent);
   }
+
+  /* Barra de scroll invisible del todo (la rueda y el tacto siguen
+     desplazando): para la navegación lateral, donde la barra
+     gruesa por defecto rompe la columna de iconos. */
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
     background-color: color-mix(in oklch, var(--acero) 65%, transparent);
   }
