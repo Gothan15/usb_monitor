@@ -181,19 +181,35 @@ try {
     }
 
     # --- 4. Comprobación (PING con la contraseña) ---
-    $responde = $false
-    for ($i = 0; $i -lt 15; $i++) {
-        $salida = & $redisCli -h 127.0.0.1 -p $PuertoRedis -a $claveRedis --no-auth-warning PING 2>$null
-        if ($salida -eq 'PONG') { $responde = $true; break }
-        Start-Sleep -Seconds 2
-    }
-    if ($responde) {
-        Escribir-Log "Redis responde en 127.0.0.1:$PuertoRedis."
-    } else {
-        # Un último intento capturando el error de redis-cli: su
-        # texto (conexión rechazada, NOAUTH, …) es la pista directa.
-        $detalle = & $redisCli -h 127.0.0.1 -p $PuertoRedis -a $claveRedis --no-auth-warning PING 2>&1 | Out-String
-        Escribir-Log "AVISO: Redis no respondió al PING ($($detalle.Trim())); el panel funcionará sin él (revisa Registros\redis.log y Registros\USBMonitorRedis.*.log)."
+    # OJO con la trampa de PowerShell 5.1: con
+    # $ErrorActionPreference = 'Stop', la PRIMERA línea que un
+    # programa nativo escribe en su salida de error al redirigirla
+    # (2>$null vale) se convierte en un error que lo para todo.
+    # Tal cual estaba, el primer PING rechazado (lo normal mientras
+    # el servicio arranca) tiraba el script entero con ese texto
+    # como «ERROR», y la comprobación tolerante de abajo — Redis
+    # caído = AVISO y la instalación sigue — nunca llegaba a
+    # ejecutarse. Durante la comprobación se baja a 'Continue' y
+    # se restaura al salir, haya PONG o no.
+    $eapAnterior = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $responde = $false
+        for ($i = 0; $i -lt 15; $i++) {
+            $salida = & $redisCli -h 127.0.0.1 -p $PuertoRedis -a $claveRedis --no-auth-warning PING 2>$null
+            if ($salida -eq 'PONG') { $responde = $true; break }
+            Start-Sleep -Seconds 2
+        }
+        if ($responde) {
+            Escribir-Log "Redis responde en 127.0.0.1:$PuertoRedis."
+        } else {
+            # Un último intento capturando el error de redis-cli: su
+            # texto (conexión rechazada, NOAUTH, …) es la pista directa.
+            $detalle = & $redisCli -h 127.0.0.1 -p $PuertoRedis -a $claveRedis --no-auth-warning PING 2>&1 | Out-String
+            Escribir-Log "AVISO: Redis no respondió al PING ($($detalle.Trim())); el panel funcionará sin él (revisa Registros\redis.log y Registros\USBMonitorRedis.*.log)."
+        }
+    } finally {
+        $ErrorActionPreference = $eapAnterior
     }
 
     Escribir-Log 'Redis listo.'

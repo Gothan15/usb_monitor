@@ -16,7 +16,16 @@
   <description>Redis privado del panel de USB Monitor (presencia de agentes y límites de intentos). Solo escucha en local.</description>
 
   <executable>%BASE%\..\redis\redis-server.exe</executable>
-  <arguments>"%BASE%\..\redis\redis.conf"</arguments>
+  <!-- El argumento es SOLO el nombre, sin ruta: el directorio de
+       trabajo ya es la carpeta redis\ y así no hay nada que
+       convertir. La compilación MSYS2 de Redis traduce las rutas
+       de Windows que recibe como argumento, y una ruta absoluta
+       con «..\» y espacios le salía destrozada
+       («/USB Monitor Panel/redis/D:\...»): redis-server no podía
+       abrir su propio redis.conf y el servicio entraba en un
+       bucle de reinicios sin escuchar nunca (visto en la primera
+       instalación real, 2026-11-16). -->
+  <arguments>redis.conf</arguments>
   <workingdirectory>%BASE%\..\redis</workingdirectory>
 
   <startmode>Automatic</startmode>
