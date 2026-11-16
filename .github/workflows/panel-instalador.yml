@@ -17,12 +17,15 @@
 # máquina Windows de GitHub. Las etiquetas del agente son
 # «agente-v*» y las del panel «panel-v*»: no se pisan.
 #
-# Cada Release del panel lleva DOS instaladores: el ligero de
-# siempre y el «completo», que trae dentro el paquete del agente
-# vigente (su ejecutable, el empujador y el manifiesto, colocados
-# en las carpetas del panel). El paso de preparación descarga la
-# Release del agente más reciente y deja el PaqueteDir que la
-# variante -Completo de Construir-Instalador.ps1 espera.
+# Cada Release del panel lleva TRES archivos: el instalador
+# ligero de siempre, el «completo» (con el paquete del agente
+# vigente dentro: su ejecutable, el empujador y el manifiesto,
+# colocados en las carpetas del panel) y el paquete de
+# actualización ligero (-actualizacion.exe: solo el programa,
+# para aplicar sobre una instalación existente; lo compila el
+# mismo Construir-Instalador.ps1 en cada pasada). El paso de
+# preparación descarga la Release del agente más reciente y
+# deja el PaqueteDir que la variante -Completo espera.
 name: Panel — instalador Inno Setup
 
 on:
@@ -119,6 +122,7 @@ jobs:
           path: |
             salida-instalador/USBMonitor-Panel-${{ steps.version.outputs.version }}.exe
             salida-instalador/USBMonitor-Panel-${{ steps.version.outputs.version }}-completo.exe
+            salida-instalador/USBMonitor-Panel-${{ steps.version.outputs.version }}-actualizacion.exe
           retention-days: 30
 
       - name: Publicar los instaladores en la Release de la etiqueta
@@ -128,4 +132,5 @@ jobs:
           files: |
             salida-instalador/USBMonitor-Panel-${{ steps.version.outputs.version }}.exe
             salida-instalador/USBMonitor-Panel-${{ steps.version.outputs.version }}-completo.exe
+            salida-instalador/USBMonitor-Panel-${{ steps.version.outputs.version }}-actualizacion.exe
           generate_release_notes: true
