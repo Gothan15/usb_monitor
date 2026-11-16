@@ -212,6 +212,21 @@ Copy-Item (Join-Path $inst 'servicio\USBMonitorPanel.xml') (Join-Path $prep 'ser
 Copy-Item $exeWinSw (Join-Path $prep 'servicio\USBMonitorRedis.exe')
 Copy-Item (Join-Path $inst 'servicio\USBMonitorRedis.xml') (Join-Path $prep 'servicio\')
 Copy-Item (Join-Path $inst 'scripts\*') (Join-Path $prep 'scripts\')
+# Los scripts del instalador corren con Windows PowerShell 5.1,
+# que lee los .ps1 SIN BOM como ANSI: un guion largo («—») dentro
+# de una cadena se convierte al leerlo en una comilla tipografica
+# que cierra la cadena, y el script muere al analizarse, sin
+# ejecutar ni su primera linea (le paso a Instalar-Redis con la
+# 1.5.0: el registro quedo sin ni una linea suya). Se garantiza
+# aqui que todo .ps1 del paquete sale en UTF-8 CON BOM, que 5.1
+# si lee como UTF-8, haya venido como haya venido del repo.
+foreach ($ps1 in Get-ChildItem (Join-Path $prep 'scripts') -Filter '*.ps1') {
+    $bytes = [IO.File]::ReadAllBytes($ps1.FullName)
+    if ($bytes.Length -lt 3 -or $bytes[0] -ne 0xEF -or $bytes[1] -ne 0xBB -or $bytes[2] -ne 0xBF) {
+        [IO.File]::WriteAllBytes($ps1.FullName, [byte[]](0xEF, 0xBB, 0xBF) + $bytes)
+        Write-Host "BOM UTF-8 anadido: $($ps1.Name)"
+    }
+}
 Copy-Item (Join-Path $inst 'AbrirPanel.cmd') (Join-Path $prep 'raiz\')
 # Variante «completo»: el paquete del agente, tal cual llegó en
 # -PaqueteDir, a sus dos carpetas del árbol. Panel.iss lo recoge de
