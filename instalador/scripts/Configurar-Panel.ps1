@@ -9,7 +9,8 @@
 #      (instalación silenciosa), genera una contraseña y la deja en
 #      PRIMER-ACCESO.txt — solo cuando la cuenta se crea de verdad.
 #   2. Escribe el .env del panel (o, si ya existe de una versión
-#      anterior, solo refresca el puerto: los secretos se conservan).
+#      anterior, solo refresca el puerto y la URL del Redis
+#      integrado: los secretos se conservan).
 #   3. Aplica el esquema con «prisma db push» (la misma orden que
 #      en el PC de desarrollo; el panel no usa migraciones).
 #   4. Crea el administrador con crear-admin-instalador.mjs
@@ -51,7 +52,7 @@ try {
     $secretos = Get-Content -LiteralPath (Join-Path $datos 'secretos.json') -Raw | ConvertFrom-Json
     $urlBd = "postgresql://usbmonitor:$($secretos.appClave)@127.0.0.1:$puertoBd/usbmonitor"
 
-    Escribir-Log "Inicio. Puerto panel=$puerto, BD=$puertoBd"
+    Escribir-Log "Inicio. Puerto panel=$puerto, BD=$puertoBd, Redis=6381"
 
     # --- 1. Credenciales del administrador inicial ---
     $adminUsuario = [string]$reg.AdminUser
@@ -81,8 +82,15 @@ try {
         $contenido = Get-Content -LiteralPath $rutaEnv
         $contenido = $contenido -replace '^PORT=.*', "PORT=$puerto"
         if (-not ($contenido -match '^PORT=')) { $contenido += "PORT=$puerto" }
+        # El Redis integrado puede ser nuevo para esta instalación
+        # (un .env anterior a él no trae la línea): se añade o se
+        # refresca con la clave vigente de secretos.json, que
+        # Instalar-Redis.ps1 ya dejó asegurada antes de este paso.
+        $urlRedis = "redis://:$($secretos.redisClave)@127.0.0.1:6381"
+        $contenido = $contenido -replace '^REDIS_URL=.*', "REDIS_URL=$urlRedis"
+        if (-not ($contenido -match '^REDIS_URL=')) { $contenido += "REDIS_URL=$urlRedis" }
         Set-Content -LiteralPath $rutaEnv -Value $contenido -Encoding UTF8
-        Escribir-Log '.env existente conservado (solo se refrescó el puerto).'
+        Escribir-Log '.env existente conservado (se refrescaron el puerto y la URL de Redis).'
     } else {
         $nombrePc = $env:COMPUTERNAME
         $ipLan = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
@@ -100,6 +108,7 @@ try {
             "ALLOWED_ORIGINS=$($origenes -join ',')"
             "ENFORCE_HTTPS_REDIRECT=false"
             "SESSION_SECRET=$secretoSesion"
+            "REDIS_URL=redis://:$($secretos.redisClave)@127.0.0.1:6381"
         ) | Set-Content -LiteralPath $rutaEnv -Encoding UTF8
         & icacls $rutaEnv /inheritance:r /grant:r '*S-1-5-18:F' '*S-1-5-32-544:F' | Out-Null
         Escribir-Log '.env creado y protegido.'
@@ -149,6 +158,13 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "WinSW install falló ($LASTEXITCODE)" }
         Escribir-Log 'Servicio del panel instalado.'
     }
+    # Las dependencias también van en la plantilla de WinSW, pero en
+    # una actualización el servicio ya existe y el XML nuevo no lo
+    # reescribe: sin esto, un panel anterior al Redis integrado no
+    # ganaría nunca la dependencia. sc.exe pide el espacio tras
+    # «depend=» y el valor en el mismo argumento.
+    & sc.exe config USBMonitorPanel 'depend= USBMonitorPostgreSQL/USBMonitorRedis' | Out-Null
+    if ($LASTEXITCODE -ne 0) { Escribir-Log 'AVISO: no se pudieron fijar las dependencias del servicio del panel.' }
 
     # --- 6. Cortafuegos ---
     & netsh advfirewall firewall delete rule name='USB Monitor — Panel' 2>&1 | Out-Null

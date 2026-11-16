@@ -1,0 +1,36 @@
+<!--
+  Plantilla del servicio de Redis integrado (WinSW 2.x).
+  Instalar-Redis.ps1 sustituye __REGISTROS__ por la ruta real al
+  instalar y deja el resultado como
+  USBMonitorRedis.xml junto a USBMonitorRedis.exe (otra copia del
+  ejecutable de WinSW, renombrada por Construir-Instalador.ps1:
+  WinSW exige que el XML se llame igual que el .exe).
+
+  Redis corre con el redis.conf que el mismo script genera en la
+  carpeta redis\ de la instalación: escucha solo en 127.0.0.1,
+  puerto propio y con la contraseña interna de secretos.json.
+-->
+<service>
+  <id>USBMonitorRedis</id>
+  <name>USB Monitor — Redis</name>
+  <description>Redis privado del panel de USB Monitor (presencia de agentes y límites de intentos). Solo escucha en local.</description>
+
+  <executable>%BASE%\..\redis\redis-server.exe</executable>
+  <arguments>"%BASE%\..\redis\redis.conf"</arguments>
+  <workingdirectory>%BASE%\..\redis</workingdirectory>
+
+  <startmode>Automatic</startmode>
+
+  <onfailure action="restart" delay="10 sec" />
+  <onfailure action="restart" delay="30 sec" />
+  <onfailure action="none" />
+
+  <logpath>__REGISTROS__</logpath>
+  <log mode="roll-by-size">
+    <sizeThreshold>10240</sizeThreshold>
+    <keepFiles>8</keepFiles>
+  </log>
+
+  <waithint>15 sec</waithint>
+  <stoptimeout>30 sec</stoptimeout>
+</service>

@@ -19,7 +19,7 @@ Versión del sistema: noviembre de 2026 (panel 1.0.4)
 
 ### A mano
 
-Requisitos: Node.js 20+ (mejor 22) y un PostgreSQL accesible. Redis es opcional para producción (`REDIS_URL`).
+Requisitos: Node.js 20+ (mejor 22) y un PostgreSQL accesible. Redis es opcional para producción (`REDIS_URL`); el instalador .msi del panel lleva el suyo propio integrado.
 
 ```bash
 npm install
