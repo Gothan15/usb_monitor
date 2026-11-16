@@ -45,6 +45,17 @@ En una **actualización** los puertos y el usuario se recuperan solos del regist
 - **El `.env` del panel** se genera dentro de `app\` con `DATABASE_URL`, `SESSION_SECRET` aleatorio, `APP_PUBLIC_HOST` = nombre del equipo, `ALLOWED_ORIGINS` con localhost, el nombre y la IP local detectada al instalar, y `REDIS_URL` apuntando al Redis integrado (127.0.0.1:6381, con su clave). También con ACL cerrada.
 - **Sobre el puerto de Redis (6381, fijo):** no es el 6379 habitual a propósito — así nunca choca con un Redis que el equipo ya tenga — y por eso el asistente no lo pregunta: no hay nada que elegir. Si hiciera falta cambiarlo, se toca en `redis\redis.conf` y en el `REDIS_URL` del `.env`, y se reinician los servicios `USBMonitorRedis` y `USBMonitorPanel`.
 
+## Si la instalación falla: los registros
+
+El instalador **exige administrador desde el arranque** (pide la elevación UAC al abrirlo; sin ella ni siquiera empieza). Si aun así algo falla, la instalación revierte y borra lo instalado — es el comportamiento normal de Windows Installer — pero **los registros quedan**, en dos sitios que la reversión no toca:
+
+| Registro | Qué cuenta |
+|---|---|
+| `C:\ProgramData\USBMonitor-instalacion.log` | Lo que hicieron los scripts del instalador, paso a paso y con las salidas de los comandos: `[BD]` (initdb, registro del servicio, creación del rol), `[Redis]` (configuración, servicio, PING) y `[Panel]` (Prisma con su salida entera, WinSW, cortafuegos, arranque). Es el espejo del `Registros\instalacion.log` de la carpeta de datos, que la reversión sí puede llevarse. |
+| `%TEMP%\MSI*.LOG` (el más reciente) | El registro verbal de Windows Installer: copia de archivos, acciones en orden y el código del error que tumbó la instalación. El instalador lo genera solo en cada intento. |
+
+Para diagnosticar un fallo hacen falta **esos dos archivos**: el primero dice en qué paso y con qué salida; el segundo, el error exacto del motor de instalación.
+
 ## La contraseña del asistente, sin dejar huella
 
 Las acciones diferidas de un MSI corren como SYSTEM y no pueden leer lo que se escribió en la interfaz. Por eso el paso es: una acción inmediata incrustada en el propio MSI (`GuardarAdmin.vbs`) deja usuario+contraseña en `acceso-inicial.ini` dentro de la carpeta de datos, con ACL mínima por SID; el script de configuración lo lee para crear la cuenta, lo **sobrescribe con bytes aleatorios y lo borra**. La contraseña no va al registro, ni al `.env`, ni queda en ningún archivo permanente.
@@ -117,6 +128,7 @@ La primera corrida de este workflow es, además, la primera compilación real de
 
 ## Problemas previstos
 
+- **La instalación revierte sin decir por qué:** es el comportamiento normal de Windows Installer ante un error, y el asistente solo muestra un aviso genérico. La causa queda en los dos registros de la sección «Si la instalación falla»: `C:\ProgramData\USBMonitor-instalacion.log` y el `%TEMP%\MSI*.LOG` más reciente.
 - **SmartScreen / «editor desconocido»:** el `.msi` no va firmado (no hay certificado). Windows avisará al ejecutarlo; se continúa con «Más información → Ejecutar de todos modos». Firmarlo queda para cuando haya certificado.
 - **VBScript en retirada (aviso WIX1163 al compilar, suprimido a propósito con `-sw1163` en el script de construcción):** dos acciones inmediatas del asistente (guardar la contraseña inicial y comprobar puertos) están en VBScript, un componente que Microsoft está retirando de Windows. Hoy funcionan; si en un Windows futuro falta VBScript, ambas llevan `Return="ignore"` y el instalador sigue: sin la primera, la cuenta inicial se genera sola y queda en `PRIMER-ACCESO.txt`; sin la segunda, solo se pierde el aviso de puertos ocupados. Migración prevista: pasarlas a PowerShell.
 - **`initdb` o Prisma fallan con errores de DLL:** falta el *Microsoft Visual C++ Redistributable* 2015-2022 (x64) en ese equipo; se instala una vez y se reintenta (la instalación del panel se puede reparar/repetir sin perder datos).
@@ -128,6 +140,7 @@ La primera corrida de este workflow es, además, la primera compilación real de
 
 ## Qué NO hace esta versión
 
+- **No usa internet al instalar:** el instalador es *full offline* — todo lo que necesita (panel, Node, PostgreSQL, Redis, WinSW) viaja dentro del `.msi`, y ningún paso de la instalación llama a fuera (hasta la telemetría de Prisma va apagada). La descarga de binarios ocurre solo al CONSTRUIR el `.msi`, en el PC de desarrollo o en GitHub.
 - No firma el paquete (ver arriba).
 - No instala HTTPS: dentro de la LAN va por HTTP; para exponerlo con HTTPS, el camino del proyecto es poner Caddy delante (kit aparte).
 - No migra datos desde una instalación «a mano» existente: instala su propio clúster vacío. (Si hiciera falta poblarlo desde el PostgreSQL actual, se hace con `pg_dump`/`pg_restore` a mano, una sola vez.)

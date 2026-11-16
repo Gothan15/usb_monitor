@@ -29,6 +29,12 @@ function Escribir-Log([string]$Mensaje) {
     $linea = "[{0}] [Panel] {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Mensaje
     Write-Host $linea
     try { Add-Content -LiteralPath $script:RutaLog -Value $linea -Encoding UTF8 } catch { }
+    # Espejo FUERA del árbol de datos: si la instalación falla, la
+    # reversión se lleva las carpetas que el MSI creó (Registros\
+    # entre ellas) y con ellas el registro de arriba. Este archivo
+    # vive suelto en C:\ProgramData, que el instalador no gestiona,
+    # y es el que hay que mirar (o enviar) cuando algo sale mal.
+    try { Add-Content -LiteralPath $script:RutaLogEspejo -Value $linea -Encoding UTF8 } catch { }
 }
 
 function Nueva-Clave([int]$Longitud = 24) {
@@ -45,7 +51,9 @@ try {
     $cortafuegos = [string]$reg.FirewallOk
     $instalacion = [string]$reg.InstallDir
     $datos = [string]$reg.DataDir
+    New-Item -ItemType Directory -Force -Path (Join-Path $datos 'Registros') | Out-Null
     $script:RutaLog = Join-Path $datos 'Registros\instalacion.log'
+    $script:RutaLogEspejo = Join-Path (Split-Path $datos -Parent) 'USBMonitor-instalacion.log'
 
     $app = Join-Path $instalacion 'app'
     $nodo = Join-Path $instalacion 'node\node.exe'
@@ -53,6 +61,7 @@ try {
     $urlBd = "postgresql://usbmonitor:$($secretos.appClave)@127.0.0.1:$puertoBd/usbmonitor"
 
     Escribir-Log "Inicio. Puerto panel=$puerto, BD=$puertoBd, Redis=6381"
+    Escribir-Log "Ejecutando como $([System.Security.Principal.WindowsIdentity]::GetCurrent().Name); instalacion=$instalacion"
 
     # --- 1. Credenciales del administrador inicial ---
     $adminUsuario = [string]$reg.AdminUser
@@ -115,9 +124,20 @@ try {
     }
 
     # --- 3. Esquema de la base de datos ---
+    # La salida de Prisma va ENTERA al registro: si el push falla,
+    # su texto (no solo el código de salida) es la causa raíz.
+    # El instalador es FULL OFFLINE: Prisma intenta de normal una
+    # llamada de telemetría/comprobación de versión al arrancar, y
+    # en un equipo sin internet eso es demora (o un susto en el
+    # registro) sin beneficio. CHECKPOINT_DISABLE la apaga.
+    $env:CHECKPOINT_DISABLE = '1'
+    $env:PRISMA_HIDE_UPDATE_MESSAGE = '1'
     $env:DATABASE_URL = $urlBd
-    & $nodo (Join-Path $app 'node_modules\prisma\build\index.js') db push `
-        --schema (Join-Path $app 'prisma\schema.prisma')
+    $salidaPrisma = & $nodo (Join-Path $app 'node_modules\prisma\build\index.js') db push `
+        --schema (Join-Path $app 'prisma\schema.prisma') 2>&1 | Out-String
+    foreach ($lineaPrisma in ($salidaPrisma -split "`r?`n")) {
+        if ($lineaPrisma.Trim()) { Escribir-Log "prisma: $lineaPrisma" }
+    }
     if ($LASTEXITCODE -ne 0) { throw "prisma db push falló ($LASTEXITCODE)" }
     Escribir-Log 'Esquema aplicado (prisma db push).'
 
@@ -154,7 +174,8 @@ try {
     if ($servicioPanel) {
         if ($servicioPanel.Status -eq 'Running') { Stop-Service -Name 'USBMonitorPanel' -Force }
     } else {
-        & (Join-Path $carpetaServicio 'USBMonitorPanel.exe') install
+        $salidaWinSw = & (Join-Path $carpetaServicio 'USBMonitorPanel.exe') install 2>&1 | Out-String
+        if ($salidaWinSw.Trim()) { Escribir-Log "WinSW (panel): $($salidaWinSw.Trim())" }
         if ($LASTEXITCODE -ne 0) { throw "WinSW install falló ($LASTEXITCODE)" }
         Escribir-Log 'Servicio del panel instalado.'
     }
@@ -164,7 +185,8 @@ try {
     # ganaría nunca la dependencia. sc.exe pide el espacio tras
     # «depend=» y el valor en el mismo argumento.
     & sc.exe config USBMonitorPanel 'depend= USBMonitorPostgreSQL/USBMonitorRedis' | Out-Null
-    if ($LASTEXITCODE -ne 0) { Escribir-Log 'AVISO: no se pudieron fijar las dependencias del servicio del panel.' }
+    if ($LASTEXITCODE -ne 0) { Escribir-Log "AVISO: no se pudieron fijar las dependencias del servicio del panel (sc.exe: $LASTEXITCODE)." }
+    else { Escribir-Log 'Dependencias del servicio del panel fijadas (BD y Redis).' }
 
     # --- 6. Cortafuegos ---
     & netsh advfirewall firewall delete rule name='USB Monitor — Panel' 2>&1 | Out-Null
@@ -176,7 +198,8 @@ try {
 
     # --- 7. Arranque y comprobación ---
     Start-Service -Name 'USBMonitorPanel'
-    Escribir-Log 'Servicio del panel arrancado.'
+    $estadoPanel = (Get-Service -Name 'USBMonitorPanel').Status
+    Escribir-Log "Servicio del panel arrancado (estado: $estadoPanel)."
     $responde = $false
     for ($i = 0; $i -lt 45; $i++) {
         try {

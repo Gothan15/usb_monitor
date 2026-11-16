@@ -3,7 +3,10 @@
   ================================================================
   USB Monitor — Panel · instalador MSI (WiX v5)
   ================================================================
-  Qué instala (por máquina, requiere administrador):
+  Qué instala (por máquina; el paquete EXIGE administrador desde
+  el arranque — condición de lanzamiento sobre Privileged — para
+  que ni siquiera empiece sin elevación en vez de morir a mitad
+  y revertir sin decir por qué):
     · El panel web (Next.js ya compilado) + Node.js integrado.
     · PostgreSQL INTEGRADO y privado (sin pgAdmin: el panel solo
       necesita el motor). Clúster propio en C:\ProgramData\USBMonitor,
@@ -51,6 +54,16 @@
            Scope="perMachine"
            Compressed="yes">
 
+    <!-- Sin permisos de administrador, ni siquiera abre: la
+         condición de lanzamiento corta al instante y con el motivo
+         en español, en vez de dejar que la instalación empiece,
+         muera a mitad en un paso privilegiado y revierta sin
+         decir por qué. (En WiX v5 ni el atributo InstallPrivileges
+         ni el elemento Condition de v3 existen; la vía es Launch
+         sobre la propiedad Privileged que fija Windows
+         Installer.) -->
+    <Launch Condition="Privileged" Message="USB Monitor — Panel necesita permisos de administrador. Cierra el asistente y vuelve a ejecutar el instalador como administrador." />
+
     <SummaryInformation Description="Panel web de USB Monitor con PostgreSQL y Redis integrados" />
 
     <MajorUpgrade AllowSameVersionUpgrades="yes"
@@ -79,6 +92,16 @@
          restringida que Configurar-Panel.ps1 consume y destruye. -->
     <Property Id="ADMIN_PASSWORD" Secure="yes" Hidden="yes" />
     <Property Id="FIREWALL_OK" Value="1" Secure="yes" />
+
+    <!-- Registro verbal SIEMPRE: con esta propiedad presente,
+         Windows Installer escribe solo un registro completo de la
+         instalación en %TEMP% (MSIxxxxx.LOG) en cada intento, sin
+         que haya que lanzar msiexec con /l*v a mano. Es la mitad
+         del diagnóstico cuando algo falla; la otra mitad es el
+         registro de los scripts, que se espeja fuera del árbol
+         (C:\ProgramData\USBMonitor-instalacion.log) para que la
+         reversión de una instalación fallida no se lo lleve. -->
+    <Property Id="MsiLogging" Value="voicewarmup" />
 
     <WixVariable Id="WixUILicenseRtf" Value="Licencia.rtf" />
 
@@ -180,12 +203,14 @@
       <RegistryValue Root="HKLM" Key="Software\USBMonitor\Panel" Name="DataDir"
                      Value="[DATADIR]" Type="string" KeyPath="yes" />
     </Component>
-    <Component Id="Comp_RegistrosDir" Directory="LOGDIR" Guid="9B0472F1-12A8-4C22-97AC-F984077190DE">
+    <!-- Permanente: los registros de la instalación se quedan
+         también tras desinstalar (diagnóstico a toro pasado). -->
+    <Component Id="Comp_RegistrosDir" Directory="LOGDIR" Guid="9B0472F1-12A8-4C22-97AC-F984077190DE" Permanent="yes">
       <CreateFolder />
     </Component>
     <!-- Datos de Redis (su dump.rdb): fuera de Archivos de programa,
          como los de la BD; el script también la crea si faltara. -->
-    <Component Id="Comp_DatosRedis" Directory="REDISDATADIR" Guid="3F7A1C94-5B2E-4D8A-A6C1-9E2B4F7D5A03">
+    <Component Id="Comp_DatosRedis" Directory="REDISDATADIR" Guid="3F7A1C94-5B2E-4D8A-A6C1-9E2B4F7D5A03" Permanent="yes">
       <CreateFolder />
     </Component>
 
