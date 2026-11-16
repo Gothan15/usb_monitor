@@ -176,7 +176,7 @@ foreach ($carpeta in @('app', 'node', 'pgsql', 'redis', 'servicio', 'scripts', '
 # estricta lanzaría en cuanto copiara algo, así que también va en pausa.
 $PSNativeCommandUseErrorActionPreference = $false
 robocopy $raiz (Join-Path $prep 'app') /E `
-    /XD .git instalador agente salida-instalador `
+    /XD .git instalador agente bandeja salida-instalador `
     /XF .env *.log *.zip | Out-Null
 $PSNativeCommandUseErrorActionPreference = $true
 if ($LASTEXITCODE -ge 8) { throw "robocopy del panel falló ($LASTEXITCODE)" }
