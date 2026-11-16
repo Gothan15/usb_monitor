@@ -260,6 +260,14 @@ try {
     $argsIscc += 'Panel.iss'
     & $iscc @argsIscc
     Exigir 'ISCC'
+    # El paquete de actualización ligero (solo el programa, para
+    # aplicar sobre una instalación existente): se compila en las
+    # dos pasadas, ligero y completo, con el mismo contenido; la
+    # segunda lo sobrescribe idéntico.
+    $nombreAct = "USBMonitor-Panel-$Version-actualizacion"
+    & $iscc "/DPanelVersion=$Version" "/DPreparado=$prep" `
+            "/O$salida" "/F$nombreAct" 'Actualizacion.iss'
+    Exigir 'ISCC (paquete de actualización)'
 } finally { Pop-Location }
 
 $info = Get-Item $exe
@@ -268,3 +276,8 @@ Write-Host ''
 Write-Host "Instalador listo: $exe"
 Write-Host ("Tamaño: {0:N1} MB" -f ($info.Length / 1MB))
 Write-Host "SHA-256: $hashExe"
+$exeAct = Join-Path $salida "USBMonitor-Panel-$Version-actualizacion.exe"
+if (Test-Path -LiteralPath $exeAct) {
+    Write-Host "Paquete de actualización listo: $exeAct"
+    Write-Host ("Tamaño: {0:N1} MB" -f ((Get-Item $exeAct).Length / 1MB))
+}
