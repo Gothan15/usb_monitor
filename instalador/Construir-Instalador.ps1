@@ -1,13 +1,15 @@
 ﻿# ================================================================
-# USB Monitor — Panel · construcción del instalador .msi
+# USB Monitor — Panel · construcción del instalador (Inno Setup)
 # ----------------------------------------------------------------
 # Se ejecuta en el PC de desarrollo (Windows). Deja el resultado en
-#   <repo>\salida-instalador\USBMonitor-Panel-<versión>.msi
+#   <repo>\salida-instalador\USBMonitor-Panel-<versión>.exe
 #
 # Requisitos en este PC:
 #   · Node.js + npm (para compilar el panel, como siempre).
-#   · SDK de .NET (para la herramienta «wix» de WiX v5; si falta,
-#     este script la instala como herramienta global de dotnet).
+#   · Inno Setup 6 (su compilador, ISCC.exe): si no está en las
+#     rutas habituales, este script descarga el instalador oficial
+#     y lo instala en silencio. Es requisito SOLO de construcción:
+#     el instalador del panel sigue siendo full offline.
 #   · Internet la primera vez (descarga Node portable, los binarios
 #     de PostgreSQL, los de Redis y WinSW; luego quedan cacheados
 #     en descargas\).
@@ -16,10 +18,10 @@
 #   .\Construir-Instalador.ps1                → versión 1.0.0
 #   .\Construir-Instalador.ps1 -Version 1.1.0
 #   .\Construir-Instalador.ps1 -Version 1.1.0 -Completo -PaqueteDir D:\paquete-agente-1.0.11
-#       → variante «completo»: el .msi lleva dentro el paquete del
-#         agente (su ejecutable + manifiesto y el empujador) y sale
-#         como USBMonitor-Panel-<versión>-completo.msi. -PaqueteDir
-#         es la carpeta con USBMonitorService.exe,
+#       → variante «completo»: el instalador lleva dentro el paquete
+#         del agente (su ejecutable + manifiesto y el empujador) y
+#         sale como USBMonitor-Panel-<versión>-completo.exe.
+#         -PaqueteDir es la carpeta con USBMonitorService.exe,
 #         USBMonitorEmpujador.exe y manifiesto.json (ver LEEME.md).
 #
 # Las versiones de PostgreSQL/Node/WinSW se leen de versiones.wxi
@@ -34,7 +36,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 # Que un comando nativo fallido (npm, npx) detenga el script: sin esto, una
-# compilación fallida del panel seguiría adelante y el .msi saldría «bien»
+# compilación fallida del panel seguiría adelante y el instalador saldría «bien»
 # con un panel roto dentro (visto en la corrida de panel-v1.0.1). En
 # PowerShell 7.3+ lo hace esta variable; en 5.1 lo cubre Exigir, que se
 # llama tras cada comando crítico.
@@ -67,7 +69,7 @@ if ($Completo) {
             throw "Falta $archivo en la carpeta del paquete del agente: $PaqueteDir"
         }
     }
-    Write-Host 'Variante COMPLETO: el paquete del agente viajará dentro del .msi.'
+    Write-Host 'Variante COMPLETO: el paquete del agente viajará dentro del instalador.'
 }
 
 # Versiones fijadas (desde versiones.wxi).
@@ -89,6 +91,7 @@ $HashEsperado = @{
     pg    = ''
     node  = ''
     winsw = ''
+    inno  = ''
     redis = 'BCBFDA1DDA027BEAEA4D616F8992F9B6353613C1B1F4D0E4A6776940BB036347'
 }
 
@@ -107,26 +110,30 @@ function Descargar([string]$url, [string]$destino, [string]$clave) {
 }
 
 Write-Host '== 1/5 Herramientas =='
-$env:Path = "$env:USERPROFILE\.dotnet\tools;$env:Path"
-if (-not (Get-Command wix -ErrorAction SilentlyContinue)) {
-    Write-Host 'Instalando WiX v5 como herramienta de dotnet…'
-    dotnet tool install --global wix --version 5.0.2
-    Exigir 'dotnet tool install wix'
+# Inno Setup 6: se busca su compilador (ISCC.exe) en el PATH y en
+# las rutas habituales; si no está, se descarga el instalador
+# oficial (jrsoftware/innosetup en GitHub) y se instala en
+# silencio. Solo hace falta en este PC de construcción.
+New-Item -ItemType Directory -Force -Path $descargas | Out-Null
+$rutasIscc = @(
+    "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
+    "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+    "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
+)
+$iscc = $rutasIscc | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+if (-not $iscc -and (Get-Command ISCC.exe -ErrorAction SilentlyContinue)) {
+    $iscc = (Get-Command ISCC.exe).Source
 }
-# «wix extension list» es una SONDA, no un paso: sin extensiones
-# instaladas sale con código 2 sin que pase nada malo. Con la
-# preferencia estricta que se activa arriba, ese código lanzaba
-# NativeCommandExitException y tumbaba la construcción entera
-# (corrida de panel-v1.0.2). La sonda va con la preferencia en pausa.
-$PSNativeCommandUseErrorActionPreference = $false
-& wix extension list 2>$null | Out-Null
-$extensiones = (& wix extension list) -join ' '
-$PSNativeCommandUseErrorActionPreference = $true
-if ($extensiones -notmatch 'UI') {
-    Write-Host 'Añadiendo la extensión de interfaz de WiX…'
-    wix extension add -g WixToolset.UI.wixext/5.0.2
-    Exigir 'wix extension add'
+if (-not $iscc) {
+    $instInno = Join-Path $descargas 'innosetup-6.5.3.exe'
+    Descargar 'https://github.com/jrsoftware/innosetup/releases/download/is-6_5_3/innosetup-6.5.3.exe' $instInno 'inno'
+    Write-Host 'Instalando Inno Setup 6 en silencio…'
+    & $instInno /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- | Out-Null
+    Exigir 'instalar Inno Setup'
+    $iscc = $rutasIscc | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+    if (-not $iscc) { throw 'Inno Setup quedó instalado pero no aparece ISCC.exe en las rutas habituales.' }
 }
+Write-Host "ISCC: $iscc"
 
 Write-Host '== 2/5 Descargas fijadas =='
 New-Item -ItemType Directory -Force -Path $descargas, $prep | Out-Null
@@ -207,8 +214,8 @@ Copy-Item (Join-Path $inst 'servicio\USBMonitorRedis.xml') (Join-Path $prep 'ser
 Copy-Item (Join-Path $inst 'scripts\*') (Join-Path $prep 'scripts\')
 Copy-Item (Join-Path $inst 'AbrirPanel.cmd') (Join-Path $prep 'raiz\')
 # Variante «completo»: el paquete del agente, tal cual llegó en
-# -PaqueteDir, a sus dos carpetas del árbol. Panel.wxs lo recoge de
-# ahí con componentes propios, solo cuando IncluirPaquete=1.
+# -PaqueteDir, a sus dos carpetas del árbol. Panel.iss lo recoge de
+# ahí, solo cuando la construcción define IncluirPaquete.
 if ($Completo) {
     foreach ($carpeta in @('paquete-agente', 'empujador')) {
         $destino = Join-Path $prep $carpeta
@@ -220,32 +227,29 @@ if ($Completo) {
     Copy-Item (Join-Path $PaqueteDir 'USBMonitorEmpujador.exe') (Join-Path $prep 'empujador\')
 }
 
-Write-Host '== 5/5 Construir el .msi =='
-# La variante completo se distingue en el nombre del archivo: en la
-# Release conviven los dos .msi de la misma versión del panel y
-# nadie debe tener que abrirlos para saber cuál es cuál.
-$nombreMsi = if ($Completo) { "USBMonitor-Panel-$Version-completo.msi" } else { "USBMonitor-Panel-$Version.msi" }
-$msi = Join-Path $salida $nombreMsi
+Write-Host '== 5/5 Construir el instalador =='
+# La variante completo se distingue en el nombre del archivo: en
+# la Release conviven los dos instaladores de la misma versión
+# del panel y nadie debe tener que abrirlos para saber cuál es
+# cuál.
+$nombreExe = if ($Completo) { "USBMonitor-Panel-$Version-completo" } else { "USBMonitor-Panel-$Version" }
+$exe = Join-Path $salida "$nombreExe.exe"
 Push-Location $inst
 try {
-    # -sw1163: el aviso de que VBScript está en retirada se acepta a
-    # propósito: las dos acciones en VBScript llevan Return="ignore" y su
-    # fallo degrada sin romper la instalación (ver «Problemas previstos»
-    # del LEEME). Cualquier otro aviso sí debe verse.
-    # La variante completo suma -d IncluirPaquete=1: es la define que
-    # enciende en Panel.wxs los directorios y componentes del paquete.
-    $argsWix = @('build', 'Panel.wxs', '-ext', 'WixToolset.UI.wixext',
-                 '-culture', 'es-es', '-arch', 'x64',
-                 '-d', "Preparado=$prep", '-d', "PanelVersion=$Version",
-                 '-sw1163', '-o', $msi)
-    if ($Completo) { $argsWix += @('-d', 'IncluirPaquete=1') }
-    wix @argsWix
-    if ($LASTEXITCODE -ne 0) { throw 'wix build falló' }
+    # /D…: las definiciones que Panel.iss consume (versión, árbol
+    # preparado y, en la variante completo, el paquete del agente).
+    # /O y /F: la carpeta y el nombre del instalador resultante.
+    $argsIscc = @("/DPanelVersion=$Version", "/DPreparado=$prep",
+                  "/O$salida", "/F$nombreExe")
+    if ($Completo) { $argsIscc += '/DIncluirPaquete=1' }
+    $argsIscc += 'Panel.iss'
+    & $iscc @argsIscc
+    Exigir 'ISCC'
 } finally { Pop-Location }
 
-$info = Get-Item $msi
-$hashMsi = (Get-FileHash -LiteralPath $msi -Algorithm SHA256).Hash
+$info = Get-Item $exe
+$hashExe = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash
 Write-Host ''
-Write-Host "MSI listo: $msi"
+Write-Host "Instalador listo: $exe"
 Write-Host ("Tamaño: {0:N1} MB" -f ($info.Length / 1MB))
-Write-Host "SHA-256: $hashMsi"
+Write-Host "SHA-256: $hashExe"
