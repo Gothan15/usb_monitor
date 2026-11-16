@@ -45,6 +45,18 @@ function Nueva-Clave([int]$Longitud = 24) {
 }
 
 try {
+    # El registro se apunta PRIMERO a la ruta estándar, antes de
+    # leer nada más: si la lectura del registro (o cualquier paso
+    # previo) falla, el error tiene que poder escribirse en algún
+    # sitio. Con la ruta dependiendo de esa misma lectura, un
+    # fallo ahí dejaba la instalación muda y sin registro.
+    $programData = [Environment]::GetFolderPath('CommonApplicationData')
+    $datosEstandar = Join-Path $programData 'USBMonitor'
+    New-Item -ItemType Directory -Force -Path (Join-Path $datosEstandar 'Registros') | Out-Null
+    $script:RutaLog = Join-Path $datosEstandar 'Registros\instalacion.log'
+    $script:RutaLogEspejo = Join-Path $programData 'USBMonitor-instalacion.log'
+    Escribir-Log 'Arranque del script del panel.'
+
     $reg = Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\USBMonitor\Panel'
     $puerto = [int]$reg.PanelPort
     $puertoBd = [int]$reg.PgPort

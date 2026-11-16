@@ -65,6 +65,18 @@ function Ruta-Conf([string]$Ruta) {
 }
 
 try {
+    # El registro se apunta PRIMERO a la ruta estándar, antes de
+    # leer nada más: si la lectura del registro (o cualquier paso
+    # previo) falla, el error tiene que poder escribirse en algún
+    # sitio. Con la ruta dependiendo de esa misma lectura, un
+    # fallo ahí dejaba la instalación muda y sin registro.
+    $programData = [Environment]::GetFolderPath('CommonApplicationData')
+    $datosEstandar = Join-Path $programData 'USBMonitor'
+    New-Item -ItemType Directory -Force -Path (Join-Path $datosEstandar 'Registros') | Out-Null
+    $script:RutaLog = Join-Path $datosEstandar 'Registros\instalacion.log'
+    $script:RutaLogEspejo = Join-Path $programData 'USBMonitor-instalacion.log'
+    Escribir-Log 'Arranque del script de Redis.'
+
     $reg = Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\USBMonitor\Panel'
     $datos = [string]$reg.DataDir
     $instalacion = [string]$reg.InstallDir
