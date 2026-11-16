@@ -1,5 +1,6 @@
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Windows;
@@ -271,6 +272,7 @@ public sealed class CompaneroWindow : Window
             await RevisarArchivoAsync();
             RevisarSolicitudesEvidencia();
             RevisarApagadoLocal();
+            RevisarBloqueoSesion();
         };
 
         _latido = new DispatcherTimer
@@ -721,6 +723,35 @@ public sealed class CompaneroWindow : Window
         finally
         {
             _leyendo = false;
+        }
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool LockWorkStation();
+
+    /// <summary>
+    /// Ejecuta el bloqueo de sesión que pida el servicio. El
+    /// servicio vive en la sesión 0 y su LockWorkStation no
+    /// alcanza el escritorio del usuario (no bloquea nada y ni
+    /// siquiera falla); el compañero sí vive en la sesión del
+    /// usuario, así que la llamada se hace aquí. La petición
+    /// se borra siempre: ejecutada o caducada, no se repite.
+    /// Corre en el sondeo de 1 s.
+    /// </summary>
+    private void RevisarBloqueoSesion()
+    {
+        try
+        {
+            if (!File.Exists(DatosVentanas.RutaBloqueoSesion)) return;
+            var solicitud = GestorBloqueoSesion.Leer(DatosVentanas.CarpetaDatos);
+            if (VigenciaBloqueoSesion.EsEjecutable(solicitud, DateTime.UtcNow))
+                LockWorkStation();
+            GestorBloqueoSesion.Borrar(DatosVentanas.CarpetaDatos);
+        }
+        catch
+        {
+            // Best-effort: el siguiente sondeo lo reintenta y
+            // la petición caduca sola a los 30 s.
         }
     }
 
