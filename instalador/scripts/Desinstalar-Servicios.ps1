@@ -2,7 +2,7 @@
 # USB Monitor — Panel · desinstalación de servicios
 # ----------------------------------------------------------------
 # Acción diferida del MSI al desinstalar (REMOVE="ALL", no en
-# actualizaciones). Detiene y elimina los dos servicios y la regla
+# actualizaciones). Detiene y elimina los tres servicios y la regla
 # de cortafuegos. La carpeta de DATOS (C:\ProgramData\USBMonitor
 # con la base de datos y los secretos) NO se toca a propósito:
 # para borrarla del todo, se elimina a mano tras desinstalar.
@@ -11,7 +11,7 @@
 # ================================================================
 $ErrorActionPreference = 'Continue'
 
-foreach ($servicio in @('USBMonitorPanel', 'USBMonitorPostgreSQL')) {
+foreach ($servicio in @('USBMonitorPanel', 'USBMonitorRedis', 'USBMonitorPostgreSQL')) {
     $s = Get-Service -Name $servicio -ErrorAction SilentlyContinue
     if ($s) {
         if ($s.Status -eq 'Running') {

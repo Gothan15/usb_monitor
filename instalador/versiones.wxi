@@ -19,4 +19,11 @@
   <?define PgVersion     = "17.5" ?>
   <?define NodeVersion   = "22.14.0" ?>
   <?define WinSwVersion  = "2.12.0" ?>
+  <!-- Redis: la 7.2 es la última línea con licencia BSD-3 (la 7.4
+       cambió a RSAL/SSPL), así que es la que se puede empaquetar
+       dentro del instalador sin líos. Los binarios de Windows los
+       publica el proyecto redis-windows/redis-windows (compilación
+       MSYS2); Construir-Instalador.ps1 descarga el zip fijado y
+       verifica su SHA-256. -->
+  <?define RedisVersion  = "7.2.16" ?>
 </Include>

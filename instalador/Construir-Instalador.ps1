@@ -9,7 +9,8 @@
 #   · SDK de .NET (para la herramienta «wix» de WiX v5; si falta,
 #     este script la instala como herramienta global de dotnet).
 #   · Internet la primera vez (descarga Node portable, los binarios
-#     de PostgreSQL y WinSW; luego quedan cacheados en descargas\).
+#     de PostgreSQL, los de Redis y WinSW; luego quedan cacheados
+#     en descargas\).
 #
 # Uso:
 #   .\Construir-Instalador.ps1                → versión 1.0.0
@@ -78,12 +79,17 @@ function Version-De([string]$nombre) {
 $PgVersion = Version-De 'PgVersion'
 $NodeVersion = Version-De 'NodeVersion'
 $WinSwVersion = Version-De 'WinSwVersion'
+$RedisVersion = Version-De 'RedisVersion'
 
 # SHA-256 esperados (vacío = solo avisar con el calculado).
+# El de Redis SÍ va fijado: es el que publica el proyecto
+# redis-windows en la página de la versión, y coincide con el de
+# la descarga comprobada al fijarlo (2026-11-15).
 $HashEsperado = @{
     pg    = ''
     node  = ''
     winsw = ''
+    redis = 'BCBFDA1DDA027BEAEA4D616F8992F9B6353613C1B1F4D0E4A6776940BB036347'
 }
 
 function Descargar([string]$url, [string]$destino, [string]$clave) {
@@ -127,9 +133,11 @@ New-Item -ItemType Directory -Force -Path $descargas, $prep | Out-Null
 $zipPg = Join-Path $descargas "postgresql-$PgVersion-binarios.zip"
 $zipNode = Join-Path $descargas "node-v$NodeVersion-win-x64.zip"
 $exeWinSw = Join-Path $descargas "WinSW-x64-$WinSwVersion.exe"
+$zipRedis = Join-Path $descargas "Redis-$RedisVersion-Windows-x64-msys2.zip"
 Descargar "https://get.enterprisedb.com/postgresql/postgresql-$PgVersion-1-windows-x64-binaries.zip" $zipPg 'pg'
 Descargar "https://nodejs.org/dist/v$NodeVersion/node-v$NodeVersion-win-x64.zip" $zipNode 'node'
 Descargar "https://github.com/winsw/winsw/releases/download/v$WinSwVersion/WinSW-x64.exe" $exeWinSw 'winsw'
+Descargar "https://github.com/redis-windows/redis-windows/releases/download/$RedisVersion/Redis-$RedisVersion-Windows-x64-msys2.zip" $zipRedis 'redis'
 
 Write-Host '== 3/5 Compilar el panel =='
 # Al recoger los datos de las páginas, la compilación de Next ejecuta los
@@ -149,7 +157,7 @@ try {
 } finally { Pop-Location }
 
 Write-Host '== 4/5 Preparar el árbol =='
-foreach ($carpeta in @('app', 'node', 'pgsql', 'servicio', 'scripts', 'raiz')) {
+foreach ($carpeta in @('app', 'node', 'pgsql', 'redis', 'servicio', 'scripts', 'raiz')) {
     $destino = Join-Path $prep $carpeta
     if (Test-Path $destino) { Remove-Item $destino -Recurse -Force }
     New-Item -ItemType Directory -Force -Path $destino | Out-Null
@@ -181,9 +189,21 @@ foreach ($fuera in @('pgAdmin 4', 'StackBuilder', 'include', 'symbols')) {
     if (Test-Path $ruta) { Remove-Item $ruta -Recurse -Force }
 }
 Remove-Item (Join-Path $salida 'pg-tmp') -Recurse -Force
-# Servicio (WinSW renombrado + su plantilla) y scripts.
+# Redis: el zip trae una carpeta raíz con los binarios y sus DLL de
+# MSYS2; va entera a redis\ menos start.bat (arrancaría un Redis
+# «de verdad» en el 6379 si alguien lo pulsara: aquí Redis solo
+# existe como servicio, con su redis.conf generado al instalar).
+Expand-Archive -LiteralPath $zipRedis -DestinationPath (Join-Path $salida 'redis-tmp') -Force
+Copy-Item (Join-Path $salida "redis-tmp\Redis-$RedisVersion-Windows-x64-msys2\*") (Join-Path $prep 'redis') -Recurse
+Remove-Item (Join-Path $prep 'redis\start.bat') -Force -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $salida 'redis-tmp') -Recurse -Force
+# Servicio (WinSW renombrado + sus plantillas) y scripts. WinSW va
+# dos veces: una para el panel y otra para Redis, porque cada
+# servicio necesita su propio ejecutable con su propio XML.
 Copy-Item $exeWinSw (Join-Path $prep 'servicio\USBMonitorPanel.exe')
 Copy-Item (Join-Path $inst 'servicio\USBMonitorPanel.xml') (Join-Path $prep 'servicio\')
+Copy-Item $exeWinSw (Join-Path $prep 'servicio\USBMonitorRedis.exe')
+Copy-Item (Join-Path $inst 'servicio\USBMonitorRedis.xml') (Join-Path $prep 'servicio\')
 Copy-Item (Join-Path $inst 'scripts\*') (Join-Path $prep 'scripts\')
 Copy-Item (Join-Path $inst 'AbrirPanel.cmd') (Join-Path $prep 'raiz\')
 # Variante «completo»: el paquete del agente, tal cual llegó en

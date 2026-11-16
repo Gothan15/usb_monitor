@@ -9,7 +9,7 @@
 <service>
   <id>USBMonitorPanel</id>
   <name>USB Monitor — Panel</name>
-  <description>Panel web de USB Monitor. Depende de la base de datos integrada (USBMonitorPostgreSQL).</description>
+  <description>Panel web de USB Monitor. Depende de la base de datos integrada (USBMonitorPostgreSQL) y del Redis integrado (USBMonitorRedis).</description>
 
   <executable>%BASE%\..\node\node.exe</executable>
   <arguments>"%BASE%\..\app\node_modules\tsx\dist\cli.mjs" "%BASE%\..\app\server.ts"</arguments>
@@ -20,6 +20,7 @@
   <env name="APP_HOST" value="0.0.0.0" />
 
   <depend>USBMonitorPostgreSQL</depend>
+  <depend>USBMonitorRedis</depend>
   <startmode>Automatic</startmode>
 
   <onfailure action="restart" delay="10 sec" />

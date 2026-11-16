@@ -8,8 +8,13 @@
     · PostgreSQL INTEGRADO y privado (sin pgAdmin: el panel solo
       necesita el motor). Clúster propio en C:\ProgramData\USBMonitor,
       servicio «USBMonitorPostgreSQL», puerto propio (def. 5433).
+    · Redis INTEGRADO y privado (binarios de Redis 7.2 para Windows
+      del proyecto redis-windows, licencia BSD-3): servicio
+      «USBMonitorRedis» (WinSW), solo en 127.0.0.1, puerto fijo
+      6381 y contraseña interna en secretos.json. El panel lo usa
+      para la presencia de los agentes y los límites de intentos.
     · El panel como servicio «USBMonitorPanel» (WinSW), con
-      arranque automático y dependencia del servicio de la BD.
+      arranque automático y dependencia de la BD y de Redis.
     · (Opcional, marcado por defecto) Regla de cortafuegos para
       abrir el puerto del panel solo a la subred local.
     · (Solo la variante «completo», IncluirPaquete=1) El paquete
@@ -46,7 +51,7 @@
            Scope="perMachine"
            Compressed="yes">
 
-    <SummaryInformation Description="Panel web de USB Monitor con PostgreSQL integrado" />
+    <SummaryInformation Description="Panel web de USB Monitor con PostgreSQL y Redis integrados" />
 
     <MajorUpgrade AllowSameVersionUpgrades="yes"
                   Schedule="afterInstallInitialize"
@@ -84,7 +89,7 @@
     <Icon Id="IconoPanel" SourceFile="..\src\app\favicon.ico" />
     <Property Id="ARPPRODUCTICON" Value="IconoPanel" />
     <Property Id="ARPURLINFOABOUT" Value="https://github.com/Gothan15/usb_monitor" />
-    <Property Id="ARPCOMMENTS" Value="Panel web de USB Monitor con PostgreSQL integrado" />
+    <Property Id="ARPCOMMENTS" Value="Panel web de USB Monitor con PostgreSQL y Redis integrados" />
 
     <!-- ============ Estructura de carpetas ============ -->
     <StandardDirectory Id="ProgramFiles64Folder">
@@ -92,6 +97,7 @@
         <Directory Id="APPDIR" Name="app" />
         <Directory Id="NODEDIR" Name="node" />
         <Directory Id="PGDIR" Name="pgsql" />
+        <Directory Id="REDISDIR" Name="redis" />
         <Directory Id="SERVDIR" Name="servicio" />
         <Directory Id="SCRIPTSDIR" Name="scripts" />
         <!-- Solo la variante «completo»: con IncluirPaquete=0 ni
@@ -108,6 +114,7 @@
            actualizaciones y a la desinstalación (a propósito). -->
       <Directory Id="DATADIR" Name="USBMonitor">
         <Directory Id="PGDATADIR" Name="Datos" />
+        <Directory Id="REDISDATADIR" Name="Redis" />
         <Directory Id="LOGDIR" Name="Registros" />
       </Directory>
     </StandardDirectory>
@@ -119,8 +126,9 @@
     <!-- ============ Archivos cosechados de la carpeta preparada ============
          Construir-Instalador.ps1 deja el árbol listo en «preparado\»:
          app\ (panel compilado + node_modules de producción), node\
-         (node.exe), pgsql\ (binarios de PostgreSQL), servicio\
-         (WinSW + su XML) y scripts\ (los .ps1/.vbs/.js de aquí). -->
+         (node.exe), pgsql\ (binarios de PostgreSQL), redis\
+         (binarios de Redis), servicio\ (WinSW + sus XML) y
+         scripts\ (los .ps1/.vbs/.js de aquí). -->
     <ComponentGroup Id="CG_App" Directory="APPDIR">
       <Files Include="$(var.Preparado)\app\**" />
     </ComponentGroup>
@@ -129,6 +137,9 @@
     </ComponentGroup>
     <ComponentGroup Id="CG_Pg" Directory="PGDIR">
       <Files Include="$(var.Preparado)\pgsql\**" />
+    </ComponentGroup>
+    <ComponentGroup Id="CG_Redis" Directory="REDISDIR">
+      <Files Include="$(var.Preparado)\redis\**" />
     </ComponentGroup>
     <ComponentGroup Id="CG_Servicio" Directory="SERVDIR">
       <Files Include="$(var.Preparado)\servicio\**" />
@@ -172,6 +183,11 @@
     <Component Id="Comp_RegistrosDir" Directory="LOGDIR" Guid="9B0472F1-12A8-4C22-97AC-F984077190DE">
       <CreateFolder />
     </Component>
+    <!-- Datos de Redis (su dump.rdb): fuera de Archivos de programa,
+         como los de la BD; el script también la crea si faltara. -->
+    <Component Id="Comp_DatosRedis" Directory="REDISDATADIR" Guid="3F7A1C94-5B2E-4D8A-A6C1-9E2B4F7D5A03">
+      <CreateFolder />
+    </Component>
 
     <!-- ============ Registro: la configuración del asistente ============ -->
     <Component Id="Comp_Registro" Directory="INSTALLFOLDER" Guid="383BF406-D60F-4583-B8B3-F89EC8BE68BD">
@@ -207,6 +223,7 @@
       <ComponentGroupRef Id="CG_App" />
       <ComponentGroupRef Id="CG_Nodo" />
       <ComponentGroupRef Id="CG_Pg" />
+      <ComponentGroupRef Id="CG_Redis" />
       <ComponentGroupRef Id="CG_Servicio" />
       <ComponentGroupRef Id="CG_Scripts" />
       <ComponentGroupRef Id="CG_Raiz" />
@@ -217,6 +234,7 @@
       <?endif ?>
       <ComponentRef Id="Comp_Datos" />
       <ComponentRef Id="Comp_RegistrosDir" />
+      <ComponentRef Id="Comp_DatosRedis" />
       <ComponentRef Id="Comp_Registro" />
       <ComponentRef Id="Comp_AccesoMenu" />
       <ComponentRef Id="Comp_AccesoEscritorio" />
@@ -244,6 +262,12 @@
     <CustomAction Id="CA_InstalarBD" Directory="SCRIPTSDIR"
                   ExeCommand="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;[SCRIPTSDIR]Instalar-BaseDatos.ps1&quot;"
                   Execute="deferred" Impersonate="no" Return="check" />
+    <!-- Entre la BD y la configuración: Configurar-Panel escribe
+         REDIS_URL en el .env con la clave que este script deja en
+         secretos.json, así que el orden importa. -->
+    <CustomAction Id="CA_InstalarRedis" Directory="SCRIPTSDIR"
+                  ExeCommand="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;[SCRIPTSDIR]Instalar-Redis.ps1&quot;"
+                  Execute="deferred" Impersonate="no" Return="check" />
     <CustomAction Id="CA_ConfigurarPanel" Directory="SCRIPTSDIR"
                   ExeCommand="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;[SCRIPTSDIR]Configurar-Panel.ps1&quot;"
                   Execute="deferred" Impersonate="no" Return="check" />
@@ -259,7 +283,8 @@
 
     <InstallExecuteSequence>
       <Custom Action="CA_InstalarBD" After="InstallFiles" />
-      <Custom Action="CA_ConfigurarPanel" After="CA_InstalarBD" />
+      <Custom Action="CA_InstalarRedis" After="CA_InstalarBD" />
+      <Custom Action="CA_ConfigurarPanel" After="CA_InstalarRedis" />
       <!-- Antes de que se borren los archivos (el script incluido). -->
       <Custom Action="CA_Desinstalar" Before="RemoveFiles"
               Condition="REMOVE = &quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
