@@ -127,9 +127,35 @@ Root: HKLM; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 const
   ClavePanel = 'SOFTWARE\USBMonitor\Panel';
 
+// Para leer la RAM real del equipo y elegir el perfil de la
+// base de datos que le corresponde.
+type
+  TMemoryStatusEx = record
+    dwLength: Cardinal;
+    dwMemoryLoad: Cardinal;
+    ullTotalPhys: Int64;
+    ullAvailPhys: Int64;
+    ullTotalPageFile: Int64;
+    ullAvailPageFile: Int64;
+    ullTotalVirtual: Int64;
+    ullAvailVirtual: Int64;
+    ullAvailExtendedVirtual: Int64;
+  end;
+
+function GlobalMemoryStatusEx(var Buffer: TMemoryStatusEx): Boolean;
+  external 'GlobalMemoryStatusEx@kernel32.dll stdcall';
+
 var
   PaginaCuenta: TInputQueryWizardPage;
   PaginaPuertos: TInputQueryWizardPage;
+  PaginaPerfil: TInputOptionWizardPage;
+  PaginaAvanzada: TInputQueryWizardPage;
+  CheckAvanzada: TNewCheckBox;
+  CheckSsd: TNewCheckBox;
+  PerfilDetectado: Integer;
+  RamDetectadaMb: Integer;
+  NucleosDetectados: Integer;
+  AjShared, AjWork, AjMaint, AjConn: Integer;
   EsActualizacion: Boolean;
   PasoFallido: String;
   PuertoPanel: Integer;
@@ -142,9 +168,81 @@ begin
   Result := RegValueExists(HKLM, ClavePanel, 'PanelPort');
 end;
 
+// Los perfiles de rendimiento de la base de datos: cada uno es
+// un juego completo de valores pensado para un tamaño de
+// equipo. El asistente detecta la RAM y marca el que toca; el
+// usuario puede elegir otro y retocar los valores a mano.
+procedure CargarPerfil(Indice: Integer);
+begin
+  case Indice of
+    // Justo: hasta 4 GB de RAM.
+    0: begin AjShared := 512; AjWork := 8; AjMaint := 256; AjConn := 50; end;
+    // Equilibrado: hasta 8 GB de RAM y 4 núcleos (el de serie).
+    1: begin AjShared := 2048; AjWork := 16; AjMaint := 512; AjConn := 100; end;
+    // Potente: hasta 16 GB de RAM.
+    2: begin AjShared := 4096; AjWork := 32; AjMaint := 1024; AjConn := 150; end;
+    // Servidor: más de 16 GB de RAM.
+    3: begin AjShared := 8192; AjWork := 64; AjMaint := 2048; AjConn := 200; end;
+  end;
+end;
+
+function NombrePerfil(Indice: Integer): String;
+begin
+  case Indice of
+    0: Result := 'Justo';
+    1: Result := 'Equilibrado';
+    2: Result := 'Potente';
+    3: Result := 'Servidor';
+  else
+    Result := 'Equilibrado';
+  end;
+end;
+
+procedure DetectarEquipo;
+var
+  Mem: TMemoryStatusEx;
+  S: String;
+begin
+  RamDetectadaMb := 0;
+  Mem.dwLength := SizeOf(Mem);
+  if GlobalMemoryStatusEx(Mem) then
+    RamDetectadaMb := Integer(Mem.ullTotalPhys / 1048576);
+  NucleosDetectados := 4;
+  if RegQueryStringValue(HKLM,
+    'SYSTEM\CurrentControlSet\Control\Session Manager\Environment',
+    'NUMBER_OF_PROCESSORS', S) then
+    NucleosDetectados := StrToIntDef(S, 4);
+  if NucleosDetectados < 1 then NucleosDetectados := 4;
+  // Sin lectura de RAM, el perfil de serie es el Equilibrado.
+  if RamDetectadaMb = 0 then
+    PerfilDetectado := 1
+  else if RamDetectadaMb <= 4096 then
+    PerfilDetectado := 0
+  else if RamDetectadaMb <= 8192 then
+    PerfilDetectado := 1
+  else if RamDetectadaMb <= 16384 then
+    PerfilDetectado := 2
+  else
+    PerfilDetectado := 3;
+end;
+
+procedure ReflejarPerfilEnPagina;
+begin
+  PaginaAvanzada.Values[0] := IntToStr(AjShared);
+  PaginaAvanzada.Values[1] := IntToStr(AjWork);
+  PaginaAvanzada.Values[2] := IntToStr(AjMaint);
+  PaginaAvanzada.Values[3] := IntToStr(AjConn);
+end;
+
 procedure InitializeWizard;
+var
+  TextoEquipo: String;
 begin
   EsActualizacion := DetectarActualizacion;
+  // El equipo manda: se lee su RAM y sus núcleos para marcar
+  // el perfil de la base de datos que le corresponde.
+  DetectarEquipo;
+  CargarPerfil(PerfilDetectado);
   // La configuración va en DOS páginas, no en una: con los cinco
   // campos juntos y el texto de explicación, la página de la
   // 1.5.0 desbordaba la ventana y el último campo quedaba cortado
@@ -171,13 +269,76 @@ begin
   PaginaPuertos.Add('Puerto de la base de datos (interno):', False);
   PaginaPuertos.Values[0] := '3000';
   PaginaPuertos.Values[1] := '5433';
+  // La casilla que abre la página avanzada: vive en la superficie
+  // de la página de puertos, debajo de sus dos campos.
+  CheckAvanzada := TNewCheckBox.Create(PaginaPuertos);
+  CheckAvanzada.Parent := PaginaPuertos.Surface;
+  CheckAvanzada.Left := 0;
+  CheckAvanzada.Top := ScaleY(168);
+  CheckAvanzada.Width := PaginaPuertos.SurfaceWidth;
+  CheckAvanzada.Height := ScaleY(17);
+  CheckAvanzada.Caption :=
+    'Instalación avanzada: ajustar la base de datos ' +
+    '(perfil detectado: ' + NombrePerfil(PerfilDetectado) + ')';
+  CheckAvanzada.Checked := False;
+
+  // La página de perfiles: el detectado va ya marcado y se
+  // puede elegir otro; sus valores caen en la página avanzada.
+  if RamDetectadaMb > 0 then
+    TextoEquipo := 'Este equipo tiene ' +
+      IntToStr(RamDetectadaMb div 1024) + ' GB de RAM y ' +
+      IntToStr(NucleosDetectados) + ' núcleos: el perfil ' +
+      'recomendado es el ' + NombrePerfil(PerfilDetectado) +
+      ', ya marcado.'
+  else
+    TextoEquipo := 'No se pudo leer la memoria del equipo: ' +
+      'queda marcado el perfil ' +
+      NombrePerfil(PerfilDetectado) + '.';
+  PaginaPerfil := CreateInputOptionPage(PaginaPuertos.ID,
+    'Instalación avanzada',
+    'Perfil de rendimiento de la base de datos',
+    TextoEquipo + ' Elige otro si lo prefieres; en la ' +
+    'página siguiente podrás retocar sus valores.',
+    True, False);
+  PaginaPerfil.Add('Justo — equipos de hasta 4 GB de RAM');
+  PaginaPerfil.Add('Equilibrado — hasta 8 GB de RAM');
+  PaginaPerfil.Add('Potente — hasta 16 GB de RAM');
+  PaginaPerfil.Add('Servidor — más de 16 GB de RAM');
+  PaginaPerfil.SelectedValueIndex := PerfilDetectado;
+
+  PaginaAvanzada := CreateInputQueryPage(PaginaPerfil.ID,
+    'Instalación avanzada',
+    'Rendimiento de la base de datos (PostgreSQL)',
+    'Los valores del perfil elegido, listos para retocar. ' +
+    'Se aplican al instalar y quedan guardados para las ' +
+    'actualizaciones.');
+  PaginaAvanzada.Add('Memoria compartida (MB):', False);
+  PaginaAvanzada.Add('Memoria por operación (MB):', False);
+  PaginaAvanzada.Add('Memoria de mantenimiento (MB):', False);
+  PaginaAvanzada.Add('Conexiones máximas:', False);
+  ReflejarPerfilEnPagina;
+  CheckSsd := TNewCheckBox.Create(PaginaAvanzada);
+  CheckSsd.Parent := PaginaAvanzada.Surface;
+  CheckSsd.Left := 0;
+  CheckSsd.Top := ScaleY(216);
+  CheckSsd.Width := PaginaAvanzada.SurfaceWidth;
+  CheckSsd.Height := ScaleY(17);
+  CheckSsd.Caption := 'El disco del equipo es SSD';
+  CheckSsd.Checked := True;
 end;
 
 function ShouldSkipPage(PageID: Integer): Boolean;
 begin
   Result := False;
   if EsActualizacion and
-     ((PageID = PaginaCuenta.ID) or (PageID = PaginaPuertos.ID)) then
+     ((PageID = PaginaCuenta.ID) or (PageID = PaginaPuertos.ID) or
+      (PageID = PaginaPerfil.ID) or (PageID = PaginaAvanzada.ID)) then
+    Result := True;
+  // Las páginas avanzadas solo se enseñan si su casilla se
+  // marcó en la página de puertos; sin marcar, se instala con
+  // el perfil detectado tal cual.
+  if ((PageID = PaginaPerfil.ID) or (PageID = PaginaAvanzada.ID)) and
+     not CheckAvanzada.Checked then
     Result := True;
 end;
 
@@ -256,6 +417,38 @@ begin
       Exit;
     end;
   end;
+
+  if CurPageID = PaginaPerfil.ID then
+  begin
+    // El perfil elegido manda: sus valores caen en las
+    // variables y se reflejan en la página de retoque.
+    CargarPerfil(PaginaPerfil.SelectedValueIndex);
+    ReflejarPerfilEnPagina;
+  end;
+
+  if CurPageID = PaginaAvanzada.ID then
+  begin
+    if (StrToIntDef(Trim(PaginaAvanzada.Values[0]), -1) < 128) or
+       (StrToIntDef(Trim(PaginaAvanzada.Values[0]), -1) > 8192) or
+       (StrToIntDef(Trim(PaginaAvanzada.Values[1]), -1) < 4) or
+       (StrToIntDef(Trim(PaginaAvanzada.Values[1]), -1) > 1024) or
+       (StrToIntDef(Trim(PaginaAvanzada.Values[2]), -1) < 64) or
+       (StrToIntDef(Trim(PaginaAvanzada.Values[2]), -1) > 4096) or
+       (StrToIntDef(Trim(PaginaAvanzada.Values[3]), -1) < 20) or
+       (StrToIntDef(Trim(PaginaAvanzada.Values[3]), -1) > 1000) then
+    begin
+      MsgBox('Revisa los valores: memoria compartida entre 128 ' +
+        'y 8192 MB, memoria por operación entre 4 y 1024 MB, ' +
+        'mantenimiento entre 64 y 4096 MB y conexiones entre ' +
+        '20 y 1000.', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+    AjShared := StrToIntDef(Trim(PaginaAvanzada.Values[0]), AjShared);
+    AjWork := StrToIntDef(Trim(PaginaAvanzada.Values[1]), AjWork);
+    AjMaint := StrToIntDef(Trim(PaginaAvanzada.Values[2]), AjMaint);
+    AjConn := StrToIntDef(Trim(PaginaAvanzada.Values[3]), AjConn);
+  end;
 end;
 
 procedure DetenerServiciosSiExisten;
@@ -297,6 +490,19 @@ begin
   RegWriteStringValue(HKLM, ClavePanel, 'FirewallOk', '1');
   if not EsActualizacion then
   begin
+    // Los ajustes de rendimiento de la base de datos viajan al
+    // script de la base por el registro, como los puertos: los
+    // valores del perfil (el detectado, otro elegido o el
+    // retocado a mano) y los núcleos leídos del equipo.
+    RegWriteDWordValue(HKLM, ClavePanel, 'PgSharedBuffers', AjShared);
+    RegWriteDWordValue(HKLM, ClavePanel, 'PgWorkMem', AjWork);
+    RegWriteDWordValue(HKLM, ClavePanel, 'PgMaintenanceWorkMem', AjMaint);
+    RegWriteDWordValue(HKLM, ClavePanel, 'PgMaxConnections', AjConn);
+    RegWriteDWordValue(HKLM, ClavePanel, 'PgNucleos', NucleosDetectados);
+    if CheckSsd.Checked then
+      RegWriteStringValue(HKLM, ClavePanel, 'PgDiscoSsd', '1')
+    else
+      RegWriteStringValue(HKLM, ClavePanel, 'PgDiscoSsd', '0');
     Usuario := Trim(PaginaCuenta.Values[0]);
     if Usuario = '' then Usuario := 'admin';
     RegWriteStringValue(HKLM, ClavePanel, 'AdminUser', Usuario);

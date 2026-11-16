@@ -17,6 +17,9 @@
 #   3. Registra el servicio «USBMonitorPostgreSQL» (LocalSystem,
 #      arranque automático) y lo arranca.
 #   4. Crea el rol y la base de datos de la aplicación.
+#   5. Si el asistente dejó ajustes de rendimiento en el
+#      registro (página «Instalación avanzada»), los aplica con
+#      ALTER SYSTEM y reinicia el servicio una vez.
 # Todo queda registrado en Registros\instalacion.log y en su
 # espejo C:\ProgramData\USBMonitor-instalacion.log, que sobrevive
 # a la reversión de una instalación fallida.
@@ -151,6 +154,68 @@ try {
         if ($salidaBd.Trim()) { Escribir-Log "psql (base): $($salidaBd.Trim())" }
         if ($LASTEXITCODE -ne 0) { throw 'No se pudo crear la base de datos.' }
         Escribir-Log 'Base de datos creada.'
+    }
+
+    # --- 5. Ajustes de rendimiento (página avanzada) ---
+    # Los valores llegan del asistente por el registro; sin
+    # ellos (instalación anterior a esta opción) no se toca la
+    # configuración. Se aplican con ALTER SYSTEM (quedan en
+    # postgresql.auto.conf, en la carpeta de datos) y un
+    # reinicio del servicio. Un fallo aquí NO tumba la
+    # instalación: la base funciona igual con los valores de
+    # fábrica, así que se anota como aviso y se sigue.
+    if ($null -ne $reg.PgSharedBuffers) {
+        try {
+            $sharedMb = [int]$reg.PgSharedBuffers
+            $workMb = [int]$reg.PgWorkMem
+            $maintMb = [int]$reg.PgMaintenanceWorkMem
+            $maxConn = [int]$reg.PgMaxConnections
+            $esSsd = ([string]$reg.PgDiscoSsd) -eq '1'
+            # La caché efectiva se deriva de la compartida (el
+            # triple, con tope): es lo que el planificador supone
+            # que el sistema puede tener en caché.
+            $cacheMb = [Math]::Min($sharedMb * 3, 24576)
+            if ($esSsd) { $costePagina = '1.1'; $ioConcurrencia = 200 }
+            else { $costePagina = '4'; $ioConcurrencia = 2 }
+            # El trabajo en paralelo sigue a los núcleos que el
+            # asistente leyó del equipo (4 si no llegaron).
+            $nucleos = 4
+            if ($null -ne $reg.PgNucleos) { $nucleos = [Math]::Max(1, [int]$reg.PgNucleos) }
+            $trabajadores = [Math]::Max(2, $nucleos)
+            $porConsulta = [Math]::Max(1, [int]($nucleos / 2))
+            $ajustes = @(
+                "shared_buffers = '${sharedMb}MB'"
+                "effective_cache_size = '${cacheMb}MB'"
+                "work_mem = '${workMb}MB'"
+                "maintenance_work_mem = '${maintMb}MB'"
+                "max_connections = $maxConn"
+                "random_page_cost = $costePagina"
+                "effective_io_concurrency = $ioConcurrencia"
+                "wal_buffers = '16MB'"
+                "checkpoint_completion_target = 0.9"
+                "max_worker_processes = $trabajadores"
+                "max_parallel_workers = $trabajadores"
+                "max_parallel_workers_per_gather = $porConsulta"
+            )
+            foreach ($ajuste in $ajustes) {
+                & $psql @baseArgs -c "ALTER SYSTEM SET $ajuste" | Out-Null
+                if ($LASTEXITCODE -ne 0) { throw "ALTER SYSTEM SET $ajuste falló" }
+            }
+            Escribir-Log "Ajustes de rendimiento: shared_buffers=${sharedMb}MB, effective_cache_size=${cacheMb}MB, work_mem=${workMb}MB, maintenance_work_mem=${maintMb}MB, max_connections=$maxConn, ssd=$esSsd."
+            Restart-Service -Name $nombreServicio -Force
+            $listoAjuste = $false
+            for ($i = 0; $i -lt 30; $i++) {
+                & (Join-Path $pgBin 'pg_isready.exe') -h 127.0.0.1 -p $puertoBd -q
+                if ($LASTEXITCODE -eq 0) { $listoAjuste = $true; break }
+                Start-Sleep -Seconds 2
+            }
+            if (-not $listoAjuste) { throw 'La base de datos no respondió tras el reinicio de los ajustes.' }
+            Escribir-Log 'Base de datos reiniciada con los ajustes de rendimiento.'
+        } catch {
+            Escribir-Log "AVISO: los ajustes de rendimiento no se pudieron aplicar: $($_.Exception.Message)"
+        }
+    } else {
+        Escribir-Log 'Sin ajustes de rendimiento guardados: la configuración de PostgreSQL queda como está.'
     }
     Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
 
