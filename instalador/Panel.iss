@@ -104,7 +104,14 @@ Source: "{#Preparado}\empujador\*"; DestDir: "{app}\app\empujador"; Flags: recur
 
 [Icons]
 Name: "{group}\Abrir el panel"; Filename: "{app}\AbrirPanel.cmd"; IconFilename: "{app}\favicon.ico"; Comment: "Abre el panel de USB Monitor en el navegador"
+Name: "{group}\Bandeja del panel"; Filename: "{app}\USBMonitorBandeja.exe"; Comment: "Icono de bandeja: estado del panel junto al reloj, con abrir, iniciar, parar y reiniciar"
 Name: "{autodesktop}\USB Monitor — Panel"; Filename: "{app}\AbrirPanel.cmd"; IconFilename: "{app}\favicon.ico"; Tasks: accesodirecto; Comment: "Abre el panel de USB Monitor en el navegador"
+
+[Registry]
+; La bandeja arranca con la sesión de cualquier usuario del
+; equipo del panel: es un icono junto al reloj, sin ventana.
+; uninsdeletevalue: al desinstalar, la entrada se retira sola.
+Root: HKLM; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "USBMonitorBandeja"; ValueData: """{app}\USBMonitorBandeja.exe"""; Flags: uninsdeletevalue
 
 [Code]
 // ================================================================
