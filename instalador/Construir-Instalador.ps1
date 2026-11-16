@@ -228,6 +228,21 @@ foreach ($ps1 in Get-ChildItem (Join-Path $prep 'scripts') -Filter '*.ps1') {
     }
 }
 Copy-Item (Join-Path $inst 'AbrirPanel.cmd') (Join-Path $prep 'raiz\')
+# La bandeja del panel (bandeja/, WinForms): se publica
+# autocontenida y de un solo archivo — en el equipo del panel
+# no se le puede pedir .NET, el panel va con Node propio — y
+# viaja en la raíz del árbol; Panel.iss la deja en la raíz de
+# la instalación, la apunta en el menú Inicio y la registra
+# para que arranque con la sesión. Sin dotnet en la máquina
+# de construcción, la construcción muere aquí con el motivo,
+# no a mitad del instalador.
+$dotnet = (Get-Command dotnet -ErrorAction SilentlyContinue).Source
+if (-not $dotnet) { throw 'La bandeja necesita el SDK de .NET (dotnet) para compilarse y no está en el PATH.' }
+$pubBandeja = Join-Path $prep 'bandeja-pub'
+& $dotnet publish (Join-Path $raiz 'bandeja\Bandeja.csproj') -c Release -r win-x64 --self-contained true -o $pubBandeja
+Exigir 'dotnet publish (bandeja)'
+Copy-Item (Join-Path $pubBandeja 'USBMonitorBandeja.exe') (Join-Path $prep 'raiz\')
+Remove-Item $pubBandeja -Recurse -Force
 # Variante «completo»: el paquete del agente, tal cual llegó en
 # -PaqueteDir, a sus dos carpetas del árbol. Panel.iss lo recoge de
 # ahí, solo cuando la construcción define IncluirPaquete.

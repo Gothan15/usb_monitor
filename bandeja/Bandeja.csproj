@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    USB Monitor — Bandeja del panel.
+
+    Utilidad de bandeja del sistema (junto al reloj de Windows)
+    para el equipo donde corre el panel: muestra el estado del
+    servicio USBMonitorPanel y permite abrir el panel, iniciar,
+    parar y reiniciar el servicio y elegir si arranca con
+    Windows. Se compila desde Construir-Instalador.ps1 y viaja
+    en la raíz de la instalación.
+
+    Autocontenida y de un solo archivo: en el equipo del panel
+    no se le puede pedir .NET instalado (el panel va con Node
+    propio, no con .NET). WinForms porque su NotifyIcon es la
+    vía directa para la bandeja.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Permite compilar para Windows desde cualquier SO. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <AssemblyName>USBMonitorBandeja</AssemblyName>
+    <RootNamespace>USBMonitor.Bandeja</RootNamespace>
+    <!-- El icono de la casa: la brújula del panel. -->
+    <ApplicationIcon>..\src\app\favicon.ico</ApplicationIcon>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- ServiceController vive fuera del marco compartido en
+         .NET moderno: paquete aparte. -->
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.0" />
+  </ItemGroup>
+
+</Project>
