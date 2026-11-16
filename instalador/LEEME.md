@@ -24,12 +24,9 @@ Convierte el panel de USB Monitor en **una aplicación que se instala como cualq
 
 1. Bienvenida y licencia.
 2. Carpeta de instalación.
-3. **Configuración del panel** (página propia de este instalador, solo en instalaciones nuevas):
-   - Usuario (def. `admin`) y **contraseña del administrador inicial**, dos veces. Puede dejarse vacía: el instalador generará una y la dejará en `PRIMER-ACCESO.txt`.
-   - Puerto del panel web (def. 3000).
-   - Puerto de la base de datos (def. 5433, solo local).
-   - Al pulsar «Siguiente», el asistente **comprueba los dos puertos**: si alguno ya está en uso por otro programa, avisa ahí mismo para poder volver y elegir otro (en actualizaciones la página ni aparece: los puertos los usan los propios servicios de la versión anterior).
-4. Accesos (casilla del acceso directo en el escritorio), confirmación, progreso y fin. La regla del cortafuegos para el puerto del panel se crea siempre (perfiles Privado y Dominio, subred local).
+3. **Cuenta de administrador** (página propia, solo en instalaciones nuevas): usuario (def. `admin`) y **contraseña del administrador inicial**, dos veces. Puede dejarse vacía: el instalador generará una y la dejará en `PRIMER-ACCESO.txt`.
+4. **Puertos del panel** (página propia, solo en instalaciones nuevas): puerto del panel web (def. 3000) y puerto de la base de datos (def. 5433, solo local). Al pulsar «Siguiente», el asistente **comprueba los dos puertos**: si alguno ya está en uso por otro programa, avisa ahí mismo para poder volver y elegir otro (en actualizaciones estas páginas ni aparecen: los puertos los usan los propios servicios de la versión anterior). Van en dos páginas separadas a propósito: juntas desbordaban la ventana y el último campo quedaba cortado (visto en la 1.5.0).
+5. Accesos (casilla del acceso directo en el escritorio), confirmación, progreso y fin. La regla del cortafuegos para el puerto del panel se crea siempre (perfiles Privado y Dominio, subred local).
 
 En una **actualización** los puertos y el usuario se recuperan solos del registro (`HKLM\Software\USBMonitor\Panel`): la cuenta ya existe y nadie la toca.
 
