@@ -102,10 +102,12 @@ if (Test-Path $temporal) { Remove-Item $temporal -Recurse -Force }
 New-Item -ItemType Directory -Path $temporal | Out-Null
 Mensaje 'Preparando la copia limpia de la aplicación...'
 # Fuera lo que no es aplicación: el propio instalador, el agente,
-# la salida de los instaladores y los datos propios del clon.
+# la bandeja (se compila aparte; su bin\obj no puede colarse en
+# la app), la salida de los instaladores y los datos del clon.
 $okRobocopy = 0..7
 $argsCopia = @($Repo, $temporal, '/E', '/NFL', '/NDL', '/NJH', '/NJS', '/NP',
     '/XD', (Join-Path $Repo '.git'), (Join-Path $Repo 'instalador'), (Join-Path $Repo 'agente'),
+    (Join-Path $Repo 'bandeja'),
     (Join-Path $Repo 'salida-instalador'), (Join-Path $Repo 'config'), (Join-Path $Repo 'paquete-agente'),
     '/XF', '.env', '*.log', '*.zip')
 Ejecutar 'robocopy' $argsCopia $okRobocopy
