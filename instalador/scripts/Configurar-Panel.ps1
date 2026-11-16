@@ -249,10 +249,24 @@ try {
     # Las dependencias también van en la plantilla de WinSW, pero en
     # una actualización el servicio ya existe y el XML nuevo no lo
     # reescribe: sin esto, un panel anterior al Redis integrado no
-    # ganaría nunca la dependencia. sc.exe pide el espacio tras
-    # «depend=» y el valor en el mismo argumento.
-    & sc.exe config USBMonitorPanel 'depend= USBMonitorPostgreSQL/USBMonitorRedis' | Out-Null
-    if ($LASTEXITCODE -ne 0) { Escribir-Log "AVISO: no se pudieron fijar las dependencias del servicio del panel (sc.exe: $LASTEXITCODE)." }
+    # ganaría nunca la dependencia. OJO con cómo se fijan: NUNCA con
+    # «sc.exe config ... 'depend= ...'» desde PowerShell — al ir el
+    # argumento entre comillas, el espacio tras «depend=» cae DENTRO
+    # del primer nombre (« USBMonitorPostgreSQL») y el SCM no lo
+    # encuentra jamás: el servicio no arranca y da el error 1075,
+    # «el servicio de dependencia no existe» (cazado en una
+    # instalación real el 2026-11-16; lo delata el evento 7003, que
+    # imprime el nombre con doble espacio tras «servicio:»). Se fija
+    # por dos vías limpias: sc.exe a través de cmd (su forma clásica,
+    # sin las comillas de PowerShell por medio; vale para el SCM en
+    # vivo) y Set-ItemProperty sobre la clave del servicio (la lista
+    # queda como REG_MULTI_SZ byte a byte; vale para el arranque).
+    & cmd.exe /c 'sc.exe config USBMonitorPanel depend= USBMonitorPostgreSQL/USBMonitorRedis' | Out-Null
+    $depsOk = ($LASTEXITCODE -eq 0)
+    try {
+        Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\USBMonitorPanel' -Name DependOnService -Value ([string[]]@('USBMonitorPostgreSQL', 'USBMonitorRedis')) -ErrorAction Stop
+    } catch { $depsOk = $false }
+    if (-not $depsOk) { Escribir-Log 'AVISO: no se pudieron fijar las dependencias del servicio del panel.' }
     else { Escribir-Log 'Dependencias del servicio del panel fijadas (BD y Redis).' }
 
     # --- 6. Cortafuegos ---
