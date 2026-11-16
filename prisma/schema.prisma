@@ -42,6 +42,10 @@ model USBEvent {
   // reciente hacia atrás y se detiene en los primeros aciertos
   // (~0,1 ms medidos). Exige `npx prisma db push` al desplegar.
   @@index([timestamp])
+  // El historial de UN equipo filtra por pcName y ordena por
+  // timestamp: con la tabla grande, el índice por fecha solo no
+  // basta y Postgres filtraba fila a fila. Exige `db push`.
+  @@index([pcName, timestamp])
   @@map("usb_events")
 }
 
@@ -84,6 +88,10 @@ model Computer {
 
   @@index([lastSeen])
   @@index([ipAddress])
+  // Cada petición firmada de un agente busca su equipo por la
+  // huella de la credencial (agentAuth): es la búsqueda más
+  // caliente del panel y no tenía índice. Exige `db push`.
+  @@index([clavePublicaHuella])
   @@map("computers")
 }
 
