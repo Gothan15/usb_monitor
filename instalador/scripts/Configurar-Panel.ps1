@@ -270,11 +270,20 @@ try {
     else { Escribir-Log 'Dependencias del servicio del panel fijadas (BD y Redis).' }
 
     # --- 6. Cortafuegos ---
+    # La regla se recrea entera en cada instalación y actualización.
+    # SIN límite de subred y en TODOS los perfiles: los agentes
+    # pueden estar en otra subred de la misma red (una red grande
+    # con varias VLAN, p. ej.) y Windows puede tratar la red como
+    # pública; con el límite antiguo (remoteip=localsubnet,
+    # perfiles privado/dominio) esos agentes ni siquiera recibían
+    # respuesta del panel y el enrolamiento moría en silencio
+    # (fallo real del 2026-11-17: dos PC en 172.23.48.x y
+    # 172.23.57.x contra un panel en 172.23.53.x).
     & netsh advfirewall firewall delete rule name='USB Monitor — Panel' 2>&1 | Out-Null
     if ($cortafuegos -eq '1') {
         & netsh advfirewall firewall add rule name='USB Monitor — Panel' dir=in action=allow `
-            protocol=TCP localport=$puerto remoteip=localsubnet profile=private,domain | Out-Null
-        Escribir-Log "Cortafuegos: puerto $puerto abierto a la subred local."
+            protocol=TCP localport=$puerto profile=any | Out-Null
+        Escribir-Log "Cortafuegos: puerto $puerto abierto en todos los perfiles y para cualquier dirección de la red."
     }
 
     # --- 7. Arranque y comprobación ---

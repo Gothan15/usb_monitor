@@ -264,7 +264,8 @@ begin
     'Dónde escuchará cada pieza',
     'El puerto de la base de datos es interno: solo lo usa el ' +
     'propio panel. Al terminar se abrirá el puerto del panel en ' +
-    'el Firewall de Windows (perfiles privado y de dominio).');
+    'el Firewall de Windows, en todos los perfiles y para ' +
+    'cualquier equipo de la red (también de otra subred).');
   PaginaPuertos.Add('Puerto del panel (la web):', False);
   PaginaPuertos.Add('Puerto de la base de datos (interno):', False);
   PaginaPuertos.Values[0] := '3000';
