@@ -21,6 +21,7 @@ import {
 } from "@/components/dashboard/EmpujeChecklist";
 import {
   ETIQUETA_ESTADO_DESTINO,
+  ETIQUETA_ESTADO_TAREA,
   credencialesCompletas,
 } from "@/lib/installTasks";
 import { formatDateTime } from "@/components/dashboard/types";
@@ -89,6 +90,7 @@ const TONO_ESTADO: Record<string, string> = {
   OMITIDO: "text-muted-foreground",
   ERROR: "text-rose-600",
   INTERRUMPIDO: "text-amber-600",
+  CANCELADO: "text-muted-foreground",
   ESPERANDO_SENAL: "text-[var(--acero)]",
   COPIANDO: "text-[var(--acero)]",
   INSTALANDO: "text-[var(--acero)]",
@@ -133,6 +135,18 @@ export function InstallTasksTab() {
   );
   const [borrando, setBorrando] = useState(false);
   const [avisoBorrado, setAvisoBorrado] = useState<string | null>(null);
+  // Cancelación de una tarea EN CURSO: «cancelacionObjetivo»
+  // guarda el id de la tarea que el diálogo de confirmación
+  // propone detener; la petición en vuelo se marca con el
+  // mismo «cancelandoId» de las órdenes (los ids no se
+  // cruzan), así el botón enseña el spinner igual que el de
+  // «Detener» de una orden viva.
+  const [cancelacionObjetivo, setCancelacionObjetivo] = useState<
+    string | null
+  >(null);
+  const [avisoCancelacion, setAvisoCancelacion] = useState<string | null>(
+    null,
+  );
 
   const load = useCallback(async () => {
     try {
@@ -371,11 +385,53 @@ export function InstallTasksTab() {
     }
   };
 
+  // Detener una tarea de instalación EN CURSO: el panel la
+  // marca CANCELADA con sus destinos no finales en CANCELADO
+  // y el ejecutor se para en su siguiente punto de control.
+  // Si un equipo ya tenía el agente instalado y esperaba
+  // señal, su código de enrolamiento queda anulado (no se
+  // enrolará solo tras cancelar): el diálogo lo avisa antes.
+  const cancelarTarea = async (tareaId: string) => {
+    const csrfToken = getCsrfTokenFromDocument();
+    if (!csrfToken) {
+      setAvisoCancelacion(
+        "Sesión sin token de seguridad. Inicia sesión nuevamente.",
+      );
+      return;
+    }
+    try {
+      setCancelandoId(tareaId);
+      setAvisoCancelacion(null);
+      const res = await fetch(`/api/install-tasks/${tareaId}/cancelar`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "x-csrf-token": csrfToken },
+      });
+      const datos = await res.json().catch(() => null);
+      if (!res.ok || !datos?.ok) {
+        setAvisoCancelacion(datos?.error || "No se pudo detener la tarea.");
+        return;
+      }
+      setCancelacionObjetivo(null);
+      void load();
+    } catch {
+      setAvisoCancelacion("No se pudo contactar con el panel.");
+    } finally {
+      setCancelandoId(null);
+    }
+  };
+
   // La tarea que el diálogo de borrado propone eliminar (la
   // limpieza de terminadas no es una tarea concreta).
   const tareaEnDialogo =
     borradoObjetivo !== null && borradoObjetivo !== "todas"
       ? (tareas ?? []).find((t) => t.id === borradoObjetivo)
+      : undefined;
+
+  // La tarea que el diálogo de cancelación propone detener.
+  const tareaEnCancelacion =
+    cancelacionObjetivo !== null
+      ? (tareas ?? []).find((t) => t.id === cancelacionObjetivo)
       : undefined;
 
   return (
@@ -469,19 +525,21 @@ export function InstallTasksTab() {
                   {formatDateTime(tarea.createdAt)}
                 </p>
                 <span
-                  className={
+                  className={`inline-flex items-center gap-1.5 text-sm font-medium ${
                     tarea.status === "EN_CURSO"
-                      ? "text-sm font-medium text-[var(--acero)]"
+                      ? "text-[var(--acero)]"
                       : tarea.status === "COMPLETADA"
-                        ? "text-sm font-medium text-emerald-600"
-                        : "text-sm font-medium text-rose-600"
-                  }
+                        ? "text-emerald-600"
+                        : tarea.status === "CANCELADA"
+                          ? "text-muted-foreground"
+                          : "text-rose-600"
+                  }`}
                 >
-                  {tarea.status === "EN_CURSO"
-                    ? "En curso"
-                    : tarea.status === "COMPLETADA"
-                      ? "Completada"
-                      : "Con errores"}
+                  {/* Igual que las órdenes vivas: la tarea en
+                      curso enseña el spinner girando junto a
+                      su etiqueta de estado. */}
+                  {tarea.status === "EN_CURSO" && <Spinner size={12} />}
+                  {ETIQUETA_ESTADO_TAREA[tarea.status] ?? tarea.status}
                 </span>
                 <span className="text-xs text-muted-foreground">
                   {instalados}/{tarea.targets.length} instalados ·{" "}
@@ -493,6 +551,31 @@ export function InstallTasksTab() {
                   {tarea.maxAttempts === 1 ? "" : "s"} por equipo
                   {tarea.omitIfInstalled ? " · omite los instalados" : ""}
                 </span>
+                {/* Detener una tarea en curso: EL MISMO botón
+                    que el «Detener» de las órdenes vivas de
+                    abajo (mismo Button, mismo icono, mismo
+                    spinner en vuelo), para que la pestaña
+                    hable un solo idioma. Abre el diálogo de
+                    confirmación de la cancelación. */}
+                {tarea.status === "EN_CURSO" && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="ml-auto"
+                    onClick={() => {
+                      setCancelacionObjetivo(tarea.id);
+                      setAvisoCancelacion(null);
+                    }}
+                    disabled={cancelandoId === tarea.id}
+                  >
+                    {cancelandoId === tarea.id ? (
+                      <Spinner size={14} />
+                    ) : (
+                      <OctagonX className="mr-1.5 size-3.5" />
+                    )}
+                    Detener
+                  </Button>
+                )}
                 {reintentables > 0 && reintentando !== tarea.id && (
                   <Button
                     variant="outline"
@@ -816,6 +899,74 @@ export function InstallTasksTab() {
           </div>
         </section>
       )}
+
+      {/* Confirmación de cancelación: detener una tarea en
+          curso no se deshace, y tiene una consecuencia que hay
+          que leer antes — el código anulado de los equipos que
+          ya tenían el agente instalado esperando señal. */}
+      <Dialog
+        open={cancelacionObjetivo !== null}
+        onOpenChange={(abierto) => {
+          if (!abierto && cancelandoId !== cancelacionObjetivo) {
+            setCancelacionObjetivo(null);
+            setAvisoCancelacion(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Detener tarea de instalación</DialogTitle>
+            <DialogDescription>
+              Se detiene la instalación remota de esta tarea
+              {tareaEnCancelacion
+                ? ` (${tareaEnCancelacion.targets.length} destino${
+                    tareaEnCancelacion.targets.length === 1 ? "" : "s"
+                  })`
+                : ""}
+              . Los equipos que no habían empezado no se
+              instalan; el que esté a mitad se detiene en su
+              siguiente punto de control (una copia ya en curso
+              no se parte a la mitad). Si un equipo ya tiene el
+              agente instalado y estaba esperando su primera
+              señal, su código de enrolamiento queda ANULADO:
+              no se enrolará solo. Para enrolarlo luego, genera
+              un código en Equipos → «Credencial del equipo» y
+              escríbelo en el asistente de esa PC. No se puede
+              deshacer.
+            </DialogDescription>
+          </DialogHeader>
+          {avisoCancelacion && (
+            <p className="text-sm text-rose-600">{avisoCancelacion}</p>
+          )}
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setCancelacionObjetivo(null);
+                setAvisoCancelacion(null);
+              }}
+              disabled={cancelandoId === cancelacionObjetivo}
+            >
+              Volver
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (cancelacionObjetivo) {
+                  void cancelarTarea(cancelacionObjetivo);
+                }
+              }}
+              disabled={cancelandoId === cancelacionObjetivo}
+            >
+              {cancelandoId === cancelacionObjetivo ? (
+                <Spinner size={14} />
+              ) : (
+                "Detener tarea"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Confirmación de borrado: un diálogo, no un cuadro en
           línea. Sirve para la limpieza de terminadas (tareas y

@@ -46,6 +46,18 @@ import {
  * se reinicia a mitad, los destinos en curso quedan
  * INTERRUMPIDO (nada se finge completado) y el reintento pide
  * las claves otra vez.
+ *
+ * Cancelación (a petición, desde la pestaña de Tareas): es
+ * COOPERATIVA. La ruta de cancelar marca la tarea CANCELADA y
+ * sus destinos no finales CANCELADO en la base de datos, y
+ * este ejecutor se entera en sus puntos de control: antes de
+ * empezar cada destino, antes de cada intento, tras el empuje
+ * y dentro de las esperas de señal/versión, que ya sondeaban
+ * la base cada 5 s. Lo que NO se parte a la mitad es una
+ * copia SMB en curso: si la cancelación llega con el
+ * empujador copiando, surte efecto en el primer punto de
+ * control tras la copia. Un destino CANCELADO no se pisa
+ * nunca (actualizarDestino lo garantiza).
  */
 
 /**
@@ -89,11 +101,47 @@ async function actualizarDestino(
   id: string,
   data: Record<string, unknown>,
 ): Promise<void> {
-  await db.installTaskTarget.update({ where: { id }, data });
+  // Un destino CANCELADO no se pisa jamás: la cancelación la
+  // escribe la ruta de cancelar y el ejecutor, al enterarse,
+  // sale sin tocar la fila. Sin este guard, el progreso del
+  // empujador (que actualiza el estado por su cuenta) podría
+  // «resucitar» un destino cancelado a COPIANDO a mitad de
+  // copia. Por eso la escritura es un updateMany condicionado
+  // y no un update directo: atómico, sin lectura previa.
+  await db.installTaskTarget.updateMany({
+    where: { id, status: { not: ESTADO_DESTINO.CANCELADO } },
+    data,
+  });
   broadcastInstallChange();
 }
 
+/** ¿Este destino ya fue cancelado desde el panel? */
+async function destinoCancelado(id: string): Promise<boolean> {
+  const destino = await db.installTaskTarget.findUnique({
+    where: { id },
+    select: { status: true },
+  });
+  return destino?.status === ESTADO_DESTINO.CANCELADO;
+}
+
+/** ¿Esta tarea ya fue cancelada desde el panel? */
+async function tareaCancelada(taskId: string): Promise<boolean> {
+  const tarea = await db.installTask.findUnique({
+    where: { id: taskId },
+    select: { status: true },
+  });
+  return tarea?.status === ESTADO_TAREA.CANCELADA;
+}
+
 async function finalizarTareaSiToca(taskId: string): Promise<void> {
+  // Si la tarea ya salió de EN_CURSO por otra vía (la ruta de
+  // cancelar la dejó CANCELADA, con su fecha), aquí no se
+  // toca: su estado final ya está escrito y no se recalcula.
+  const tarea = await db.installTask.findUnique({
+    where: { id: taskId },
+    select: { status: true },
+  });
+  if (!tarea || tarea.status !== ESTADO_TAREA.EN_CURSO) return;
   const destinos = await db.installTaskTarget.findMany({
     where: { taskId },
     select: { status: true },
@@ -130,39 +178,55 @@ export function hostServidorParaAgente(): string {
 
 // ── Esperas de confirmación por la señal del agente ──────────
 
+type ResultadoEsperaSenal = "llego" | "sin-senal" | "cancelado";
+
 async function esperarSenalAgente(
   computerId: string,
   desdeMs: number,
   limiteMs: number,
-): Promise<boolean> {
+  destinoId: string,
+): Promise<ResultadoEsperaSenal> {
   const fin = Date.now() + limiteMs;
   while (Date.now() < fin) {
+    // Cancelación cooperativa: la espera ya sondea la base de
+    // datos cada 5 s, así que de paso mira si el destino fue
+    // cancelado desde el panel; si lo fue, sale al momento
+    // en vez de agotar los 3 minutos.
+    if (await destinoCancelado(destinoId)) return "cancelado";
     const computer = await db.computer.findUnique({
       where: { id: computerId },
       select: { lastSeen: true },
     });
     // 10 s de holgura por relojes distintos entre panel y equipo.
     if (computer?.lastSeen && computer.lastSeen.getTime() >= desdeMs - 10_000) {
-      return true;
+      return "llego";
     }
     await esperar(5_000);
   }
-  return false;
+  return "sin-senal";
 }
 
 type EsperaVersion =
   | { resultado: "ok" }
   | { resultado: "error-orden"; detalle: string }
-  | { resultado: "sin-confirmar" };
+  | { resultado: "sin-confirmar" }
+  | { resultado: "cancelado" };
 
 async function esperarVersionAgente(
   computerId: string,
   version: string | null,
   limiteMs: number,
+  destinoId: string,
 ): Promise<EsperaVersion> {
   const inicio = Date.now();
   const fin = inicio + limiteMs;
   while (Date.now() < fin) {
+    // La misma cancelación cooperativa que en la espera de
+    // señal: cada sondeo (5 s) comprueba si el destino sigue
+    // vivo antes de seguir esperando la versión.
+    if (await destinoCancelado(destinoId)) {
+      return { resultado: "cancelado" };
+    }
     const computer = await db.computer.findUnique({
       where: { id: computerId },
       select: { agentVersion: true },
@@ -203,7 +267,14 @@ async function esperarVersionAgente(
 // ── Un intento sobre un destino ──────────────────────────────
 
 interface ResultadoIntento {
-  estado: typeof ESTADO_DESTINO.INSTALADO | typeof ESTADO_DESTINO.OMITIDO | typeof ESTADO_DESTINO.ERROR;
+  estado:
+    | typeof ESTADO_DESTINO.INSTALADO
+    | typeof ESTADO_DESTINO.OMITIDO
+    | typeof ESTADO_DESTINO.ERROR
+    // Un intento también puede acabar CANCELADO: el destino
+    // se detuvo desde el panel a mitad de camino y las
+    // esperas lo notaron en su siguiente sondeo.
+    | typeof ESTADO_DESTINO.CANCELADO;
   message: string;
   reintentable: boolean;
 }
@@ -260,7 +331,16 @@ async function flujoViaAgente(
     String(computer.id),
     manifiesto.version,
     10 * 60_000,
+    destino.id,
   );
+  if (espera.resultado === "cancelado") {
+    return {
+      estado: ESTADO_DESTINO.CANCELADO,
+      message:
+        "Cancelado desde el panel mientras se esperaba la confirmación del agente.",
+      reintentable: false,
+    };
+  }
   if (espera.resultado === "ok") {
     return {
       estado: ESTADO_DESTINO.INSTALADO,
@@ -466,12 +546,39 @@ async function intentoInstalacion(
     };
   }
 
+  // Punto de control tras el empuje: si la tarea se canceló
+  // mientras el empujador copiaba (la copia en sí no se puede
+  // partir a la mitad: la cancelación surte efecto AQUÍ, en
+  // el primer punto de control tras ella), el destino ya no
+  // pasa a esperar señal ni se da por instalado.
+  if (await destinoCancelado(destino.id)) {
+    return {
+      estado: ESTADO_DESTINO.CANCELADO,
+      message:
+        "Cancelado desde el panel: el empuje ya había terminado, pero el destino no se dio por instalado.",
+      reintentable: false,
+    };
+  }
+
   await actualizarDestino(destino.id, {
     status: ESTADO_DESTINO.ESPERANDO_SENAL,
     message: "Instalado en el destino: esperando la primera señal del agente…",
   });
-  const llego = await esperarSenalAgente(equipo.id, inicio, 3 * 60_000);
-  if (llego) {
+  const senal = await esperarSenalAgente(
+    equipo.id,
+    inicio,
+    3 * 60_000,
+    destino.id,
+  );
+  if (senal === "cancelado") {
+    return {
+      estado: ESTADO_DESTINO.CANCELADO,
+      message:
+        "Cancelado desde el panel mientras se esperaba la primera señal del agente.",
+      reintentable: false,
+    };
+  }
+  if (senal === "llego") {
     await db.computer.update({
       where: { id: equipo.id },
       data: { serviceInstalled: true, serviceRunning: true, lastServiceCheck: getCurrentDate() },
@@ -508,6 +615,17 @@ async function ejecutarDestino(
   );
   let intentos = destino.attempts;
   while (true) {
+    // Antes de cada intento (también del primero): si el
+    // destino o la tarea entera fueron cancelados desde el
+    // panel, aquí se para y no se empuja nada. La fila ya la
+    // dejó en CANCELADO la ruta de cancelar, con su mensaje:
+    // no hay nada que escribir.
+    if (
+      (await destinoCancelado(destino.id)) ||
+      (await tareaCancelada(task.id))
+    ) {
+      return;
+    }
     intentos++;
     await actualizarDestino(destino.id, {
       attempts: intentos,
@@ -587,6 +705,13 @@ async function ejecutarTarea(taskId: string): Promise<void> {
       enCola.map(async (destino) => {
         await adquirirTurno();
         try {
+          // La cola es de una en una y una tarea puede
+          // cancelarse mientras sus destinos esperan turno:
+          // antes de empezar CADA destino se comprueba que la
+          // tarea no haya sido cancelada entretanto. Si lo
+          // fue, este destino no se empieza (su fila ya quedó
+          // CANCELADO al cancelar la tarea).
+          if (await tareaCancelada(taskId)) return;
           await ejecutarDestino(task, destino.id, claves);
         } finally {
           liberarTurno();
@@ -608,6 +733,16 @@ async function ejecutarTarea(taskId: string): Promise<void> {
  */
 export function tareaEnEjecucion(taskId: string): boolean {
   return tareasEnEjecucion.has(taskId);
+}
+
+/**
+ * Olvida las claves en memoria de una tarea. Lo llama la
+ * ruta de cancelar: una tarea cancelada no se va a reintentar
+ * desde el ejecutor, y sus contraseñas no tienen por qué
+ * seguir vivas en el proceso.
+ */
+export function descartarClavesTarea(taskId: string): void {
+  credencialesEnMemoria.delete(taskId);
 }
 
 /** Registra las claves en memoria y pone la tarea en marcha. */
