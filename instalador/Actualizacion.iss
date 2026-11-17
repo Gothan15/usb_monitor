@@ -164,12 +164,31 @@ begin
       mbError, MB_OK);
 end;
 
+{ La bandeja se relanza al terminar la actualización, igual
+  que en el instalador completo: como el usuario original,
+  sin elevar. Si la copia vieja seguía corriendo y no se
+  cerró, el Mutex de instancia única de la bandeja hace que
+  la nueva se cierre sola. Un fallo al lanzarla no afecta a
+  la actualización. }
+procedure LanzarBandeja;
+var
+  Codigo: Integer;
+begin
+  if FileExists(ExpandConstant('{app}\USBMonitorBandeja.exe')) then
+    ExecAsOriginalUser(
+      ExpandConstant('{app}\USBMonitorBandeja.exe'), '', '',
+      SW_SHOW, ewNoWait, Codigo);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssInstall then
     DetenerServiciosAfectados;
   if CurStep = ssPostInstall then
+  begin
     EjecutarPasos;
+    LanzarBandeja;
+  end;
 end;
 
 procedure CurPageChanged(CurPageID: Integer);

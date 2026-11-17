@@ -559,6 +559,26 @@ begin
       mbError, MB_OK);
 end;
 
+{ La bandeja también arranca al terminar la instalación, no
+  solo al iniciar sesión (la entrada del registro Run sigue
+  para los inicios siguientes). Se lanza como el usuario
+  original, sin elevar: el instalador corre como admin y la
+  bandeja no debe heredar ese token ni su sesión. Si ya
+  estaba corriendo (actualización con la sesión abierta),
+  el Mutex de instancia única de la bandeja hace que esta
+  segunda copia se cierre sola. Un fallo al lanzarla no
+  afecta a la instalación: la bandeja saldrá al iniciar
+  sesión, como antes. }
+procedure LanzarBandeja;
+var
+  Codigo: Integer;
+begin
+  if FileExists(ExpandConstant('{app}\USBMonitorBandeja.exe')) then
+    ExecAsOriginalUser(
+      ExpandConstant('{app}\USBMonitorBandeja.exe'), '', '',
+      SW_SHOW, ewNoWait, Codigo);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssInstall then
@@ -567,7 +587,10 @@ begin
     PrepararConfiguracion;
   end;
   if CurStep = ssPostInstall then
+  begin
     EjecutarPasos;
+    LanzarBandeja;
+  end;
 end;
 
 procedure CurPageChanged(CurPageID: Integer);
