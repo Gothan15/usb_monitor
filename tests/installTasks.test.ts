@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   ESTADO_DESTINO,
+  ESTADO_TAREA,
+  ESTADOS_DESTINO_FINALES,
+  ETIQUETA_ESTADO_DESTINO,
+  ETIQUETA_ESTADO_TAREA,
   METODO,
   credencialesCompletas,
   estadoDesdeEtapaEmpujador,
@@ -160,6 +164,54 @@ describe("estadoFinalTarea", () => {
   it("CON_ERRORES si alguno falló o quedó interrumpido", () => {
     expect(estadoFinalTarea(["INSTALADO", "ERROR"])).toBe("CON_ERRORES");
     expect(estadoFinalTarea(["INTERRUMPIDO"])).toBe("CON_ERRORES");
+  });
+  it("CANCELADA si todos los destinos quedaron cancelados", () => {
+    expect(estadoFinalTarea(["CANCELADO"])).toBe("CANCELADA");
+    expect(estadoFinalTarea(["CANCELADO", "CANCELADO"])).toBe("CANCELADA");
+  });
+  it("CANCELADA si alguno se canceló y ninguno falló, aunque otro instalara", () => {
+    expect(estadoFinalTarea(["INSTALADO", "CANCELADO"])).toBe("CANCELADA");
+    expect(estadoFinalTarea(["OMITIDO", "CANCELADO"])).toBe("CANCELADA");
+  });
+  it("el error manda sobre la cancelación: CON_ERRORES", () => {
+    expect(estadoFinalTarea(["ERROR", "CANCELADO"])).toBe("CON_ERRORES");
+    expect(estadoFinalTarea(["INTERRUMPIDO", "CANCELADO"])).toBe(
+      "CON_ERRORES",
+    );
+  });
+});
+
+describe("cancelación: estados y etiquetas", () => {
+  it("CANCELADO es un estado de destino final", () => {
+    expect(ESTADOS_DESTINO_FINALES).toContain(ESTADO_DESTINO.CANCELADO);
+  });
+
+  it("las etiquetas legibles existen en español", () => {
+    expect(ETIQUETA_ESTADO_DESTINO[ESTADO_DESTINO.CANCELADO]).toBe(
+      "Cancelado",
+    );
+    expect(ETIQUETA_ESTADO_TAREA[ESTADO_TAREA.CANCELADA]).toBe("Cancelada");
+    expect(ETIQUETA_ESTADO_TAREA[ESTADO_TAREA.EN_CURSO]).toBe("En curso");
+  });
+
+  it("una tarea cancelada con destinos cancelados se puede borrar", () => {
+    expect(
+      tareaPuedeBorrarse({
+        status: "CANCELADA",
+        estadosDestinos: ["INSTALADO", "CANCELADO"],
+        enEjecucion: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("una tarea cancelada con un destino aún a medias no se borra", () => {
+    expect(
+      tareaPuedeBorrarse({
+        status: "CANCELADA",
+        estadosDestinos: ["CANCELADO", "ESPERANDO_SENAL"],
+        enEjecucion: false,
+      }),
+    ).toBe(false);
   });
 });
 

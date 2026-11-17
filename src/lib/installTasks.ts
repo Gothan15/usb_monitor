@@ -9,7 +9,12 @@ export const ESTADO_TAREA = {
   EN_CURSO: "EN_CURSO",
   COMPLETADA: "COMPLETADA",
   CON_ERRORES: "CON_ERRORES",
+  // Final también: la tarea se detuvo a petición del admin
+  // desde la pestaña de Tareas, no porque acabara sola.
+  CANCELADA: "CANCELADA",
 } as const;
+
+export type EstadoTarea = (typeof ESTADO_TAREA)[keyof typeof ESTADO_TAREA];
 
 export const ESTADO_DESTINO = {
   EN_COLA: "EN_COLA",
@@ -21,6 +26,9 @@ export const ESTADO_DESTINO = {
   OMITIDO: "OMITIDO",
   ERROR: "ERROR",
   INTERRUMPIDO: "INTERRUMPIDO",
+  // Final también: este destino se detuvo porque la tarea
+  // entera se canceló desde el panel.
+  CANCELADO: "CANCELADO",
 } as const;
 
 export type EstadoDestino =
@@ -39,6 +47,7 @@ export const ESTADOS_DESTINO_FINALES: EstadoDestino[] = [
   ESTADO_DESTINO.OMITIDO,
   ESTADO_DESTINO.ERROR,
   ESTADO_DESTINO.INTERRUMPIDO,
+  ESTADO_DESTINO.CANCELADO,
 ];
 
 /**
@@ -138,14 +147,25 @@ export function credencialesCompletas(
   });
 }
 
-/** Estado final de la tarea según cómo acabaron sus destinos. */
-export function estadoFinalTarea(
-  estados: string[],
-): typeof ESTADO_TAREA.COMPLETADA | typeof ESTADO_TAREA.CON_ERRORES {
+/**
+ * Estado final de la tarea según cómo acabaron sus destinos.
+ * Un destino en ERROR o INTERRUMPIDO manda: la tarea es
+ * CON_ERRORES aunque otro destino se cancelara después. Sin
+ * errores, si algún destino quedó CANCELADO la tarea es
+ * CANCELADA (se detuvo a petición, no terminó su trabajo),
+ * aunque otro destino sí llegara a instalarse antes de la
+ * cancelación. Sin errores ni cancelados, COMPLETADA.
+ */
+export function estadoFinalTarea(estados: string[]): EstadoTarea {
   const algunoMal = estados.some(
     (e) => e === ESTADO_DESTINO.ERROR || e === ESTADO_DESTINO.INTERRUMPIDO,
   );
-  return algunoMal ? ESTADO_TAREA.CON_ERRORES : ESTADO_TAREA.COMPLETADA;
+  if (algunoMal) return ESTADO_TAREA.CON_ERRORES;
+  const algunoCancelado = estados.some(
+    (e) => e === ESTADO_DESTINO.CANCELADO,
+  );
+  if (algunoCancelado) return ESTADO_TAREA.CANCELADA;
+  return ESTADO_TAREA.COMPLETADA;
 }
 
 /** Etapa de progreso del empujador → estado del destino. */
@@ -172,6 +192,15 @@ export const ETIQUETA_ESTADO_DESTINO: Record<string, string> = {
   OMITIDO: "Omitido",
   ERROR: "Error",
   INTERRUMPIDO: "Interrumpido",
+  CANCELADO: "Cancelado",
+};
+
+/** Etiqueta legible de cada estado de tarea, para la vista. */
+export const ETIQUETA_ESTADO_TAREA: Record<string, string> = {
+  EN_CURSO: "En curso",
+  COMPLETADA: "Completada",
+  CON_ERRORES: "Con errores",
+  CANCELADA: "Cancelada",
 };
 
 /**

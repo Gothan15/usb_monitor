@@ -143,6 +143,29 @@ export async function generarCodigoEnrolamiento(
   return { codigo, expira };
 }
 
+/**
+ * Anula el código de enrolamiento vigente de un equipo sin
+ * tocar su credencial: borra el hash y la caducidad, y el
+ * código que el agente guarda deja de valer en ese instante.
+ * Lo usa la cancelación de una tarea de instalación cuando el
+ * agente ya quedó instalado en la PC y esperaba señal: sin
+ * esta anulación, el agente se enrolaría solo minutos después
+ * de cancelada la tarea, contra lo que el admin acaba de
+ * decidir. Para enrolarlo luego hay que generar un código
+ * nuevo en Equipos → «Credencial del equipo».
+ */
+export async function anularCodigoEnrolamiento(
+  computerId: string,
+): Promise<void> {
+  await (db as any).computer.update({
+    where: { id: computerId },
+    data: {
+      codigoEnrolamientoHash: null,
+      codigoEnrolamientoExpira: null,
+    },
+  });
+}
+
 /** ¿El código presentado es el vigente de este equipo y no ha caducado? */
 export function codigoEnrolamientoValido(
   computer: { codigoEnrolamientoHash: string | null; codigoEnrolamientoExpira: Date | null },

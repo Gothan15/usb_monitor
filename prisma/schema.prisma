@@ -245,7 +245,7 @@ model AgentCommand {
 // guarda el usuario, nunca la clave.
 model InstallTask {
   id              String              @id @default(cuid())
-  status          String              @default("EN_CURSO") // EN_CURSO | COMPLETADA | CON_ERRORES
+  status          String              @default("EN_CURSO") // EN_CURSO | COMPLETADA | CON_ERRORES | CANCELADA
   username        String // cuenta administradora de los destinos (sin su clave)
   omitIfInstalled Boolean             @default(true)
   maxAttempts     Int                 @default(2)
@@ -267,7 +267,7 @@ model InstallTaskTarget {
   pcName     String
   ipAddress  String
   method     String? // EMPUJE | AGENTE (se resuelve al ejecutarse)
-  status     String      @default("EN_COLA") // EN_COLA | COMPROBANDO | COPIANDO | INSTALANDO | ESPERANDO_SENAL | INSTALADO | OMITIDO | ERROR | INTERRUMPIDO
+  status     String      @default("EN_COLA") // EN_COLA | COMPROBANDO | COPIANDO | INSTALANDO | ESPERANDO_SENAL | INSTALADO | OMITIDO | ERROR | INTERRUMPIDO | CANCELADO
   message    String?
   detail     String?
   checks     Json? // lista de requisitos del empujador (--comprobar)
