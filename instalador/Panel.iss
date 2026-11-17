@@ -150,6 +150,16 @@ var
   PaginaPuertos: TInputQueryWizardPage;
   PaginaPerfil: TInputOptionWizardPage;
   PaginaAvanzada: TInputQueryWizardPage;
+  // Segunda página avanzada (conexiones y disco): es una
+  // página PERSONALIZADA, no de campos automáticos, porque en
+  // una CreateInputQueryPage la posición de cada campo la fija
+  // Inno y no queda hueco fiable para una casilla propia: con
+  // los cuatro campos juntos, la casilla SSD clavada a mano
+  // caía encima del cuarto campo y los ajustes salían
+  // apilados. Aquí cada control lleva coordenadas propias y
+  // holgadas, y nada se solapa.
+  PaginaConexiones: TWizardPage;
+  EditConn: TNewEdit;
   CheckAvanzada: TNewCheckBox;
   CheckSsd: TNewCheckBox;
   PerfilDetectado: Integer;
@@ -228,10 +238,15 @@ end;
 
 procedure ReflejarPerfilEnPagina;
 begin
+  // Los valores del perfil se reparten entre las DOS páginas
+  // avanzadas: las tres memorias en la primera y las
+  // conexiones en el campo de texto de la segunda. Da igual
+  // en qué página esté cada valor: esta rutina los rellena
+  // todos de una vez.
   PaginaAvanzada.Values[0] := IntToStr(AjShared);
   PaginaAvanzada.Values[1] := IntToStr(AjWork);
   PaginaAvanzada.Values[2] := IntToStr(AjMaint);
-  PaginaAvanzada.Values[3] := IntToStr(AjConn);
+  EditConn.Text := IntToStr(AjConn);
 end;
 
 procedure InitializeWizard;
@@ -298,7 +313,7 @@ begin
     'Instalación avanzada',
     'Perfil de rendimiento de la base de datos',
     TextoEquipo + ' Elige otro si lo prefieres; en la ' +
-    'página siguiente podrás retocar sus valores.',
+    'páginas siguientes podrás retocar sus valores.',
     True, False);
   PaginaPerfil.Add('Justo — equipos de hasta 4 GB de RAM');
   PaginaPerfil.Add('Equilibrado — hasta 8 GB de RAM');
@@ -306,25 +321,74 @@ begin
   PaginaPerfil.Add('Servidor — más de 16 GB de RAM');
   PaginaPerfil.SelectedValueIndex := PerfilDetectado;
 
+  // Primera página avanzada: SOLO las tres memorias. Antes
+  // esta página llevaba también las conexiones y la casilla
+  // del SSD clavada con Top fijo, y el cuarto campo y la
+  // casilla quedaban uno encima del otro (los ajustes salían
+  // apilados en pantalla). Ahora los valores se reparten en
+  // dos páginas encadenadas y cada una va sobrada de sitio.
   PaginaAvanzada := CreateInputQueryPage(PaginaPerfil.ID,
     'Instalación avanzada',
     'Rendimiento de la base de datos (PostgreSQL)',
-    'Los valores del perfil elegido, listos para retocar. ' +
-    'Se aplican al instalar y quedan guardados para las ' +
+    'Las memorias del perfil elegido, listas para retocar. ' +
+    'Se aplican al instalar y quedan guardadas para las ' +
     'actualizaciones.');
   PaginaAvanzada.Add('Memoria compartida (MB):', False);
   PaginaAvanzada.Add('Memoria por operación (MB):', False);
   PaginaAvanzada.Add('Memoria de mantenimiento (MB):', False);
-  PaginaAvanzada.Add('Conexiones máximas:', False);
-  ReflejarPerfilEnPagina;
-  CheckSsd := TNewCheckBox.Create(PaginaAvanzada);
-  CheckSsd.Parent := PaginaAvanzada.Surface;
+
+  // Segunda página avanzada, encadenada tras la de memorias:
+  // página personalizada con coordenadas manuales. El campo
+  // de conexiones va arriba, con su etiqueta, y la casilla
+  // del SSD muy por debajo, con margen de sobra entre ambos:
+  // ningún control toca a otro.
+  PaginaConexiones := CreateCustomPage(PaginaAvanzada.ID,
+    'Instalación avanzada',
+    'Conexiones y disco de la base de datos');
+  // Texto de explicación de la página, arriba del todo.
+  with TNewStaticText.Create(PaginaConexiones) do
+  begin
+    Parent := PaginaConexiones.Surface;
+    Left := 0;
+    Top := ScaleY(0);
+    Width := PaginaConexiones.SurfaceWidth;
+    Height := ScaleY(28);
+    AutoSize := False;
+    WordWrap := True;
+    Caption := 'Cuántas conexiones a la vez acepta la base ' +
+      'de datos y si el disco del equipo es un SSD.';
+  end;
+  // Etiqueta del campo de conexiones, debajo del texto.
+  with TNewStaticText.Create(PaginaConexiones) do
+  begin
+    Parent := PaginaConexiones.Surface;
+    Left := 0;
+    Top := ScaleY(44);
+    Width := PaginaConexiones.SurfaceWidth;
+    Height := ScaleY(17);
+    Caption := 'Conexiones máximas:';
+  end;
+  // El campo de conexiones en sí: corto, porque es un número.
+  EditConn := TNewEdit.Create(PaginaConexiones);
+  EditConn.Parent := PaginaConexiones.Surface;
+  EditConn.Left := 0;
+  EditConn.Top := ScaleY(66);
+  EditConn.Width := ScaleX(120);
+  // La casilla del SSD va MUY por debajo del campo (el campo
+  // termina hacia el 89 y la casilla empieza en el 118: casi
+  // 30 píxeles de aire entre ambos), así es imposible que se
+  // solapen sea cual sea la escala de la ventana.
+  CheckSsd := TNewCheckBox.Create(PaginaConexiones);
+  CheckSsd.Parent := PaginaConexiones.Surface;
   CheckSsd.Left := 0;
-  CheckSsd.Top := ScaleY(216);
-  CheckSsd.Width := PaginaAvanzada.SurfaceWidth;
+  CheckSsd.Top := ScaleY(118);
+  CheckSsd.Width := PaginaConexiones.SurfaceWidth;
   CheckSsd.Height := ScaleY(17);
   CheckSsd.Caption := 'El disco del equipo es SSD';
   CheckSsd.Checked := True;
+  // Con las dos páginas ya creadas, se vuelcan en ellas los
+  // valores del perfil detectado.
+  ReflejarPerfilEnPagina;
 end;
 
 function ShouldSkipPage(PageID: Integer): Boolean;
@@ -332,12 +396,15 @@ begin
   Result := False;
   if EsActualizacion and
      ((PageID = PaginaCuenta.ID) or (PageID = PaginaPuertos.ID) or
-      (PageID = PaginaPerfil.ID) or (PageID = PaginaAvanzada.ID)) then
+      (PageID = PaginaPerfil.ID) or (PageID = PaginaAvanzada.ID) or
+      (PageID = PaginaConexiones.ID)) then
     Result := True;
   // Las páginas avanzadas solo se enseñan si su casilla se
   // marcó en la página de puertos; sin marcar, se instala con
-  // el perfil detectado tal cual.
-  if ((PageID = PaginaPerfil.ID) or (PageID = PaginaAvanzada.ID)) and
+  // el perfil detectado tal cual. Son TRES páginas las que se
+  // saltan: el perfil, las memorias y la de conexiones/disco.
+  if ((PageID = PaginaPerfil.ID) or (PageID = PaginaAvanzada.ID) or
+      (PageID = PaginaConexiones.ID)) and
      not CheckAvanzada.Checked then
     Result := True;
 end;
@@ -426,6 +493,9 @@ begin
     ReflejarPerfilEnPagina;
   end;
 
+  // Al salir de la primera página avanzada se validan las
+  // tres memorias; las conexiones se validan al salir de la
+  // segunda, que es donde vive su campo ahora.
   if CurPageID = PaginaAvanzada.ID then
   begin
     if (StrToIntDef(Trim(PaginaAvanzada.Values[0]), -1) < 128) or
@@ -433,21 +503,34 @@ begin
        (StrToIntDef(Trim(PaginaAvanzada.Values[1]), -1) < 4) or
        (StrToIntDef(Trim(PaginaAvanzada.Values[1]), -1) > 1024) or
        (StrToIntDef(Trim(PaginaAvanzada.Values[2]), -1) < 64) or
-       (StrToIntDef(Trim(PaginaAvanzada.Values[2]), -1) > 4096) or
-       (StrToIntDef(Trim(PaginaAvanzada.Values[3]), -1) < 20) or
-       (StrToIntDef(Trim(PaginaAvanzada.Values[3]), -1) > 1000) then
+       (StrToIntDef(Trim(PaginaAvanzada.Values[2]), -1) > 4096) then
     begin
       MsgBox('Revisa los valores: memoria compartida entre 128 ' +
-        'y 8192 MB, memoria por operación entre 4 y 1024 MB, ' +
-        'mantenimiento entre 64 y 4096 MB y conexiones entre ' +
-        '20 y 1000.', mbError, MB_OK);
+        'y 8192 MB, memoria por operación entre 4 y 1024 MB y ' +
+        'mantenimiento entre 64 y 4096 MB.', mbError, MB_OK);
       Result := False;
       Exit;
     end;
     AjShared := StrToIntDef(Trim(PaginaAvanzada.Values[0]), AjShared);
     AjWork := StrToIntDef(Trim(PaginaAvanzada.Values[1]), AjWork);
     AjMaint := StrToIntDef(Trim(PaginaAvanzada.Values[2]), AjMaint);
-    AjConn := StrToIntDef(Trim(PaginaAvanzada.Values[3]), AjConn);
+  end;
+
+  // Al salir de la segunda página avanzada se validan las
+  // conexiones (el mismo rango de siempre: 20 a 1000) y el
+  // valor pasa a la variable que luego se escribe en el
+  // registro, igual que antes.
+  if CurPageID = PaginaConexiones.ID then
+  begin
+    if (StrToIntDef(Trim(EditConn.Text), -1) < 20) or
+       (StrToIntDef(Trim(EditConn.Text), -1) > 1000) then
+    begin
+      MsgBox('Revisa el valor: las conexiones máximas tienen ' +
+        'que estar entre 20 y 1000.', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+    AjConn := StrToIntDef(Trim(EditConn.Text), AjConn);
   end;
 end;
 
