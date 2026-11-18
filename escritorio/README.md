@@ -55,10 +55,49 @@ Publica un único exe autocontenido en `dist\USBMonitorEscritorio.exe`
 - **WebView2 Runtime** (el componente de Edge/Chromium): Windows 11 lo
   trae de fábrica. Si falta, la app lo dice con un aviso claro al arrancar.
 
+## Modo servidor dedicado
+
+La misma app, con los scripts de `dedicado/`, convierte una PC en un
+servidor del panel y nada más — el modo «totalitario»:
+
+- Una **cuenta local dedicada** (`PanelUSB`, sin privilegios de
+  administrador) con **inicio de sesión automático**.
+- A esa cuenta se le **sustituye el shell**: en vez de Explorer arranca
+  el **vigilante** de la app (`--vigia`), que abre la ventana en modo
+  dedicado (`--dedicado`: pantalla completa sin bordes, sin barra, sin
+  cierre por Alt+F4) y **la relanza si se cae** (deja constancia en
+  `vigia.log`, en la carpeta de datos de la app).
+- Los servicios (panel, PostgreSQL, Redis) siguen corriendo por debajo
+  como siempre.
+- **Tu cuenta de administrador no se toca**: conserva su Explorer
+  normal. Para mantener la PC: Ctrl+Alt+Supr → Cambiar de usuario →
+  tu cuenta de siempre. Esa es la salida del modo dedicado; la cuenta
+  del panel no tiene puerta de escape, a propósito.
+- Es **opcional por PC**: la app normal y el modo dedicado conviven;
+  el modo dedicado es para la PC que haga de servidor, no para tu PC
+  principal.
+
+Activar (PowerShell como administrador, pide la contraseña de la
+cuenta nueva dos veces; no queda escrita en ningún archivo):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\dedicado\Activar-ModoDedicado.ps1
+```
+
+Desactivar (restaura el inicio de sesión normal y el Explorer de la
+cuenta; `-EliminarCuenta` y `-QuitarPrograma` lo quitan todo):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\dedicado\Desactivar-ModoDedicado.ps1
+```
+
+Aviso honesto: el inicio automático guarda la contraseña de la cuenta
+en el registro de Windows de una forma que cualquier administrador
+local puede leer — es el mecanismo normal del modo kiosko y se acepta
+porque la cuenta no es administradora ni guarda datos. La alternativa
+con cifrado es la herramienta Autologon de Sysinternals.
+
 ## Lo que NO es
 
-- No es el **modo dedicado** (que la app tome toda la PC, con cuenta
-  propia y el shell de Windows sustituido): eso es una decisión aparte,
-  para otro paso.
 - No sustituye a la bandeja: la bandeja gobierna el servicio; esta
   ventana enseña el panel.

@@ -21,8 +21,14 @@
 //     de teclado, porque WebView2 se queda las teclas y el
 //     SDK de WinForms no las pasa a la ventana.
 //
-//  El modo dedicado (que la app tome toda la PC) NO va
-//  aquí: es una decisión aparte, para otro paso.
+//  Con el argumento --dedicado, la misma ventana es el
+//  modo servidor dedicado: nace a pantalla completa sin
+//  bordes ni barra, no se deja cerrar (Alt+F4 no basta) y
+//  la vigila el vigilante (Vigia.cs), que es lo que el
+//  shell sustituido de la cuenta dedicada arranca. La
+//  salida de esa cuenta es la de Windows de siempre:
+//  Ctrl+Alt+Supr y cambiar a la cuenta administradora,
+//  que conserva su Explorer normal.
 
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -53,6 +59,10 @@ internal sealed class VentanaPrincipal : Form
         Timeout = TimeSpan.FromSeconds(2),
     };
 
+    // ¿Modo dedicado? (argumento --dedicado): pantalla
+    // completa fija y sin cierre por las buenas.
+    private readonly bool _dedicado;
+
     // La URL del panel que la ventana está usando ahora.
     private string _urlPanel = string.Empty;
     // ¿Está la pantalla de espera puesta? Mientras lo está,
@@ -62,15 +72,29 @@ internal sealed class VentanaPrincipal : Form
     private FormBorderStyle _bordeAnterior;
     private bool _pantallaCompleta;
 
-    internal VentanaPrincipal()
+    internal VentanaPrincipal(bool dedicado = false)
     {
+        _dedicado = dedicado;
         Text = "USB Monitor — Panel";
         BackColor = ColorPapel;
         MinimumSize = new Size(900, 600);
         StartPosition = FormStartPosition.Manual;
-        RestaurarGeometria();
+        if (_dedicado)
+        {
+            // El modo dedicado nace ocupando toda la
+            // pantalla, sin bordes: no hay geometría que
+            // restaurar ni barra que enseñar.
+            FormBorderStyle = FormBorderStyle.None;
+            WindowState = FormWindowState.Maximized;
+            _pantallaCompleta = true;
+        }
+        else
+        {
+            RestaurarGeometria();
+        }
 
         ConstruirBarra();
+        _barra.Visible = !_dedicado;
         ConstruirEspera();
 
         // El WebView2 va debajo de la barra y por debajo de
@@ -87,8 +111,26 @@ internal sealed class VentanaPrincipal : Form
         _relojPuntos.Tick += (_, _) => AnimarPuntos();
 
         Shown += async (_, _) => await ArrancarAsync();
-        FormClosing += (_, _) => { QuitarGancho(); GuardarEstado(); };
-        InstalarGancho();
+        FormClosing += AlCerrar;
+        // En modo dedicado no hay F11 que valga: la pantalla
+        // completa es el estado único, así que ni gancho.
+        if (!_dedicado) InstalarGancho();
+    }
+
+    // El cierre de la ventana. En modo dedicado, un cierre
+    // pedido por el usuario (Alt+F4 y similares) se cancela:
+    // esa cuenta se abandona cambiando de usuario con
+    // Ctrl+Alt+Supr, no cerrando la app. Los cierres del
+    // sistema (apagado, cierre de sesión) sí pasan.
+    private void AlCerrar(object? sender, FormClosingEventArgs e)
+    {
+        if (_dedicado && e.CloseReason == CloseReason.UserClosing)
+        {
+            e.Cancel = true;
+            return;
+        }
+        QuitarGancho();
+        GuardarEstado();
     }
 
     // --------------------------------------------------------
@@ -435,6 +477,8 @@ internal sealed class VentanaPrincipal : Form
     // otra vez F11 (o el botón) y vuelve como estaba.
     private void AlternarPantallaCompleta()
     {
+        // En modo dedicado no hay alternancia que hacer.
+        if (_dedicado) return;
         if (!_pantallaCompleta)
         {
             _bordeAnterior = FormBorderStyle;
