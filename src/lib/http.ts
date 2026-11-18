@@ -58,10 +58,14 @@ export async function fetchJson<T>(
 /**
  * Lectura JSON de la API: el alias con nombre de lo que hacen
  * los servicios de `src/lib/api/` para no repetir `fetchJson`
- * con la URL a pelo en cada componente.
+ * con la URL a pelo en cada componente. Acepta la señal de
+ * cancelación de quien carga con AbortController.
  */
-export function lecturaJson<T>(url: string): Promise<T> {
-  return fetchJson<T>(url);
+export function lecturaJson<T>(
+  url: string,
+  opciones?: { signal?: AbortSignal },
+): Promise<T> {
+  return fetchJson<T>(url, { signal: opciones?.signal });
 }
 
 /**
@@ -93,6 +97,30 @@ export async function mutacionJson<T>(
         : {}),
     },
     ...(cuerpo !== undefined ? { body: JSON.stringify(cuerpo) } : {}),
+  });
+}
+
+/**
+ * Mutación con formulario (la subida del paquete del agente):
+ * mismo token CSRF que `mutacionJson`, pero el cuerpo viaja
+ * como FormData y el navegador pone su propio Content-Type
+ * con el separador de partes — por eso aquí no se fija.
+ */
+export async function mutacionFormulario<T>(
+  url: string,
+  formulario: FormData,
+): Promise<T> {
+  const csrf = getCsrfTokenFromDocument();
+  if (!csrf) {
+    throw new HttpError(
+      401,
+      "Sesión sin token de seguridad: inicia sesión nuevamente.",
+    );
+  }
+  return fetchJson<T>(url, {
+    method: "POST",
+    headers: { "x-csrf-token": csrf },
+    body: formulario,
   });
 }
 

@@ -21,6 +21,7 @@ import {
   Loader2
 } from "lucide-react";
 import { useTheme } from "next-themes";
+import { lecturaJson } from "@/lib/http";
 import type { LucideIcon } from "lucide-react";
 
 import {
@@ -260,9 +261,8 @@ export function CommandPalette({ role, abiertaAlMontar }: CommandPaletteProps) {
       const params = new URLSearchParams();
       params.set("q", debouncedSearch);
       params.set("categories", selectedCategories.join(","));
-      const res = await fetch(`/api/search?${params.toString()}`);
-      if (!res.ok) throw new Error("Search failed");
-      return res.json();
+      // La búsqueda global también lee por la puerta común.
+      return lecturaJson<any>(`/api/search?${params.toString()}`);
     },
     enabled: debouncedSearch.length >= 2,
     staleTime: 1000 * 60,

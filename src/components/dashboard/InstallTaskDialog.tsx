@@ -14,7 +14,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
-import { getCsrfTokenFromDocument } from "@/lib/utils";
+import { HttpError } from "@/lib/http";
+import * as destinosApi from "@/lib/api/destinos";
+import * as tareasApi from "@/lib/api/tareas";
 import { credencialesCompletas } from "@/lib/installTasks";
 import { ChevronDown, FolderOpen, Lock, Rocket, Save, Trash2, User, X } from "lucide-react";
 
@@ -75,49 +77,30 @@ export function InstallTaskDialog({
     if (!open) return;
     setLista(destinos);
     setAvisoDestinos(null);
-    void fetch("/api/destinos-guardados")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data?.ok) setGuardados(data.destinos ?? []);
-      })
-      .catch(() => null);
+    void destinosApi.listar().then(setGuardados);
     // Solo al abrir: la lista que trae el llamante manda.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open ]);
 
   const guardarDestinos = async () => {
-    const csrfToken = getCsrfTokenFromDocument();
-    if (!csrfToken) {
-      setAvisoDestinos("Sesión sin token de seguridad.");
-      return;
-    }
     try {
-      const res = await fetch("/api/destinos-guardados", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-csrf-token": csrfToken,
-        },
-        credentials: "include",
-        body: JSON.stringify({
-          destinos: lista.map((d) => ({
-            nombre: d.pcName,
-            ip: d.ip,
-            usuario: (ajustes[claveDeDestino(d)]?.usuario ?? "").trim(),
-          })),
-        }),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok || !data?.ok) {
-        setAvisoDestinos(data?.error || "No se pudieron guardar.");
-        return;
-      }
-      setGuardados(data.destinos ?? []);
+      const guardadosAhora = await destinosApi.guardar(
+        lista.map((d) => ({
+          nombre: d.pcName,
+          ip: d.ip,
+          usuario: (ajustes[claveDeDestino(d)]?.usuario ?? "").trim(),
+        })),
+      );
+      setGuardados(guardadosAhora);
       setAvisoDestinos(
         `Guardados ${lista.length} destino(s): nombre, IP y usuario. Las contraseñas no se guardan nunca.`,
       );
-    } catch {
-      setAvisoDestinos("No se pudo contactar con el panel.");
+    } catch (error) {
+      setAvisoDestinos(
+        error instanceof HttpError
+          ? error.message || "No se pudieron guardar."
+          : "No se pudo contactar con el panel.",
+      );
     }
   };
 
@@ -130,13 +113,7 @@ export function InstallTaskDialog({
   };
 
   const quitarGuardado = async (id: string) => {
-    const csrfToken = getCsrfTokenFromDocument();
-    if (!csrfToken) return;
-    await fetch(`/api/destinos-guardados/${id}`, {
-      method: "DELETE",
-      headers: { "x-csrf-token": csrfToken },
-      credentials: "include",
-    }).catch(() => null);
+    await destinosApi.eliminar(id);
     setGuardados((prev) => prev.filter((g) => g.id !== id));
   };
   // Cuenta de reserva (la «general» de siempre), opcional.
@@ -193,11 +170,6 @@ export function InstallTaskDialog({
 
   const crear = async () => {
     setError(null);
-    const csrfToken = getCsrfTokenFromDocument();
-    if (!csrfToken) {
-      setError("Sesión sin token de seguridad. Inicia sesión nuevamente.");
-      return;
-    }
     // Viajan los destinos con contraseña propia escrita: es
     // lo que el servidor guarda como ajuste (el usuario
     // propio acompaña si se escribió; si no, manda el de la
@@ -218,33 +190,24 @@ export function InstallTaskDialog({
       .filter(Boolean);
     try {
       setCreando(true);
-      const res = await fetch("/api/install-tasks", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-csrf-token": csrfToken,
-        },
-        credentials: "include",
-        body: JSON.stringify({
-          destinos: lista,
-          usuario: usuario.trim(),
-          clave,
-          ...(credenciales.length > 0 ? { credenciales } : {}),
-          omitirSiInstalado: omitir,
-          intentosMaximos: intentos,
-        }),
+      await tareasApi.crear({
+        destinos: lista,
+        usuario: usuario.trim(),
+        clave,
+        ...(credenciales.length > 0 ? { credenciales } : {}),
+        omitirSiInstalado: omitir,
+        intentosMaximos: intentos,
       });
-      const datos = await res.json().catch(() => null);
-      if (!res.ok || !datos?.ok) {
-        setError(datos?.error || "No se pudo crear la tarea.");
-        return;
-      }
       setClave("");
       setAjustes({});
       onOpenChange(false);
       onCreada?.();
-    } catch {
-      setError("No se pudo contactar con el panel. Inténtalo de nuevo.");
+    } catch (error) {
+      setError(
+        error instanceof HttpError
+          ? error.message || "No se pudo crear la tarea."
+          : "No se pudo contactar con el panel. Inténtalo de nuevo.",
+      );
     } finally {
       setCreando(false);
     }

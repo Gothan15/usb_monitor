@@ -13,7 +13,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
-import { getCsrfTokenFromDocument } from "@/lib/utils";
+import { HttpError } from "@/lib/http";
+import * as tareasApi from "@/lib/api/tareas";
+import type { OrdenVista, TareaVista } from "@/lib/api/tareas";
 import { useLiveData } from "@/components/providers/LiveDataProvider";
 import {
   EmpujeChecklist,
@@ -35,46 +37,6 @@ import {
   RotateCcw,
   Trash2,
 } from "lucide-react";
-
-interface DestinoTareaVista {
-  id: string;
-  pcName: string;
-  ipAddress: string;
-  method: string | null;
-  status: string;
-  message: string | null;
-  attempts: number;
-  checks: RequisitoEmpujeVista[] | null;
-  startedAt: string | null;
-  finishedAt: string | null;
-}
-
-interface TareaVista {
-  id: string;
-  status: string;
-  username: string;
-  omitIfInstalled: boolean;
-  maxAttempts: number;
-  createdBy: string | null;
-  createdAt: string;
-  finishedAt: string | null;
-  targets: DestinoTareaVista[];
-}
-
-/** Una orden de actualización tal como la sirve la lista global. */
-interface OrdenVista {
-  id: string;
-  pcName: string;
-  tipo: string;
-  estado: string;
-  etiquetaEstado: string;
-  viva: boolean;
-  detalle: string | null;
-  versionObjetivo: string | null;
-  intentos: number;
-  creadaEn: string;
-  terminadaEn: string | null;
-}
 
 const TONO_ESTADO_ORDEN: Record<string, string> = {
   HECHA: "text-emerald-600",
@@ -150,33 +112,20 @@ export function InstallTasksTab() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/install-tasks", {
-        credentials: "include",
-      });
-      const datos = await res.json().catch(() => null);
-      if (!res.ok || !datos?.ok) {
-        setError(datos?.error || "No se pudieron cargar las tareas.");
-        return;
-      }
       setError(null);
-      setTareas(datos.tareas as TareaVista[]);
-    } catch {
-      setError("No se pudo contactar con el panel.");
+      setTareas(await tareasApi.listar());
+    } catch (error) {
+      setError(
+        error instanceof HttpError
+          ? error.message || "No se pudieron cargar las tareas."
+          : "No se pudo contactar con el panel.",
+      );
     }
-    // Las órdenes de actualización van por su propia ruta y su
-    // propio fallo no debe tapar la lista de tareas: si no
-    // cargan, la sección simplemente no se actualiza esta vez.
-    try {
-      const res = await fetch("/api/agent/comandos", {
-        credentials: "include",
-      });
-      const datos = await res.json().catch(() => null);
-      if (res.ok && datos?.ok) {
-        setOrdenes(datos.comandos as OrdenVista[]);
-      }
-    } catch {
-      // Sin órdenes esta vez; la siguiente recarga lo reintenta.
-    }
+    // Las órdenes del agente van por su propio servicio y su
+    // fallo no debe tapar la lista de tareas: si no cargan, la
+    // sección simplemente no se actualiza esta vez.
+    const ordenes = await tareasApi.listarOrdenes();
+    if (ordenes) setOrdenes(ordenes);
   }, []);
 
   // Cancelar una orden viva (actualización o desinstalación):
@@ -191,31 +140,16 @@ export function InstallTasksTab() {
       // el panel responde «No autorizado» aunque la sesión sea
       // la del administrador (así nació este botón, y por eso
       // detener una orden fallaba siempre con ese mensaje).
-      const csrfToken = getCsrfTokenFromDocument();
-      if (!csrfToken) {
-        setError(
-          "Sesión sin token de seguridad. Inicia sesión nuevamente.",
-        );
-        return;
-      }
       try {
         setCancelandoId(orden.id);
-        const res = await fetch(
-          `/api/agent/comandos/${orden.id}/cancelar`,
-          {
-            method: "POST",
-            credentials: "include",
-            headers: { "x-csrf-token": csrfToken },
-          },
-        );
-        const datos = await res.json().catch(() => null);
-        if (!res.ok || !datos?.ok) {
-          setError(datos?.error ?? "No se pudo cancelar la orden.");
-          return;
-        }
+        await tareasApi.cancelarOrden(orden.id);
         await load();
-      } catch {
-        setError("No se pudo contactar con el panel.");
+      } catch (error) {
+        setError(
+          error instanceof HttpError
+            ? error.message || "No se pudo cancelar la orden."
+            : "No se pudo contactar con el panel.",
+        );
       } finally {
         setCancelandoId(null);
       }
@@ -266,44 +200,25 @@ export function InstallTasksTab() {
   };
 
   const borrar = async (objetivo: string) => {
-    const csrfToken = getCsrfTokenFromDocument();
-    if (!csrfToken) {
-      setAvisoBorrado(
-        "Sesión sin token de seguridad. Inicia sesión nuevamente.",
-      );
-      return;
-    }
     try {
       setBorrando(true);
       setAvisoBorrado(null);
       const esLimpieza = objetivo === "todas";
-      const res = await fetch(
-        esLimpieza ? "/api/install-tasks" : `/api/install-tasks/${objetivo}`,
-        {
-          method: "DELETE",
-          headers: { "x-csrf-token": csrfToken },
-          credentials: "include",
-        },
-      );
-      const datos = await res.json().catch(() => null);
-      if (!res.ok || !datos?.ok) {
-        setAvisoBorrado(datos?.error || "No se pudo borrar la tarea.");
-        return;
+      if (esLimpieza) {
+        await tareasApi.limpiarTerminadas();
+      } else {
+        await tareasApi.eliminar(objetivo);
       }
       if (esLimpieza) {
         // La limpieza alcanza también a las órdenes del agente
-        // ya terminadas (actualizaciones y desinstalaciones):
-        // mismo botón y misma confirmación.
-        const resOrdenes = await fetch("/api/agent/comandos", {
-          method: "DELETE",
-          headers: { "x-csrf-token": csrfToken },
-          credentials: "include",
-        });
-        const datosOrdenes = await resOrdenes.json().catch(() => null);
-        if (!resOrdenes.ok || !datosOrdenes?.ok) {
+        // ya terminadas: mismo botón y misma confirmación.
+        try {
+          await tareasApi.limpiarOrdenesTerminadas();
+        } catch (errorOrdenes) {
           setAvisoBorrado(
-            datosOrdenes?.error ||
-              "Las tareas se limpiaron, pero las órdenes terminadas no se pudieron borrar.",
+            errorOrdenes instanceof HttpError && errorOrdenes.message
+              ? errorOrdenes.message
+              : "Las tareas se limpiaron, pero las órdenes terminadas no se pudieron borrar.",
           );
           void load();
           return;
@@ -311,8 +226,12 @@ export function InstallTasksTab() {
       }
       setBorradoObjetivo(null);
       void load();
-    } catch {
-      setAvisoBorrado("No se pudo contactar con el panel.");
+    } catch (error) {
+      setAvisoBorrado(
+        error instanceof HttpError
+          ? error.message || "No se pudo borrar la tarea."
+          : "No se pudo contactar con el panel.",
+      );
     } finally {
       setBorrando(false);
     }
@@ -332,11 +251,6 @@ export function InstallTasksTab() {
     );
 
   const reintentar = async (tarea: TareaVista) => {
-    const csrfToken = getCsrfTokenFromDocument();
-    if (!csrfToken) {
-      setAvisoReintento("Sesión sin token de seguridad. Inicia sesión nuevamente.");
-      return;
-    }
     // Las credenciales propias escritas para destinos que se
     // van a reintentar (los demás van con la de reserva).
     const credenciales = tarea.targets
@@ -357,29 +271,20 @@ export function InstallTasksTab() {
     try {
       setEnviando(true);
       setAvisoReintento(null);
-      const res = await fetch(`/api/install-tasks/${tarea.id}/reintentar`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-csrf-token": csrfToken,
-        },
-        credentials: "include",
-        body: JSON.stringify({
-          clave: claveReintento,
-          ...(credenciales.length > 0 ? { credenciales } : {}),
-        }),
+      await tareasApi.reintentar(tarea.id, {
+        clave: claveReintento,
+        ...(credenciales.length > 0 ? { credenciales } : {}),
       });
-      const datos = await res.json().catch(() => null);
-      if (!res.ok || !datos?.ok) {
-        setAvisoReintento(datos?.error || "No se pudo reintentar la tarea.");
-        return;
-      }
       setClaveReintento("");
       setAjustesReintento({});
       setReintentando(null);
       void load();
-    } catch {
-      setAvisoReintento("No se pudo contactar con el panel.");
+    } catch (error) {
+      setAvisoReintento(
+        error instanceof HttpError
+          ? error.message || "No se pudo reintentar la tarea."
+          : "No se pudo contactar con el panel.",
+      );
     } finally {
       setEnviando(false);
     }
@@ -392,30 +297,18 @@ export function InstallTasksTab() {
   // señal, su código de enrolamiento queda anulado (no se
   // enrolará solo tras cancelar): el diálogo lo avisa antes.
   const cancelarTarea = async (tareaId: string) => {
-    const csrfToken = getCsrfTokenFromDocument();
-    if (!csrfToken) {
-      setAvisoCancelacion(
-        "Sesión sin token de seguridad. Inicia sesión nuevamente.",
-      );
-      return;
-    }
     try {
       setCancelandoId(tareaId);
       setAvisoCancelacion(null);
-      const res = await fetch(`/api/install-tasks/${tareaId}/cancelar`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "x-csrf-token": csrfToken },
-      });
-      const datos = await res.json().catch(() => null);
-      if (!res.ok || !datos?.ok) {
-        setAvisoCancelacion(datos?.error || "No se pudo detener la tarea.");
-        return;
-      }
+      await tareasApi.cancelar(tareaId);
       setCancelacionObjetivo(null);
       void load();
-    } catch {
-      setAvisoCancelacion("No se pudo contactar con el panel.");
+    } catch (error) {
+      setAvisoCancelacion(
+        error instanceof HttpError
+          ? error.message || "No se pudo detener la tarea."
+          : "No se pudo contactar con el panel.",
+      );
     } finally {
       setCancelandoId(null);
     }

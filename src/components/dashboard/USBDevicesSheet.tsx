@@ -14,7 +14,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
-import { cn, getCsrfTokenFromDocument, normalizeComputerName } from "@/lib/utils";
+import { cn, normalizeComputerName } from "@/lib/utils";
+import * as equiposApi from "@/lib/api/equipos";
+import * as listaBlancaApi from "@/lib/api/listaBlanca";
 import { useToast } from "@/hooks/use-toast";
 import { SerialCopiable } from "./SerialCopiable";
 import { useLiveData } from "@/components/providers/LiveDataProvider";
@@ -150,20 +152,12 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
           if (isHistory) setErrorHistory(null);
           else setErrorConnected(null);
         }
-        const res = await fetch(
-          `/api/computers/${encodeURIComponent(
-            computer!.id
-          )}/usb-devices?type=${type}&historyDays=${historyRange}`,
-          {
-            cache: "no-store",
-            credentials: "include",
-            signal,
-          }
+        const data = await equiposApi.dispositivosUsb(
+          computer!.id,
+          type,
+          historyRange,
+          signal,
         );
-        const data = await res.json().catch(() => null);
-        if (!res.ok || !data?.ok) {
-          throw new Error(data?.error || `Error HTTP ${res.status}`);
-        }
         if (isHistory) setHistory(data.items as DisconnectedUSBDevice[]);
         else setConnected(data.items as ConnectedUSBDevice[]);
       } catch (err: any) {
@@ -192,33 +186,12 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
       tipo: "connected" | "history",
     ) => {
       if (agregandoSerial) return;
-      const csrfToken = getCsrfTokenFromDocument();
-      if (!csrfToken) {
-        toast({
-          title: "Sesión sin token de seguridad",
-          description: "Vuelve a iniciar sesión e inténtalo otra vez.",
-          variant: "destructive",
-        });
-        return;
-      }
       setAgregandoSerial(d.serialNumber);
       try {
-        const res = await fetch("/api/whitelist", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-csrf-token": csrfToken,
-          },
-          credentials: "include",
-          body: JSON.stringify({
-            serialNumber: d.serialNumber,
-            label: d.volumeName || d.model || undefined,
-          }),
+        await listaBlancaApi.agregar({
+          serialNumber: d.serialNumber,
+          label: d.volumeName || d.model || undefined,
         });
-        const data = await res.json().catch(() => null);
-        if (!res.ok || !data?.ok) {
-          throw new Error(data?.error || `Error HTTP ${res.status}`);
-        }
         toast({
           title: "Agregado a la lista blanca",
           description: `${d.volumeName || d.serialNumber} ya es un dispositivo conocido.`,

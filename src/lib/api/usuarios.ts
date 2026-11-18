@@ -37,3 +37,58 @@ export function asignarEquipo(usuarioId: string, computerId: string) {
     computerId,
   });
 }
+
+/** Una página de usuarios del directorio, con su total. */
+export async function listar(opciones: {
+  page: number;
+  pageSize: number;
+  q?: string;
+  signal?: AbortSignal;
+}): Promise<{ items: unknown[]; total: number }> {
+  const params = new URLSearchParams({
+    page: String(opciones.page),
+    pageSize: String(opciones.pageSize),
+  });
+  if (opciones.q) params.set("q", opciones.q);
+  const datos = await lecturaJson<{
+    ok: boolean;
+    items?: unknown[];
+    total?: number;
+  }>(`/api/users?${params.toString()}`, { signal: opciones.signal });
+  return {
+    items: datos.items ?? [],
+    total: datos.total ?? datos.items?.length ?? 0,
+  };
+}
+
+/** Crea un usuario con los datos del formulario. */
+export function crear(payload: Record<string, unknown>) {
+  return mutacionJson<{ ok: boolean; item?: { username: string } }>(
+    "/api/users",
+    "POST",
+    payload,
+  );
+}
+
+/** Guarda los cambios de un usuario. */
+export function actualizar(id: string, payload: Record<string, unknown>) {
+  return mutacionJson<{ ok: boolean; item?: { username: string } }>(
+    `/api/users/${id}`,
+    "PATCH",
+    payload,
+  );
+}
+
+/** Elimina un usuario del directorio. */
+export function eliminar(id: string) {
+  return mutacionJson<{ ok: boolean }>(`/api/users/${id}`, "DELETE");
+}
+
+/** Elimina varios usuarios; el propio se omite en el servidor. */
+export function eliminarVarios(ids: string[]) {
+  return mutacionJson<{ ok: boolean; deleted: number; skippedSelf?: boolean }>(
+    "/api/users",
+    "DELETE",
+    { ids },
+  );
+}

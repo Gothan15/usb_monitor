@@ -21,11 +21,9 @@ import {
 } from "lucide-react";
 import { getCurrentIsoString } from "@/lib/time";
 import { formatDateTime } from "@/components/dashboard/types";
-import {
-  cn,
-  getCsrfTokenFromDocument,
-  normalizeComputerName,
-} from "@/lib/utils";
+import { cn, normalizeComputerName } from "@/lib/utils";
+import * as equiposApi from "@/lib/api/equipos";
+import * as redApi from "@/lib/api/red";
 import { Spinner } from "@/components/ui/spinner";
 import {
   InstallTaskDialog,
@@ -146,9 +144,7 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
 
   const cargarVersiones = useCallback(async () => {
     try {
-      const res = await fetch("/api/computers", { credentials: "include" });
-      const datos = await res.json().catch(() => null);
-      if (!res.ok || !Array.isArray(datos)) return;
+      const datos = await equiposApi.listarCrudo();
       const mapa = new Map<string, VersionConocida>();
       for (const c of datos) {
         const entrada: VersionConocida = {
@@ -227,16 +223,12 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/network-interfaces", {
-          credentials: "include",
-        });
-        if (!res.ok) throw new Error();
-        const data = await res.json();
-        if (!cancelled && Array.isArray(data?.interfaces)) {
-          setInterfaces(data.interfaces);
+        const lista = await redApi.interfaces();
+        if (!cancelled && lista.length > 0) {
+          setInterfaces(lista);
           // Auto-select if only one interface
-          if (data.interfaces.length === 1) {
-            setSelectedCidr(data.interfaces[0].cidr);
+          if (lista.length === 1) {
+            setSelectedCidr(lista[0].cidr);
           }
         }
       } catch {
@@ -255,31 +247,11 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
       setScanning(true);
       setScanError(null);
       setScanNotice(null);
-      const csrfToken = getCsrfTokenFromDocument();
-      if (!csrfToken) {
-        throw new Error(
-          "Sesión sin token de seguridad. Inicia sesión nuevamente antes de escanear.",
-        );
-      }
       const payload: Record<string, unknown> = { force: true };
       if (selectedCidr && selectedCidr !== "auto") {
         payload.cidr = selectedCidr;
       }
-      const res = await fetch("/api/network-scan", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-csrf-token": csrfToken,
-        },
-        credentials: "include",
-        body: JSON.stringify(payload),
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const message = data?.error || `Error HTTP ${res.status}`;
-        throw new Error(message);
-      }
+      const data = await redApi.escanear(payload);
 
       const normalized = Array.isArray(data?.results)
         ? dedupeByIdentifier(

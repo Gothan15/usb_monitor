@@ -26,6 +26,57 @@ export interface CodigoGenerado {
   computerId: string;
 }
 
+/**
+ * La lista de equipos en bruto (la respuesta de la ruta tal
+ * cual). Lista vacía si la lectura falla: quien la pide para
+ * cruzar datos (el Escáner) simplemente se queda sin el cruce.
+ */
+export async function listarCrudo(): Promise<Record<string, unknown>[]> {
+  try {
+    const datos = await lecturaJson<Record<string, unknown>[]>(
+      "/api/computers",
+    );
+    return Array.isArray(datos) ? datos : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Elimina un equipo del inventario. */
+export function eliminar(id: string) {
+  return mutacionJson<{ ok: boolean; item?: { name: string } }>(
+    `/api/computers/${id}`,
+    "DELETE",
+  );
+}
+
+/** Elimina varios equipos del inventario. */
+export function eliminarVarios(ids: string[]) {
+  return mutacionJson<{ ok: boolean; deleted: number }>(
+    "/api/computers",
+    "DELETE",
+    { ids },
+  );
+}
+
+/**
+ * Los dispositivos USB de un equipo (conectados o historial,
+ * según el tipo). Lanza si el panel no responde bien: la
+ * ficha distingue el error y su cancelación (AbortError).
+ */
+export async function dispositivosUsb(
+  id: string,
+  tipo: string,
+  diasHistorial: number,
+  signal?: AbortSignal,
+): Promise<{ items: unknown[] }> {
+  const datos = await lecturaJson<{ ok: boolean; items: unknown[] }>(
+    `/api/computers/${encodeURIComponent(id)}/usb-devices?type=${tipo}&historyDays=${diasHistorial}`,
+    { signal },
+  );
+  return { items: datos.items ?? [] };
+}
+
 /** Crea la orden «actualizar» para el agente de un equipo. */
 export function crearOrdenActualizacion(pcName: string) {
   return mutacionJson<{ ok: boolean }>("/api/agent/comandos", "POST", {

@@ -8,8 +8,10 @@ vi.mock("@/lib/utils", () => ({
 
 let tokenActual = "";
 
-import { HttpError, mutacionJson } from "@/lib/http";
+import { HttpError, mutacionFormulario, mutacionJson } from "@/lib/http";
+import * as ajustesApi from "@/lib/api/ajustes";
 import * as equiposApi from "@/lib/api/equipos";
+import * as tareasApi from "@/lib/api/tareas";
 
 // Doble de fetch que anota la última petición y responde lo
 // que la prueba haya preparado en `respuestaSiguiente`.
@@ -106,5 +108,32 @@ describe("servicio de equipos", () => {
   it("estadoCredencial devuelve null si el servidor falla", async () => {
     respuestaSiguiente = respuestaJson({ ok: false, error: "No" }, 500);
     await expect(equiposApi.estadoCredencial("PC-1")).resolves.toBeNull();
+  });
+});
+
+describe("tanda 2 de servicios", () => {
+  it("la subida con formulario lleva el token y no fija Content-Type", async () => {
+    await mutacionFormulario("/api/admin/agent-package", new FormData());
+    const headers = ultimaPeticion!.init.headers as Record<string, string>;
+    expect(headers["x-csrf-token"]).toBe("token-de-prueba");
+    expect(headers["Content-Type"]).toBeUndefined();
+    expect(ultimaPeticion!.init.body).toBeInstanceOf(FormData);
+  });
+
+  it("las órdenes de Tareas devuelven null si el servidor falla", async () => {
+    respuestaSiguiente = respuestaJson({ ok: false, error: "No" }, 500);
+    await expect(tareasApi.listarOrdenes()).resolves.toBeNull();
+  });
+
+  it("el estado del paquete se compone y rellena lo que falte", async () => {
+    respuestaSiguiente = respuestaJson({ ok: true, version: "2.1.3" });
+    await expect(ajustesApi.estadoPaquete()).resolves.toEqual({
+      version: "2.1.3",
+      sha256: null,
+      agente: { presente: false, tamano: 0 },
+      empujador: { presente: false, tamano: 0 },
+      versionFlotaMaxima: null,
+      desfasado: false,
+    });
   });
 });
