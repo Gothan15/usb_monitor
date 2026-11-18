@@ -3,8 +3,9 @@ import { Suspense, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { motion } from "framer-motion";
-import { Eye, EyeOff, Usb, CheckCircle2, HardDrive } from "lucide-react";
+import { Eye, EyeOff, CheckCircle2, HardDrive } from "lucide-react";
 import { useSearchParams } from "next/navigation";
+import Image from "next/image";
 import { Spinner } from "@/components/ui/spinner";
 
 /**
@@ -62,28 +63,38 @@ function DesbloquearForm() {
   };
 
   return (
-    <div className="aurora-scene relative flex min-h-screen items-center justify-center bg-background p-4">
-      <div
-        aria-hidden
-        className="dot-grid absolute inset-x-0 top-0 h-56 text-foreground opacity-40"
-      />
+    <div className="relative flex min-h-screen items-center justify-center bg-[#F5F3EF] p-4 text-[#22252A] dark:bg-[#131211] dark:text-[#EFEDE6]">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="animate-view-in relative w-full max-w-sm"
+        className="relative w-full max-w-sm rounded-md border border-[#D8D3C8] border-t-2 border-t-[#C09A3B] bg-[#FCFCFA] p-8 shadow-xl dark:border-[#3A372F] dark:border-t-[#C09A3B] dark:bg-[#1E1D1B]"
       >
         <div className="mb-8 flex items-center gap-3">
-          <div className="bg-aurora flex size-11 items-center justify-center rounded-sm text-[#E9EDF3] shadow-sm">
-            <Usb className="size-5" />
-          </div>
-          <span className="font-display text-base font-bold tracking-tight">
+          <Image
+            src="/brujula-claro.png"
+            alt="USB Monitor"
+            width={160}
+            height={160}
+            quality={100}
+            className="size-10 shrink-0 rounded-sm dark:hidden"
+          />
+          <Image
+            src="/brujula-oscura.png"
+            alt=""
+            aria-hidden
+            width={160}
+            height={160}
+            quality={100}
+            className="hidden size-10 shrink-0 rounded-sm dark:block"
+          />
+          <span className="font-display text-lg font-bold tracking-tight">
             USB Monitor
           </span>
         </div>
 
         {done ? (
-          <div className="frame-double bg-card p-8 text-center">
+          <div className="text-center">
             <CheckCircle2 className="mx-auto size-10 text-success" />
             <h1 className="font-display mt-3 text-xl font-bold tracking-tight">
               Dispositivo desbloqueado
@@ -95,7 +106,7 @@ function DesbloquearForm() {
           </div>
         ) : (
           <>
-            <p className="smallcaps text-[var(--acero)]">
+            <p className="smallcaps text-[#A8822F] dark:text-[#C9A44A]">
               Dispositivo bloqueado
             </p>
             <h1 className="font-display mt-2 text-[1.7rem] font-bold tracking-tight">

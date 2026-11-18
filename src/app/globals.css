@@ -152,10 +152,6 @@
   --glass-shadow-elevated:
     0 2px 6px rgba(74, 58, 28, 0.07), 0 22px 48px -16px rgba(74, 58, 28, 0.22);
 
-  /* Ambiente cálido (sustituye a la escena aurora) */
-  --aurora-1: oklch(0.8 0.07 254 / 0.35);
-  --aurora-2: oklch(0.72 0.05 150 / 0.22);
-  --aurora-3: oklch(0.78 0.05 40 / 0.2);
 
   /* Motion tokens */
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
@@ -238,10 +234,6 @@
   --glass-shadow-elevated:
     0 2px 8px rgba(0, 0, 0, 0.4), 0 24px 52px -16px rgba(0, 0, 0, 0.6);
 
-  /* Ambiente cálido */
-  --aurora-1: oklch(0.55 0.09 84 / 0.22);
-  --aurora-2: oklch(0.45 0.07 60 / 0.16);
-  --aurora-3: oklch(0.45 0.06 35 / 0.15);
 }
 
 /* ─── BASE ─────────────────────────────────────────────────── */
@@ -290,38 +282,6 @@
     box-shadow: var(--glass-shadow-elevated);
   }
 
-  /* — Ambiente cálido: dos brillos muy tenues, casi luz de vela — */
-  .aurora-scene {
-    position: relative;
-    isolation: isolate;
-    overflow: hidden;
-  }
-  .aurora-scene::before,
-  .aurora-scene::after {
-    content: "";
-    position: absolute;
-    border-radius: 9999px;
-    filter: blur(80px);
-    pointer-events: none;
-    z-index: -1;
-  }
-  .aurora-scene::before {
-    width: 46vmax;
-    height: 46vmax;
-    top: -20vmax;
-    right: -12vmax;
-    background: radial-gradient(circle at 40% 40%, var(--aurora-1), transparent 65%);
-    animation: aurora-drift 34s ease-in-out infinite alternate;
-  }
-  .aurora-scene::after {
-    width: 36vmax;
-    height: 36vmax;
-    bottom: -16vmax;
-    left: -8vmax;
-    background: radial-gradient(circle at 50% 50%, var(--aurora-2), transparent 65%);
-    animation: aurora-drift 40s ease-in-out infinite alternate-reverse;
-  }
-
   /* — Papel de carta: rejilla casi invisible — */
   .dot-grid,
   .dot-grid-dense {
@@ -334,13 +294,6 @@
   }
 
   /* — Acentos de la casa — */
-  .text-aurora {
-    color: var(--acero);
-    font-style: italic;
-  }
-  .bg-aurora {
-    background: linear-gradient(165deg, oklch(0.42 0.085 262), oklch(0.25 0.06 264));
-  }
   .rule-acero {
     height: 2px;
     background: linear-gradient(to right, var(--acero), color-mix(in oklch, var(--acero) 25%, transparent));
@@ -588,15 +541,6 @@
   to {
     opacity: 1;
     transform: translateY(0);
-  }
-}
-
-@keyframes aurora-drift {
-  from {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  to {
-    transform: translate3d(-3%, 4%, 0) scale(1.08);
   }
 }
 
