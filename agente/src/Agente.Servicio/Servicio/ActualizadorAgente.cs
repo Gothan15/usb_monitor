@@ -1,6 +1,6 @@
 // -*- coding: utf-8 -*-
-// Ejecutor de las órdenes del canal del agente («actualizar» y
-// «desinstalar»), a propósito SIMPLE, como la instalación pero
+// Ejecutor de las órdenes de actualización del canal del
+// agente, a propósito SIMPLE, como la instalación pero
 // al revés: el servicio recibe la orden, lo anota todo en
 // agente.log y lanza una COPIA temporal de sí mismo con el modo
 // que hace la mano de obra (la copia puede parar el servicio
@@ -18,12 +18,6 @@
 // versión en marcha ya es la objetivo, se informa HECHA; si no,
 // se reintenta hasta el tope de intentos.
 //
-// Desinstalar: informe EN_CURSO → la copia se prepara →
-// informe HECHA (el panel borra la fila del equipo al
-// recibirla) → la copia («desinstalar-orden») espera un
-// temporizador de cortesía para que ese aviso llegue y se
-// asiente, y después para el servicio, lo desregistra y borra
-// la carpeta de instalación.
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -35,18 +29,12 @@ using USBMonitor.Agente.Core;
 
 namespace USBMonitor.Agente.Servicio;
 
-/// <summary>Procesa las órdenes («actualizar» y «desinstalar») que trae la configuración.</summary>
+/// <summary>Procesa las órdenes «actualizar» que trae la configuración.</summary>
 public sealed class ActualizadorAgente
 {
     /// <summary>El mismo tope que impone el panel al informar.</summary>
     public const int MaxIntentos = 3;
 
-    // Segundos que la copia desinstaladora espera antes de tocar
-    // nada: el margen para que el informe HECHA —que el servicio
-    // manda ANTES de lanzar la copia— llegue al panel y quede
-    // asentado, y para que el servicio vuelque su propio
-    // registro antes de que lo paren.
-    private const int SegundosEsperaDesinstalacion = 30;
 
     private static readonly Registrador Log = Registro.Obtener("servicio");
 
@@ -123,12 +111,6 @@ public sealed class ActualizadorAgente
             return;
         }
 
-        if (string.Equals(orden.Tipo, "desinstalar", StringComparison.OrdinalIgnoreCase))
-        {
-            await EjecutarDesinstalacionAsync(orden).ConfigureAwait(false);
-            return;
-        }
-
         if (!string.Equals(orden.Tipo, "actualizar", StringComparison.OrdinalIgnoreCase))
         {
             if (!string.Equals(orden.Estado, "EN_CURSO", StringComparison.OrdinalIgnoreCase))
@@ -182,118 +164,6 @@ public sealed class ActualizadorAgente
         }
 
         await EjecutarActualizacionAsync(orden).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// La orden «desinstalar»: el espejo de la instalación
-    /// remota. Allí el empujador copiaba el exe y un servicio
-    /// temporal lo ejecutaba en modo «instalar-remoto»; aquí el
-    /// servicio prepara su propia copia en modo
-    /// «desinstalar-orden», informa HECHA al panel —que borra
-    /// la fila del equipo al recibirla— y la copia, tras un
-    /// temporizador de cortesía, para el servicio, lo
-    /// desregistra y borra la carpeta de instalación. El
-    /// informe sale del servicio, con su cliente y su
-    /// credencial de siempre: la copia no habla con el panel,
-    /// solo hace la mano de obra y la deja escrita.
-    /// </summary>
-    private async Task EjecutarDesinstalacionAsync(OrdenAgente orden)
-    {
-        Log.Info($"Orden de desinstalación {orden.Id}: empieza el proceso.");
-
-        // Si una copia desinstaladora ya está en marcha, ella
-        // manda: lanzar otra pisaría su trabajo a medias.
-        if (HayCopiaDesinstaladoraEnMarcha())
-        {
-            Log.Info("Ya hay una copia desinstaladora trabajando: no se lanza otra.");
-            return;
-        }
-
-        if (!await InformarAsync(orden, "EN_CURSO").ConfigureAwait(false)) return;
-        if (await OrdenCanceladaAsync(orden).ConfigureAwait(false)) return;
-
-        string instalado;
-        try
-        {
-            instalado = Instalador.RutaExeInstalado();
-        }
-        catch (Exception exc)
-        {
-            await InformarAsync(orden, "ERROR",
-                $"No se pudo localizar el ejecutable instalado: {exc.Message}")
-                .ConfigureAwait(false);
-            return;
-        }
-        if (string.IsNullOrWhiteSpace(instalado) || !File.Exists(instalado))
-        {
-            await InformarAsync(orden, "ERROR",
-                "No se localizó el ejecutable instalado.").ConfigureAwait(false);
-            return;
-        }
-
-        // La copia se prepara ANTES de informar HECHA: si algo
-        // falla aquí, la orden se cierra con ERROR y el equipo
-        // sigue en el panel, no dado por desinstalado a ciegas.
-        string copia;
-        try
-        {
-            var carpeta = Path.Combine(Path.GetTempPath(), "USBMonitorActualizacion");
-            Directory.CreateDirectory(carpeta);
-            copia = Path.Combine(carpeta, "USBMonitorDesinstalador.exe");
-            File.Copy(instalado, copia, overwrite: true);
-            Log.Info($"Copia desinstaladora preparada en {copia}.");
-        }
-        catch (Exception exc)
-        {
-            await InformarAsync(orden, "ERROR",
-                $"No se pudo preparar la desinstalación: {exc.Message}")
-                .ConfigureAwait(false);
-            return;
-        }
-
-        // El aviso de «desinstalado» sale AHORA, del servicio, y
-        // la copia espera su temporizador antes de tocar nada:
-        // cuando pare el servicio, el panel ya borró la fila.
-        if (!await InformarAsync(orden, "HECHA",
-                "Desinstalación en marcha: el agente se detiene y se borra solo.")
-                .ConfigureAwait(false))
-            return;
-
-        try
-        {
-            var proceso = Process.Start(new ProcessStartInfo
-            {
-                FileName = copia,
-                Arguments = $"desinstalar-orden {orden.Id} {SegundosEsperaDesinstalacion}",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                WorkingDirectory = Path.GetDirectoryName(copia)!,
-            });
-            if (proceso is null) throw new InvalidOperationException("Process.Start devolvió null.");
-            Log.Info(
-                $"Copia desinstaladora lanzada (pid {proceso.Id}): esperará " +
-                $"{SegundosEsperaDesinstalacion} s y desinstalará el agente con su carpeta.");
-        }
-        catch (Exception exc)
-        {
-            // La orden ya consta HECHA en el panel y no hay
-            // marcha atrás desde aquí: queda el registro local
-            // como testigo de que la copia no arrancó.
-            Log.Error($"La desinstalación se informó pero la copia no arrancó: {exc.Message}");
-        }
-    }
-
-    /// <summary>¿Sigue viva una copia desinstaladora (el ejecutable temporal de la orden)?</summary>
-    private static bool HayCopiaDesinstaladoraEnMarcha()
-    {
-        try
-        {
-            return Process.GetProcessesByName("USBMonitorDesinstalador").Length > 0;
-        }
-        catch
-        {
-            return false;
-        }
     }
 
     private async Task EjecutarActualizacionAsync(OrdenAgente orden)

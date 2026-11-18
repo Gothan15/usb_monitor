@@ -183,6 +183,19 @@ public sealed class AgenteWorker : BackgroundService
             _inicio = DateTime.UtcNow;
             Log.Info($"Agente v2 arrancando en {Configuracion.NombrePc}");
 
+            // Los ids de bloqueo conocidos se recargan del mapa
+            // en disco: un paquete de evidencia capturado antes
+            // de un reinicio conserva su dirección de entrega.
+            try
+            {
+                var idsGuardados = GestorEvidencia.CargarIdsBloqueo(
+                    GestorEvidencia.Carpeta(Registro.DirectorioDatos));
+                lock (_lockEvidencia)
+                    foreach (var par in idsGuardados)
+                        _idsBloqueoPanel[par.Key] = par.Value;
+            }
+            catch { /* el mapa es una ayuda: sin él se sigue como siempre */ }
+
             // Configuración remota inicial y espera de red.
             var remota = await _cliente.ConfigRemotaAsync().ConfigureAwait(false);
             if (remota is not null) _compartida.AplicarRemota(remota);
@@ -593,6 +606,12 @@ public sealed class AgenteWorker : BackgroundService
             RefrescarPendientesLocales();
             if (enWl is not null)
                 await RegistrarEnPanelAsync(disp, enWl.Value).ConfigureAwait(false);
+            // La cola de eventos se vacía AHORA, no en el latido:
+            // el evento de conexión y bloqueo llega al panel a la
+            // vez que el registro del bloqueo, y la pestaña de
+            // Eventos deja de ir hasta 30 s por detrás de la de
+            // Desbloqueos.
+            await _cliente.VaciarColaAsync().ConfigureAwait(false);
             if (enWl == true)
             {
                 // El dispositivo está en la lista: su historial
@@ -628,6 +647,22 @@ public sealed class AgenteWorker : BackgroundService
             // El id se guarda también tras la extracción: el
             // paquete de evidencia puede tardar más que el bloqueo.
             lock (_lockEvidencia) _idsBloqueoPanel[disp.Clave] = pid;
+            // El id queda también EN DISCO: el mapa de la
+            // carpeta de evidencia y sellado en la solicitud o
+            // el paquete que lo estuvieran esperando. Un
+            // reinicio del servicio antes de subir el paquete
+            // ya no lo deja huérfano.
+            try
+            {
+                GestorEvidencia.AnotarIdBloqueo(
+                    GestorEvidencia.Carpeta(Registro.DirectorioDatos),
+                    disp.Clave, pid);
+            }
+            catch (Exception excId)
+            {
+                Log.Error(
+                    $"No se pudo anotar en disco el id del bloqueo de {disp.Nombre}: {excId.Message}");
+            }
         }
     }
 
@@ -736,6 +771,9 @@ public sealed class AgenteWorker : BackgroundService
         DesarmarApagado(clave, disp, "el dispositivo se extrajo");
         await _cliente.CerrarBloqueoAsync(disp.Letra, disp.Serial).ConfigureAwait(false);
         _cliente.Evento(EvDesconectado, disp.Letra, disp.Serial);
+        // Como al bloquear: la extracción se anuncia al panel
+        // en el momento, no en el siguiente latido.
+        await _cliente.VaciarColaAsync().ConfigureAwait(false);
         _pendientesRegistrados.Remove(clave);
         // El bloqueo terminó: si el dispositivo vuelve a entrar,
         // su foto del momento se pide de nuevo (se olvidan todas
@@ -1568,10 +1606,14 @@ public sealed class AgenteWorker : BackgroundService
                 // (y con ella el canal de órdenes) se sondea cada
                 // pocos segundos: la orden de detener el apagado
                 // desde el panel tiene que llegar mientras la
-                // cuenta aún corre, no en el sondeo de 10 minutos.
+                // cuenta aún corre. Sin cuenta, cada minuto: los
+                // ajustes del panel y las órdenes (como la de
+                // reiniciar el servicio) llegan casi al momento
+                // en vez de esperar al sondeo de 10 minutos de
+                // antes.
                 var intervaloConfig = ApagadoEnCurso()
                     ? TimeSpan.FromSeconds(5)
-                    : TimeSpan.FromSeconds(600);
+                    : TimeSpan.FromSeconds(60);
                 if (ahora - _ultimaConfig >= intervaloConfig)
                 {
                     _ultimaConfig = ahora;
@@ -1623,6 +1665,9 @@ public sealed class AgenteWorker : BackgroundService
             if (string.Equals(orden.Tipo, "cancelar-apagado",
                     StringComparison.OrdinalIgnoreCase))
                 await EjecutarOrdenCancelarApagadoAsync(orden).ConfigureAwait(false);
+            else if (string.Equals(orden.Tipo, "reiniciar",
+                    StringComparison.OrdinalIgnoreCase))
+                await EjecutarOrdenReinicioAsync(orden).ConfigureAwait(false);
             else
                 paraActualizador.Add(orden);
         }
@@ -1658,6 +1703,77 @@ public sealed class AgenteWorker : BackgroundService
             habia
                 ? "La cuenta atrás de apagado se canceló."
                 : "No había cuenta atrás en curso.").ConfigureAwait(false);
+    }
+
+    // Órdenes «reiniciar» que ESTE proceso ya puso en marcha:
+    // el ayudante tarda unos segundos en parar el servicio y la
+    // orden puede volver a servirse mientras tanto; sin esta
+    // lista, la segunda pasada leería el marcador como «ya
+    // reiniciado» y la cerraría HECHA antes de tiempo.
+    private readonly HashSet<string> _reiniciosLanzados = new();
+    private readonly object _lockReinicio = new();
+
+    /// <summary>
+    /// Ejecuta una orden «reiniciar» del panel (el botón de
+    /// Equipos): marca la orden en disco, informa EN_CURSO y
+    /// lanza al ayudante «reiniciar-servicio», que para el
+    /// servicio y lo rearranca — al arrancar, la configuración
+    /// se relee y los ajustes guardados quedan aplicados —.
+    /// Cuando el servicio nuevo recibe la misma orden (sigue
+    /// EN_CURSO), el marcador la cierra HECHA sin reiniciar
+    /// dos veces.
+    /// </summary>
+    private async Task EjecutarOrdenReinicioAsync(OrdenAgente orden)
+    {
+        if (string.Equals(orden.Estado, "CANCELADA", StringComparison.OrdinalIgnoreCase))
+        {
+            Log.Info($"Orden {orden.Tipo} {orden.Id} cancelada en el panel: se ignora.");
+            return;
+        }
+        lock (_lockReinicio)
+        {
+            if (_reiniciosLanzados.Contains(orden.Id)) return;
+        }
+        var marcada = MarcadorReinicio.OrdenMarcada(Registro.DirectorioDatos);
+        if (string.Equals(marcada, orden.Id, StringComparison.Ordinal))
+        {
+            // Este proceso es el que volvió del reinicio: la
+            // orden se cierra sin tocar nada.
+            if (await _cliente.InformarOrdenAsync(
+                    orden.Id, "HECHA",
+                    "El servicio se reinició por esta orden; la configuración quedó aplicada al arrancar.")
+                    .ConfigureAwait(false))
+                MarcadorReinicio.Limpiar(Registro.DirectorioDatos);
+            return;
+        }
+        if (!await _cliente.InformarOrdenAsync(orden.Id, "EN_CURSO")
+                .ConfigureAwait(false)) return;
+        try
+        {
+            MarcadorReinicio.Marcar(Registro.DirectorioDatos, orden.Id);
+            var exe = Instalador.RutaExeInstalado();
+            var proceso = Process.Start(new ProcessStartInfo
+            {
+                FileName = exe,
+                Arguments = "reiniciar-servicio",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory = Path.GetDirectoryName(exe)!,
+            });
+            if (proceso is null)
+                throw new InvalidOperationException("Process.Start devolvió null.");
+            lock (_lockReinicio) _reiniciosLanzados.Add(orden.Id);
+            Log.Info(
+                $"Orden de reinicio {orden.Id}: ayudante lanzado (pid {proceso.Id}); " +
+                "el servicio se reinicia ahora.");
+        }
+        catch (Exception exc)
+        {
+            MarcadorReinicio.Limpiar(Registro.DirectorioDatos);
+            await _cliente.InformarOrdenAsync(
+                orden.Id, "ERROR", $"No se pudo lanzar el reinicio: {exc.Message}")
+                .ConfigureAwait(false);
+        }
     }
 
     /// <summary>¿Hay una cuenta atrás de apagado corriendo ahora?</summary>

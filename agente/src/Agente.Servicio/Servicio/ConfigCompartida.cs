@@ -2,7 +2,7 @@
 // Ajustes remotos compartidos entre el Worker y el servidor local.
 //
 // El Worker los siembra desde GET /api/agent/config (camelCase) al
-// arrancar y cada 10 minutos; el panel los empuja en caliente con
+// arrancar y cada minuto; el panel los empuja en caliente con
 // POST :5001/config (snake_case, y se acepta también camelCase).
 // Ambas vías aterrizan aquí, normalizadas, y se aplican al momento
 // sin reiniciar el servicio.

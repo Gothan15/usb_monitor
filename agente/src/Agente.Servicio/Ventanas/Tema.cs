@@ -14,7 +14,7 @@ namespace USBMonitor.Agente.Servicio.Ventanas;
 /// Es la traducción a WPF del tema claro del panel web: papel frío,
 /// tarjetas blancas, tinta azul marino, acero como acento y esquinas
 /// rectas. Las ventanas no definen colores por su cuenta; todo sale
-/// de esta clase para que compañero, caja de herramientas y visor se
+/// de esta clase para que compañero y caja de herramientas se
 /// lean como piezas del mismo sistema.
 /// </summary>
 public static class Tema
