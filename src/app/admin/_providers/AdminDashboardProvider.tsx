@@ -73,6 +73,8 @@ interface AdminDashboardContextValue {
   whitelist: WhitelistEntry[];
   usersCount: number | null;
   tareasActivas: number;
+  /** Dispositivos bloqueados ahora mismo (medalla de Desbloqueos). */
+  bloqueadosAhora: number;
   user: {
     name?: string | null;
     role?: string | null;
@@ -251,6 +253,24 @@ export function AdminDashboardProvider({
   const tareasActivas = tareas.filter(
     (tarea) => tarea.status === "EN_CURSO",
   ).length;
+
+  // Bloqueados ahora mismo: solo el conteo, para la medalla
+  // de la pestaña «Desbloqueos» — saber que hay dispositivos
+  // esperando contraseña sin entrar a la vista. Sondeo al
+  // minuto, como el resto de distintivos.
+  const bloqueadosQuery = useQuery<number>({
+    queryKey: ["unlocks", "conteo"],
+    queryFn: async () => {
+      const datos = await fetchJson<{ bloqueados?: number }>(
+        "/api/admin/unlocks/conteo",
+      );
+      return datos?.bloqueados ?? 0;
+    },
+    enabled: !checkingRole,
+    staleTime: 30_000,
+    refetchInterval: isLiveSyncEnabled ? 60_000 : false,
+  });
+  const bloqueadosAhora = bloqueadosQuery.data ?? 0;
 
   // Aviso al terminar una tarea: se vigilan las transiciones
   // de EN CURSO a COMPLETADA o CON_ERRORES. La primera carga
@@ -715,6 +735,7 @@ export function AdminDashboardProvider({
       whitelist,
       usersCount,
       tareasActivas,
+      bloqueadosAhora,
       user,
       loading,
       refreshing,
@@ -753,6 +774,7 @@ export function AdminDashboardProvider({
       refreshComputers,
       refreshing,
       tareasActivas,
+      bloqueadosAhora,
       user,
       usersCount,
       whitelist,

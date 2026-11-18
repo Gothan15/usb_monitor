@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { logError } from "@/lib/logger";
+import { db } from "@/lib/db";
+import { compararVersiones } from "@/lib/versionesAgente";
 import {
   ErrorPaqueteInvalido,
   LIMITE_PAQUETE_BYTES,
@@ -39,7 +41,34 @@ export async function GET(req: NextRequest) {
   try {
     await requireAuth(req, { role: "admin" });
     const estado = await estadoPaqueteAgente();
-    return NextResponse.json({ ok: true, ...estado });
+    // ¿Hay ya algún equipo con un agente MÁS NUEVO que el
+    // paquete colocado? Entonces el paquete quedó viejo (el
+    // caso típico: release nueva publicada y un equipo
+    // actualizado a mano) y Ajustes avisa: sin subir el paquete
+    // nuevo, el resto de la flota no puede actualizarse.
+    const equipos = await db.computer.findMany({
+      select: { agentVersion: true },
+    });
+    let versionFlotaMaxima: string | null = null;
+    for (const e of equipos) {
+      if (
+        e.agentVersion &&
+        (versionFlotaMaxima === null ||
+          compararVersiones(e.agentVersion, versionFlotaMaxima) > 0)
+      ) {
+        versionFlotaMaxima = e.agentVersion;
+      }
+    }
+    const desfasado =
+      estado.version != null &&
+      versionFlotaMaxima != null &&
+      compararVersiones(versionFlotaMaxima, estado.version) > 0;
+    return NextResponse.json({
+      ok: true,
+      ...estado,
+      versionFlotaMaxima,
+      desfasado,
+    });
   } catch (error: any) {
     if (error?.message === "UNAUTHORIZED" || error?.message === "FORBIDDEN") {
       return noAutorizado();

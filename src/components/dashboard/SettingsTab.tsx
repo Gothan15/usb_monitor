@@ -45,6 +45,19 @@ interface EstadoPaquete {
   sha256: string | null;
   agente: { presente: boolean; tamano: number };
   empujador: { presente: boolean; tamano: number };
+  /** Versión más nueva que ya corre en algún equipo. */
+  versionFlotaMaxima?: string | null;
+  /** Algún equipo va por delante del paquete colocado. */
+  desfasado?: boolean;
+}
+
+interface EstadoSistema {
+  bd: string;
+  redis: string;
+  disco: { libre: number; total: number } | null;
+  nodeVersion: string;
+  encendidoDesde: string;
+  paquete: { version: string | null } | null;
 }
 
 function formatoTamano(bytes: number): string {
@@ -69,6 +82,7 @@ const SECCIONES = [
   { id: "desbloqueo-por-contrasena", nombre: "Desbloqueo por contraseña" },
   { id: "interfaz-y-navegacion", nombre: "Interfaz y Navegación" },
   { id: "paquete-agente", nombre: "Paquete del agente" },
+  { id: "estado-sistema", nombre: "Estado del sistema" },
   { id: "preguntas-frecuentes", nombre: "Preguntas frecuentes" },
 ] as const;
 
@@ -236,6 +250,25 @@ export function SettingsTab() {
 
   // Paquete del agente: estado leído del panel y subida del zip.
   const [paquete, setPaquete] = useState<EstadoPaquete | null>(null);
+  const [sistema, setSistema] = useState<EstadoSistema | null>(null);
+  const [cargandoSistema, setCargandoSistema] = useState(false);
+
+  const cargarSistema = async () => {
+    setCargandoSistema(true);
+    try {
+      const res = await fetch("/api/admin/sistema");
+      const data = await res.json().catch(() => null);
+      if (data?.ok) setSistema(data as EstadoSistema);
+    } catch {
+      // Sin respuesta: la sección enseña «sin datos».
+    } finally {
+      setCargandoSistema(false);
+    }
+  };
+
+  useEffect(() => {
+    void cargarSistema();
+  }, []);
   const [archivoPaquete, setArchivoPaquete] = useState<File | null>(null);
   const [versionPaquete, setVersionPaquete] = useState("");
   const [subiendoPaquete, setSubiendoPaquete] = useState(false);
@@ -296,6 +329,8 @@ export function SettingsTab() {
             sha256: data.sha256 ?? null,
             agente: data.agente ?? { presente: false, tamano: 0 },
             empujador: data.empujador ?? { presente: false, tamano: 0 },
+            versionFlotaMaxima: data.versionFlotaMaxima ?? null,
+            desfasado: Boolean(data.desfasado),
           });
         }
       })
@@ -861,6 +896,14 @@ export function SettingsTab() {
                 </dd>
               </div>
             </dl>
+            {paquete?.desfasado && (
+              <p className="mt-3 max-w-xl border border-amber-600/50 bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-amber-700 dark:text-amber-500">
+                Hay equipos con el agente v{paquete.versionFlotaMaxima},
+                más nuevo que el paquete colocado (v{paquete.version}).
+                Sube el paquete de esa versión: mientras tanto, el
+                resto de equipos no puede actualizarse a ella.
+              </p>
+            )}
             {paquete && !paquete.empujador.presente && (
               <p className="mt-3 max-w-xl text-xs leading-relaxed text-muted-foreground">
                 Sin el empujador colocado, las tareas de instalación no
@@ -972,6 +1015,85 @@ export function SettingsTab() {
               )}
             </div>
           )}
+        </section>
+
+        <section
+          id="estado-sistema"
+          className="scroll-mt-24 border-t border-border py-12"
+        >
+          <h2 className="font-display flex items-center gap-2.5 text-[1.4rem] font-bold leading-tight text-foreground">
+            <Activity className="size-5 shrink-0 text-[var(--acero)]" />
+            Estado del sistema
+          </h2>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+            El parte de salud del propio panel: si algo de esto
+            falla, aquí se ve de un vistazo en vez de cazarlo por
+            los registros.
+          </p>
+
+          <div className="mt-8 max-w-3xl border border-border/60 bg-muted/20 px-4 py-4">
+            <dl className="space-y-1.5 text-sm leading-relaxed text-muted-foreground">
+              <div className="flex flex-wrap gap-x-2">
+                <dt className="font-medium text-foreground">Base de datos:</dt>
+                <dd>
+                  {sistema
+                    ? sistema.bd === "conectada"
+                      ? "conectada"
+                      : "SIN CONEXIÓN"
+                    : "sin datos"}
+                </dd>
+              </div>
+              <div className="flex flex-wrap gap-x-2">
+                <dt className="font-medium text-foreground">Redis:</dt>
+                <dd>
+                  {!sistema
+                    ? "sin datos"
+                    : sistema.redis === "conectado"
+                      ? "conectado"
+                      : sistema.redis === "degradado"
+                        ? "sin conexión — el panel sigue en modo degradado (presencia y límites van por la base de datos)"
+                        : "no configurado — el panel va en modo degradado"}
+                </dd>
+              </div>
+              <div className="flex flex-wrap gap-x-2">
+                <dt className="font-medium text-foreground">Disco del panel:</dt>
+                <dd>
+                  {sistema?.disco
+                    ? `${(sistema.disco.libre / 1073741824).toFixed(1).replace(".", ",")} GB libres de ${(sistema.disco.total / 1073741824).toFixed(1).replace(".", ",")} GB`
+                    : "sin datos"}
+                </dd>
+              </div>
+              <div className="flex flex-wrap gap-x-2">
+                <dt className="font-medium text-foreground">Panel en marcha:</dt>
+                <dd>
+                  {sistema
+                    ? `desde ${new Date(sistema.encendidoDesde).toLocaleString()}`
+                    : "sin datos"}
+                </dd>
+              </div>
+              <div className="flex flex-wrap gap-x-2">
+                <dt className="font-medium text-foreground">Node:</dt>
+                <dd>{sistema ? sistema.nodeVersion : "sin datos"}</dd>
+              </div>
+              <div className="flex flex-wrap gap-x-2">
+                <dt className="font-medium text-foreground">Paquete del agente:</dt>
+                <dd>
+                  {sistema?.paquete?.version
+                    ? `v${sistema.paquete.version}`
+                    : "sin paquete colocado"}
+                </dd>
+              </div>
+            </dl>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-4"
+              disabled={cargandoSistema}
+              onClick={() => void cargarSistema()}
+            >
+              {cargandoSistema ? "Comprobando…" : "Volver a comprobar"}
+            </Button>
+          </div>
         </section>
 
         <section

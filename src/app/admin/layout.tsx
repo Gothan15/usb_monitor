@@ -71,6 +71,7 @@ function AdminLayoutContent({
     whitelist,
     usersCount,
     tareasActivas,
+    bloqueadosAhora,
     user,
     refreshing,
     checkingRole,
@@ -130,6 +131,7 @@ function AdminLayoutContent({
         label: "Desbloqueos",
         description: "Bloqueos en curso, intentos y equipos sin agente",
         icon: KeyRound,
+        badge: bloqueadosAhora || undefined,
         href: viewKeyToHref.unlocks,
       },
       {
@@ -155,7 +157,7 @@ function AdminLayoutContent({
         href: viewKeyToHref.settings,
       },
     ];
-  }, [computers, events.length, usersCount, whitelist.length]);
+  }, [computers, events.length, usersCount, whitelist.length, bloqueadosAhora]);
 
   const activeItem = useMemo(
     () => navItems.find((item) => item.key === activeKey) ?? navItems[0],

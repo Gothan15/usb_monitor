@@ -44,6 +44,22 @@ export async function GET(req: Request) {
     }
 
     registrarContactoAgente(null, "/api/agent/config", 200);
+    // Sello de «ajustes pedidos»: Equipos enseña hace cuánto
+    // vino este agente a por su configuración. Con freno de
+    // 30 s: en plena cuenta atrás de apagado el agente pide
+    // cada 5 s y no hace falta escribir en la base cada vez.
+    if (serviceAuth.computerId) {
+      const hace30s = new Date(Date.now() - 30_000);
+      await db.computer
+        .updateMany({
+          where: {
+            id: serviceAuth.computerId,
+            OR: [{ lastConfigAt: null }, { lastConfigAt: { lt: hace30s } }],
+          },
+          data: { lastConfigAt: new Date() },
+        })
+        .catch(() => null);
+    }
     // La cuenta atrás se sirve siempre acotada: ni un valor
     // editado a mano en el JSON puede armar un apagado inmediato
     // ni uno de horas.

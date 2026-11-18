@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLiveData } from "@/components/providers/LiveDataProvider";
 import { SerialCopiable } from "./SerialCopiable";
+import { ExportarCsv } from "./ExportarCsv";
 import { useToast } from "@/hooks/use-toast";
 import { getCsrfTokenFromDocument } from "@/lib/utils";
 import { Camera, ShieldPlus } from "lucide-react";
@@ -321,6 +322,7 @@ export function UnlocksTab({ pcInicial = "" }: { pcInicial?: string }) {
             Desbloqueos y bloqueos
           </h2>
         </div>
+        <ExportarCsv ruta="/api/admin/unlocks/exportar" />
         {ultimaVez && (
           <span className="text-[11px] text-muted-foreground">
             Actualizado a las{" "}

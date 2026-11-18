@@ -27,6 +27,7 @@ import { etiquetaEventoUsb, etiquetaCapaBloqueo } from "@/lib/eventosUsb";
 import { filtrarEventosPorDestino } from "@/lib/eventoDestino";
 import { useEventosFiltroStore } from "@/store/useEventosFiltroStore";
 import { USBEvent, formatDate, formatTime } from "./types";
+import { ExportarCsv } from "./ExportarCsv";
 
 /* «hace 5 min» para leer el registro de un vistazo. */
 function haceCuanto(iso: string): string {
@@ -216,6 +217,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
             <span className="dot-pulse size-1.5 rounded-full bg-success" />
             Sincronizado
           </span>
+          <ExportarCsv ruta="/api/usb-event/exportar" />
           {onClear && (
             <Button
               type="button"
