@@ -35,8 +35,7 @@ export const TIPO_ORDEN_ACTUALIZAR = "actualizar";
  * de este tipo y la configuración del agente no las sirve
  * aunque quede alguna viva de antes en la tabla; la constante
  * queda para que las filas históricas se sigan etiquetando
- * bien en Tareas. El agente conserva su modo desinstalador
- * por si algún día vuelve.
+ * bien en Tareas.
  */
 export const TIPO_ORDEN_DESINSTALAR = "desinstalar";
 
@@ -48,6 +47,17 @@ export const TIPO_ORDEN_DESINSTALAR = "desinstalar";
  * segundos —.
  */
 export const TIPO_ORDEN_CANCELAR_APAGADO = "cancelar-apagado";
+
+/**
+ * Orden de reiniciar el servicio del agente en el equipo: el
+ * botón «Reiniciar» de Equipos. Al volver a arrancar, el agente
+ * relee la configuración nada más nacer, así que los ajustes
+ * guardados en el panel quedan aplicados al momento en vez de
+ * esperar al siguiente sondeo. La ejecuta el trabajador con un
+ * marcador en disco (si la orden vuelve tras el reinicio, se
+ * informa HECHA sin reiniciar dos veces).
+ */
+export const TIPO_ORDEN_REINICIAR = "reiniciar";
 
 /** Tope de intentos de una orden antes de darla por fallida. */
 export const MAX_INTENTOS_ORDEN = 3;
@@ -94,6 +104,22 @@ export function transicionInformeValida(
  */
 export function sePuedeCancelar(estado: string): boolean {
   return (ESTADOS_ORDEN_ACTIVA as string[]).includes(estado);
+}
+
+/**
+ * ¿Tiene este equipo un reinicio del servicio en curso? Hay una
+ * orden «reiniciar» viva (ESPERA, ENTREGADA o EN_CURSO): la
+ * pestaña de Equipos enseña el botón con su ruleta mientras
+ * dure y la ruta de creación no duplica la orden.
+ */
+export function reinicioEnCurso(
+  ordenes: { type: string; status: string }[],
+): boolean {
+  return ordenes.some(
+    (o) =>
+      o.type === TIPO_ORDEN_REINICIAR &&
+      (ESTADOS_ORDEN_ACTIVA as string[]).includes(o.status),
+  );
 }
 
 /** Minutos durante los que una orden cancelada se sigue sirviendo al agente. */

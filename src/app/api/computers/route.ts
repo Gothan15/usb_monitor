@@ -12,6 +12,11 @@ import {
   EVENTOS_APAGADO,
   apagadoEnCursoDesdeEvento,
 } from "@/lib/eventosUsb";
+import {
+  ESTADOS_ORDEN_ACTIVA,
+  TIPO_ORDEN_REINICIAR,
+  reinicioEnCurso,
+} from "@/lib/agentCommands";
 
 export async function GET(req: Request) {
   try {
@@ -73,6 +78,25 @@ export async function GET(req: Request) {
     // latido (≤30 s).
     const presencias = await leerPresencias(computers.map((c) => c.id));
 
+    // ¿Hay un reinicio del servicio en curso en el equipo? Se
+    // deriva de sus órdenes «reiniciar» vivas, leídas de una
+    // vez para todos: Equipos enseña el botón con la ruleta
+    // mientras dure.
+    const ordenesReinicio = await db.agentCommand.findMany({
+      where: {
+        computerId: { in: computers.map((c) => c.id) },
+        type: TIPO_ORDEN_REINICIAR,
+        status: { in: ESTADOS_ORDEN_ACTIVA },
+      },
+      select: { computerId: true, type: true, status: true },
+    });
+    const reinicioPorEquipo = new Map<string, { type: string; status: string }[]>();
+    for (const o of ordenesReinicio) {
+      const lista = reinicioPorEquipo.get(o.computerId) ?? [];
+      lista.push(o);
+      reinicioPorEquipo.set(o.computerId, lista);
+    }
+
     // ¿Hay una cuenta atrás de apagado corriendo en el equipo?
     // Se deriva de su ÚLTIMO evento de la familia del apagado:
     // los eventos se guardan con el nombre normalizado, igual
@@ -107,6 +131,9 @@ export async function GET(req: Request) {
           usbPorPc.get(normalizeComputerName(computer.name)) ?? 0,
         apagadoEnCurso: apagadoEnCursoDesdeEvento(
           ultimoApagadoPorPc.get(normalizeComputerName(computer.name)),
+        ),
+        reinicioEnCurso: reinicioEnCurso(
+          reinicioPorEquipo.get(computer.id) ?? [],
         ),
         versionPaquete,
         actualizacionDisponible: necesitaActualizacion(

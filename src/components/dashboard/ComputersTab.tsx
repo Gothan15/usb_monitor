@@ -461,6 +461,102 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
     }
   }, [onBulkDelete, bulk]);
 
+  // Reiniciar el servicio del agente a distancia (botón de la
+  // fila o de la selección): crea la orden «reiniciar» y el
+  // agente, al recogerla, se reinicia y relee la configuración
+  // al arrancar — los ajustes guardados quedan aplicados al
+  // momento —. Mientras la orden vive, el servidor lo dice con
+  // reinicioEnCurso y el botón enseña su ruleta.
+  const [reiniciandoIds, setReiniciandoIds] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
+  const [reiniciandoBulk, setReiniciandoBulk] = useState(false);
+
+  const reiniciarServicio = useCallback(
+    async (objetivos: Computer[]) => {
+      if (objetivos.length === 0) return;
+      const csrfToken = getCsrfTokenFromDocument();
+      if (!csrfToken) {
+        toast({
+          title: "Sesión sin token de seguridad",
+          description: "Inicia sesión nuevamente.",
+          variant: "destructive",
+        });
+        return;
+      }
+      const ids = objetivos.map((c) => c.id);
+      const esBulk = objetivos.length > 1;
+      if (esBulk) setReiniciandoBulk(true);
+      else
+        setReiniciandoIds((prev) => new Set(prev).add(ids[0]));
+      try {
+        const res = await fetch("/api/computers/reiniciar-servicio", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-csrf-token": csrfToken,
+          },
+          credentials: "include",
+          body: JSON.stringify({ ids }),
+        });
+        const datos = await res.json().catch(() => null);
+        if (!res.ok || !datos?.ok) {
+          toast({
+            title: "No se pudo crear la orden",
+            description:
+              datos?.error || "El panel no aceptó la orden de reinicio.",
+            variant: "destructive",
+          });
+          return;
+        }
+        const creadas: { pcName: string }[] = datos.creadas ?? [];
+        const omitidas: { pcName?: string; motivo: string }[] =
+          datos.omitidas ?? [];
+        if (!esBulk) {
+          if (creadas.length === 1) {
+            toast({
+              title: "Reinicio en curso",
+              description: `${creadas[0].pcName} reiniciará su servicio y aplicará la configuración al arrancar.`,
+            });
+          } else {
+            toast({
+              title: "Sin reinicio",
+              description:
+                omitidas[0]?.motivo || "El equipo no aceptó la orden.",
+              variant: "destructive",
+            });
+          }
+        } else {
+          toast({
+            title: `Reinicio en curso en ${creadas.length} equipo(s)`,
+            description:
+              omitidas.length > 0
+                ? `${omitidas.length} omitido(s): ${omitidas
+                    .map((o) => o.motivo)
+                    .filter((v, i, a) => a.indexOf(v) === i)
+                    .join("; ")}.`
+                : "Cada servicio aplicará la configuración al arrancar.",
+          });
+          if (creadas.length > 0) bulk.clear();
+        }
+      } catch {
+        toast({
+          title: "No se pudo contactar con el panel",
+          variant: "destructive",
+        });
+      } finally {
+        if (esBulk) setReiniciandoBulk(false);
+        else
+          setReiniciandoIds((prev) => {
+            const next = new Set(prev);
+            next.delete(ids[0]);
+            return next;
+          });
+      }
+    },
+    [toast, bulk],
+  );
+
   const quickStats = useMemo(() => {
     if (loading) {
       return [
@@ -809,30 +905,56 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
                         </Button>
                       </>
                     )}
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      disabled={!canViewUsb}
-                      onClick={() => setSelectedComputer(computer)}
-                      aria-label={`Ver USB de ${computer.name}`}
-                      title="Ver USB conectados"
-                    >
-                      Ver USB
-                    </Button>
-                    {onDelete && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        disabled={eliminando}
-                        onClick={() => setPendingDelete(computer)}
-                        aria-label={`Eliminar ${computer.name}`}
-                        title="Eliminar equipo"
-                        className="text-destructive hover:text-destructive"
-                      >
-                        {eliminando ? <Spinner size={14} /> : "Eliminar"}
-                      </Button>
+                    {bulk.count === 0 && (
+                      <>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={
+                            computer.reinicioEnCurso ||
+                            reiniciandoIds.has(computer.id)
+                          }
+                          onClick={() => void reiniciarServicio([computer])}
+                          aria-label={`Reiniciar el servicio en ${computer.name}`}
+                          title="Reiniciar el servicio del agente: al arrancar aplica la configuración guardada"
+                        >
+                          {computer.reinicioEnCurso ||
+                          reiniciandoIds.has(computer.id) ? (
+                            <span className="inline-flex items-center gap-1.5">
+                              <Spinner size={14} />
+                              Reiniciando
+                            </span>
+                          ) : (
+                            "Reiniciar"
+                          )}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={!canViewUsb}
+                          onClick={() => setSelectedComputer(computer)}
+                          aria-label={`Ver USB de ${computer.name}`}
+                          title="Ver USB conectados"
+                        >
+                          Ver USB
+                        </Button>
+                        {onDelete && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={eliminando}
+                            onClick={() => setPendingDelete(computer)}
+                            aria-label={`Eliminar ${computer.name}`}
+                            title="Eliminar equipo"
+                            className="text-destructive hover:text-destructive"
+                          >
+                            {eliminando ? <Spinner size={14} /> : "Eliminar"}
+                          </Button>
+                        )}
+                      </>
                     )}
                   </div>
                 </li>
@@ -857,7 +979,25 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
           )}
 
           {bulk.count > 0 && (
-            <div className="mt-3 flex justify-end">
+            <div className="mt-3 flex flex-wrap justify-end gap-2">
+              <Button
+                variant="outline"
+                disabled={reiniciandoBulk}
+                onClick={() =>
+                  void reiniciarServicio(
+                    computers.filter((c) => bulk.selected.has(c.id)),
+                  )
+                }
+              >
+                {reiniciandoBulk ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Spinner size={14} />
+                    Reiniciando
+                  </span>
+                ) : (
+                  "Reiniciar el servicio en los seleccionados"
+                )}
+              </Button>
               <Button onClick={() => setInstalarAbierto(true)}>
                 <Rocket className="mr-2 size-4" />
                 Instalar el agente en los seleccionados
