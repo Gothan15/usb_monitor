@@ -18,6 +18,7 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpCircle,
+  ArrowUpDown,
   Copy,
   KeyRound,
   Router,
@@ -100,6 +101,12 @@ interface Props {
   onBulkDelete?: (ids: string[]) => Promise<void> | void;
 }
 
+// Columnas de la tabla de equipos: la cabecera y cada fila
+// comparten esta rejilla para que los valores queden alineados
+// en columnas en vez de apilados dentro de la fila.
+const GRID =
+  "md:grid md:grid-cols-[1.75rem_minmax(10rem,1.15fr)_7.5rem_minmax(17rem,1.6fr)_10rem_10rem_2.5rem_minmax(15rem,auto)] md:items-center md:gap-x-5";
+
 const COLUMNAS_ORDEN: { key: keyof Computer; label: string }[] = [
   { key: "name", label: "Nombre" },
   { key: "ipAddress", label: "Dirección IP" },
@@ -112,22 +119,6 @@ const COLUMNAS_ORDEN: { key: keyof Computer; label: string }[] = [
 // módulo a propósito: `useBusqueda` memoiza su índice por la
 // identidad de esta lista.
 const CAMPOS_BUSQUEDA: readonly (keyof Computer)[] = ["name", "ipAddress"];
-
-/** Dato de registro: etiqueta en versalitas y valor debajo. */
-function Dato({
-  etiqueta,
-  children,
-}: {
-  etiqueta: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <p className="smallcaps text-muted-foreground">{etiqueta}</p>
-      <div className="mt-1.5">{children}</div>
-    </div>
-  );
-}
 
 /** Estado como palabra precedida de un punto de color. */
 function PalabraEstado({
@@ -739,47 +730,79 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
               placeholder="Buscar por nombre o IP"
               className="order-last w-full sm:order-none sm:ml-auto sm:w-[220px]"
             />
-            <span className="smallcaps text-muted-foreground/70">
-              Ordenar por
-            </span>
-            {COLUMNAS_ORDEN.map((columna) => {
-              const activo = sortConfig.key === columna.key;
-              return (
-                <button
-                  key={columna.key}
-                  type="button"
-                  onClick={() => requestSort(columna.key)}
-                  className={cn(
-                    "smallcaps inline-flex items-center gap-1 transition-colors",
-                    activo
-                      ? "text-foreground underline decoration-[var(--acero)] decoration-2 underline-offset-4"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {columna.label}
-                  {activo &&
-                    (sortConfig.direction === "desc" ? (
-                      <ArrowDown className="size-3" />
-                    ) : (
-                      <ArrowUp className="size-3" />
-                    ))}
-                </button>
-              );
-            })}
+            <div className="inline-flex items-center gap-2">
+              <label
+                htmlFor="orden-equipos"
+                className="smallcaps text-muted-foreground/70"
+              >
+                Ordenar por
+              </label>
+              <select
+                id="orden-equipos"
+                value={sortConfig.key ?? ""}
+                onChange={(e) => {
+                  const key = e.target.value as keyof Computer;
+                  if (key && key !== sortConfig.key) requestSort(key);
+                }}
+                className="border border-border bg-transparent px-2 py-1.5 text-xs text-foreground"
+              >
+                <option value="" disabled>
+                  Columna…
+                </option>
+                {COLUMNAS_ORDEN.map((columna) => (
+                  <option key={columna.key} value={columna.key}>
+                    {columna.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                disabled={!sortConfig.key}
+                onClick={() => sortConfig.key && requestSort(sortConfig.key)}
+                title="Dirección del orden: pulsa para cambiarla (sube, baja, sin orden)"
+                aria-label="Dirección del orden"
+                className="inline-flex items-center border border-border px-1.5 py-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40"
+              >
+                {sortConfig.direction === "desc" ? (
+                  <ArrowDown className="size-3.5" />
+                ) : sortConfig.direction === "asc" ? (
+                  <ArrowUp className="size-3.5" />
+                ) : (
+                  <ArrowUpDown className="size-3.5" />
+                )}
+              </button>
+            </div>
           </div>
 
           {/* ── La flota, como lista de registros ── */}
           <ul className="mt-4 divide-y divide-border border-t border-border">
+            {/* Cabecera de la tabla: las etiquetas se dicen una
+                sola vez aquí y cada fila alinea sus valores en
+                las mismas columnas, sin apilar dato sobre dato. */}
+            <li aria-hidden className={`hidden pb-2 pt-1 ${GRID}`}>
+              <span />
+              <span className="smallcaps text-muted-foreground/70">Equipo</span>
+              <span className="smallcaps text-muted-foreground/70">Servicio</span>
+              <span className="smallcaps text-muted-foreground/70">
+                Versión del agente
+              </span>
+              <span className="smallcaps text-muted-foreground/70">
+                Última conexión
+              </span>
+              <span className="smallcaps text-muted-foreground/70">Registro</span>
+              <span className="smallcaps text-muted-foreground/70">USB</span>
+              <span />
+            </li>
             {paginatedComputers.map((computer) => {
               const canViewUsb = computer.isActive;
               const eliminando = deletingId === computer.id;
               return (
                 <li
                   key={computer.id}
-                  className="flex flex-col gap-5 py-6 md:flex-row md:items-center md:gap-8"
+                  className={`flex flex-col gap-3 py-4 ${GRID} md:gap-y-0`}
                 >
                   {onBulkDelete && (
-                    <div className="pt-1.5 md:shrink-0">
+                    <div>
                       <RowCheckbox
                         checked={bulk.selected.has(computer.id)}
                         onChange={() => bulk.toggle(computer.id)}
@@ -789,7 +812,7 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
                   )}
 
                   {/* Nombre e IP */}
-                  <div className="min-w-0 md:w-60 md:shrink-0">
+                  <div className="min-w-0">
                     <p className="font-display truncate text-xl font-bold leading-snug text-foreground">
                       {computer.name}
                     </p>
@@ -805,25 +828,20 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
                       OK / Sin respuesta» de una sonda al :5001 que
                       nunca podía responder — era el mismo dato dos
                       veces y una de las dos mentía. */}
-                  <div className="flex flex-wrap gap-x-10 gap-y-4 md:w-72 md:shrink-0">
-                    <Dato etiqueta="Servicio">
-                      <PalabraEstado activo={computer.isActive}>
-                        {computer.isActive ? "En ejecución" : "Sin señal"}
-                      </PalabraEstado>
-                    </Dato>
-                    <Dato etiqueta="Versión del agente">
-                      <span className="text-sm text-foreground">
+                  <div>
+                    <PalabraEstado activo={computer.isActive}>
+                      {computer.isActive ? "En ejecución" : "Sin señal"}
+                    </PalabraEstado>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                      <span className="text-sm font-medium text-foreground">
                         {computer.agentVersion
                           ? `v${computer.agentVersion}`
                           : "Sin anunciar"}
                       </span>
-                      <span className="mt-1 block text-[11px] text-muted-foreground">
-                        {computer.lastConfigAt
-                          ? `Ajustes pedidos ${haceCuanto(computer.lastConfigAt)}`
-                          : "Ajustes sin pedir aún"}
-                      </span>
                       {computer.actualizacionDisponible && (
-                        <span className="mt-1 flex items-center gap-2">
+                        <>
                           <span className="inline-flex items-center border border-amber-600/50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-500">
                             Actualización disponible
                             {computer.versionPaquete
@@ -848,31 +866,33 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
                               ? "Orden creada"
                               : "Actualizar"}
                           </button>
-                        </span>
+                        </>
                       )}
-                    </Dato>
+                    </div>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      {computer.lastConfigAt
+                        ? `Ajustes pedidos ${haceCuanto(computer.lastConfigAt)}`
+                        : "Ajustes sin pedir aún"}
+                    </p>
                   </div>
 
-                  {/* Fechas */}
-                  <div className="flex flex-wrap gap-x-10 gap-y-4 md:flex-1">
-                    <Dato etiqueta="Última conexión">
-                      <span className="text-sm tabular-nums text-foreground">
-                        {computer.lastSeen
-                          ? formatDateTime(computer.lastSeen)
-                          : "Nunca"}
-                      </span>
-                    </Dato>
-                    <Dato etiqueta="Registro">
-                      <span className="text-sm tabular-nums text-foreground">
-                        {formatDateTime(computer.createdAt)}
-                      </span>
-                    </Dato>
+                  {/* Fechas: una celda por columna */}
+                  <div>
+                    <span className="text-sm tabular-nums text-foreground">
+                      {computer.lastSeen
+                        ? formatDateTime(computer.lastSeen)
+                        : "Nunca"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-sm tabular-nums text-foreground">
+                      {formatDateTime(computer.createdAt)}
+                    </span>
                   </div>
 
-                  {/* Acciones de texto */}
-                  <div className="flex items-center gap-1 md:ml-auto md:shrink-0">
-                    <span
-                      className={`mr-1 inline-flex min-w-6 items-center justify-center border px-1.5 py-0.5 text-[11px] font-semibold tabular-nums ${
+                  {/* Contador de USB conectados: su propia columna */}
+                  <span
+                    className={`inline-flex min-w-6 items-center justify-center justify-self-center border px-1.5 py-0.5 text-[11px] font-semibold tabular-nums ${
                         (computer.usbConectados ?? 0) > 0
                           ? "border-[var(--acero)]/60 text-[var(--acero)]"
                           : "border-border text-muted-foreground"
@@ -880,8 +900,11 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
                       title="USB conectados ahora"
                       aria-label={`${computer.usbConectados ?? 0} USB conectados ahora`}
                     >
-                      {computer.usbConectados ?? 0}
-                    </span>
+                    {computer.usbConectados ?? 0}
+                  </span>
+
+                  {/* Acciones de texto */}
+                  <div className="flex items-center gap-1 md:justify-end">
                     {computer.apagadoEnCurso && (
                       <>
                         <span className="mr-1 inline-flex items-center border border-rose-600/60 px-1.5 py-0.5 text-[11px] font-semibold text-rose-700 dark:text-rose-500">
@@ -916,6 +939,17 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
                           type="button"
                           variant="ghost"
                           size="sm"
+                          disabled={!canViewUsb}
+                          onClick={() => setSelectedComputer(computer)}
+                          aria-label={`Ver USB de ${computer.name}`}
+                          title="Ver USB conectados"
+                        >
+                          Ver USB
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
                           disabled={
                             computer.reinicioEnCurso ||
                             reiniciandoIds.has(computer.id)
@@ -933,17 +967,6 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
                           ) : (
                             "Reiniciar"
                           )}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          disabled={!canViewUsb}
-                          onClick={() => setSelectedComputer(computer)}
-                          aria-label={`Ver USB de ${computer.name}`}
-                          title="Ver USB conectados"
-                        >
-                          Ver USB
                         </Button>
                         {onDelete && (
                           <Button
