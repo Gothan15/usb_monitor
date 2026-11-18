@@ -35,6 +35,8 @@ export interface Computer {
   usbConectados?: number;
   /** Hay una cuenta atrás de apagado corriendo en el equipo. */
   apagadoEnCurso?: boolean;
+  /** Hay una orden «reiniciar» viva para este equipo: el botón enseña su ruleta. */
+  reinicioEnCurso?: boolean;
 }
 
 export interface WhitelistEntry {

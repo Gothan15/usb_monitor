@@ -8,9 +8,11 @@ import {
   ESTADO_ORDEN,
   MAX_INTENTOS_ORDEN,
   TIPO_ORDEN_DESINSTALAR,
+  TIPO_ORDEN_REINICIAR,
   transicionInformeValida,
   informeSumaIntento,
 } from "@/lib/agentCommands";
+import { broadcastComputerStatus } from "@/lib/socket";
 import { getCurrentDate } from "@/lib/time";
 
 /**
@@ -136,6 +138,30 @@ export async function POST(
         }
       } catch (errorCierre) {
         logError("Error cerrando la desinstalación del equipo", errorCierre);
+      }
+    }
+    // Órdenes «reiniciar»: al cerrarse (HECHA o ERROR), las
+    // pestañas de Equipos abiertas apagan la ruleta del botón
+    // sin esperar al siguiente refresco.
+    if (
+      comando.type === TIPO_ORDEN_REINICIAR &&
+      (estado === ESTADO_ORDEN.HECHA || estado === ESTADO_ORDEN.ERROR)
+    ) {
+      try {
+        const equipo = await db.computer.findUnique({
+          where: { id: comando.computerId },
+          select: { name: true, ipAddress: true, lastSeen: true },
+        });
+        if (equipo) {
+          broadcastComputerStatus({
+            name: equipo.name,
+            ipAddress: equipo.ipAddress ?? "",
+            isActive: true,
+            lastSeen: (equipo.lastSeen ?? new Date()).toISOString(),
+          });
+        }
+      } catch (errorAviso) {
+        logError("Error avisando del fin del reinicio", errorAviso);
       }
     }
     registrarContactoAgente(null, "/api/agent/comandos", 200);
