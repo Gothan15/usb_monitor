@@ -14,11 +14,14 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
-import { cn, normalizeComputerName } from "@/lib/utils";
+import { cn, getCsrfTokenFromDocument, normalizeComputerName } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
+import { SerialCopiable } from "./SerialCopiable";
 import { useLiveData } from "@/components/providers/LiveDataProvider";
 import {
   Usb,
   ShieldCheck,
+  ShieldPlus,
   AlertTriangle,
   HardDrive,
   Smartphone,
@@ -63,16 +66,39 @@ function IconoTipo({ kind, className }: { kind?: string; className?: string }) {
   }
 }
 
-function EstadoListaBlanca({ dentro }: { dentro: boolean }) {
-  return dentro ? (
-    <span className="smallcaps inline-flex items-center gap-1 text-success">
-      <ShieldCheck className="h-3.5 w-3.5" />
-      En lista blanca
-    </span>
-  ) : (
-    <span className="smallcaps inline-flex items-center gap-1 text-amber-700 dark:text-amber-400">
-      <AlertTriangle className="h-3.5 w-3.5" />
-      Fuera de la lista
+function EstadoListaBlanca({
+  dentro,
+  onAgregar,
+  agregando,
+}: {
+  dentro: boolean;
+  onAgregar?: () => void;
+  agregando?: boolean;
+}) {
+  if (dentro) {
+    return (
+      <span className="smallcaps inline-flex items-center gap-1 text-success">
+        <ShieldCheck className="h-3.5 w-3.5" />
+        En lista blanca
+      </span>
+    );
+  }
+  return (
+    <span className="flex flex-col items-end gap-1">
+      <span className="smallcaps inline-flex items-center gap-1 text-amber-700 dark:text-amber-400">
+        <AlertTriangle className="h-3.5 w-3.5" />
+        Fuera de la lista
+      </span>
+      {onAgregar && (
+        <button
+          onClick={onAgregar}
+          disabled={agregando}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-primary underline-offset-4 transition-colors hover:text-foreground hover:underline disabled:opacity-50"
+        >
+          <ShieldPlus className="size-4" />
+          {agregando ? "Agregando…" : "A la lista blanca"}
+        </button>
+      )}
     </span>
   );
 }
@@ -87,6 +113,8 @@ function Dato({ etiqueta, children }: { etiqueta: string; children: ReactNode })
 }
 
 export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
+  const { toast } = useToast();
+  const [agregandoSerial, setAgregandoSerial] = useState<string | null>(null);
   const [historyRange, setHistoryRange] = useUsbHistoryRange();
   const [tab, setTab] = useState<"connected" | "history">("connected");
   const [loadingConnected, setLoadingConnected] = useState(false);
@@ -152,6 +180,61 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
       }
     },
     [canFetch, computer, historyRange]
+  );
+
+  // Alta en la lista blanca desde la propia ficha del equipo:
+  // el serial viaja solo, sin teclearlo ni copiarlo. El
+  // servidor solo lo acepta desde su propia PC; desde otro
+  // equipo responde 403 y el aviso muestra ese motivo.
+  const agregarAListaBlanca = useCallback(
+    async (
+      d: ConnectedUSBDevice | DisconnectedUSBDevice,
+      tipo: "connected" | "history",
+    ) => {
+      if (agregandoSerial) return;
+      const csrfToken = getCsrfTokenFromDocument();
+      if (!csrfToken) {
+        toast({
+          title: "Sesión sin token de seguridad",
+          description: "Vuelve a iniciar sesión e inténtalo otra vez.",
+          variant: "destructive",
+        });
+        return;
+      }
+      setAgregandoSerial(d.serialNumber);
+      try {
+        const res = await fetch("/api/whitelist", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-csrf-token": csrfToken,
+          },
+          credentials: "include",
+          body: JSON.stringify({
+            serialNumber: d.serialNumber,
+            label: d.volumeName || d.model || undefined,
+          }),
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data?.ok) {
+          throw new Error(data?.error || `Error HTTP ${res.status}`);
+        }
+        toast({
+          title: "Agregado a la lista blanca",
+          description: `${d.volumeName || d.serialNumber} ya es un dispositivo conocido.`,
+        });
+        void fetchDevices(tipo, undefined, { silencioso: true });
+      } catch (err: any) {
+        toast({
+          title: "No se pudo agregar",
+          description: err?.message || "Error desconocido",
+          variant: "destructive",
+        });
+      } finally {
+        setAgregandoSerial(null);
+      }
+    },
+    [agregandoSerial, fetchDevices, toast],
   );
 
   // Sin botón de «Actualizar»: con la hoja abierta la lista
@@ -340,7 +423,13 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
                                 {d.volumeName}
                               </span>
                             </p>
-                            <EstadoListaBlanca dentro={d.isWhitelisted} />
+                            <EstadoListaBlanca
+                              dentro={d.isWhitelisted}
+                              agregando={agregandoSerial === d.serialNumber}
+                              onAgregar={() =>
+                                void agregarAListaBlanca(d, "connected")
+                              }
+                            />
                           </div>
                           <div className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-2 text-xs text-muted-foreground sm:grid-cols-4">
                             <Dato etiqueta="Unidad">
@@ -350,7 +439,7 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
                                 : ""}
                             </Dato>
                             <Dato etiqueta="Serie">
-                              <span className="font-mono">{d.serialNumber}</span>
+                              <SerialCopiable serial={d.serialNumber} />
                             </Dato>
                             <Dato etiqueta="Modelo">{d.model}</Dato>
                             <Dato etiqueta="Tamaño">
@@ -447,7 +536,13 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
                                 {d.volumeName}
                               </span>
                             </p>
-                            <EstadoListaBlanca dentro={d.isWhitelisted} />
+                            <EstadoListaBlanca
+                              dentro={d.isWhitelisted}
+                              agregando={agregandoSerial === d.serialNumber}
+                              onAgregar={() =>
+                                void agregarAListaBlanca(d, "history")
+                              }
+                            />
                           </div>
                           <div className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-2 text-xs text-muted-foreground sm:grid-cols-4">
                             <Dato etiqueta="Unidad">
@@ -457,7 +552,7 @@ export function USBDevicesSheet({ computer, open, onOpenChange }: Props) {
                                 : ""}
                             </Dato>
                             <Dato etiqueta="Serie">
-                              <span className="font-mono">{d.serialNumber}</span>
+                              <SerialCopiable serial={d.serialNumber} />
                             </Dato>
                             <Dato etiqueta="Modelo">{d.model}</Dato>
                             <Dato etiqueta="Tamaño">

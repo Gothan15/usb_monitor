@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLiveData } from "@/components/providers/LiveDataProvider";
-import { Camera } from "lucide-react";
+import { SerialCopiable } from "./SerialCopiable";
+import { useToast } from "@/hooks/use-toast";
+import { getCsrfTokenFromDocument } from "@/lib/utils";
+import { Camera, ShieldPlus } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -14,7 +17,10 @@ import {
 /**
  * Vista «Desbloqueos» (fase 5): bloqueos en curso, historial de
  * intentos del flujo 2FA y de la emergencia sin red, y equipos en
- * silencio (método 3). Solo lectura: el admin mira, no interviene.
+ * silencio (método 3). Casi solo lectura: la única intervención
+ * del admin aquí es dar de alta un serial en la lista blanca
+ * desde el propio bloqueo (y el servidor solo lo acepta desde
+ * su propia PC).
  */
 
 interface Pending {
@@ -135,11 +141,15 @@ function RegistroHeader({
 const thClass = "smallcaps px-4 py-2.5 text-left font-semibold text-muted-foreground";
 const tdClass = "px-4 py-2.5";
 
-export function UnlocksTab() {
+export function UnlocksTab({ pcInicial = "" }: { pcInicial?: string }) {
+  const { toast } = useToast();
+  const [agregandoSerial, setAgregandoSerial] = useState<string | null>(null);
   const [data, setData] = useState<UnlocksData | null>(null);
   const [ultimaVez, setUltimaVez] = useState<Date | null>(null);
   const [resultFilter, setResultFilter] = useState("");
-  const [pcFilter, setPcFilter] = useState("");
+  // El filtro por equipo puede venir puesto desde Eventos
+  // (?pc=… en la dirección): la vista abre ya filtrada.
+  const [pcFilter, setPcFilter] = useState(pcInicial);
   const [evidenciaDe, setEvidenciaDe] = useState<Pending | null>(null);
   const [evidencia, setEvidencia] = useState<EvidenceData | null>(null);
 
@@ -193,6 +203,58 @@ export function UnlocksTab() {
       // anteriores y la red de 60 s reintenta sola.
     }
   }, [resultFilter, pcFilter]);
+
+  // Alta en la lista blanca desde el propio bloqueo: el serial
+  // viaja solo, sin teclearlo ni copiarlo. El servidor solo lo
+  // acepta desde su propia PC; desde otro equipo responde 403
+  // y el aviso muestra ese motivo tal cual.
+  const agregarAListaBlanca = useCallback(
+    async (p: Pending) => {
+      if (!p.serialNumber || agregandoSerial) return;
+      const csrfToken = getCsrfTokenFromDocument();
+      if (!csrfToken) {
+        toast({
+          title: "Sesión sin token de seguridad",
+          description: "Vuelve a iniciar sesión e inténtalo otra vez.",
+          variant: "destructive",
+        });
+        return;
+      }
+      setAgregandoSerial(p.serialNumber);
+      try {
+        const res = await fetch("/api/whitelist", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-csrf-token": csrfToken,
+          },
+          credentials: "include",
+          body: JSON.stringify({
+            serialNumber: p.serialNumber,
+            label: p.deviceLabel || undefined,
+          }),
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data?.ok) {
+          throw new Error(data?.error || `Error HTTP ${res.status}`);
+        }
+        toast({
+          title: "Agregado a la lista blanca",
+          description: `${p.deviceLabel || p.serialNumber} ya es un dispositivo conocido.`,
+        });
+        void load();
+      } catch (err: any) {
+        toast({
+          title: "No se pudo agregar",
+          description: err?.message || "Error desconocido",
+          variant: "destructive",
+        });
+      } finally {
+        setAgregandoSerial(null);
+      }
+    },
+    [agregandoSerial, load, toast],
+  );
 
   useEffect(() => {
     // Diferida a una microtarea: los setState de la carga ocurren
@@ -344,10 +406,32 @@ export function UnlocksTab() {
                       </td>
                       <td className={tdClass}>{p.deviceLabel || "—"}</td>
                       <td className={`${tdClass} font-mono text-xs`}>
-                        {p.serialNumber || "—"}
+                        {p.serialNumber ? (
+                          <SerialCopiable serial={p.serialNumber} />
+                        ) : (
+                          "—"
+                        )}
                       </td>
                       <td className={tdClass}>
-                        {p.whitelisted ? "Conocido" : "Desconocido"}
+                        {p.whitelisted ? (
+                          "Conocido"
+                        ) : (
+                          <span className="flex flex-col items-start gap-1">
+                            <span>Desconocido</span>
+                            {p.serialNumber && (
+                              <button
+                                onClick={() => void agregarAListaBlanca(p)}
+                                disabled={agregandoSerial === p.serialNumber}
+                                className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-primary underline-offset-4 transition-colors hover:text-foreground hover:underline disabled:opacity-50"
+                              >
+                                <ShieldPlus className="size-4" />
+                                {agregandoSerial === p.serialNumber
+                                  ? "Agregando…"
+                                  : "A la lista blanca"}
+                              </button>
+                            )}
+                          </span>
+                        )}
                       </td>
                       <td className={`${tdClass} tabular-nums`}>
                         {fmt(p.createdAt)}
@@ -489,7 +573,11 @@ export function UnlocksTab() {
                     )}
                   </td>
                   <td className={`${tdClass} font-mono text-xs`}>
-                    {a.serialNumber || "—"}
+                    {a.serialNumber ? (
+                      <SerialCopiable serial={a.serialNumber} />
+                    ) : (
+                      "—"
+                    )}
                   </td>
                   <td className={tdClass}>
                     <span

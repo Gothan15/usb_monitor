@@ -8,11 +8,28 @@ import {
   requireAdminUser,
 } from "./_helpers";
 import { broadcastWhitelistChange } from "@/lib/socket";
+import { peticionDesdeElServidor } from "@/lib/ipServidor";
 
 function unauthorized() {
   return NextResponse.json(
     { ok: false, error: "No autorizado" },
     { status: 401 }
+  );
+}
+
+// Cambiar la lista blanca (agregar o quitar) solo se puede
+// desde la PC del servidor: ni siquiera un administrador
+// conectado desde otro equipo. Leerla, en cambio, sigue
+// abierto a cualquier administrador.
+function corteSiNoEsElServidor(req: NextRequest) {
+  if (peticionDesdeElServidor(req)) return null;
+  return NextResponse.json(
+    {
+      ok: false,
+      error:
+        "La lista blanca solo se puede cambiar desde la PC del servidor",
+    },
+    { status: 403 }
   );
 }
 
@@ -46,6 +63,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const admin = await requireAdminUser(req);
   if (!admin) return unauthorized();
+  const corte = corteSiNoEsElServidor(req);
+  if (corte) return corte;
 
   let body: any;
   try {
@@ -140,6 +159,8 @@ function sanitizeIds(value: unknown): string[] {
 export async function DELETE(req: NextRequest) {
   const admin = await requireAdminUser(req);
   if (!admin) return unauthorized();
+  const corte = corteSiNoEsElServidor(req);
+  if (corte) return corte;
 
   const body = await req.json().catch(() => null);
   const ids = sanitizeIds((body as any)?.ids);

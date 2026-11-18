@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { WhitelistEntry, formatDateTime } from "./types";
+import { SerialCopiable } from "./SerialCopiable";
 import { DashboardPagination } from "./DashboardPagination";
 import {
   BulkBar,
@@ -253,6 +254,12 @@ export function WhitelistTab({
         onSubmit={handleSubmit}
         className="mt-10 border-t border-border pt-6"
       >
+        <p className="mb-4 text-xs text-muted-foreground">
+          Agregar y quitar seriales solo funciona desde la PC del
+          servidor. También puedes dar de alta un dispositivo sin
+          escribir su serial: en Desbloqueos o en la ficha de su
+          equipo, con el botón «A la lista blanca».
+        </p>
         <div className="grid items-end gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
           <div className="flex flex-col gap-2">
             <label className="smallcaps text-muted-foreground">
@@ -348,8 +355,8 @@ export function WhitelistTab({
                           label={`Seleccionar ${entry.serialNumber}`}
                         />
                       )}
-                      <p className="font-mono text-sm text-foreground">
-                        {entry.serialNumber}
+                      <p className="text-sm text-foreground">
+                        <SerialCopiable serial={entry.serialNumber} />
                       </p>
                     </span>
                     <p className="text-xs text-muted-foreground tabular-nums">
@@ -481,8 +488,8 @@ export function WhitelistTab({
                             label={`Seleccionar ${entry.serialNumber}`}
                           />
                         )}
-                        <span className="font-mono text-sm">
-                          {entry.serialNumber}
+                        <span className="text-sm">
+                          <SerialCopiable serial={entry.serialNumber} />
                         </span>
                       </span>
                     </TableCell>
