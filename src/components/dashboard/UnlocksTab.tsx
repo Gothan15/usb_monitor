@@ -5,7 +5,14 @@ import { useLiveData } from "@/components/providers/LiveDataProvider";
 import { SerialCopiable } from "./SerialCopiable";
 import { ExportarCsv } from "./ExportarCsv";
 import { useToast } from "@/hooks/use-toast";
-import { getCsrfTokenFromDocument } from "@/lib/utils";
+import * as desbloqueosApi from "@/lib/api/desbloqueos";
+import type {
+  Attempt,
+  EvidenceData,
+  Pending,
+  UnlocksData,
+} from "@/lib/api/desbloqueos";
+import * as listaBlancaApi from "@/lib/api/listaBlanca";
 import { Camera, ShieldPlus } from "lucide-react";
 import {
   Dialog,
@@ -24,71 +31,6 @@ import {
  * desde el propio bloqueo (y el servidor solo lo acepta desde
  * su propia PC).
  */
-
-interface Pending {
-  id: string;
-  pcName: string;
-  driveLetter: string | null;
-  serialNumber: string | null;
-  deviceLabel: string | null;
-  whitelisted: boolean;
-  createdAt: string;
-  unlockedAt: string | null;
-  unlockedBy: { username: string; role: string } | null;
-  closedAt?: string | null;
-  closeReason?: string | null;
-  hasEvidence?: boolean;
-}
-
-interface EvidenceData {
-  id: string;
-  capturedAt: string;
-  foregroundProcess: string | null;
-  foregroundTitle: string | null;
-  processes: { proceso: string; titulo?: string }[];
-  browserTabs: { navegador: string; titulo: string; url?: string }[];
-  tabsComplete: boolean;
-  nota: string | null;
-  hasImage: boolean;
-  // Custodia de la imagen: huella y registro de vistas.
-  imageSha256: string | null;
-  viewCount: number;
-  lastViewedAt: string | null;
-  lastViewedBy: string | null;
-}
-
-interface Attempt {
-  id: string;
-  createdAt: string;
-  pcName: string;
-  usernameTried: string;
-  serialNumber: string | null;
-  result: string;
-  origin: string;
-  adminUnlock: boolean;
-  user: { username: string; role: string } | null;
-}
-
-interface SilenceComputer {
-  id: string;
-  name: string;
-  ipAddress: string;
-  lastSeen: string | null;
-  silent: boolean;
-  silentSince: string | null;
-}
-
-interface UnlocksData {
-  blockedNow: Pending[];
-  activeUnlocked: Pending[];
-  history: Pending[];
-  attempts: Attempt[];
-  silence: {
-    thresholdMinutes: number;
-    serverLikelyDown: boolean;
-    computers: SilenceComputer[];
-  };
-}
 
 const RESULT_LABELS: Record<string, string> = {
   SUCCESS: "Desbloqueado",
@@ -173,14 +115,9 @@ export function UnlocksTab({ pcInicial = "" }: { pcInicial?: string }) {
   useEffect(() => {
     if (!evidenciaDe) return;
     let viva = true;
-    fetch(`/api/admin/evidence/${evidenciaDe.id}`, { credentials: "include" })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((json) => {
-        if (viva) setEvidencia(json?.evidence ?? null);
-      })
-      .catch(() => {
-        if (viva) setEvidencia(null);
-      });
+    void desbloqueosApi.evidencia(evidenciaDe.id).then((datos) => {
+      if (viva) setEvidencia(datos);
+    });
     return () => {
       viva = false;
     };
@@ -192,20 +129,16 @@ export function UnlocksTab({ pcInicial = "" }: { pcInicial?: string }) {
   // la red de seguridad de 60 s de abajo. Un «Actualizar»
   // manual no refrescaría nada que no llegue solo.
   const load = useCallback(async () => {
-    try {
-      const params = new URLSearchParams();
-      if (resultFilter) params.set("result", resultFilter);
-      if (pcFilter) params.set("pcName", pcFilter);
-      const res = await fetch(`/api/admin/unlocks?${params.toString()}`, {
-        credentials: "include",
-      });
-      if (res.ok) {
-        setData(await res.json());
-        setUltimaVez(new Date());
-      }
-    } catch {
-      // Sin estado de error propio: se conservan los datos
-      // anteriores y la red de 60 s reintenta sola.
+    // El servicio devuelve null si la petición falla: se
+    // conservan los datos anteriores y la red de 60 s
+    // reintenta sola.
+    const datos = await desbloqueosApi.listar({
+      result: resultFilter || undefined,
+      pcName: pcFilter || undefined,
+    });
+    if (datos) {
+      setData(datos);
+      setUltimaVez(new Date());
     }
   }, [resultFilter, pcFilter]);
 
@@ -216,33 +149,12 @@ export function UnlocksTab({ pcInicial = "" }: { pcInicial?: string }) {
   const agregarAListaBlanca = useCallback(
     async (p: Pending) => {
       if (!p.serialNumber || agregandoSerial) return;
-      const csrfToken = getCsrfTokenFromDocument();
-      if (!csrfToken) {
-        toast({
-          title: "Sesión sin token de seguridad",
-          description: "Vuelve a iniciar sesión e inténtalo otra vez.",
-          variant: "destructive",
-        });
-        return;
-      }
       setAgregandoSerial(p.serialNumber);
       try {
-        const res = await fetch("/api/whitelist", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-csrf-token": csrfToken,
-          },
-          credentials: "include",
-          body: JSON.stringify({
-            serialNumber: p.serialNumber,
-            label: p.deviceLabel || undefined,
-          }),
+        await listaBlancaApi.agregar({
+          serialNumber: p.serialNumber,
+          label: p.deviceLabel || undefined,
         });
-        const data = await res.json().catch(() => null);
-        if (!res.ok || !data?.ok) {
-          throw new Error(data?.error || `Error HTTP ${res.status}`);
-        }
         toast({
           title: "Agregado a la lista blanca",
           description: `${p.deviceLabel || p.serialNumber} ya es un dispositivo conocido.`,

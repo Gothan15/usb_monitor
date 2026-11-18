@@ -29,7 +29,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { getCsrfTokenFromDocument } from "@/lib/utils";
+import { HttpError } from "@/lib/http";
+import * as equiposApi from "@/lib/api/equipos";
+import * as usuariosApi from "@/lib/api/usuarios";
 import { useToast } from "@/hooks/use-toast";
 import { Computer, formatDateTime, haceCuanto } from "./types";
 import { OrdenarPor } from "./OrdenarPor";
@@ -151,49 +153,30 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
 
   const actualizarAgente = useCallback(
     async (computer: Computer) => {
-      const csrfToken = getCsrfTokenFromDocument();
-      if (!csrfToken) {
-        toast({
-          title: "Sesión sin token de seguridad",
-          description: "Inicia sesión nuevamente.",
-          variant: "destructive",
-        });
-        return;
-      }
       try {
         setActualizandoId(computer.id);
-        const res = await fetch("/api/agent/comandos", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-csrf-token": csrfToken,
-          },
-          credentials: "include",
-          body: JSON.stringify({
-            pcName: computer.name,
-            tipo: "actualizar",
-          }),
-        });
-        const datos = await res.json().catch(() => null);
-        if (!res.ok || !datos?.ok) {
-          toast({
-            title: "No se pudo crear la orden",
-            description:
-              datos?.error || "El panel no aceptó la orden de actualización.",
-            variant: "destructive",
-          });
-          return;
-        }
+        await equiposApi.crearOrdenActualizacion(computer.name);
         setOrdenesCreadas((prev) => new Set(prev).add(computer.id));
         toast({
           title: "Orden de actualización creada",
           description: `${computer.name} se actualizará solo por su canal en cuanto recoja la orden.`,
         });
-      } catch {
-        toast({
-          title: "No se pudo contactar con el panel",
-          variant: "destructive",
-        });
+      } catch (error) {
+        // HttpError trae el motivo del servidor; el resto es
+        // que el panel no respondió.
+        if (error instanceof HttpError) {
+          toast({
+            title: "No se pudo crear la orden",
+            description:
+              error.message || "El panel no aceptó la orden de actualización.",
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "No se pudo contactar con el panel",
+            variant: "destructive",
+          });
+        }
       } finally {
         setActualizandoId(null);
       }
@@ -213,46 +196,29 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
 
   const detenerApagado = useCallback(
     async (computer: Computer) => {
-      const csrfToken = getCsrfTokenFromDocument();
-      if (!csrfToken) {
-        toast({
-          title: "Sesión sin token de seguridad",
-          description: "Inicia sesión nuevamente.",
-          variant: "destructive",
-        });
-        return;
-      }
       try {
         setDeteniendoId(computer.id);
-        const res = await fetch(
-          `/api/computers/${computer.id}/cancelar-apagado`,
-          {
-            method: "POST",
-            headers: { "x-csrf-token": csrfToken },
-            credentials: "include",
-          },
-        );
-        const datos = await res.json().catch(() => null);
-        if (!res.ok || !datos?.ok) {
-          toast({
-            title: "No se pudo crear la orden",
-            description:
-              datos?.error || "El panel no aceptó la orden de detener el apagado.",
-            variant: "destructive",
-          });
-          return;
-        }
+        await equiposApi.cancelarApagado(computer.id);
         setApagadosDetenidos((prev) => new Set(prev).add(computer.id));
         setPendingDetener(null);
         toast({
           title: "Orden de detener el apagado enviada",
           description: `${computer.name} cancelará la cuenta atrás en cuanto recoja la orden (segundos).`,
         });
-      } catch {
-        toast({
-          title: "No se pudo contactar con el panel",
-          variant: "destructive",
-        });
+      } catch (error) {
+        if (error instanceof HttpError) {
+          toast({
+            title: "No se pudo crear la orden",
+            description:
+              error.message || "El panel no aceptó la orden de detener el apagado.",
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "No se pudo contactar con el panel",
+            variant: "destructive",
+          });
+        }
       } finally {
         setDeteniendoId(null);
       }
@@ -273,24 +239,18 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
   useEffect(() => {
     if (!tokenAbierto) return;
     let cancelado = false;
-    void fetch("/api/users?page=1&pageSize=100")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((datos) => {
-        if (cancelado || !datos?.items) return;
-        setUsuariosToken(
-          (datos.items as any[]).map((u) => ({
-            id: String(u.id),
-            username: String(u.username),
-          })),
-        );
-      })
+    void usuariosApi.listarParaSelector().then((lista) => {
+      if (cancelado) return;
+      setUsuariosToken(lista);
+    })
       .catch(() => undefined);
     return () => {
       cancelado = true;
     };
   }, [tokenAbierto]);
   const [tokenOcupado, setTokenOcupado] = useState(false);
-  const [credencialEstado, setCredencialEstado] = useState<any>(null);
+  const [credencialEstado, setCredencialEstado] =
+    useState<equiposApi.EstadoCredencial | null>(null);
   // «Ahora» como estado para decidir si el código sigue vivo:
   // Date.now() durante el render es impuro y el lint lo marca;
   // la referencia se toma al consultar el estado y se refresca
@@ -315,16 +275,8 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
     if (!nombre) return;
     const temporizador = setTimeout(() => {
       void (async () => {
-        try {
-          const r = await fetch(
-            `/api/agent/codigo-enrolamiento?pcName=${encodeURIComponent(nombre)}`,
-          );
-          const d = await r.json().catch(() => null);
-          setCredencialEstado(r.ok && d?.ok ? d : null);
-          setAhora(Date.now());
-        } catch {
-          setCredencialEstado(null);
-        }
+        setCredencialEstado(await equiposApi.estadoCredencial(nombre));
+        setAhora(Date.now());
       })();
     }, 400);
     return () => clearTimeout(temporizador);
@@ -349,29 +301,19 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
         });
         return;
       }
-      const csrfToken = getCsrfTokenFromDocument();
-      if (!csrfToken) {
-        toast({ title: "Sesión sin token CSRF", variant: "destructive" });
-        return;
-      }
       setTokenOcupado(true);
       try {
-        const respuesta = await fetch("/api/agent/codigo-enrolamiento", {
-          method: metodo,
-          headers: {
-            "Content-Type": "application/json",
-            "x-csrf-token": csrfToken,
-          },
-          body: JSON.stringify({ pcName: nombre }),
-        });
-        const datos = await respuesta.json().catch(() => null);
-        if (!respuesta.ok || !datos?.ok) {
-          throw new Error(datos?.error || "El servidor no respondió bien");
-        }
-        if (metodo === "POST") {
-          setTokenValor(datos.codigo);
-          toast({ title: `Código generado para ${datos.pcName}` });
+        // Al generar, la respuesta trae el código y el equipo;
+        // al revocar solo confirma.
+        const generado =
+          metodo === "POST"
+            ? await equiposApi.generarCodigoEnrolamiento(nombre)
+            : null;
+        if (generado) {
+          setTokenValor(generado.codigo);
+          toast({ title: `Código generado para ${generado.pcName}` });
         } else {
+          await equiposApi.revocarCodigoEnrolamiento(nombre);
           setTokenValor(null);
           toast({ title: `Credencial revocada para ${nombre}` });
         }
@@ -382,25 +324,16 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
         // Dueño elegido en el propio diálogo: con el token ya
         // generado, el usuario queda asignado a este equipo sin
         // tener que ir a la pestaña de Usuarios a enlazarlo.
-        if (metodo === "POST" && tokenUsuarioId && datos.computerId) {
+        if (generado && tokenUsuarioId && generado.computerId) {
           const elegido = usuariosToken.find((u) => u.id === tokenUsuarioId);
           try {
-            const r = await fetch(`/api/users/${tokenUsuarioId}`, {
-              method: "PATCH",
-              headers: {
-                "Content-Type": "application/json",
-                "x-csrf-token": csrfToken,
-              },
-              credentials: "include",
-              body: JSON.stringify({ computerId: datos.computerId }),
-            });
-            const d = await r.json().catch(() => null);
-            if (!r.ok || !d?.ok) {
-              throw new Error(d?.error || "El servidor no respondió bien");
-            }
+            await usuariosApi.asignarEquipo(
+              tokenUsuarioId,
+              generado.computerId,
+            );
             toast({
               title: `Dueño asignado: ${elegido?.username ?? "usuario"}`,
-              description: `${datos.pcName} queda a su nombre para los desbloqueos.`,
+              description: `${generado.pcName} queda a su nombre para los desbloqueos.`,
             });
             await queryClient.invalidateQueries({ queryKey: ["users"] });
           } catch {
@@ -464,43 +397,15 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
   const reiniciarServicio = useCallback(
     async (objetivos: Computer[]) => {
       if (objetivos.length === 0) return;
-      const csrfToken = getCsrfTokenFromDocument();
-      if (!csrfToken) {
-        toast({
-          title: "Sesión sin token de seguridad",
-          description: "Inicia sesión nuevamente.",
-          variant: "destructive",
-        });
-        return;
-      }
       const ids = objetivos.map((c) => c.id);
       const esBulk = objetivos.length > 1;
       if (esBulk) setReiniciandoBulk(true);
       else
         setReiniciandoIds((prev) => new Set(prev).add(ids[0]));
       try {
-        const res = await fetch("/api/computers/reiniciar-servicio", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-csrf-token": csrfToken,
-          },
-          credentials: "include",
-          body: JSON.stringify({ ids }),
-        });
-        const datos = await res.json().catch(() => null);
-        if (!res.ok || !datos?.ok) {
-          toast({
-            title: "No se pudo crear la orden",
-            description:
-              datos?.error || "El panel no aceptó la orden de reinicio.",
-            variant: "destructive",
-          });
-          return;
-        }
-        const creadas: { pcName: string }[] = datos.creadas ?? [];
-        const omitidas: { pcName?: string; motivo: string }[] =
-          datos.omitidas ?? [];
+        const datos = await equiposApi.reiniciarServicio(ids);
+        const creadas = datos.creadas ?? [];
+        const omitidas = datos.omitidas ?? [];
         if (!esBulk) {
           if (creadas.length === 1) {
             toast({
@@ -528,11 +433,20 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
           });
           if (creadas.length > 0) bulk.clear();
         }
-      } catch {
-        toast({
-          title: "No se pudo contactar con el panel",
-          variant: "destructive",
-        });
+      } catch (error) {
+        if (error instanceof HttpError) {
+          toast({
+            title: "No se pudo crear la orden",
+            description:
+              error.message || "El panel no aceptó la orden de reinicio.",
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "No se pudo contactar con el panel",
+            variant: "destructive",
+          });
+        }
       } finally {
         if (esBulk) setReiniciandoBulk(false);
         else
