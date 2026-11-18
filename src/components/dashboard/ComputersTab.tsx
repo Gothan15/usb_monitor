@@ -15,10 +15,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   AlertTriangle,
-  ArrowDown,
-  ArrowUp,
   ArrowUpCircle,
-  ArrowUpDown,
   Copy,
   KeyRound,
   Router,
@@ -35,6 +32,7 @@ import {
 import { getCsrfTokenFromDocument } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Computer, formatDateTime, haceCuanto } from "./types";
+import { OrdenarPor } from "./OrdenarPor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -730,48 +728,12 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
               placeholder="Buscar por nombre o IP"
               className="order-last w-full sm:order-none sm:ml-auto sm:w-[220px]"
             />
-            <div className="inline-flex items-center gap-2">
-              <label
-                htmlFor="orden-equipos"
-                className="smallcaps text-muted-foreground/70"
-              >
-                Ordenar por
-              </label>
-              <select
-                id="orden-equipos"
-                value={sortConfig.key ?? ""}
-                onChange={(e) => {
-                  const key = e.target.value as keyof Computer;
-                  if (key && key !== sortConfig.key) requestSort(key);
-                }}
-                className="border border-border bg-transparent px-2 py-1.5 text-xs text-foreground"
-              >
-                <option value="" disabled>
-                  Columna…
-                </option>
-                {COLUMNAS_ORDEN.map((columna) => (
-                  <option key={columna.key} value={columna.key}>
-                    {columna.label}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                disabled={!sortConfig.key}
-                onClick={() => sortConfig.key && requestSort(sortConfig.key)}
-                title="Dirección del orden: pulsa para cambiarla (sube, baja, sin orden)"
-                aria-label="Dirección del orden"
-                className="inline-flex items-center border border-border px-1.5 py-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40"
-              >
-                {sortConfig.direction === "desc" ? (
-                  <ArrowDown className="size-3.5" />
-                ) : sortConfig.direction === "asc" ? (
-                  <ArrowUp className="size-3.5" />
-                ) : (
-                  <ArrowUpDown className="size-3.5" />
-                )}
-              </button>
-            </div>
+            <OrdenarPor
+              id="orden-equipos"
+              columnas={COLUMNAS_ORDEN}
+              sortConfig={sortConfig}
+              onSort={requestSort}
+            />
           </div>
 
           {/* ── La flota, como lista de registros ── */}

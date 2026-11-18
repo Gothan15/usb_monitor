@@ -6,6 +6,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -43,7 +44,7 @@ function haceCuanto(iso: string): string {
 import { DashboardPagination } from "./DashboardPagination";
 import { usePagination } from "@/hooks/usePagination";
 import { useTableSort } from "@/hooks/useTableSort";
-import { SortableTableHead } from "./SortableTableHead";
+import { OrdenarPor } from "./OrdenarPor";
 
 interface Props {
   events: USBEvent[];
@@ -51,6 +52,16 @@ interface Props {
   onClear?: () => void;
   clearing?: boolean;
 }
+
+// Columnas por las que se puede ordenar el registro.
+const COLUMNAS_ORDEN: { key: keyof USBEvent; label: string }[] = [
+  { key: "pcName", label: "Computadora" },
+  { key: "pcUser", label: "Usuario / IP" },
+  { key: "event", label: "Evento" },
+  { key: "serialNumber", label: "Dispositivo" },
+  { key: "whitelisted", label: "Estado" },
+  { key: "createdAt", label: "Fecha / Hora" },
+];
 
 export function EventsTab({ events, loading, onClear, clearing }: Props) {
   // Destino dejado por la campana de notificaciones: si hay uno, el
@@ -217,6 +228,12 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
             <span className="dot-pulse size-1.5 rounded-full bg-success" />
             Sincronizado
           </span>
+          <OrdenarPor
+            id="orden-eventos"
+            columnas={COLUMNAS_ORDEN}
+            sortConfig={sortConfig}
+            onSort={requestSort}
+          />
           <ExportarCsv ruta="/api/usb-event/exportar" />
           {onClear && (
             <Button
@@ -366,24 +383,24 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                 <Table className="w-full min-w-[850px]">
                   <TableHeader className="sticky top-0 z-10 bg-background">
                     <TableRow>
-                      <SortableTableHead column="pcName" currentSortKey={sortConfig.key} currentSortDirection={sortConfig.direction} onSort={requestSort}>
+                      <TableHead>
                         Computadora
-                      </SortableTableHead>
-                      <SortableTableHead column="pcUser" currentSortKey={sortConfig.key} currentSortDirection={sortConfig.direction} onSort={requestSort}>
+                      </TableHead>
+                      <TableHead>
                         Usuario / IP
-                      </SortableTableHead>
-                      <SortableTableHead column="event" currentSortKey={sortConfig.key} currentSortDirection={sortConfig.direction} onSort={requestSort}>
+                      </TableHead>
+                      <TableHead>
                         Evento
-                      </SortableTableHead>
-                      <SortableTableHead column="serialNumber" currentSortKey={sortConfig.key} currentSortDirection={sortConfig.direction} onSort={requestSort}>
+                      </TableHead>
+                      <TableHead>
                         Dispositivo
-                      </SortableTableHead>
-                      <SortableTableHead column="whitelisted" currentSortKey={sortConfig.key} currentSortDirection={sortConfig.direction} onSort={requestSort}>
+                      </TableHead>
+                      <TableHead>
                         Estado
-                      </SortableTableHead>
-                      <SortableTableHead column="createdAt" currentSortKey={sortConfig.key} currentSortDirection={sortConfig.direction} onSort={requestSort}>
+                      </TableHead>
+                      <TableHead>
                         Fecha / Hora
-                      </SortableTableHead>
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
