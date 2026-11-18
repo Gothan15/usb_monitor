@@ -49,11 +49,32 @@ model USBEvent {
   @@map("usb_events")
 }
 
+// Destino de instalación remota guardado por el admin: nombre,
+// dirección y el usuario administrador DE ESE equipo, para no
+// teclear la lista entera en cada tarea. La contraseña NUNCA
+// se guarda: se escribe al lanzar la tarea y vive solo en la
+// memoria del servidor mientras corre.
+model DestinoGuardado {
+  id        String   @id @default(cuid())
+  nombre    String
+  ip        String   @unique
+  usuario   String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("destinos_guardados")
+}
+
 model Computer {
   id               String    @id @default(cuid())
   name             String    @unique
   ipAddress        String
   lastSeen         DateTime?
+  // Última vez que el agente vino a por su configuración
+  // (GET /api/agent/config): la pestaña Equipos lo enseña como
+  // «ajustes pedidos hace…», para saber si un cambio de Ajustes
+  // ya llegó a ese equipo sin reiniciar nada a mano.
+  lastConfigAt     DateTime?
   isActive         Boolean   @default(false)
   serviceInstalled Boolean   @default(false)
   serviceRunning   Boolean   @default(false)

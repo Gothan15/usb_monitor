@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -16,7 +16,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { getCsrfTokenFromDocument } from "@/lib/utils";
 import { credencialesCompletas } from "@/lib/installTasks";
-import { ChevronDown, Lock, Rocket, User } from "lucide-react";
+import { ChevronDown, FolderOpen, Lock, Rocket, Save, Trash2, User, X } from "lucide-react";
 
 export interface DestinoTarea {
   pcName: string;
@@ -53,9 +53,92 @@ export function InstallTaskDialog({
   destinos,
   onCreada,
 }: Props) {
+  // La lista de destinos es editable dentro del diálogo: se
+  // siembra con los que traiga quien lo abre (el escáner o
+  // Equipos) y desde aquí se pueden cargar los guardados y
+  // quitar filas sueltas.
+  const [lista, setLista] = useState<DestinoTarea[]>(destinos);
+  // Destinos guardados (nombre, IP y usuario; la contraseña
+  // nunca se guarda).
+  const [guardados, setGuardados] = useState<
+    Array<{ id: string; nombre: string; ip: string; usuario: string }>
+  >([]);
+  const [guardadosAbierto, setGuardadosAbierto] = useState(false);
+  const [avisoDestinos, setAvisoDestinos] = useState<string | null>(null);
   // Credencial propia por destino (clave del registro:
   // «pcName|ip»): la de cada equipo, escrita en su fila.
   const [ajustes, setAjustes] = useState<Record<string, Ajuste>>({});
+
+  // Al abrir: la lista vuelve a ser la que trae el llamante y
+  // se refrescan los destinos guardados.
+  useEffect(() => {
+    if (!open) return;
+    setLista(destinos);
+    setAvisoDestinos(null);
+    void fetch("/api/destinos-guardados")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.ok) setGuardados(data.destinos ?? []);
+      })
+      .catch(() => null);
+    // Solo al abrir: la lista que trae el llamante manda.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open ]);
+
+  const guardarDestinos = async () => {
+    const csrfToken = getCsrfTokenFromDocument();
+    if (!csrfToken) {
+      setAvisoDestinos("Sesión sin token de seguridad.");
+      return;
+    }
+    try {
+      const res = await fetch("/api/destinos-guardados", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": csrfToken,
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          destinos: lista.map((d) => ({
+            nombre: d.pcName,
+            ip: d.ip,
+            usuario: (ajustes[claveDeDestino(d)]?.usuario ?? "").trim(),
+          })),
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setAvisoDestinos(data?.error || "No se pudieron guardar.");
+        return;
+      }
+      setGuardados(data.destinos ?? []);
+      setAvisoDestinos(
+        `Guardados ${lista.length} destino(s): nombre, IP y usuario. Las contraseñas no se guardan nunca.`,
+      );
+    } catch {
+      setAvisoDestinos("No se pudo contactar con el panel.");
+    }
+  };
+
+  const anadirGuardado = (g: { nombre: string; ip: string; usuario: string }) => {
+    const d = { pcName: g.nombre, ip: g.ip };
+    if (!lista.some((x) => x.ip === g.ip)) setLista((prev) => [...prev, d]);
+    if (g.usuario) {
+      ponerAjuste(claveDeDestino(d), { usuario: g.usuario, clave: "" });
+    }
+  };
+
+  const quitarGuardado = async (id: string) => {
+    const csrfToken = getCsrfTokenFromDocument();
+    if (!csrfToken) return;
+    await fetch(`/api/destinos-guardados/${id}`, {
+      method: "DELETE",
+      headers: { "x-csrf-token": csrfToken },
+      credentials: "include",
+    }).catch(() => null);
+    setGuardados((prev) => prev.filter((g) => g.id !== id));
+  };
   // Cuenta de reserva (la «general» de siempre), opcional.
   const [usuario, setUsuario] = useState("");
   const [clave, setClave] = useState("");
@@ -81,12 +164,14 @@ export function InstallTaskDialog({
   // La tarea solo puede nacer si TODO destino queda con una
   // credencial efectiva completa (regla pura, la misma cuenta
   // que hará el servidor con lo que se le mande).
-  const completo = credencialesCompletas(
-    general,
-    destinos.map((d) => ajustes[claveDeDestino(d)]),
-  );
+  const completo =
+    lista.length > 0 &&
+    credencialesCompletas(
+      general,
+      lista.map((d) => ajustes[claveDeDestino(d)]),
+    );
   // Números (los de las filas) de los equipos sin cubrir.
-  const faltan = destinos
+  const faltan = lista
     .map((d, i) => {
       const ajuste = ajustes[claveDeDestino(d)];
       const efectiva = ajuste?.clave
@@ -117,7 +202,7 @@ export function InstallTaskDialog({
     // lo que el servidor guarda como ajuste (el usuario
     // propio acompaña si se escribió; si no, manda el de la
     // reserva, si lo hay).
-    const credenciales = destinos
+    const credenciales = lista
       .map((d) => {
         const ajuste = ajustes[claveDeDestino(d)];
         if (!ajuste?.clave) return null;
@@ -141,7 +226,7 @@ export function InstallTaskDialog({
         },
         credentials: "include",
         body: JSON.stringify({
-          destinos,
+          destinos: lista,
           usuario: usuario.trim(),
           clave,
           ...(credenciales.length > 0 ? { credenciales } : {}),
@@ -174,18 +259,89 @@ export function InstallTaskDialog({
             Instalar el agente — tarea nueva
           </DialogTitle>
           <DialogDescription>
-            Se instala en segundo plano, dos equipos a la vez. El
+            Se instala en segundo plano, de uno en uno. El
             progreso se sigue en la vista «Tareas».
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div>
-            <p className="smallcaps text-muted-foreground">
-              Destinos ({destinos.length})
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="smallcaps text-muted-foreground">
+                Destinos ({lista.length})
+              </p>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setGuardadosAbierto((v) => !v)}
+                  className="inline-flex items-center gap-1 text-xs text-[var(--acero)] underline decoration-[var(--acero)] decoration-2 underline-offset-4"
+                >
+                  <FolderOpen className="size-3.5" />
+                  Guardados ({guardados.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void guardarDestinos()}
+                  disabled={lista.length === 0}
+                  className="inline-flex items-center gap-1 text-xs text-[var(--acero)] underline decoration-[var(--acero)] decoration-2 underline-offset-4 disabled:opacity-50"
+                >
+                  <Save className="size-3.5" />
+                  Guardar estos destinos
+                </button>
+              </div>
+            </div>
+            {avisoDestinos && (
+              <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+                {avisoDestinos}
+              </p>
+            )}
+            {guardadosAbierto && (
+              <ul className="mt-2 divide-y divide-border/60 border border-border/60 bg-muted/20 px-3">
+                {guardados.length === 0 && (
+                  <li className="py-2 text-xs text-muted-foreground">
+                    Aún no hay destinos guardados.
+                  </li>
+                )}
+                {guardados.map((g) => (
+                  <li
+                    key={g.id}
+                    className="flex items-center gap-2 py-1.5 text-sm"
+                  >
+                    <span className="min-w-0 flex-1 truncate">
+                      <span className="font-medium text-foreground">
+                        {g.nombre}
+                      </span>{" "}
+                      <span className="font-mono text-xs text-muted-foreground">
+                        {g.ip}
+                      </span>
+                      {g.usuario && (
+                        <span className="text-xs text-muted-foreground">
+                          {" "}
+                          · {g.usuario}
+                        </span>
+                      )}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => anadirGuardado(g)}
+                      className="text-xs text-[var(--acero)] underline decoration-[var(--acero)] decoration-2 underline-offset-4"
+                    >
+                      Añadir
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void quitarGuardado(g.id)}
+                      aria-label={`Quitar ${g.nombre} de los guardados`}
+                      className="text-muted-foreground transition-colors hover:text-destructive"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
             <ul className="frame-double mt-2.5 max-h-72 divide-y divide-border/60 overflow-y-auto bg-muted/20 px-3">
-              {destinos.map((d, i) => {
+              {lista.map((d, i) => {
                 const k = claveDeDestino(d);
                 const ajuste = ajustes[k] ?? { usuario: "", clave: "" };
                 const sinCubrir = faltan.includes(i + 1);
@@ -217,6 +373,19 @@ export function InstallTaskDialog({
                         </p>
                       )}
                       <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setLista((prev) =>
+                              prev.filter((x) => claveDeDestino(x) !== k),
+                            )
+                          }
+                          aria-label={`Quitar ${d.pcName} de la lista`}
+                          title="Quitar de la lista"
+                          className="shrink-0 text-muted-foreground transition-colors hover:text-destructive"
+                        >
+                          <X className="size-4" />
+                        </button>
                         <div className="relative flex-1">
                           <User className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                           <Input
@@ -345,7 +514,7 @@ export function InstallTaskDialog({
             </label>
           </div>
 
-          {!completo && destinos.length > 0 && (
+          {!completo && lista.length > 0 && (
             <p className="text-xs text-destructive">
               {faltan.length === 1
                 ? `Al equipo ${listaFaltan} le falta su usuario y su contraseña (o una cuenta de reserva completa).`

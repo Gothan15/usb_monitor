@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/dialog";
 import { getCsrfTokenFromDocument } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { Computer, formatDateTime } from "./types";
+import { Computer, formatDateTime, haceCuanto } from "./types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -816,6 +816,11 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
                         {computer.agentVersion
                           ? `v${computer.agentVersion}`
                           : "Sin anunciar"}
+                      </span>
+                      <span className="mt-1 block text-[11px] text-muted-foreground">
+                        {computer.lastConfigAt
+                          ? `Ajustes pedidos ${haceCuanto(computer.lastConfigAt)}`
+                          : "Ajustes sin pedir aún"}
                       </span>
                       {computer.actualizacionDisponible && (
                         <span className="mt-1 flex items-center gap-2">

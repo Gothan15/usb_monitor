@@ -37,6 +37,8 @@ export interface Computer {
   apagadoEnCurso?: boolean;
   /** Hay una orden «reiniciar» viva para este equipo: el botón enseña su ruleta. */
   reinicioEnCurso?: boolean;
+  /** Última vez que el agente pidió su configuración al panel. */
+  lastConfigAt?: string | null;
 }
 
 export interface WhitelistEntry {
@@ -110,4 +112,19 @@ export function formatDuration(startIso: string, endIso: string): string {
   if (hours) parts.push(`${hours}h`);
   parts.push(`${minutes}m`);
   return parts.join(" ");
+}
+
+/** «hace 40 s», «hace 5 min», «hace 2 h», «hace 3 d» para una fecha ISO. */
+export function haceCuanto(iso: string | null | undefined): string {
+  if (!iso) return "nunca";
+  const segundos = Math.max(
+    0,
+    Math.floor((Date.now() - new Date(iso).getTime()) / 1000),
+  );
+  if (segundos < 60) return `hace ${segundos} s`;
+  const minutos = Math.floor(segundos / 60);
+  if (minutos < 60) return `hace ${minutos} min`;
+  const horas = Math.floor(minutos / 60);
+  if (horas < 24) return `hace ${horas} h`;
+  return `hace ${Math.floor(horas / 24)} d`;
 }
