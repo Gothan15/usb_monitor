@@ -39,12 +39,11 @@ interface CampoBusquedaProps {
  * pisaran. Aquí no hay posiciones absolutas: el espacio de cada
  * control lo reserva el layout y el solape es imposible.
  *
- * Diseño: caja de h-9 (la altura de los demás controles de las
- * barras) con los mismos tokens que `ui/input` — borde `input`,
- * y al enfocar, borde `ring` y anillo dorado `ring/30`. El
- * input es `type="text"` a propósito: con `type="search"` el
- * navegador pinta su propia ✕, otro control fuera de nuestro
- * layout.
+ * Diseño: sin caja — solo un subrayado fino, como los
+ * desplegables de las barras (OrdenarPor, rango del CSV), que
+ * al enfocar pasa a acero. El input es `type="text"` a
+ * propósito: con `type="search"` el navegador pinta su propia
+ * ✕, otro control fuera de nuestro layout.
  */
 export function CampoBusqueda({
   value,
@@ -69,8 +68,8 @@ export function CampoBusqueda({
   return (
     <div
       className={cn(
-        "flex h-9 items-center gap-2 rounded-md border border-input bg-transparent px-3 transition-all duration-150 dark:bg-input/30",
-        "focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/30",
+        "flex h-9 items-center gap-2 border-b border-border bg-transparent px-1 transition-colors duration-150",
+        "focus-within:border-[var(--acero)]",
         disabled && "opacity-50",
         className,
       )}

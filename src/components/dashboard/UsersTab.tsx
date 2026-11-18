@@ -34,6 +34,7 @@ import { useToast } from "@/hooks/use-toast";
 import { getCsrfTokenFromDocument } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { DashboardPagination } from "./DashboardPagination";
+import { OrdenarPor } from "./OrdenarPor";
 import {
   BulkBar,
   PageCheckbox,
@@ -44,8 +45,6 @@ import { usePagination } from "@/hooks/usePagination";
 import { formatDateTime, type Computer } from "./types";
 import {
   AlertCircle,
-  ArrowDown,
-  ArrowUp,
   Pencil,
   Plus,
   Trash2,
@@ -620,33 +619,12 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
                 selected={bulk.selected}
                 onChange={bulk.setMany}
               />
-              <span className="smallcaps text-muted-foreground/70">
-                Ordenar por
-              </span>
-              {COLUMNAS_ORDEN.map((columna) => {
-                const activo = sortConfig.key === columna.key;
-                return (
-                  <button
-                    key={columna.key}
-                    type="button"
-                    onClick={() => requestSort(columna.key)}
-                    className={cn(
-                      "smallcaps inline-flex items-center gap-1 transition-colors",
-                      activo
-                        ? "text-foreground underline decoration-[var(--acero)] decoration-2 underline-offset-4"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    {columna.label}
-                    {activo &&
-                      (sortConfig.direction === "desc" ? (
-                        <ArrowDown className="size-3" />
-                      ) : (
-                        <ArrowUp className="size-3" />
-                      ))}
-                  </button>
-                );
-              })}
+              <OrdenarPor
+                id="orden-usuarios"
+                columnas={COLUMNAS_ORDEN}
+                sortConfig={sortConfig}
+                onSort={requestSort}
+              />
             </div>
 
             <motion.ul

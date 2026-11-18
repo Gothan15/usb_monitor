@@ -398,8 +398,10 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
               </SelectContent>
             </Select>
           )}
+          {/* Botón principal de la pestaña: relleno, como
+              «Nuevo usuario» o «Agregar» — los de acción
+              principal conservan su caja. */}
           <Button
-            variant="outline"
             size="sm"
             disabled={scanning}
             onClick={triggerScan}

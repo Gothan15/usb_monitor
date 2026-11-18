@@ -8,6 +8,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -25,7 +26,7 @@ import { usePagination } from "@/hooks/usePagination";
 import { useTableSort } from "@/hooks/useTableSort";
 import { useBusqueda } from "@/hooks/useBusqueda";
 import { CampoBusqueda } from "@/components/shared/CampoBusqueda";
-import { SortableTableHead } from "./SortableTableHead";
+import { OrdenarPor } from "./OrdenarPor";
 import { Spinner } from "@/components/ui/spinner";
 
 interface CreatePayload {
@@ -50,6 +51,16 @@ interface Props {
   onDelete: (id: string) => Promise<void>;
   onBulkDelete?: (ids: string[]) => Promise<void> | void;
 }
+
+// Columnas por las que se puede ordenar el registro. La de
+// «Acciones» no se ofrece: no ordena por ningún dato.
+const COLUMNAS_ORDEN: { key: keyof WhitelistEntry; label: string }[] = [
+  { key: "serialNumber", label: "Serial" },
+  { key: "label", label: "Alias" },
+  { key: "notes", label: "Notas" },
+  { key: "createdAt", label: "Creado" },
+  { key: "createdBy", label: "Autor" },
+];
 
 export function WhitelistTab({
   entries,
@@ -318,18 +329,31 @@ export function WhitelistTab({
         </p>
       )}
 
-      {onBulkDelete && entries.length > 0 && (
-        <div className="mt-8">
-          <PageCheckbox
-            pageIds={paginatedEntries.map((e) => e.id)}
-            selected={bulk.selected}
-            onChange={bulk.setMany}
+      {/* Barra del registro: selección a un lado y ordenación
+          al otro, en la misma fila — en dos filas quedaba un
+          hueco grande entre ambas. */}
+      {entries.length > 0 && (
+        <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
+          {onBulkDelete ? (
+            <PageCheckbox
+              pageIds={paginatedEntries.map((e) => e.id)}
+              selected={bulk.selected}
+              onChange={bulk.setMany}
+            />
+          ) : (
+            <span />
+          )}
+          <OrdenarPor
+            id="orden-lista-blanca"
+            columnas={COLUMNAS_ORDEN}
+            sortConfig={sortConfig}
+            onSort={requestSort}
           />
         </div>
       )}
 
       {/* ── Asientos del registro ── */}
-      <div className="mt-10 border-t border-border">
+      <div className="mt-6 border-t border-border">
         {/* Móvil: asientos en filas */}
         <div className="divide-y divide-border md:hidden">
           {loading ? (
@@ -399,61 +423,24 @@ export function WhitelistTab({
           <Table className="w-full min-w-[800px]">
             <TableHeader>
               <TableRow>
-                <SortableTableHead
-                  column="serialNumber"
-                  currentSortKey={sortConfig.key}
-                  currentSortDirection={sortConfig.direction}
-                  onSort={requestSort}
-                  className="text-muted-foreground"
-                >
+                <TableHead className="text-muted-foreground">
                   Serial
-                </SortableTableHead>
-                <SortableTableHead
-                  column="label"
-                  currentSortKey={sortConfig.key}
-                  currentSortDirection={sortConfig.direction}
-                  onSort={requestSort}
-                  className="text-muted-foreground"
-                >
+                </TableHead>
+                <TableHead className="text-muted-foreground">
                   Alias
-                </SortableTableHead>
-                <SortableTableHead
-                  column="notes"
-                  currentSortKey={sortConfig.key}
-                  currentSortDirection={sortConfig.direction}
-                  onSort={requestSort}
-                  className="text-muted-foreground"
-                >
+                </TableHead>
+                <TableHead className="text-muted-foreground">
                   Notas
-                </SortableTableHead>
-                <SortableTableHead
-                  column="createdAt"
-                  currentSortKey={sortConfig.key}
-                  currentSortDirection={sortConfig.direction}
-                  onSort={requestSort}
-                  className="text-muted-foreground"
-                >
+                </TableHead>
+                <TableHead className="text-muted-foreground">
                   Creado
-                </SortableTableHead>
-                <SortableTableHead
-                  column="createdBy"
-                  currentSortKey={sortConfig.key}
-                  currentSortDirection={sortConfig.direction}
-                  onSort={requestSort}
-                  className="text-muted-foreground"
-                >
+                </TableHead>
+                <TableHead className="text-muted-foreground">
                   Autor
-                </SortableTableHead>
-                <SortableTableHead
-                  column="id"
-                  currentSortKey={sortConfig.key}
-                  currentSortDirection={sortConfig.direction}
-                  onSort={requestSort}
-                  className="text-muted-foreground"
-                  align="right"
-                >
+                </TableHead>
+                <TableHead className="text-muted-foreground text-right">
                   Acciones
-                </SortableTableHead>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
