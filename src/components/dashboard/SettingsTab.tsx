@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef, useSyncExternalStore } from "react";
-import { getCsrfTokenFromDocument } from "@/lib/utils";
+import { HttpError } from "@/lib/http";
+import * as ajustesApi from "@/lib/api/ajustes";
+import type { EstadoPaquete, EstadoSistema } from "@/lib/api/ajustes";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -38,26 +40,6 @@ import { Switch } from "@/components/ui/switch";
 
 interface ApiSettings {
   startupNetworkDelay: number;
-}
-
-interface EstadoPaquete {
-  version: string | null;
-  sha256: string | null;
-  agente: { presente: boolean; tamano: number };
-  empujador: { presente: boolean; tamano: number };
-  /** Versión más nueva que ya corre en algún equipo. */
-  versionFlotaMaxima?: string | null;
-  /** Algún equipo va por delante del paquete colocado. */
-  desfasado?: boolean;
-}
-
-interface EstadoSistema {
-  bd: string;
-  redis: string;
-  disco: { libre: number; total: number } | null;
-  nodeVersion: string;
-  encendidoDesde: string;
-  paquete: { version: string | null } | null;
 }
 
 function formatoTamano(bytes: number): string {
@@ -256,11 +238,10 @@ export function SettingsTab() {
   const cargarSistema = async () => {
     setCargandoSistema(true);
     try {
-      const res = await fetch("/api/admin/sistema");
-      const data = await res.json().catch(() => null);
-      if (data?.ok) setSistema(data as EstadoSistema);
-    } catch {
-      // Sin respuesta: la sección enseña «sin datos».
+      // Sin respuesta, el servicio devuelve null y la sección
+      // enseña «sin datos».
+      const estado = await ajustesApi.sistema();
+      if (estado) setSistema(estado);
     } finally {
       setCargandoSistema(false);
     }
@@ -291,8 +272,8 @@ export function SettingsTab() {
   );
 
   useEffect(() => {
-    fetch("/api/settings")
-      .then((res) => res.json())
+    ajustesApi
+      .leer()
       .then((data) => {
         if (data.startup_network_delay !== undefined) {
           setApi({
@@ -320,21 +301,9 @@ export function SettingsTab() {
   }, []);
 
   useEffect(() => {
-    fetch("/api/admin/agent-package")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.ok) {
-          setPaquete({
-            version: data.version ?? null,
-            sha256: data.sha256 ?? null,
-            agente: data.agente ?? { presente: false, tamano: 0 },
-            empujador: data.empujador ?? { presente: false, tamano: 0 },
-            versionFlotaMaxima: data.versionFlotaMaxima ?? null,
-            desfasado: Boolean(data.desfasado),
-          });
-        }
-      })
-      .catch((err) => console.error("Failed to load agent package", err));
+    void ajustesApi.estadoPaquete().then((estado) => {
+      if (estado) setPaquete(estado);
+    });
   }, []);
 
 
@@ -348,23 +317,7 @@ export function SettingsTab() {
     setOleada(n);
     setMensajeOleada(null);
     try {
-      const csrfToken = getCsrfTokenFromDocument();
-      if (!csrfToken) {
-        setMensajeOleada(
-          "La sesión no trae el token de seguridad: vuelve a iniciar sesión e inténtalo de nuevo.",
-        );
-        return;
-      }
-      const res = await fetch("/api/settings", {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          "x-csrf-token": csrfToken,
-        },
-        body: JSON.stringify({ agentUpdateWaveSize: n }),
-      });
-      if (!res.ok) throw new Error("Error");
+      await ajustesApi.guardar({ agentUpdateWaveSize: n });
       setMensajeOleada(
         `Oleada guardada: la actualización automática irá de ${n} en ${n}.`,
       );
@@ -377,29 +330,9 @@ export function SettingsTab() {
     setAutoUpdate(activo);
     setMensajeAutoUpdate(null);
     try {
-      // Como todo POST de administración: con la cabecera CSRF
-      // leída de la cookie. Sin ella el servidor responde
-      // CSRF_MISSING y el ajuste no se guarda (era el fallo de
-      // «Guardar ajustes está roto»: estas dos funciones de
-      // guardado eran las únicas que no la adjuntaban).
-      const csrfToken = getCsrfTokenFromDocument();
-      if (!csrfToken) {
-        setAutoUpdate(!activo);
-        setMensajeAutoUpdate(
-          "La sesión no trae el token de seguridad: vuelve a iniciar sesión e inténtalo de nuevo.",
-        );
-        return;
-      }
-      const res = await fetch("/api/settings", {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          "x-csrf-token": csrfToken,
-        },
-        body: JSON.stringify({ agentAutoUpdate: activo }),
-      });
-      if (!res.ok) throw new Error("Error");
+      // El guardado va por el servicio de ajustes, que pone el
+      // token CSRF como toda mutación del panel.
+      await ajustesApi.guardar({ agentAutoUpdate: activo });
       setMensajeAutoUpdate(
         activo
           ? "Actualización automática activada: cada equipo se pondrá al día solo cuando el paquete sea más nuevo que su versión."
@@ -426,25 +359,7 @@ export function SettingsTab() {
       if (versionPaquete.trim()) {
         form.append("version", versionPaquete.trim());
       }
-      const csrfToken = getCsrfTokenFromDocument();
-      if (!csrfToken) {
-        setErrorPaquete(
-          "La sesión no trae el token de seguridad: vuelve a iniciar sesión e inténtalo de nuevo.",
-        );
-        setSubiendoPaquete(false);
-        return;
-      }
-      const res = await fetch("/api/admin/agent-package", {
-        method: "POST",
-        credentials: "include",
-        headers: { "x-csrf-token": csrfToken },
-        body: form,
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok || !data?.ok) {
-        setErrorPaquete(data?.error || "No se pudo colocar el paquete.");
-        return;
-      }
+      const data = await ajustesApi.subirPaquete(form);
       setPaquete(data.estado);
       const avisos: string[] = Array.isArray(data.avisos) ? data.avisos : [];
       setMensajePaquete(
@@ -456,8 +371,12 @@ export function SettingsTab() {
       setArchivoPaquete(null);
       setVersionPaquete("");
       if (inputPaqueteRef.current) inputPaqueteRef.current.value = "";
-    } catch {
-      setErrorPaquete("No se pudo conectar con el servidor.");
+    } catch (error) {
+      setErrorPaquete(
+        error instanceof HttpError
+          ? error.message || "No se pudo colocar el paquete."
+          : "No se pudo conectar con el servidor.",
+      );
     } finally {
       setSubiendoPaquete(false);
     }
@@ -469,46 +388,26 @@ export function SettingsTab() {
     alGuardar?: () => void,
   ) => {
     try {
-      // Con la cabecera CSRF, como el resto de POST de la
-      // interfaz: esta función guardaba sin ella y el servidor
-      // rechazaba TODOS los guardados de Ajustes con
-      // «CSRF token missing» (auth.ts) aunque la sesión y la
-      // cookie estuvieran perfectas.
-      const csrfToken = getCsrfTokenFromDocument();
-      if (!csrfToken) {
+      // El guardado va por el servicio de ajustes, que pone el
+      // token CSRF como toda mutación del panel (guardar sin él
+      // fue en su día el fallo de «Guardar ajustes está roto»).
+      await ajustesApi.guardar(payload);
+      showSavedToast(sectionLabel);
+      alGuardar?.();
+    } catch (err) {
+      if (err instanceof HttpError) {
         toast({
           title: "Error al guardar",
-          description:
-            "La sesión no trae el token de seguridad: vuelve a iniciar sesión e inténtalo de nuevo.",
+          description: err.message || "Hubo un problema al aplicar los cambios.",
           variant: "destructive",
         });
-        return;
-      }
-      const res = await fetch("/api/settings", {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          "x-csrf-token": csrfToken,
-        },
-        body: JSON.stringify(payload),
-      });
-      if (res.ok) {
-        showSavedToast(sectionLabel);
-        alGuardar?.();
       } else {
         toast({
-          title: "Error al guardar",
-          description: "Hubo un problema al aplicar los cambios.",
+          title: "Error de red",
+          description: "No se pudo conectar con el servidor.",
           variant: "destructive",
         });
       }
-    } catch (err) {
-      toast({
-        title: "Error de red",
-        description: "No se pudo conectar con el servidor.",
-        variant: "destructive",
-      });
     }
   };
 

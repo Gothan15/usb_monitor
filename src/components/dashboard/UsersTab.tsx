@@ -31,7 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { getCsrfTokenFromDocument } from "@/lib/utils";
+import * as usuariosApi from "@/lib/api/usuarios";
 import { cn } from "@/lib/utils";
 import { DashboardPagination } from "./DashboardPagination";
 import { OrdenarPor } from "./OrdenarPor";
@@ -170,24 +170,14 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
       setLoading(true);
       setError(null);
       try {
-        const params = new URLSearchParams({
-          page: String(page),
-          pageSize: String(pageSize),
-        });
-        if (deferredSearch.trim()) {
-          params.set("q", deferredSearch.trim());
-        }
-        const response = await fetch(`/api/users?${params.toString()}`, {
-          credentials: "include",
-          cache: "no-store",
+        const data = await usuariosApi.listar({
+          page,
+          pageSize,
+          q: deferredSearch.trim() || undefined,
           signal: controller.signal,
         });
-        const data = await response.json().catch(() => null);
-        if (!response.ok || !data?.ok) {
-          throw new Error(data?.error || `Error HTTP ${response.status}`);
-        }
-        setUsers(data.items ?? []);
-        const nextTotal = data.total ?? data.items?.length ?? 0;
+        setUsers(data.items as AdminUser[]);
+        const nextTotal = data.total;
         setTotal(nextTotal);
         if (!deferredSearch.trim()) {
           onSummaryChange?.({ total: nextTotal });
@@ -220,30 +210,9 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
 
   const handleBulkDeleteUsers = async () => {
     if (bulk.count === 0 || bulkBusy) return;
-    const csrfToken = getCsrfTokenFromDocument();
-    if (!csrfToken) {
-      toast({
-        title: "Sesión sin token de seguridad",
-        description: "Inicia sesión nuevamente.",
-        variant: "destructive",
-      });
-      return;
-    }
     try {
       setBulkBusy(true);
-      const response = await fetch("/api/users", {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          "x-csrf-token": csrfToken,
-        },
-        credentials: "include",
-        body: JSON.stringify({ ids: [...bulk.selected] }),
-      });
-      const data = await response.json().catch(() => null);
-      if (!response.ok || !data?.ok) {
-        throw new Error(data?.error || `Error HTTP ${response.status}`);
-      }
+      const data = await usuariosApi.eliminarVarios([...bulk.selected]);
       toast({
         title: "Usuarios eliminados",
         description: `Se eliminaron ${data.deleted} usuario(s).${
@@ -308,16 +277,6 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
 
     setCreating(true);
     try {
-      const csrfToken = getCsrfTokenFromDocument();
-      if (!csrfToken) {
-        throw new Error(
-          "Sesión sin token de seguridad. Inicia sesión nuevamente.",
-        );
-      }
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        "x-csrf-token": csrfToken,
-      };
       const selectedComputer = sortedComputers.find(
         (computer) => computer.id === createForm.computerId,
       );
@@ -331,16 +290,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
         payload.computerId = selectedComputer.id;
       }
 
-      const response = await fetch("/api/users", {
-        method: "POST",
-        headers,
-        credentials: "include",
-        body: JSON.stringify(payload),
-      });
-      const data = await response.json().catch(() => null);
-      if (!response.ok || !data?.ok) {
-        throw new Error(data?.error || `Error HTTP ${response.status}`);
-      }
+      const data = await usuariosApi.crear(payload);
       toast({
         title: "Usuario creado",
         description: `Se registró ${
@@ -418,26 +368,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
 
     setUpdating(true);
     try {
-      const csrfToken = getCsrfTokenFromDocument();
-      if (!csrfToken) {
-        throw new Error(
-          "Sesión sin token de seguridad. Inicia sesión nuevamente.",
-        );
-      }
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        "x-csrf-token": csrfToken,
-      };
-      const response = await fetch(`/api/users/${editingUser.id}`, {
-        method: "PATCH",
-        headers,
-        credentials: "include",
-        body: JSON.stringify(payload),
-      });
-      const data = await response.json().catch(() => null);
-      if (!response.ok || !data?.ok) {
-        throw new Error(data?.error || `Error HTTP ${response.status}`);
-      }
+      const data = await usuariosApi.actualizar(editingUser.id, payload);
       toast({
         title: "Usuario actualizado",
         description: `Se guardaron los cambios de ${
@@ -462,24 +393,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
     if (!deletingUser) return;
     setDeleting(true);
     try {
-      const csrfToken = getCsrfTokenFromDocument();
-      if (!csrfToken) {
-        throw new Error(
-          "Sesión sin token de seguridad. Inicia sesión nuevamente.",
-        );
-      }
-      const headers: Record<string, string> = {
-        "x-csrf-token": csrfToken,
-      };
-      const response = await fetch(`/api/users/${deletingUser.id}`, {
-        method: "DELETE",
-        headers,
-        credentials: "include",
-      });
-      const data = await response.json().catch(() => null);
-      if (!response.ok || !data?.ok) {
-        throw new Error(data?.error || `Error HTTP ${response.status}`);
-      }
+      await usuariosApi.eliminar(deletingUser.id);
       toast({
         title: "Usuario eliminado",
         description: `${deletingUser.username} fue removido del directorio.`,

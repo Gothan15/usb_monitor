@@ -16,7 +16,9 @@ import { ListTodo } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { emitNotification } from "@/lib/notificationBus";
 import { fetchJson, HttpError } from "@/lib/http";
-import { getCsrfTokenFromDocument } from "@/lib/utils";
+import * as equiposApi from "@/lib/api/equipos";
+import * as eventosApi from "@/lib/api/eventos";
+import * as listaBlancaApi from "@/lib/api/listaBlanca";
 import {
   type Computer,
   type USBEvent,
@@ -442,41 +444,26 @@ export function AdminDashboardProvider({
       label?: string;
       notes?: string;
     }) => {
-      const csrfToken = getCsrfTokenFromDocument();
-      if (!csrfToken) {
-        throw new Error(
-          "Sesión sin token de seguridad. Vuelve a iniciar sesión e inténtalo otra vez."
-        );
-      }
-      const response = await fetch("/api/whitelist", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-csrf-token": csrfToken,
-        },
-        body: JSON.stringify(payload),
-        credentials: "include",
-      });
-
-      const data = await response.json().catch(() => null);
-      const ok = response.ok && data?.ok;
-
-      if (!ok) {
-        const message = data?.error || `Error HTTP ${response.status}`;
+      // La petición la hace el servicio; aquí solo se
+      // traduce su error al aviso de esta acción, como antes.
+      const data = await listaBlancaApi.agregar(payload).catch((error) => {
+        const message =
+          error instanceof Error ? error.message : "Error inesperado";
         toast({
           title: "No se pudo agregar el serial",
           description: message,
           variant: "destructive",
         });
         throw new Error(message);
-      }
+      });
 
-      if (data?.item) {
+      const itemCreado = data?.item;
+      if (itemCreado) {
         queryClient.setQueryData<WhitelistEntry[] | undefined>(
           ["whitelist"],
           (prev = []) => {
-            const filtered = prev.filter((entry) => entry.id !== data.item.id);
-            return [data.item as WhitelistEntry, ...filtered];
+            const filtered = prev.filter((entry) => entry.id !== itemCreado.id);
+            return [itemCreado as WhitelistEntry, ...filtered];
           }
         );
       } else {
@@ -496,32 +483,18 @@ export function AdminDashboardProvider({
 
   const handleDeleteWhitelist = useCallback(
     async (id: string) => {
-      const csrfToken = getCsrfTokenFromDocument();
-      if (!csrfToken) {
-        throw new Error(
-          "Sesión sin token de seguridad. Vuelve a iniciar sesión e inténtalo otra vez."
-        );
-      }
-      const response = await fetch(`/api/whitelist/${id}`, {
-        method: "DELETE",
-        headers: {
-          "x-csrf-token": csrfToken,
-        },
-        credentials: "include",
-      });
-
-      const data = await response.json().catch(() => null);
-      const ok = response.ok && data?.ok;
-
-      if (!ok) {
-        const message = data?.error || `Error HTTP ${response.status}`;
+      // La petición la hace el servicio; aquí solo se
+      // traduce su error al aviso de esta acción, como antes.
+      const data = await listaBlancaApi.eliminar(id).catch((error) => {
+        const message =
+          error instanceof Error ? error.message : "Error inesperado";
         toast({
           title: "No se pudo eliminar el serial",
           description: message,
           variant: "destructive",
         });
         throw new Error(message);
-      }
+      });
 
       queryClient.setQueryData<WhitelistEntry[] | undefined>(
         ["whitelist"],
@@ -540,32 +513,18 @@ export function AdminDashboardProvider({
 
   const handleDeleteComputer = useCallback(
     async (id: string) => {
-      const csrfToken = getCsrfTokenFromDocument();
-      if (!csrfToken) {
-        throw new Error(
-          "Sesión sin token de seguridad. Vuelve a iniciar sesión e inténtalo otra vez."
-        );
-      }
-      const response = await fetch(`/api/computers/${id}`, {
-        method: "DELETE",
-        headers: {
-          "x-csrf-token": csrfToken,
-        },
-        credentials: "include",
-      });
-
-      const data = await response.json().catch(() => null);
-      const ok = response.ok && data?.ok;
-
-      if (!ok) {
-        const message = data?.error || `Error HTTP ${response.status}`;
+      // La petición la hace el servicio; aquí solo se
+      // traduce su error al aviso de esta acción, como antes.
+      const data = await equiposApi.eliminar(id).catch((error) => {
+        const message =
+          error instanceof Error ? error.message : "Error inesperado";
         toast({
           title: "No se pudo eliminar el equipo",
           description: message,
           variant: "destructive",
         });
         throw new Error(message);
-      }
+      });
 
       queryClient.setQueryData<Computer[] | undefined>(
         ["computers"],
@@ -585,31 +544,18 @@ export function AdminDashboardProvider({
   const handleBulkDeleteComputers = useCallback(
     async (ids: string[]) => {
       if (!ids.length) return;
-      const csrfToken = getCsrfTokenFromDocument();
-      if (!csrfToken) {
-        throw new Error(
-          "Sesión sin token de seguridad. Vuelve a iniciar sesión e inténtalo otra vez."
-        );
-      }
-      const response = await fetch(`/api/computers`, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          "x-csrf-token": csrfToken,
-        },
-        credentials: "include",
-        body: JSON.stringify({ ids }),
-      });
-      const data = await response.json().catch(() => null);
-      if (!response.ok || !data?.ok) {
-        const message = data?.error || `Error HTTP ${response.status}`;
+      // La petición la hace el servicio; aquí solo se
+      // traduce su error al aviso de esta acción, como antes.
+      const data = await equiposApi.eliminarVarios(ids).catch((error) => {
+        const message =
+          error instanceof Error ? error.message : "Error inesperado";
         toast({
           title: "No se pudieron eliminar los equipos",
           description: message,
           variant: "destructive",
         });
         throw new Error(message);
-      }
+      });
       const quitados = new Set(ids);
       queryClient.setQueryData<Computer[] | undefined>(
         ["computers"],
@@ -627,31 +573,18 @@ export function AdminDashboardProvider({
   const handleBulkDeleteWhitelist = useCallback(
     async (ids: string[]) => {
       if (!ids.length) return;
-      const csrfToken = getCsrfTokenFromDocument();
-      if (!csrfToken) {
-        throw new Error(
-          "Sesión sin token de seguridad. Vuelve a iniciar sesión e inténtalo otra vez."
-        );
-      }
-      const response = await fetch(`/api/whitelist`, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          "x-csrf-token": csrfToken,
-        },
-        credentials: "include",
-        body: JSON.stringify({ ids }),
-      });
-      const data = await response.json().catch(() => null);
-      if (!response.ok || !data?.ok) {
-        const message = data?.error || `Error HTTP ${response.status}`;
+      // La petición la hace el servicio; aquí solo se
+      // traduce su error al aviso de esta acción, como antes.
+      const data = await listaBlancaApi.eliminarVarias(ids).catch((error) => {
+        const message =
+          error instanceof Error ? error.message : "Error inesperado";
         toast({
           title: "No se pudieron eliminar los seriales",
           description: message,
           variant: "destructive",
         });
         throw new Error(message);
-      }
+      });
       const quitados = new Set(ids);
       queryClient.setQueryData<WhitelistEntry[] | undefined>(
         ["whitelist"],
@@ -670,30 +603,7 @@ export function AdminDashboardProvider({
     if (clearingEvents) return;
     setClearingEvents(true);
     try {
-      const csrfToken = getCsrfTokenFromDocument();
-      if (!csrfToken) {
-        throw new Error(
-          "Sesión sin token de seguridad. Vuelve a iniciar sesión e inténtalo otra vez."
-        );
-      }
-      const response = await fetch("/api/usb-event", {
-        method: "DELETE",
-        headers: {
-          "x-csrf-token": csrfToken,
-        },
-        credentials: "include",
-      });
-      const data = await response.json().catch(() => null);
-      if (!response.ok || data?.ok !== true) {
-        const message = data?.error || `Error HTTP ${response.status}`;
-        toast({
-          title: "No se pudo limpiar el historial",
-          description: message,
-          variant: "destructive",
-        });
-        setClearingEvents(false);
-        return;
-      }
+      const data = await eventosApi.limpiarHistorial();
 
       await queryClient.invalidateQueries({ queryKey: ["events"] });
       toast({
