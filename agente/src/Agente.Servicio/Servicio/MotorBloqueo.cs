@@ -81,6 +81,9 @@ public sealed class MotorBloqueo
 
     private readonly object _lockGlobal = new();
     private readonly Dictionary<string, RegistroBloqueo> _registros = new();
+    // Lecturas seguidas de «revivido» por clave: el vigía solo
+    // reaplica cuando la lectura se repite (ver Vigilar).
+    private readonly Dictionary<string, int> _lecturasRevivido = new();
     private readonly Dictionary<string, object> _locks = new();
 
     /// <param name="ponerSoloLectura">Capa degradada (diskpart); la aporta el Worker.</param>
@@ -379,14 +382,32 @@ public sealed class MotorBloqueo
                     // ser accesible para dar el bloqueo por revivido.
                     revivido = disp.Letras.Any(l => Volumen.EsAccesible(l));
                 }
-                if (revivido)
+                if (!revivido)
                 {
-                    Log.Advertencia($"Dispositivo revivido, reaplicando: {disp.Nombre}");
-                    reg.Estado = EstadoBloqueo.Liberado;
-                    reg.Capa = null;
-                    Bloquear(disp, reg.EnWhitelist);
-                    reaplicadas.Add(clave);
+                    _lecturasRevivido.Remove(clave);
+                    continue;
                 }
+                // Una sola lectura de «revivido» no basta: en
+                // plena re-enumeración (tras bloquear un disco
+                // duro, o tras liberarlo) el nodo puede leerse
+                // «no deshabilitado» un instante sin que nadie
+                // lo haya revivido, y reaplicar en ese momento
+                // degrada el bloqueo sin motivo (el nodo «no se
+                // localiza» porque el dispositivo está a mitad
+                // de enumerar). Tres lecturas seguidas del vigía
+                // (~15 s) ya son un dispositivo revivido de
+                // verdad, no un parpadeo.
+                var lecturas = _lecturasRevivido.TryGetValue(clave, out var previas)
+                    ? previas + 1
+                    : 1;
+                _lecturasRevivido[clave] = lecturas;
+                if (lecturas < 3) continue;
+                _lecturasRevivido.Remove(clave);
+                Log.Advertencia($"Dispositivo revivido, reaplicando: {disp.Nombre}");
+                reg.Estado = EstadoBloqueo.Liberado;
+                reg.Capa = null;
+                Bloquear(disp, reg.EnWhitelist);
+                reaplicadas.Add(clave);
             }
         }
         return reaplicadas;

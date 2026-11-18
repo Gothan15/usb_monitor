@@ -242,6 +242,66 @@ public static class GestorEvidencia
         return borradas;
     }
 
+    // ── el id del bloqueo, persistente ────────────────────────
+    //
+    // El paquete sabe a qué bloqueo del panel pertenece si el id
+    // constaba al pedir la foto. Si no constaba (el registro aún
+    // no había vuelto), el servicio lo buscaba en un mapa EN
+    // MEMORIA: un reinicio del servicio antes de subir el
+    // paquete lo dejaba huérfano para siempre — capturado, nunca
+    // subido, sin un solo error en el registro —. Ahora el id se
+    // anota en disco en cuanto se conoce: en el mapa de la
+    // carpeta y sellado dentro de la solicitud y del paquete
+    // que lo esperen.
+
+    /// <summary>Nombre del mapa clave → id de bloqueo, en la carpeta de evidencia.</summary>
+    public const string NombreArchivoIds = "ids-bloqueo.json";
+
+    /// <summary>Ruta del mapa de ids de bloqueo.</summary>
+    public static string RutaIds(string carpeta) =>
+        Path.Combine(carpeta, NombreArchivoIds);
+
+    /// <summary>El mapa clave → id de bloqueo guardado en disco (vacío si no hay).</summary>
+    public static Dictionary<string, string> CargarIdsBloqueo(string carpeta)
+    {
+        var mapa = ArchivoJson.Leer<Dictionary<string, string>>(RutaIds(carpeta));
+        return mapa is null
+            ? new Dictionary<string, string>()
+            : new Dictionary<string, string>(mapa);
+    }
+
+    /// <summary>
+    /// Anota el id del bloqueo de una clave: lo guarda en el
+    /// mapa de la carpeta y lo sella dentro de la solicitud y
+    /// del paquete de esa clave que aún no lo tuvieran. Así el
+    /// id sobrevive a cualquier reinicio del servicio.
+    /// </summary>
+    public static void AnotarIdBloqueo(string carpeta, string clave, string bloqueoId)
+    {
+        if (string.IsNullOrWhiteSpace(bloqueoId)) return;
+        var mapa = CargarIdsBloqueo(carpeta);
+        if (!mapa.TryGetValue(clave, out var actual) || actual != bloqueoId)
+        {
+            mapa[clave] = bloqueoId;
+            ArchivoJson.EscribirAtomico(RutaIds(carpeta), mapa);
+        }
+        foreach (var solicitud in ListarSolicitudes(carpeta))
+        {
+            if (!string.Equals(solicitud.Clave, clave, StringComparison.Ordinal)) continue;
+            if (!string.IsNullOrEmpty(solicitud.BloqueoId)) continue;
+            solicitud.BloqueoId = bloqueoId;
+            ArchivoJson.EscribirAtomico(
+                RutaSolicitud(carpeta, solicitud.Clave, solicitud.Instancia), solicitud);
+        }
+        foreach (var paquete in ListarPaquetes(carpeta))
+        {
+            if (!string.Equals(paquete.Clave, clave, StringComparison.Ordinal)) continue;
+            if (!string.IsNullOrEmpty(paquete.BloqueoId)) continue;
+            paquete.BloqueoId = bloqueoId;
+            GuardarPaquete(carpeta, paquete);
+        }
+    }
+
     /// <summary>
     /// Carpeta de paquetes descartados, dentro de la de
     /// evidencia: lo que el panel rechaza para siempre y lo que

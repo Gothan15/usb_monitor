@@ -8,7 +8,7 @@ namespace USBMonitor.Agente.Servicio.Ventanas;
 /// <summary>
 /// Punto de entrada reutilizable para las ventanas del agente.
 ///
-/// Program.cs decide el modo (prompt, gui o visor) y llama a uno de
+/// Program.cs decide el modo (prompt o gui) y llama a uno de
 /// estos métodos; aquí se resuelve lo común de WPF: crear la
 /// Application si este proceso aún no tiene una, respetar el hilo
 /// STA y mantener una única instancia del compañero.
@@ -92,22 +92,6 @@ public static class AppVentanas
         catch (Exception ex)
         {
             RegistroVentanas.Error("EL ASISTENTE SE CERRÓ POR UN ERROR", ex);
-            throw;
-        }
-    }
-
-    public static void EjecutarVisor()
-    {
-        RegistroVentanas.Configurar("visor.log");
-        try
-        {
-            RegistroVentanas.Info($"Visor iniciado, pid {Environment.ProcessId}.");
-            EjecutarVentana(() => ConIcono(new VisorWindow(), "usb_monitor_service.ico"));
-            RegistroVentanas.Info("Visor cerrado.");
-        }
-        catch (Exception ex)
-        {
-            RegistroVentanas.Error("EL VISOR SE CERRÓ POR UN ERROR", ex);
             throw;
         }
     }

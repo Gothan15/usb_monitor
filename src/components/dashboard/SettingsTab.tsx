@@ -622,8 +622,10 @@ export function SettingsTab() {
               <div>
                 <Label>Bloquear la sesión al conectar un USB</Label>
                 <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                  Además de bloquear el dispositivo, cierra la sesión de
-                  Windows hasta que se desbloquee. Desactivado por defecto.
+                  Si el USB no está en la lista blanca, además de bloquear
+                  el dispositivo cierra la sesión de Windows. Con un USB
+                  autorizado no se cierra: su dueño desbloquea con su
+                  contraseña. Desactivado por defecto.
                 </p>
               </div>
               <Switch

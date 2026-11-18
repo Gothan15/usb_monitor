@@ -600,10 +600,6 @@ public sealed class ToolboxWindow : Window
         companero.Click += (_, _) => LanzarModo("prompt");
         rejilla.Children.Add(companero);
 
-        var visor = Tema.BotonSecundario("Visor de seriales");
-        visor.Margin = new Thickness(0, 8, 0, 0);
-        visor.Click += (_, _) => LanzarModo("visor");
-        rejilla.Children.Add(visor);
 
         contenido.Children.Add(rejilla);
         return TarjetaCalida(contenido, new Thickness(0), new Thickness(16));

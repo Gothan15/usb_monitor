@@ -10,7 +10,10 @@
 //   configurar   el asistente de configuración, siempre
 //   prompt       el compañero (la ventana de la contraseña); lo
 //                arranca la tarea de inicio de sesión
-//   visor        el visor de seriales
+//   reiniciar-servicio
+//                para el servicio y lo vuelve a arrancar; lo
+//                lanza el propio agente al recibir la orden
+//                «reiniciar» del panel
 //   instalar     instala el servicio (y la tarea del compañero) y
 //                lo arranca; pide administrador
 //   desinstalar  restaura todo, detiene y quita el servicio y la
@@ -30,6 +33,7 @@
 //                lo lanza el propio agente desde una COPIA temporal
 //                de sí mismo (el archivo en uso no se puede pisar)
 using System.IO;
+using System.ServiceProcess;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -67,11 +71,6 @@ internal static class Program
             case "configurar":
                 Registro.Configurar("agente.log");
                 AppVentanas.EjecutarAsistente();
-                return 0;
-
-            case "visor":
-                Registro.Configurar("agente.log");
-                AppVentanas.EjecutarVisor();
                 return 0;
 
             case "fijar-codigo":
@@ -175,58 +174,17 @@ internal static class Program
                     return 1;
                 }
 
-            case "desinstalar-orden":
-                // El espejo de «instalar-remoto»: lo lanza el
-                // propio agente (una copia temporal) cuando el
-                // panel ordena desinstalar este equipo. El
-                // servicio ya informó HECHA al panel ANTES de
-                // lanzar esta copia —la fila del equipo ya no
-                // existe—, así que aquí no se habla con el panel:
-                // solo mano de obra, en este orden:
-                //   1. Temporizador de cortesía (los segundos del
-                //      segundo argumento, 30 por defecto): que el
-                //      aviso de «desinstalado» llegue al servidor
-                //      y se asiente, y que el servicio vuelque su
-                //      registro antes de que lo paren.
-                //   2. Parar el servicio y desregistrarlo.
-                //   3. Borrar la carpeta de instalación.
+            case "reiniciar-servicio":
+                // El ayudante de la orden «reiniciar» del panel:
+                // lo lanza el propio servicio, ya con el marcador
+                // de la orden escrito, y su único trabajo es parar
+                // el servicio y volver a arrancarlo. Vive fuera
+                // del servicio, así que la parada no lo mata a él.
                 // Cada paso queda en agente.log (etiqueta
-                // «desinstalador»): tras la desinstalación, ese
-                // registro de ProgramData es el único testigo.
+                // «reiniciador»): si el reinicio falla, ese
+                // registro es el testigo.
                 Registro.Configurar("agente.log");
-                var logDesinstalador = Registro.Obtener("desinstalador");
-                var idOrdenDesinstalar =
-                    args.Length >= 2 ? args[1].Trim() : "";
-                var esperaDesinstalar =
-                    args.Length >= 3 &&
-                    int.TryParse(args[2], out var segundosDesinstalar) &&
-                    segundosDesinstalar >= 0
-                        ? Math.Min(segundosDesinstalar, 600)
-                        : 30;
-                try
-                {
-                    logDesinstalador.Info(
-                        $"Desinstalación por orden del panel ({idOrdenDesinstalar}): " +
-                        $"esperando {esperaDesinstalar} s antes de tocar nada, " +
-                        "para que el aviso de desinstalado llegue al servidor.");
-                    if (esperaDesinstalar > 0)
-                        Thread.Sleep(TimeSpan.FromSeconds(esperaDesinstalar));
-                    logDesinstalador.Info(
-                        "Empieza la desinstalación: se para el servicio, " +
-                        "se desregistra y se borra la carpeta de instalación.");
-                    var resumenDesinstalacion = Instalador.DesinstalarLimpio();
-                    logDesinstalador.Info(resumenDesinstalacion);
-                    Console.WriteLine(resumenDesinstalacion);
-                    Registro.Vaciar();
-                    return 0;
-                }
-                catch (Exception exc)
-                {
-                    logDesinstalador.Error($"No se pudo desinstalar: {exc.Message}");
-                    Console.WriteLine($"No se pudo desinstalar: {exc.Message}");
-                    Registro.Vaciar();
-                    return 1;
-                }
+                return ReiniciarServicio();
 
             case "restaurar":
                 Registro.Configurar("agente.log");
@@ -277,8 +235,48 @@ internal static class Program
                     return 0;
                 }
                 Console.WriteLine($"Modo no reconocido: {args[0]}");
-                Console.WriteLine("Modos: gui, configurar, prompt, visor, instalar, desinstalar, desinstalar-orden, restaurar, debug");
+                Console.WriteLine("Modos: gui, configurar, prompt, instalar, desinstalar, reiniciar-servicio, restaurar, debug");
                 return 1;
+        }
+    }
+
+    /// <summary>
+    /// Mano de obra de la orden «reiniciar»: espera unos
+    /// segundos (que el servicio vuelque su registro y el
+    /// informe EN_CURSO llegue al panel), para el servicio y lo
+    /// vuelve a arrancar. El servicio nuevo, en su primera
+    /// configuración, encuentra el marcador de la orden y la
+    /// informa HECHA: este ayudante no habla con el panel.
+    /// </summary>
+    internal static int ReiniciarServicio()
+    {
+        var log = Registro.Obtener("reiniciador");
+        try
+        {
+            log.Info("Reinicio del servicio pedido desde el panel: " +
+                     "esperando 3 s antes de tocar nada.");
+            Thread.Sleep(TimeSpan.FromSeconds(3));
+            using var controlador = new ServiceController(Instalador.NombreServicio);
+            if (controlador.Status != ServiceControllerStatus.Stopped)
+            {
+                controlador.Stop();
+                controlador.WaitForStatus(
+                    ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(60));
+            }
+            controlador.Refresh();
+            log.Info("Servicio parado; arrancándolo de nuevo.");
+            controlador.Start();
+            controlador.WaitForStatus(
+                ServiceControllerStatus.Running, TimeSpan.FromSeconds(60));
+            log.Info("Servicio en marcha de nuevo: reinicio completado.");
+            Registro.Vaciar();
+            return 0;
+        }
+        catch (Exception exc)
+        {
+            log.Error($"El reinicio del servicio falló: {exc.Message}");
+            Registro.Vaciar();
+            return 1;
         }
     }
 
