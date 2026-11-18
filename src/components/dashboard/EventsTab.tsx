@@ -18,8 +18,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ShieldCheck, Siren, Trash2, Usb, X } from "lucide-react";
+import { ArrowUpRight, ShieldCheck, Siren, Trash2, Usb, X } from "lucide-react";
+import Link from "next/link";
 import { Spinner } from "@/components/ui/spinner";
+import { SerialCopiable } from "./SerialCopiable";
 import { cn } from "@/lib/utils";
 import { etiquetaEventoUsb, etiquetaCapaBloqueo } from "@/lib/eventosUsb";
 import { filtrarEventosPorDestino } from "@/lib/eventoDestino";
@@ -330,13 +332,27 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                     </p>
                     <p className="mt-2 font-mono text-[11px] leading-relaxed text-muted-foreground/80">
                       {event.pcUser} · {event.pcIp}
-                      {event.serialNumber && <> · {event.serialNumber}</>}
+                      {event.serialNumber && (
+                        <>
+                          {" "}
+                          · <SerialCopiable serial={event.serialNumber} />
+                        </>
+                      )}
                       {event.driveLetter && <> · Unidad {event.driveLetter}</>}
                     </p>
                     <p className="mt-1 text-[11px] text-muted-foreground/70">
                       {formatDate(occurredAt)} · {formatTime(occurredAt)} · {haceCuanto(occurredAt)} ·{" "}
                       {event.whitelisted ? "En lista blanca" : "Fuera de la lista blanca"}
                     </p>
+                    {event.serialNumber && (
+                      <Link
+                        href={`/admin/unlocks?pc=${encodeURIComponent(event.pcName)}`}
+                        className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-primary underline-offset-4 transition-colors hover:text-foreground hover:underline"
+                      >
+                        <ArrowUpRight className="size-3.5" />
+                        Ver en Desbloqueos
+                      </Link>
+                    )}
                   </article>
                 );
               })}
@@ -378,6 +394,15 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                             <span className="block truncate font-display text-[0.95rem] font-bold" title={event.pcName}>
                               {event.pcName}
                             </span>
+                            {event.serialNumber && (
+                              <Link
+                                href={`/admin/unlocks?pc=${encodeURIComponent(event.pcName)}`}
+                                className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-primary underline-offset-4 transition-colors hover:text-foreground hover:underline"
+                              >
+                                <ArrowUpRight className="size-3.5" />
+                                Ver en Desbloqueos
+                              </Link>
+                            )}
                           </TableCell>
                           <TableCell className="max-w-[140px] text-muted-foreground">
                             <div className="flex flex-col gap-0.5">
@@ -411,9 +436,13 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <div className="cursor-help text-xs leading-tight">
-                                  <div className="truncate font-mono" title={event.serialNumber || "Sin serial"}>
-                                    {event.serialNumber || "Sin serial"}
-                                  </div>
+                                  {event.serialNumber ? (
+                                    <SerialCopiable serial={event.serialNumber} />
+                                  ) : (
+                                    <div className="truncate font-mono">
+                                      Sin serial
+                                    </div>
+                                  )}
                                   <div className="mt-0.5 text-muted-foreground/75">
                                     {event.driveLetter && <>Unidad {event.driveLetter}</>}
                                     {event.driveLetter && event.readonlyStatus && " · "}

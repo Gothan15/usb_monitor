@@ -7,6 +7,7 @@ import {
   serializeWhitelistEntry,
 } from "../_helpers";
 import { broadcastWhitelistChange } from "@/lib/socket";
+import { peticionDesdeElServidor } from "@/lib/ipServidor";
 
 function unauthorized() {
   return NextResponse.json(
@@ -22,12 +23,28 @@ function notFound() {
   );
 }
 
+// Como en la ruta principal: cambiar la lista blanca solo
+// desde la PC del servidor.
+function corteSiNoEsElServidor(req: NextRequest) {
+  if (peticionDesdeElServidor(req)) return null;
+  return NextResponse.json(
+    {
+      ok: false,
+      error:
+        "La lista blanca solo se puede cambiar desde la PC del servidor",
+    },
+    { status: 403 },
+  );
+}
+
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const admin = await requireAdminUser(req);
   if (!admin) return unauthorized();
+  const corte = corteSiNoEsElServidor(req);
+  if (corte) return corte;
 
   const { id } = await params;
   if (!id) return notFound();
@@ -65,6 +82,8 @@ export async function PATCH(
 ) {
   const admin = await requireAdminUser(req);
   if (!admin) return unauthorized();
+  const corte = corteSiNoEsElServidor(req);
+  if (corte) return corte;
 
   const { id } = await params;
   if (!id) return notFound();
