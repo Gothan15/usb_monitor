@@ -64,6 +64,9 @@ public sealed class AgenteWorker : BackgroundService
     // la enumeración parpadea justo en las transiciones PnP, que
     // es cuando el vigilante de eventos despierta a este bucle).
     private readonly ControlAusencias _ausencias = new(TimeSpan.FromSeconds(6));
+    // Ventana anti-parpadeo de los ya desbloqueados: su
+    // «extracción» no se cierra hasta que vence sin reaparición.
+    private readonly LiberadosRecientes _liberados = new();
 
     // Extracciones vetadas por la guarda anti-parpadeo cuyo
     // aviso YA salió al registro. El veto se repite en cada
@@ -583,6 +586,20 @@ public sealed class AgenteWorker : BackgroundService
             Log.Info($"Red USB de línea base, sin bloquear: {disp.Nombre}");
             return;
         }
+        // ¿Reaparición dentro de la ventana anti-parpadeo de
+        // un dispositivo YA desbloqueado? Al liberarlo, su nodo
+        // se reactivó y Windows lo re-enumeró: desapareció unos
+        // segundos y ha vuelto. No es una conexión nueva: sigue
+        // liberado, sin otro bloqueo y sin otra contraseña.
+        if (_liberados.SigueVigente(disp.Clave, DateTime.UtcNow) &&
+            _motor.Registro(disp.Clave) is { Estado: EstadoBloqueo.Liberado })
+        {
+            _liberados.Olvidar(disp.Clave);
+            Log.Info(
+                $"Reaparición tras el desbloqueo (re-enumeración): {disp.Nombre} " +
+                "sigue liberado; no se vuelve a bloquear.");
+            return;
+        }
         _cliente.Evento(EvConectado, disp.Letra, disp.Serial);
         // El veredicto sale de la CACHÉ, sin esperar a la red: la
         // ventana de credenciales tiene que aparecer en cuanto el
@@ -620,8 +637,13 @@ public sealed class AgenteWorker : BackgroundService
                 _ofensas.Olvidar(disp.Clave);
                 lock (_lockRespuesta) _nivelPorClave.Remove(disp.Clave);
             }
-            if (_compartida.LockSessionOnInsert)
-                SolicitarBloqueoSesion("inserción de dispositivo");
+            // El bloqueo de sesión es para dispositivos NO
+            // autorizados: con uno de la lista blanca, el dueño
+            // está a punto de escribir su contraseña y cerrar la
+            // sesión aquí le obligaría a iniciar sesión en
+            // Windows antes de poder desbloquear nada.
+            if (enWl == false && _compartida.LockSessionOnInsert)
+                SolicitarBloqueoSesion("inserción de dispositivo no autorizado");
         }
         // Veredicto confirmado de fuera de la lista: responde la
         // escalera (o el apagado directo si la escalera está
@@ -763,8 +785,31 @@ public sealed class AgenteWorker : BackgroundService
             }
             return false;
         }
+        if (registroPrevio is { Estado: EstadoBloqueo.Liberado })
+        {
+            // Extracción de un dispositivo YA desbloqueado: lo
+            // más probable es el parpadeo de la re-enumeración
+            // que sigue a liberarlo (el nodo se reactiva, el
+            // dispositivo desaparece unos segundos y vuelve).
+            // No se cierra nada todavía: se anota la ausencia y
+            // el vigía cierra el desbloqueo solo si la ventana
+            // vence sin reaparición. Si reaparece, sigue
+            // liberado y nadie escribe la contraseña dos veces;
+            // y el cierre ya no puede pisar una contraseña que
+            // esté llegando («contraseña incorrecta» falsa).
+            _liberados.Marcar(clave, DateTime.UtcNow);
+            lock (_lockApagado) _clavesDelArranque.Remove(clave);
+            Log.Info(
+                $"Extracción de {disp.Nombre} ya liberado: se espera la ventana " +
+                "anti-parpadeo antes de darla por buena.");
+            return true;
+        }
         _vetosExtraccionAvisados.Remove(clave);
         _motor.AlExtraer(clave);
+        // Extraído de verdad: deja de ser «línea base» del
+        // apagado — si vuelve a entrar, es una inserción como
+        // otra cualquiera y el apagado sí puede armarse.
+        lock (_lockApagado) _clavesDelArranque.Remove(clave);
         // El peldaño era de este bloqueo: la ofensa queda en el
         // registro persistente, pero el bloqueo vivo se olvida.
         lock (_lockRespuesta) _nivelPorClave.Remove(clave);
@@ -820,6 +865,7 @@ public sealed class AgenteWorker : BackgroundService
     private readonly object _lockApagado = new();
     private readonly HashSet<string> _apagadoCausantes = new();
     private readonly HashSet<string> _clavesDelArranque = new();
+    private readonly HashSet<string> _supresionesApagadoAvisadas = new();
     private bool _apagadoEnCurso;
     // Vencimiento y duración de la cuenta en curso: el diario en
     // disco (apagado.json) los necesita para reconciliar al
@@ -885,7 +931,19 @@ public sealed class AgenteWorker : BackgroundService
         var cambio = false;
         lock (_lockApagado)
         {
-            if (_clavesDelArranque.Contains(disp.Clave)) return;
+            if (_clavesDelArranque.Contains(disp.Clave))
+            {
+                // Estaba enchufado al arrancar el servicio: no
+                // arma el apagado (regla anti-bucle de encendido),
+                // pero que conste — antes volvía en silencio y
+                // el apagado «no daba señal de vida».
+                if (_supresionesApagadoAvisadas.Add(disp.Clave))
+                    Log.Info(
+                        $"Apagado no armado por {disp.Nombre}: estaba conectado " +
+                        "al arrancar el servicio (línea base). Si se extrae y " +
+                        "vuelve a entrar, el apagado ya sí se armará.");
+                return;
+            }
             cambio = _apagadoCausantes.Add(disp.Clave);
             if (!_apagadoEnCurso)
             {
@@ -1259,12 +1317,43 @@ public sealed class AgenteWorker : BackgroundService
                         {
                             ArmarApagado(reg.Dispositivo);
                             SolicitarEvidencia(reg.Dispositivo);
+                            // El bloqueo de sesión tampoco se
+                            // pidió al bloquear (el veredicto no
+                            // se sabía): se pide ahora, que ya
+                            // consta que no está autorizado.
+                            if (_compartida.LockSessionOnInsert)
+                                SolicitarBloqueoSesion(
+                                    "inserción de dispositivo no autorizado");
                         }
                         RefrescarPendientesLocales();
                     }
                     // No-op si ya está registrado.
                     await RegistrarEnPanelAsync(reg.Dispositivo, reg.EnWhitelist.Value)
                         .ConfigureAwait(false);
+                }
+                // Cierre diferido de los desbloqueos cuya
+                // ventana anti-parpadeo venció sin reaparición:
+                // esa ausencia sí era una extracción de verdad,
+                // y ahora se cierra como se cerraba antes al
+                // momento (registro, panel y evento).
+                foreach (var claveExpirada in _liberados.TomarExpiradas(DateTime.UtcNow))
+                {
+                    var regExpirado = _motor.Registro(claveExpirada);
+                    if (regExpirado is null) continue;
+                    var dispExpirado = regExpirado.Dispositivo;
+                    _motor.AlExtraer(claveExpirada);
+                    lock (_lockRespuesta) _nivelPorClave.Remove(claveExpirada);
+                    await _cliente.CerrarBloqueoAsync(
+                        dispExpirado.Letra, dispExpirado.Serial).ConfigureAwait(false);
+                    _cliente.Evento(EvDesconectado, dispExpirado.Letra, dispExpirado.Serial);
+                    await _cliente.VaciarColaAsync().ConfigureAwait(false);
+                    _pendientesRegistrados.Remove(claveExpirada);
+                    lock (_lockEvidencia)
+                        _evidenciaSolicitada.RemoveWhere(
+                            x => x.StartsWith(claveExpirada + "|", StringComparison.Ordinal));
+                    Log.Info(
+                        $"Ventana anti-parpadeo vencida sin reaparición: extracción " +
+                        $"confirmada de {dispExpirado.Nombre}; su desbloqueo queda cerrado.");
                 }
                 VigilarCompanero();
             }
