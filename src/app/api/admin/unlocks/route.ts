@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     const resultFilter = searchParams.get("result")?.trim() || null;
     const pcFilter = searchParams.get("pcName")?.trim() || null;
 
-    const [blockedNow, activeUnlocked, attempts, computers, settings] =
+    const [blockedNow, activeUnlocked, history, attempts, computers, settings] =
       await Promise.all([
         db.pendingUnlock.findMany({
           where: { status: "BLOCKED" },
@@ -31,6 +31,21 @@ export async function GET(req: NextRequest) {
           where: { status: "UNLOCKED" },
           orderBy: { unlockedAt: "desc" },
           take: 50,
+          include: { unlockedBy: { select: { username: true, role: true } } },
+        }),
+        // Historial de bloqueos: los ya cerrados (el dispositivo
+        // se extrajo o el bloqueo expiró). Sin esto, un bloqueo
+        // sin intentos de contraseña desaparecía de la vista al
+        // desconectar, y su evidencia quedaba inalcanzable
+        // aunque sigue guardada. Respeta el filtro por equipo,
+        // como el historial de intentos.
+        db.pendingUnlock.findMany({
+          where: {
+            status: "CLOSED",
+            ...(pcFilter ? { pcName: { contains: pcFilter } } : {}),
+          },
+          orderBy: { closedAt: "desc" },
+          take: 100,
           include: { unlockedBy: { select: { username: true, role: true } } },
         }),
         db.unlockAttempt.findMany({
@@ -51,7 +66,9 @@ export async function GET(req: NextRequest) {
 
     // Captura de evidencia: qué bloqueos tienen foto del momento,
     // para que la vista enseñe el botón «Evidencia» solo en ellos.
-    const idsBloqueos = [...blockedNow, ...activeUnlocked].map((p) => p.id);
+    const idsBloqueos = [...blockedNow, ...activeUnlocked, ...history].map(
+      (p) => p.id,
+    );
     const conEvidencia = idsBloqueos.length
       ? await db.blockEvidence.findMany({
           where: { pendingUnlockId: { in: idsBloqueos } },
@@ -94,6 +111,7 @@ export async function GET(req: NextRequest) {
       ok: true,
       blockedNow: marcarEvidencia(blockedNow),
       activeUnlocked: marcarEvidencia(activeUnlocked),
+      history: marcarEvidencia(history),
       attempts: attempts.map((a) => ({
         ...a,
         // Destacar en la vista los desbloqueos hechos con cuenta admin.

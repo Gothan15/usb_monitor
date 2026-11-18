@@ -16,7 +16,8 @@ import {
 
 /**
  * Vista «Desbloqueos» (fase 5): bloqueos en curso, historial de
- * intentos del flujo 2FA y de la emergencia sin red, y equipos en
+ * intentos del flujo 2FA y de la emergencia sin red, historial
+ * de bloqueos ya cerrados (con su evidencia) y equipos en
  * silencio (método 3). Casi solo lectura: la única intervención
  * del admin aquí es dar de alta un serial en la lista blanca
  * desde el propio bloqueo (y el servidor solo lo acepta desde
@@ -33,6 +34,8 @@ interface Pending {
   createdAt: string;
   unlockedAt: string | null;
   unlockedBy: { username: string; role: string } | null;
+  closedAt?: string | null;
+  closeReason?: string | null;
   hasEvidence?: boolean;
 }
 
@@ -77,6 +80,7 @@ interface SilenceComputer {
 interface UnlocksData {
   blockedNow: Pending[];
   activeUnlocked: Pending[];
+  history: Pending[];
   attempts: Attempt[];
   silence: {
     thresholdMinutes: number;
@@ -607,6 +611,93 @@ export function UnlocksTab({ pcInicial = "" }: { pcInicial?: string }) {
               )}
             </tbody>
           </table>
+        </div>
+      </section>
+
+      {/* ── Registro IV · Historial de bloqueos ── */}
+      <section className="mt-12">
+        <RegistroHeader
+          numeral="IV"
+          title="Historial de bloqueos"
+          count={data?.history.length ?? 0}
+        />
+        <div className="mt-4 border-t border-border">
+          {data && data.history.length === 0 ? (
+            <p className="py-5 text-sm text-muted-foreground">
+              Todavía no hay bloqueos cerrados. Cuando un dispositivo
+              bloqueado se desconecte, su registro quedará aquí, con
+              su evidencia.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className={thClass}>Equipo</th>
+                    <th className={thClass}>Unidad</th>
+                    <th className={thClass}>Dispositivo</th>
+                    <th className={thClass}>Serial</th>
+                    <th className={thClass}>Lista blanca</th>
+                    <th className={thClass}>Bloqueado</th>
+                    <th className={thClass}>Cierre</th>
+                    <th className={thClass}>Resultado</th>
+                    <th className={thClass}>Evidencia</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {data?.history.map((p) => (
+                    <tr key={p.id}>
+                      <td className={`${tdClass} font-medium`}>{p.pcName}</td>
+                      <td className={`${tdClass} font-mono`}>
+                        {p.driveLetter ?? p.deviceLabel ?? "Sin unidad"}
+                      </td>
+                      <td className={tdClass}>{p.deviceLabel || "—"}</td>
+                      <td className={`${tdClass} font-mono text-xs`}>
+                        {p.serialNumber ? (
+                          <SerialCopiable serial={p.serialNumber} />
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className={tdClass}>
+                        {p.whitelisted ? "Conocido" : "Desconocido"}
+                      </td>
+                      <td className={`${tdClass} tabular-nums`}>
+                        {fmt(p.createdAt)}
+                      </td>
+                      <td className={`${tdClass} tabular-nums`}>
+                        {fmt(p.closedAt ?? null)}
+                        {p.closeReason === "REMOVED" && (
+                          <span className="text-muted-foreground">
+                            {" "}
+                            · extraído
+                          </span>
+                        )}
+                      </td>
+                      <td className={tdClass}>
+                        {p.unlockedAt
+                          ? `Desbloqueado por ${p.unlockedBy?.username ?? "—"}`
+                          : "Sin desbloquear"}
+                      </td>
+                      <td className={tdClass}>
+                        {p.hasEvidence ? (
+                          <button
+                            onClick={() => setEvidenciaDe(p)}
+                            className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-primary underline-offset-4 transition-colors hover:text-foreground hover:underline"
+                          >
+                            <Camera className="size-4" />
+                            Evidencia
+                          </button>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </section>
 
