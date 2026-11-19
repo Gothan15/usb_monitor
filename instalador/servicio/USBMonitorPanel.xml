@@ -18,6 +18,15 @@
   <env name="NODE_ENV" value="production" />
   <env name="PORT" value="__PUERTO__" />
   <env name="APP_HOST" value="0.0.0.0" />
+  <!-- Recursos del proceso Node, los que pidió Gothan: el pool
+       de hilos de libuv pasa de 4 (el defecto) a 16, para que
+       las operaciones de disco y cifrado (subidas de
+       evidencia, firmas, contraseñas) no se hagan cola entre
+       sí, y el tope de memoria del montón queda en 2 GB
+       explícitos. El JavaScript sigue corriendo en un núcleo:
+       esto desatasca la E/S, no reparte las peticiones. -->
+  <env name="UV_THREADPOOL_SIZE" value="16" />
+  <env name="NODE_OPTIONS" value="--max-old-space-size=2048" />
 
   <depend>USBMonitorPostgreSQL</depend>
   <depend>USBMonitorRedis</depend>
