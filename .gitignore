@@ -70,6 +70,11 @@ agente/**/bin/
 agente/**/obj/
 agente/dist/
 
+# .NET (app de escritorio del panel)
+escritorio/**/bin/
+escritorio/**/obj/
+escritorio/dist/
+
 # Instalador del panel (salida de Construir-Instalador.ps1)
 salida-instalador/
 

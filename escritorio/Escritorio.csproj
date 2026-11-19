@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    USB Monitor — App de escritorio del panel.
+
+    Ventana propia para el panel, sin navegador: un WebView2
+    que carga el panel en su dirección única de red (la IP de
+    la ruta por defecto y el puerto que escribe el instalador,
+    el mismo criterio que ya usa la bandeja). El panel no
+    cambia: sigue siendo el mismo servidor de siempre, esto
+    es solo otra ventana para mirarlo.
+
+    Autocontenida y de un solo archivo, como la bandeja: en
+    el equipo del panel no se le puede pedir .NET instalado.
+    WinForms porque es la vía directa de alojar el control
+    WebView2 y porque la bandeja ya sentó el precedente.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Permite compilar para Windows desde cualquier SO. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <AssemblyName>USBMonitorEscritorio</AssemblyName>
+    <RootNamespace>USBMonitor.Escritorio</RootNamespace>
+    <!-- El icono de la casa: la brújula del panel. -->
+    <ApplicationIcon>..\src\app\favicon.ico</ApplicationIcon>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <!-- El paquete WebView2 arrastra su ensamblado de WPF,
+         que esta app no usa (va en WinForms), y su referencia
+         a WindowsBase 5.0 choca con la 4.0 del marco: es el
+         aviso MSB3277, conocido e inocuo en este montaje. -->
+    <NoWarn>$(NoWarn);MSB3277</NoWarn>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- El motor de navegación: WebView2 (el Edge/Chromium
+         que Windows 11 ya trae como «WebView2 Runtime»). -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+  </ItemGroup>
+
+</Project>

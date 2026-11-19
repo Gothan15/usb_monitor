@@ -21,6 +21,9 @@
 ;
 ; Compila Construir-Instalador.ps1 con:
 ;   ISCC /DPanelVersion=X.Y.Z /DPreparado=<árbol> [/DIncluirPaquete=1]
+;   [/DIncluirServidor=1]  (la variante «servidor»: suma la página
+;   de la cuenta dedicada y el paso final que activa el modo
+;   servidor dedicado y cierra la sesión)
 ; ================================================================
 
 #ifndef PanelVersion
@@ -29,10 +32,14 @@
 #ifndef Preparado
   #define Preparado "..\salida-instalador\preparado"
 #endif
-#ifdef IncluirPaquete
-  #define SufijoCompleto "-completo"
+#ifdef IncluirServidor
+  #define SufijoCompleto "-servidor"
 #else
-  #define SufijoCompleto ""
+  #ifdef IncluirPaquete
+    #define SufijoCompleto "-completo"
+  #else
+    #define SufijoCompleto ""
+  #endif
 #endif
 
 [Setup]
@@ -105,6 +112,9 @@ Source: "{#Preparado}\empujador\*"; DestDir: "{app}\app\empujador"; Flags: recur
 [Icons]
 Name: "{group}\Abrir el panel"; Filename: "{app}\AbrirPanel.cmd"; IconFilename: "{app}\favicon.ico"; Comment: "Abre el panel de USB Monitor en el navegador"
 Name: "{group}\Bandeja del panel"; Filename: "{app}\USBMonitorBandeja.exe"; Comment: "Icono de bandeja: estado del panel junto al reloj, con abrir, iniciar, parar y reiniciar"
+#ifdef IncluirServidor
+Name: "{group}\App de escritorio del panel"; Filename: "{app}\USBMonitorEscritorio.exe"; Comment: "El panel como programa de escritorio, sin navegador"
+#endif
 Name: "{autodesktop}\USB Monitor — Panel"; Filename: "{app}\AbrirPanel.cmd"; IconFilename: "{app}\favicon.ico"; Tasks: accesodirecto; Comment: "Abre el panel de USB Monitor en el navegador"
 
 [Registry]
@@ -159,6 +169,11 @@ var
   // apilados. Aquí cada control lleva coordenadas propias y
   // holgadas, y nada se solapa.
   PaginaConexiones: TWizardPage;
+#ifdef IncluirServidor
+  // La página de la cuenta dedicada, solo en el instalador
+  // «servidor»: en las demás variantes ni existe.
+  PaginaServidor: TInputQueryWizardPage;
+#endif
   EditConn: TNewEdit;
   CheckAvanzada: TNewCheckBox;
   CheckSsd: TNewCheckBox;
@@ -390,6 +405,26 @@ begin
   // Con las dos páginas ya creadas, se vuelcan en ellas los
   // valores del perfil detectado.
   ReflejarPerfilEnPagina;
+#ifdef IncluirServidor
+  // La última página del asistente en esta variante: la
+  // cuenta del servidor dedicado. Va encadenada tras la de
+  // conexiones, la última de las de siempre, se enseñe o no
+  // la instalación avanzada: la cuenta dedicada no es un
+  // ajuste fino, es el corazón de esta variante.
+  PaginaServidor := CreateInputQueryPage(PaginaConexiones.ID,
+    'Cuenta del servidor dedicado',
+    'La cuenta que será el servidor, y nada más que eso',
+    'Al terminar la instalación se creará esta cuenta local ' +
+    '(sin privilegios de administrador), entrará sola al ' +
+    'encender la PC y verá únicamente el panel a pantalla ' +
+    'completa: sin escritorio ni menú Inicio. Tu cuenta de ' +
+    'administrador no se toca. La sesión actual se cerrará ' +
+    'al terminar para entrar ya con la cuenta nueva.');
+  PaginaServidor.Add('Usuario de la cuenta dedicada:', False);
+  PaginaServidor.Add('Contraseña:', True);
+  PaginaServidor.Add('Repite la contraseña:', True);
+  PaginaServidor.Values[0] := 'PanelUSB';
+#endif
 end;
 
 function ShouldSkipPage(PageID: Integer): Boolean;
@@ -408,6 +443,13 @@ begin
       (PageID = PaginaConexiones.ID)) and
      not CheckAvanzada.Checked then
     Result := True;
+#ifdef IncluirServidor
+  // La cuenta dedicada solo se pide en instalación limpia:
+  // en una actualización la cuenta ya existe y el modo
+  // dedicado ya está como quedó.
+  if EsActualizacion and (PageID = PaginaServidor.ID) then
+    Result := True;
+#endif
 end;
 
 function PuertoOcupado(Puerto: Integer): Boolean;
@@ -533,6 +575,31 @@ begin
     end;
     AjConn := StrToIntDef(Trim(EditConn.Text), AjConn);
   end;
+
+#ifdef IncluirServidor
+  if CurPageID = PaginaServidor.ID then
+  begin
+    // La contraseña de la cuenta dedicada no puede ir vacía
+    // (sin ella no hay inicio automático que valga) ni ser
+    // corta: la misma regla que el script de activación.
+    if Trim(PaginaServidor.Values[0]) = '' then
+      PaginaServidor.Values[0] := 'PanelUSB';
+    if PaginaServidor.Values[1] <> PaginaServidor.Values[2] then
+    begin
+      MsgBox('Las contraseñas de la cuenta dedicada no ' +
+        'coinciden. Escríbela dos veces igual.', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+    if Length(PaginaServidor.Values[1]) < 8 then
+    begin
+      MsgBox('La contraseña de la cuenta dedicada necesita ' +
+        'al menos 8 caracteres.', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+  end;
+#endif
 end;
 
 procedure DetenerServiciosSiExisten;
@@ -609,6 +676,27 @@ begin
         // generará la contraseña y la dejará en PRIMER-ACCESO.txt.
       end;
     end;
+#ifdef IncluirServidor
+    // El mismo relevo, para la cuenta dedicada: su usuario y
+    // su contraseña viajan en su propio ini con la ACL
+    // cerrada; el script de activación lo lee, lo usa y lo
+    // destruye. Sin ini (si esto fallara), la activación no
+    // puede crear la cuenta y el paso final lo dirá.
+    Ini := Datos + '\servidor-dedicado.ini';
+    try
+      SaveStringToFile(Ini,
+        'usuario=' + Trim(PaginaServidor.Values[0]) + #13#10 +
+        'clave=' + PaginaServidor.Values[1] + #13#10, False);
+      Exec('icacls.exe',
+        '"' + Ini + '" /inheritance:r /grant:r *S-1-5-18:F ' +
+        '*S-1-5-32-544:F "' + ExpandConstant('{username}') + ':F"',
+        '', SW_HIDE, ewWaitUntilTerminated, Codigo);
+    except
+      // Sin relevo no hay activación posible: el paso final
+      // fallará con su motivo y nada quedará a medias en la
+      // cuenta, porque el script exige el ini o un humano.
+    end;
+#endif
   end;
 end;
 
@@ -623,6 +711,34 @@ begin
     '', SW_SHOW, ewWaitUntilTerminated, Codigo) and (Codigo = 0);
 end;
 
+#ifdef IncluirServidor
+{ El paso propio de esta variante, el último: activar el
+  modo servidor dedicado con el script que viaja instalado.
+  Lee el relevo servidor-dedicado.ini, crea la cuenta, le
+  sustituye el shell, activa su inicio automático y, con
+  -CerrarSesion, cierra ESTA sesión: la PC vuelve a entrar
+  sola con la cuenta dedicada y el panel a pantalla
+  completa. Si la activación sale bien, es probable que el
+  asistente ni llegue a enseñar su página final: el cierre
+  de sesión se lo lleva por delante, y es lo pedido. }
+function EjecutarActivacionDedicada: Boolean;
+var
+  Codigo: Integer;
+  Ruta: String;
+  Args: String;
+begin
+  Ruta := ExpandConstant('{app}\scripts\Activar-ModoDedicado.ps1');
+  Args := '-NoProfile -ExecutionPolicy Bypass -File "' + Ruta + '"' +
+    ' -OrigenExe "' + ExpandConstant('{app}\USBMonitorEscritorio.exe') + '"' +
+    ' -Destino "' + ExpandConstant('{app}\Escritorio') + '"' +
+    ' -ClaveInicial "' +
+      ExpandConstant('{commonappdata}\USBMonitor\servidor-dedicado.ini') + '"' +
+    ' -CerrarSesion';
+  Result := Exec('powershell.exe', Args, '', SW_SHOW,
+    ewWaitUntilTerminated, Codigo) and (Codigo = 0);
+end;
+#endif
+
 procedure EjecutarPasos;
 begin
   PasoFallido := '';
@@ -632,6 +748,14 @@ begin
     PasoFallido := 'Redis'
   else if not EjecutarScript('Configurar-Panel.ps1') then
     PasoFallido := 'la configuración del panel';
+#ifdef IncluirServidor
+  // Solo con el panel ya en marcha y en instalación limpia:
+  // activar el modo dedicado sobre un paso fallido dejaría
+  // la PC entrando sola a un panel roto.
+  if (PasoFallido = '') and (not EsActualizacion) then
+    if not EjecutarActivacionDedicada then
+      PasoFallido := 'la activación del modo servidor dedicado';
+#endif
   if PasoFallido <> '' then
     MsgBox('El paso de ' + PasoFallido + ' ha fallado y la ' +
       'instalación no ha quedado completa.' + #13#10#13#10 +
@@ -692,6 +816,18 @@ begin
       WizardForm.FinishedLabel.Caption :=
         'El panel se ha actualizado. Los datos, las cuentas y la ' +
         'configuración se conservan tal como estaban.'
+#ifdef IncluirServidor
+    else if not EsActualizacion then
+      // Si la activación salió bien, esta página apenas se
+      // verá: el cierre de sesión llega en segundos.
+      WizardForm.FinishedLabel.Caption :=
+        'El panel está instalado y el modo servidor dedicado, ' +
+        'activado.' + #13#10#13#10 +
+        'La sesión se cerrará y la PC entrará sola con la ' +
+        'cuenta dedicada, enseñando solo el panel. Para ' +
+        'mantenerla: Ctrl+Alt+Supr, Cambiar de usuario y tu ' +
+        'cuenta de administrador de siempre.'
+#endif
     else
       WizardForm.FinishedLabel.Caption :=
         'El panel está instalado y en marcha.' + #13#10#13#10 +
