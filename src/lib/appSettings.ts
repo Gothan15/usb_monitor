@@ -53,6 +53,10 @@ export interface AppSettings {
   captureEvidenceOnNonWhitelisted: boolean;
   /** Fase 5 (método 3): minutos sin señales para marcar un equipo. */
   silenceThresholdMinutes: number;
+  /** Escala de la letra del panel, en % sobre la raíz (90–130). */
+  escalaLetra: number;
+  /** Desenfoque de fondo al abrir diálogos (apagarlo alivia la GPU). */
+  desenfoqueDialogos: boolean;
   [key: string]: unknown;
 }
 
@@ -67,6 +71,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   shutdownCountdownSeconds: 60,
   captureEvidenceOnNonWhitelisted: false,
   silenceThresholdMinutes: 5,
+  escalaLetra: 112.5,
+  desenfoqueDialogos: true,
 };
 
 const SETTINGS_PATH = path.join(process.cwd(), "config", "app_settings.json");

@@ -41,7 +41,7 @@ export function EmpujeChecklist({ checks, comprobando = false }: Props) {
   const icono = (paso: PasoEmpuje, indice: number) => {
     if (!enVivo) {
       return (
-        <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border border-border text-[11px] font-semibold text-muted-foreground">
+        <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border border-border text-[0.6875rem] font-semibold text-muted-foreground">
           {indice + 1}
         </span>
       );
@@ -96,7 +96,7 @@ export function EmpujeChecklist({ checks, comprobando = false }: Props) {
                 paso.comandos.map((comando) => (
                   <code
                     key={comando}
-                    className="mt-1 block overflow-x-auto whitespace-nowrap rounded bg-muted/60 px-2 py-1 font-mono text-[11px] text-foreground"
+                    className="mt-1 block overflow-x-auto whitespace-nowrap rounded bg-muted/60 px-2 py-1 font-mono text-[0.6875rem] text-foreground"
                   >
                     {comando}
                   </code>
@@ -106,7 +106,7 @@ export function EmpujeChecklist({ checks, comprobando = false }: Props) {
                   <p key={c.id} className="mt-0.5 text-xs text-muted-foreground">
                     {c.detalle}
                     {c.consejo && (
-                      <span className="block font-mono text-[11px]">
+                      <span className="block font-mono text-[0.6875rem]">
                         {c.consejo}
                       </span>
                     )}

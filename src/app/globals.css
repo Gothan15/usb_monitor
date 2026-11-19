@@ -81,6 +81,13 @@
 :root {
   --radius: 0.3rem;
 
+  /* Desenfoque de los diálogos (velo y tarjeta): el ajuste
+     «Desenfoque de fondo en los diálogos» de Ajustes los pone
+     a 0 en vivo cuando se apaga. Por defecto, los de siempre:
+     el velo como blur-sm y la tarjeta como blur-xl. */
+  --desenfoque-velo: 8px;
+  --desenfoque-tarjeta: 24px;
+
   /* Core */
   --background: oklch(0.962 0.006 252);
   --foreground: oklch(0.205 0.022 262);
@@ -243,6 +250,15 @@
   }
   html {
     scroll-behavior: smooth;
+    /* Escala general del panel: a 1080p la letra de serie
+       (rem de 16 px) se quedaba chica y obligaba a forzar la
+       vista. Todo el panel está en rem (tamaños, espacios y
+       anchos), así que subir la raíz lo agranda entero y en
+       proporción, sin romper ningún layout. Este 112,5 % es
+       el valor POR DEFECTO: en Ajustes → Interfaz se cambia
+       en vivo con el ajuste «Tamaño de la letra» (90–130 %),
+       que pisa este valor con el estilo en línea de la raíz. */
+    font-size: 112.5%;
   }
   body {
     background: var(--background);

@@ -495,11 +495,11 @@ export function NetworkScannerTab({ onRefreshComputers }: Props) {
                             );
                           return (
                             <span className="inline-flex items-center gap-1.5">
-                              <span className="inline-flex items-center border border-border px-1.5 py-0.5 font-mono text-[11px] text-foreground">
+                              <span className="inline-flex items-center border border-border px-1.5 py-0.5 font-mono text-[0.6875rem] text-foreground">
                                 Agente v{info.version}
                               </span>
                               {info.desactualizado && (
-                                <span className="inline-flex items-center border border-amber-600/50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-500">
+                                <span className="inline-flex items-center border border-amber-600/50 px-1.5 py-0.5 text-[0.6875rem] font-medium text-amber-700 dark:text-amber-500">
                                   Desactualizado
                                 </span>
                               )}

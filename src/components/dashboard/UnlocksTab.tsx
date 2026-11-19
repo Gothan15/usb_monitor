@@ -236,7 +236,7 @@ export function UnlocksTab({ pcInicial = "" }: { pcInicial?: string }) {
         </div>
         <ExportarCsv ruta="/api/admin/unlocks/exportar" />
         {ultimaVez && (
-          <span className="text-[11px] text-muted-foreground">
+          <span className="text-[0.6875rem] text-muted-foreground">
             Actualizado a las{" "}
             {ultimaVez.toLocaleTimeString("es", {
               hour: "2-digit",

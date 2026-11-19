@@ -61,7 +61,7 @@ export function KeyboardShortcutsDialog({
               className="flex items-center justify-between gap-4 px-4 py-3"
             >
               <span className="text-xs text-foreground">{shortcut.description}</span>
-              <kbd className="rounded-md border border-border/60 bg-muted/40 px-2 py-1 font-mono text-[11px] font-medium text-muted-foreground">
+              <kbd className="rounded-md border border-border/60 bg-muted/40 px-2 py-1 font-mono text-[0.6875rem] font-medium text-muted-foreground">
                 {shortcut.keys}
               </kbd>
             </div>

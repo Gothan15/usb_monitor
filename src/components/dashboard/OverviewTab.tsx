@@ -287,7 +287,7 @@ export function OverviewTab({
                   type="button"
                   onClick={() => setChartType(tipo)}
                   className={cn(
-                    "text-[11px] font-semibold uppercase tracking-[0.12em] transition-colors",
+                    "text-[0.6875rem] font-semibold uppercase tracking-[0.12em] transition-colors",
                     chartType === tipo
                       ? "text-foreground underline decoration-[var(--acero)] decoration-2 underline-offset-4"
                       : "text-muted-foreground hover:text-foreground",
@@ -360,7 +360,7 @@ export function OverviewTab({
                       {String(indice + 1).padStart(2, "0")}
                     </span>
                     <div className="min-w-0">
-                      <p className="text-[13px] font-medium leading-snug">
+                      <p className="text-[0.8125rem] font-medium leading-snug">
                         {event.pcName} · {event.pcUser}
                       </p>
                       <p
@@ -373,7 +373,7 @@ export function OverviewTab({
                       >
                         {event.event}
                       </p>
-                      <p className="mt-1 font-mono text-[10px] text-muted-foreground/70">
+                      <p className="mt-1 font-mono text-[0.625rem] text-muted-foreground/70">
                         {formatDateTime(event.createdAt)}
                       </p>
                     </div>

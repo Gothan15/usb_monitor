@@ -186,7 +186,7 @@ export function NotificationCenter() {
             <motion.span
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
-              className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-[var(--acero)] text-[9px] font-bold text-white"
+              className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-[var(--acero)] text-[0.5625rem] font-bold text-white"
             >
               {unreadCount > 9 ? "9+" : unreadCount}
             </motion.span>
@@ -204,13 +204,13 @@ export function NotificationCenter() {
           <div className="flex items-baseline justify-between">
             <h4 className="smallcaps text-foreground">Notificaciones</h4>
             {unreadCount > 0 && (
-              <span className="font-mono text-[11px] text-[var(--acero)]">
+              <span className="font-mono text-[0.6875rem] text-[var(--acero)]">
                 {unreadCount} sin leer
               </span>
             )}
           </div>
           {(unreadCount > 0 || notifications.length > 0) && (
-            <div className="mt-1.5 flex items-center gap-4 text-[11px] font-medium">
+            <div className="mt-1.5 flex items-center gap-4 text-[0.6875rem] font-medium">
               {unreadCount > 0 && (
                 <button
                   type="button"
@@ -237,7 +237,7 @@ export function NotificationCenter() {
         <ScrollArea className="max-h-80">
           {notifications.length === 0 ? (
             <div className="px-4 py-9 text-center">
-              <p className="text-[13px] text-muted-foreground">
+              <p className="text-[0.8125rem] text-muted-foreground">
                 Sin notificaciones
               </p>
               <p className="mt-1 text-xs text-muted-foreground/70">
@@ -281,7 +281,7 @@ export function NotificationCenter() {
                         )}
                         <span
                           className={cn(
-                            "text-[13px] leading-snug text-foreground",
+                            "text-[0.8125rem] leading-snug text-foreground",
                             !n.read && "font-semibold",
                           )}
                         >
