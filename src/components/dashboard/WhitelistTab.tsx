@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +28,8 @@ import { useBusqueda } from "@/hooks/useBusqueda";
 import { CampoBusqueda } from "@/components/shared/CampoBusqueda";
 import { OrdenarPor } from "./OrdenarPor";
 import { Spinner } from "@/components/ui/spinner";
+import * as listaBlancaApi from "@/lib/api/listaBlanca";
+import type { SerialConectado } from "@/lib/api/listaBlanca";
 
 interface CreatePayload {
   serialNumber: string;
@@ -75,6 +77,48 @@ export function WhitelistTab({
   const [formError, setFormError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Seriales de los dispositivos conectados ahora mismo, para
+  // el desplegable del campo de serial del alta: elegir en vez
+  // de teclear, como hacía la antigua herramienta del toolbox.
+  // Se lee al montar y se refresca al volver al campo si la
+  // lectura tiene más de 20 s; si el panel no responde, la
+  // lista queda vacía y el alta sigue siendo a mano.
+  const [conectados, setConectados] = useState<SerialConectado[]>([]);
+  const [menuSerialAbierto, setMenuSerialAbierto] = useState(false);
+  const ultimaLecturaSeriales = useRef(0);
+
+  const cargarConectados = useCallback(async () => {
+    const ahora = Date.now();
+    if (ahora - ultimaLecturaSeriales.current < 20_000) return;
+    ultimaLecturaSeriales.current = ahora;
+    setConectados(await listaBlancaApi.conectados());
+  }, []);
+
+  useEffect(() => {
+    void cargarConectados();
+  }, [cargarConectados]);
+
+  // Sugerencias del desplegable: conectados que aún no están en
+  // la lista blanca y que casan con lo tecleado (por serial,
+  // equipo o nombre del volumen). Sin texto, se ofrecen todos.
+  const serialesEnLista = useMemo(
+    () => new Set(entries.map((e) => e.serialNumber.trim().toUpperCase())),
+    [entries],
+  );
+  const sugerenciasSerial = useMemo(() => {
+    const texto = serialNumber.trim().toUpperCase();
+    return conectados.filter((c) => {
+      if (serialesEnLista.has(c.serialNumber.trim().toUpperCase()))
+        return false;
+      if (!texto) return true;
+      return (
+        c.serialNumber.toUpperCase().includes(texto) ||
+        c.pcName.toUpperCase().includes(texto) ||
+        (c.volumeName || "").toUpperCase().includes(texto)
+      );
+    });
+  }, [conectados, serialesEnLista, serialNumber]);
 
   const bulk = useBulkSelection();
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -276,13 +320,60 @@ export function WhitelistTab({
             <label className="smallcaps text-muted-foreground">
               Serial del dispositivo
             </label>
-            <Input
-              value={serialNumber}
-              onChange={(event) => setSerialNumber(event.target.value)}
-              placeholder="Ej. 1234-ABCD-5678"
-              required
-              className="h-11"
-            />
+            {/* Campo con desplegable de conectados: al tocar el
+                campo bajan los seriales de los dispositivos
+                conectados ahora mismo (con su equipo y unidad);
+                un toque rellena el serial, y teclear sigue
+                valiendo para un dispositivo que no esté
+                conectado. Las filas son type="button" para no
+                enviar el formulario al elegir, y se elige en
+                onMouseDown porque el blur del campo cerraría el
+                menú antes de que el clic aterrice. */}
+            <div className="relative">
+              <Input
+                value={serialNumber}
+                onChange={(event) => {
+                  setSerialNumber(event.target.value);
+                  setMenuSerialAbierto(true);
+                }}
+                onFocus={() => {
+                  setMenuSerialAbierto(true);
+                  void cargarConectados();
+                }}
+                onBlur={() => setMenuSerialAbierto(false)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") setMenuSerialAbierto(false);
+                }}
+                placeholder="Ej. 1234-ABCD-5678"
+                required
+                className="h-11"
+                autoComplete="off"
+              />
+              {menuSerialAbierto && sugerenciasSerial.length > 0 && (
+                <div className="absolute inset-x-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md">
+                  {sugerenciasSerial.map((c) => (
+                    <button
+                      key={c.serialNumber}
+                      type="button"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        setSerialNumber(c.serialNumber);
+                        setMenuSerialAbierto(false);
+                      }}
+                      className="flex w-full items-center justify-between gap-3 rounded-sm px-2 py-1.5 text-left text-sm outline-hidden hover:bg-accent hover:text-accent-foreground"
+                    >
+                      <span className="font-mono text-xs">
+                        {c.serialNumber}
+                      </span>
+                      <span className="shrink-0 text-[0.65rem] text-muted-foreground">
+                        {c.pcName}
+                        {c.driveLetter ? ` · ${c.driveLetter}` : ""}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
           <div className="flex flex-col gap-2">
             <label className="smallcaps text-muted-foreground">
