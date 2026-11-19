@@ -4,6 +4,7 @@ import { requireAuth } from "@/lib/auth";
 import { readAppSettings } from "@/lib/appSettings";
 import { getCurrentDate } from "@/lib/time";
 import { logError } from "@/lib/logger";
+import { dispositivosLocales } from "@/lib/usbLocal";
 
 /**
  * GET /api/whitelist/conectados
@@ -19,8 +20,15 @@ import { logError } from "@/lib/logger";
  * desconectada (agente caído, extracción sin reporte) se
  * ofrecería para siempre.
  *
+ * Y además, los pinchados en la PROPIA PC del panel, leídos
+ * en el momento por WMI (lib/usbLocal): la PC del servidor no
+ * necesita agente para enseñar sus memorias, como ya hacía
+ * la herramienta de seriales del toolbox cuando era un
+ * programa aparte.
+ *
  * Un asiento por serial: si el mismo serial constara en dos
- * equipos a la vez, manda el reporte más reciente.
+ * equipos a la vez, manda el reporte más reciente; el leído
+ * en casa solo entra si ningún agente lo reporta ya.
  */
 export async function GET(req: NextRequest) {
   try {
@@ -56,6 +64,13 @@ export async function GET(req: NextRequest) {
         volumeName: r.volumeName,
         model: r.model,
       });
+    }
+
+    // Los de la propia PC del panel, leídos en casa por WMI.
+    for (const local of await dispositivosLocales()) {
+      if (vistos.has(local.serialNumber)) continue;
+      vistos.add(local.serialNumber);
+      items.push(local);
     }
 
     return NextResponse.json({ ok: true, items });
