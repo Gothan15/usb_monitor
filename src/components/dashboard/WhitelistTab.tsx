@@ -29,6 +29,7 @@ import { CampoBusqueda } from "@/components/shared/CampoBusqueda";
 import { OrdenarPor } from "./OrdenarPor";
 import { Spinner } from "@/components/ui/spinner";
 import * as listaBlancaApi from "@/lib/api/listaBlanca";
+import { useLiveData } from "@/components/providers/LiveDataProvider";
 import type { SerialConectado } from "@/lib/api/listaBlanca";
 
 interface CreatePayload {
@@ -81,22 +82,52 @@ export function WhitelistTab({
   // Seriales de los dispositivos conectados ahora mismo, para
   // el desplegable del campo de serial del alta: elegir en vez
   // de teclear, como hacía la antigua herramienta del toolbox.
-  // Se lee al montar y se refresca al volver al campo si la
-  // lectura tiene más de 20 s; si el panel no responde, la
+  // Se lee al montar y se mantiene al día sin recargar la
+  // pestaña: la flota avisa por el socket en cuanto un agente
+  // reporta un cambio (devicesVersion del proveedor en vivo) y
+  // los de la propia PC del panel, que no tienen agente que
+  // avise, se releen cada 20 s (su lectura WMI se cachea 15 s
+  // en el servidor). Al volver al campo también se refresca si
+  // la lectura tiene más de 20 s. Si el panel no responde, la
   // lista queda vacía y el alta sigue siendo a mano.
   const [conectados, setConectados] = useState<SerialConectado[]>([]);
   const [menuSerialAbierto, setMenuSerialAbierto] = useState(false);
   const ultimaLecturaSeriales = useRef(0);
 
-  const cargarConectados = useCallback(async () => {
+  const cargarConectados = useCallback(async (forzar = false) => {
     const ahora = Date.now();
-    if (ahora - ultimaLecturaSeriales.current < 20_000) return;
+    if (!forzar && ahora - ultimaLecturaSeriales.current < 20_000) return;
     ultimaLecturaSeriales.current = ahora;
     setConectados(await listaBlancaApi.conectados());
   }, []);
 
   useEffect(() => {
     void cargarConectados();
+  }, [cargarConectados]);
+
+  // Tiempo real de la flota: el proveedor en vivo sube
+  // devicesVersion con cada aviso «usb:devices» de un agente, y
+  // la lista se relee al momento saltándose el freno.
+  const { devicesVersion } = useLiveData();
+  const versionDispositivosRef = useRef(0);
+  useEffect(() => {
+    if (
+      devicesVersion === 0 ||
+      devicesVersion === versionDispositivosRef.current
+    ) {
+      return;
+    }
+    versionDispositivosRef.current = devicesVersion;
+    void cargarConectados(true);
+  }, [devicesVersion, cargarConectados]);
+
+  // Los USB de la propia PC del panel no generan aviso: se
+  // releen con la cadencia del freno de la lectura (20 s).
+  useEffect(() => {
+    const id = setInterval(() => {
+      void cargarConectados();
+    }, 20_000);
+    return () => clearInterval(id);
   }, [cargarConectados]);
 
   // Sugerencias del desplegable: conectados que aún no están en
