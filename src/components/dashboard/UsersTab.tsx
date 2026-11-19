@@ -2,36 +2,15 @@
 
 import { memo, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import * as usuariosApi from "@/lib/api/usuarios";
+import {
+  CreateUserDialog,
+  DeleteUserDialog,
+  EditUserDialog,
+  type AdminUser,
+} from "./UserDialogs";
 import { cn } from "@/lib/utils";
 import { DashboardPagination } from "./DashboardPagination";
 import { OrdenarPor } from "./OrdenarPor";
@@ -54,33 +33,12 @@ import { useTableSort } from "@/hooks/useTableSort";
 import { CampoBusqueda } from "@/components/shared/CampoBusqueda";
 import { Spinner } from "@/components/ui/spinner";
 
-interface AdminUser {
-  id: string;
-  username: string;
-  role: string;
-  computerId: string | null;
-  createdAt: string;
-  updatedAt: string;
-  computer?: {
-    id: string;
-    name: string;
-    ipAddress: string | null;
-  } | null;
-}
-
 interface UsersTabProps {
   onSummaryChange?: (summary: { total: number }) => void;
   computers?: Computer[];
 }
 
-interface UserFormState {
-  username: string;
-  password: string;
-  computerId: string;
-}
-
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
-const NO_COMPUTER_VALUE = "none";
 
 const COLUMNAS_ORDEN: { key: keyof AdminUser; label: string }[] = [
   { key: "username", label: "Usuario" },
@@ -88,25 +46,6 @@ const COLUMNAS_ORDEN: { key: keyof AdminUser; label: string }[] = [
   { key: "computer", label: "Equipo" },
   { key: "createdAt", label: "Creado" },
 ];
-
-function createEmptyForm(): UserFormState {
-  return {
-    username: "",
-    password: "",
-    computerId: "",
-  };
-}
-
-function generateRandomPassword(length = 16) {
-  const charset =
-    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@$%";
-  const randomValues = crypto.getRandomValues(new Uint32Array(length));
-  let result = "";
-  for (let i = 0; i < length; i += 1) {
-    result += charset[randomValues[i] % charset.length];
-  }
-  return result;
-}
 
 /** Dato de asiento: etiqueta en versalitas y valor debajo. */
 function Dato({
@@ -144,19 +83,10 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
     useTableSort<AdminUser>(users);
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [createForm, setCreateForm] = useState<UserFormState>(() =>
-    createEmptyForm(),
-  );
-  const [creating, setCreating] = useState(false);
 
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
-  const [editForm, setEditForm] = useState<UserFormState>(() =>
-    createEmptyForm(),
-  );
-  const [updating, setUpdating] = useState(false);
 
   const [deletingUser, setDeletingUser] = useState<AdminUser | null>(null);
-  const [deleting, setDeleting] = useState(false);
 
   const sortedComputers = useMemo(() => {
     return [...computers].sort((a, b) =>
@@ -234,182 +164,6 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
 
   const isInitialLoading = loading && !hasLoadedOnce;
   const isSearching = loading && hasLoadedOnce;
-
-  const handleGeneratePassword = (updater: (value: string) => void) => {
-    updater(generateRandomPassword());
-  };
-
-  const handleCreateUser = async () => {
-    const trimmedUsername = createForm.username.trim();
-
-    if (!trimmedUsername) {
-      toast({
-        title: "Usuario requerido",
-        description: "Ingresa el nombre de usuario.",
-        variant: "destructive",
-      });
-      return;
-    }
-    if (!createForm.password.trim()) {
-      toast({
-        title: "Contraseña requerida",
-        description: "Ingresa o genera una contraseña para el usuario.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (createForm.computerId) {
-      const selectedComputer = sortedComputers.find(
-        (computer) => computer.id === createForm.computerId,
-      );
-
-      if (!selectedComputer) {
-        toast({
-          title: "Equipo no disponible",
-          description:
-            "No se encontró el equipo seleccionado. Refresca la página e intenta nuevamente.",
-          variant: "destructive",
-        });
-        return;
-      }
-    }
-
-    setCreating(true);
-    try {
-      const selectedComputer = sortedComputers.find(
-        (computer) => computer.id === createForm.computerId,
-      );
-
-      const payload: Record<string, unknown> = {
-        username: trimmedUsername,
-        password: createForm.password,
-      };
-
-      if (selectedComputer) {
-        payload.computerId = selectedComputer.id;
-      }
-
-      const data = await usuariosApi.crear(payload);
-      toast({
-        title: "Usuario creado",
-        description: `Se registró ${
-          data.item?.username ?? createForm.username
-        }.`,
-      });
-      setIsCreateOpen(false);
-      setCreateForm(createEmptyForm());
-      setPage(1);
-      triggerReload();
-    } catch (err: any) {
-      toast({
-        title: "No se pudo crear",
-        description: err?.message || "Revisa los datos e intenta de nuevo.",
-        variant: "destructive",
-      });
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  const openEdit = (user: AdminUser) => {
-    setEditingUser(user);
-    setEditForm({
-      username: user.username,
-      password: "",
-      computerId: user.computer?.id ?? "",
-    });
-  };
-
-  const handleUpdateUser = async () => {
-    if (!editingUser) return;
-
-    const payload: Record<string, unknown> = {};
-    const trimmedUsername = editForm.username.trim();
-    if (trimmedUsername && trimmedUsername !== editingUser.username) {
-      payload.username = trimmedUsername;
-    }
-
-    const trimmedPassword = editForm.password.trim();
-    if (trimmedPassword) {
-      payload.password = trimmedPassword;
-    }
-
-    const currentComputerId = editingUser.computer?.id ?? "";
-    if (editForm.computerId !== currentComputerId) {
-      if (!editForm.computerId) {
-        payload.computerId = null;
-      } else {
-        const selectedComputer = sortedComputers.find(
-          (computer) => computer.id === editForm.computerId,
-        );
-
-        if (!selectedComputer) {
-          toast({
-            title: "Equipo no disponible",
-            description:
-              "No se encontró el equipo seleccionado. Refresca la página e intenta nuevamente.",
-            variant: "destructive",
-          });
-          return;
-        }
-
-        payload.computerId = selectedComputer.id;
-      }
-    }
-
-    if (Object.keys(payload).length === 0) {
-      toast({
-        title: "Sin cambios",
-        description: "Actualiza algún campo antes de guardar.",
-      });
-      return;
-    }
-
-    setUpdating(true);
-    try {
-      const data = await usuariosApi.actualizar(editingUser.id, payload);
-      toast({
-        title: "Usuario actualizado",
-        description: `Se guardaron los cambios de ${
-          data.item?.username ?? editingUser.username
-        }.`,
-      });
-      setEditingUser(null);
-      setEditForm(createEmptyForm());
-      triggerReload();
-    } catch (err: any) {
-      toast({
-        title: "No se pudo actualizar",
-        description: err?.message || "Intenta nuevamente.",
-        variant: "destructive",
-      });
-    } finally {
-      setUpdating(false);
-    }
-  };
-
-  const handleDeleteUser = async () => {
-    if (!deletingUser) return;
-    setDeleting(true);
-    try {
-      await usuariosApi.eliminar(deletingUser.id);
-      toast({
-        title: "Usuario eliminado",
-        description: `${deletingUser.username} fue removido del directorio.`,
-      });
-      setDeletingUser(null);
-      triggerReload();
-    } catch (err: any) {
-      toast({
-        title: "No se pudo eliminar",
-        description: err?.message || "Verifica que no sea tu propio usuario.",
-        variant: "destructive",
-      });
-    } finally {
-      setDeleting(false);
-    }
-  };
 
   const cifras = [
     { label: "Usuarios totales", value: total.toLocaleString("es-ES") },
@@ -606,7 +360,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8"
-                      onClick={() => openEdit(user)}
+                      onClick={() => setEditingUser(user)}
                       aria-label={`Editar ${user.username}`}
                       title="Editar usuario"
                     >
@@ -664,290 +418,28 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
         )}
       </div>
 
-      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Crear nuevo usuario</DialogTitle>
-            <DialogDescription>
-              Define las credenciales iniciales y, si aplica, el equipo
-              asociado.
-            </DialogDescription>
-          </DialogHeader>
-          {/* Formulario de verdad, aunque sea con display:contents
-              para no tocar el layout: así Enter en cualquier campo
-              envía (crear el usuario), igual que Escape cierra. Sin
-              el form, Enter no hacía nada. */}
-          <form
-            className="contents"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void handleCreateUser();
-            }}
-          >
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="create-username">Usuario</Label>
-              <Input
-                id="create-username"
-                autoFocus
-                value={createForm.username}
-                onChange={(event) =>
-                  setCreateForm((prev) => ({
-                    ...prev,
-                    username: event.target.value,
-                  }))
-                }
-                placeholder="ej. auditor.seguridad"
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="create-password">Contraseña</Label>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="text-xs"
-                  onClick={() =>
-                    handleGeneratePassword((value) =>
-                      setCreateForm((prev) => ({ ...prev, password: value })),
-                    )
-                  }
-                >
-                  Generar segura
-                </Button>
-              </div>
-              <Input
-                id="create-password"
-                value={createForm.password}
-                onChange={(event) =>
-                  setCreateForm((prev) => ({
-                    ...prev,
-                    password: event.target.value,
-                  }))
-                }
-                placeholder="********"
-              />
-              <p className="text-xs text-muted-foreground">
-                La contraseña es obligatoria y se puede rotar más adelante.
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label>Equipo asignado (opcional)</Label>
-              <Select
-                value={createForm.computerId || NO_COMPUTER_VALUE}
-                onValueChange={(value) =>
-                  setCreateForm((prev) => ({
-                    ...prev,
-                    computerId: value === NO_COMPUTER_VALUE ? "" : value,
-                  }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue
-                    placeholder={
-                      sortedComputers.length
-                        ? "Selecciona un equipo"
-                        : "No hay equipos disponibles"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NO_COMPUTER_VALUE}>
-                    Sin equipo asignado
-                  </SelectItem>
-                  {sortedComputers.map((computer) => (
-                    <SelectItem key={computer.id} value={computer.id}>
-                      {computer.name} · {computer.ipAddress}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Selecciona una computadora del inventario para vincularla al
-                usuario.
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setIsCreateOpen(false)}
-              disabled={creating}
-            >
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={creating}>
-              {creating ? "Creando..." : "Crear usuario"}
-            </Button>
-          </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={Boolean(editingUser)}
-        onOpenChange={(open) => {
-          if (!open) {
-            setEditingUser(null);
-            setEditForm(createEmptyForm());
-          }
+      <CreateUserDialog
+        open={isCreateOpen}
+        onOpenChange={setIsCreateOpen}
+        computers={sortedComputers}
+        onCreated={() => {
+          setPage(1);
+          triggerReload();
         }}
-      >
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Editar usuario</DialogTitle>
-            <DialogDescription>
-              Actualiza el nombre, la contraseña o el equipo asignado. Deja la
-              contraseña vacía para mantenerla.
-            </DialogDescription>
-          </DialogHeader>
-          {/* Como el de crear: form con display:contents para que
-              Enter envíe los cambios sin tocar el layout. */}
-          <form
-            className="contents"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void handleUpdateUser();
-            }}
-          >
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="edit-username">Usuario</Label>
-              <Input
-                id="edit-username"
-                value={editForm.username}
-                onChange={(event) =>
-                  setEditForm((prev) => ({
-                    ...prev,
-                    username: event.target.value,
-                  }))
-                }
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="edit-password">Nueva contraseña</Label>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="text-xs"
-                  onClick={() =>
-                    handleGeneratePassword((value) =>
-                      setEditForm((prev) => ({ ...prev, password: value })),
-                    )
-                  }
-                >
-                  Generar segura
-                </Button>
-              </div>
-              <Input
-                id="edit-password"
-                value={editForm.password}
-                onChange={(event) =>
-                  setEditForm((prev) => ({
-                    ...prev,
-                    password: event.target.value,
-                  }))
-                }
-                placeholder="Deja en blanco para conservar"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Equipo asignado</Label>
-              <Select
-                value={editForm.computerId || NO_COMPUTER_VALUE}
-                onValueChange={(value) =>
-                  setEditForm((prev) => ({
-                    ...prev,
-                    computerId: value === NO_COMPUTER_VALUE ? "" : value,
-                  }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue
-                    placeholder={
-                      sortedComputers.length
-                        ? "Selecciona un equipo"
-                        : "No hay equipos disponibles"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NO_COMPUTER_VALUE}>
-                    Sin equipo asignado
-                  </SelectItem>
-                  {sortedComputers.map((computer) => (
-                    <SelectItem key={computer.id} value={computer.id}>
-                      {computer.name} · {computer.ipAddress}
-                    </SelectItem>
-                  ))}
-                  {editingUser?.computer &&
-                  !sortedComputers.some(
-                    (computer) => computer.id === editingUser.computer?.id,
-                  ) ? (
-                    <SelectItem value={editingUser.computer.id}>
-                      {editingUser.computer.name}
-                      {editingUser.computer.ipAddress
-                        ? ` · ${editingUser.computer.ipAddress}`
-                        : ""}
-                    </SelectItem>
-                  ) : null}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Deja "Sin equipo asignado" para desvincular el usuario.
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => {
-                setEditingUser(null);
-                setEditForm(createEmptyForm());
-              }}
-              disabled={updating}
-            >
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={updating}>
-              {updating ? "Guardando..." : "Guardar cambios"}
-            </Button>
-          </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      />
 
-      <AlertDialog
-        open={Boolean(deletingUser)}
-        onOpenChange={(open) => {
-          if (!open) setDeletingUser(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar este usuario?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Esta acción revoca el acceso inmediatamente y no se puede
-              deshacer.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteUser}
-              disabled={deleting}
-              className="bg-rose-600 hover:bg-rose-700"
-            >
-              {deleting ? "Eliminando..." : "Eliminar"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <EditUserDialog
+        user={editingUser}
+        onClose={() => setEditingUser(null)}
+        computers={sortedComputers}
+        onUpdated={triggerReload}
+      />
+
+      <DeleteUserDialog
+        user={deletingUser}
+        onClose={() => setDeletingUser(null)}
+        onDeleted={triggerReload}
+      />
     </motion.section>
   );
 }
