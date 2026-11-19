@@ -641,6 +641,16 @@ begin
   RegWriteStringValue(HKLM, ClavePanel, 'FirewallOk', '1');
   if not EsActualizacion then
   begin
+    // La carpeta de datos tiene que existir ANTES de dejar los
+    // archivos de relevo (acceso-inicial.ini y, en la variante
+    // servidor, servidor-dedicado.ini): este procedimiento corre
+    // en ssInstall, antes de que Inno cree las carpetas de la
+    // sección [Dirs], así que en una PC sin instalación anterior
+    // la carpeta aún no existe y SaveStringToFile fallaba en
+    // silencio (el except se lo tragaba): la contraseña escrita
+    // en el asistente nunca llegaba a Configurar-Panel, que
+    // generaba la suya y la dejaba en PRIMER-ACCESO.txt.
+    ForceDirectories(Datos);
     // Los ajustes de rendimiento de la base de datos viajan al
     // script de la base por el registro, como los puertos: los
     // valores del perfil (el detectado, otro elegido o el

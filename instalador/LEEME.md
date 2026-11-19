@@ -124,14 +124,7 @@ Sale como `USBMonitor-Panel-<versión>-servidor.exe` y es el completo **más** e
 - En actualización (instalación ya existente) la página no se pide y la activación no se repite: el modo dedicado queda como estaba.
 - Para deshacerlo queda instalado `Desactivar-ModoDedicado.ps1` en `scripts\`, y la salida de emergencia es la de siempre: Ctrl+Alt+Supr → Cambiar de usuario → la cuenta administradora, que no se toca.
 
-El workflow de la Release **todavía no** construye esta variante: falta añadirle la tercera pasada, igual que las otras dos, y los archivos de `.github/workflows/` los sube Gothan a mano por la web de GitHub (la app de GitHub de Muse no tiene ese permiso). La pasada sería:
-
-```yaml
-      - name: Construir el instalador servidor (con el paquete del agente y el modo dedicado)
-        run: ./instalador/Construir-Instalador.ps1 -Version ${{ steps.version.outputs.version }} -Completo -Servidor -PaqueteDir ${{ steps.paquete.outputs.dir }}
-```
-
-y el servidor saldría publicado en la misma Release si se suma `salida-instalador/USBMonitor-Panel-*-servidor.exe` a los archivos que el workflow adjunta.
+El workflow de la Release ya construye también esta variante (la tercera pasada, `-Completo -Servidor`, añadida el 2026-11-19) y adjunta `USBMonitor-Panel-<versión>-servidor.exe` a la misma Release que los demás instaladores. Los archivos de `.github/workflows/` no los puede escribir la app de GitHub de Muse (le falta el permiso `workflows`): sus cambios se hacen por el editor web de GitHub con la sesión de Gothan, con ediciones quirúrgicas de línea y verificación posterior contra el commit anterior.
 
 ## También sale por GitHub Actions (Releases)
 
