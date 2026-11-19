@@ -134,6 +134,28 @@ export async function POST(req: Request) {
         },
         select: { failedAttempts: true },
       });
+      // Si ESTE intento es el que dispara el bloqueo de la cuenta,
+      // queda registrado en Eventos: la comprobación de bloqueo de
+      // más arriba ya devolvió 423 si la cuenta seguía bloqueada,
+      // así que llegar aquí con el contador a 7+ es siempre un
+      // bloqueo nuevo (o una recaída tras caducar el anterior), no
+      // un intento más contra una cuenta ya bloqueada — un evento
+      // por bloqueo, sin inundar el registro. El evento vive en la
+      // misma tabla que los del agente: equipo = el propio panel,
+      // IP = la de quien lo intentó, usuario = la cuenta atacada.
+      // Si el registro falla, el inicio de sesión no cae por eso.
+      if ((user.failedAttempts || 0) + 1 >= 7) {
+        try {
+          await (db as any).uSBEvent.create({
+            data: {
+              pcName: os.hostname(),
+              pcIp: ipClienteDe(req) || "",
+              pcUser: user.username,
+              event: "LOGIN_BLOCKED",
+            },
+          });
+        } catch {}
+      }
       return NextResponse.json(
         {
           ok: false,

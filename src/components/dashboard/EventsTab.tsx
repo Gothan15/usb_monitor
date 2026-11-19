@@ -104,6 +104,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
     const isError =
       code === "UNLOCK_RELEASE_FAILED" ||
       code === "UNLOCK_ATTEMPT_FAILED" ||
+      code === "LOGIN_BLOCKED" ||
       (code === "BLOCKED" && !event.whitelisted) ||
       normalized.includes("error") ||
       normalized.includes("fallo") ||
