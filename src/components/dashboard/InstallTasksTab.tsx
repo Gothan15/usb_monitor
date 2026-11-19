@@ -127,11 +127,9 @@ export function InstallTasksTab() {
     if (ordenes) setOrdenes(ordenes);
   }, []);
 
-  // Cancelar una orden viva (actualización o desinstalación):
-  // el panel la marca CANCELADA y el agente la abandona en su
-  // siguiente punto de control; si aún no la había empezado, no
-  // llega a ejecutarla. Una desinstalación cancelada devuelve
-  // el equipo a la lista de Equipos.
+  // Cancelar una orden viva: el panel la marca CANCELADA y
+  // el agente la abandona en su siguiente punto de control;
+  // si aún no la había empezado, no llega a ejecutarla.
   const cancelarOrden = useCallback(
     async (orden: OrdenVista) => {
       // Como el resto de acciones de esta vista, la llamada
@@ -674,10 +672,10 @@ export function InstallTasksTab() {
             </h3>
             <p className="mt-2 max-w-xl text-sm text-muted-foreground">
               Las órdenes que el panel deja a los equipos —
-              actualizaciones y desinstalaciones — y que cada
-              agente recoge y ejecuta solo. Si una falla, aquí
-              queda escrito el motivo que el propio agente
-              informó.
+              actualizaciones, reinicios y cancelaciones de
+              apagado — y que cada agente recoge y ejecuta
+              solo. Si una falla, aquí queda escrito el motivo
+              que el propio agente informó.
             </p>
           </div>
 
@@ -688,8 +686,10 @@ export function InstallTasksTab() {
                 Todavía no hay órdenes. Las de actualización se
                 crean desde Equipos, con el botón Actualizar de
                 cada equipo, o solas si la actualización
-                automática está encendida; las de desinstalación,
-                al borrar un equipo enrolado.
+                automática está encendida; las de reinicio,
+                también desde Equipos, y las de cancelar un
+                apagado, desde el aviso de apagado en curso de
+                cada equipo.
               </p>
             </div>
           )}
@@ -722,13 +722,15 @@ export function InstallTasksTab() {
                     {orden.etiquetaEstado}
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    {orden.tipo === "desinstalar"
-                      ? "Desinstalación"
-                      : orden.tipo === "cancelar-apagado"
-                        ? "Cancelar apagado"
-                        : orden.versionObjetivo
-                          ? `Actualización a la v${orden.versionObjetivo}`
-                          : "Actualización"}
+                    {orden.tipo === "cancelar-apagado"
+                      ? "Cancelar apagado"
+                      : orden.tipo === "reiniciar"
+                        ? "Reinicio del servicio"
+                        : orden.tipo === "actualizar"
+                          ? orden.versionObjetivo
+                            ? `Actualización a la v${orden.versionObjetivo}`
+                            : "Actualización"
+                          : "Orden del agente"}
                     {orden.intentos > 0
                       ? ` · intento ${orden.intentos}`
                       : ""}
@@ -865,10 +867,9 @@ export function InstallTasksTab() {
                   Se borrarán todas las tareas de instalación ya
                   terminadas (completadas y con errores) con sus
                   destinos, y también las órdenes del agente ya
-                  terminadas: actualizaciones y desinstalaciones
-                  hechas, con error o canceladas hace más de 10
-                  minutos. Lo que siga en curso se queda. No se
-                  puede deshacer.
+                  terminadas: las hechas, con error o canceladas
+                  hace más de 10 minutos. Lo que siga en curso
+                  se queda. No se puede deshacer.
                 </>
               ) : (
                 <>
