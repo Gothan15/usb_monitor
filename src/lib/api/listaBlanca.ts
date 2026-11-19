@@ -3,7 +3,7 @@
 // montar la petición a mano. La pestaña Lista blanca migrará
 // aquí el resto de sus operaciones en la siguiente tanda.
 
-import { mutacionJson } from "@/lib/http";
+import { lecturaJson, mutacionJson } from "@/lib/http";
 
 /**
  * Da de alta un serial en la lista blanca. El servidor solo lo
@@ -36,4 +36,31 @@ export function eliminarVarias(ids: string[]) {
     "DELETE",
     { ids },
   );
+}
+
+/** Un dispositivo conectado ahora mismo, tal como lo sirve la ruta de conectados. */
+export interface SerialConectado {
+  serialNumber: string;
+  pcName: string;
+  driveLetter: string | null;
+  volumeName: string;
+  model: string;
+}
+
+/**
+ * Los dispositivos conectados ahora mismo en toda la flota,
+ * para el desplegable de seriales del alta de la lista blanca.
+ * Devuelve [] si el panel no responde: el alta sigue pudiendo
+ * teclear el serial a mano, como siempre.
+ */
+export async function conectados(): Promise<SerialConectado[]> {
+  try {
+    const datos = await lecturaJson<{
+      ok: boolean;
+      items: SerialConectado[];
+    }>("/api/whitelist/conectados");
+    return datos?.items ?? [];
+  } catch {
+    return [];
+  }
 }
