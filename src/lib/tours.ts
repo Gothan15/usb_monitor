@@ -52,7 +52,7 @@ export const adminTour: TourDefinition = {
       target: "[data-tour='sidebar']",
       title: "Navegación",
       description:
-        "Desde aquí saltas entre las secciones: Resumen, Eventos, Equipos, Usuarios, Lista blanca, Desbloqueos, Tareas, Escáner de red y Ajustes. Los contadores avisan de un vistazo cuántos equipos y eventos hay.",
+        "Desde aquí saltas entre las secciones: Resumen, Eventos, Equipos, Usuarios, Lista blanca, Desbloqueos, Tareas, Escáner de red y Ajustes. Las medallas avisan de un vistazo: cuántos eventos y equipos en línea hay, y en Desbloqueos, cuántos bloqueos están en curso ahora mismo.",
       position: "right",
       icon: LayoutDashboard,
     },
@@ -79,7 +79,7 @@ export const adminTour: TourDefinition = {
       target: "[data-tour='events-main']",
       title: "Eventos USB",
       description:
-        "El historial completo y con filtros: conexiones, desconexiones, bloqueos, desbloqueos y el apagado de un equipo si alguna vez se arma. Todo queda auditado.",
+        "El historial completo y con filtros: conexiones, desconexiones, bloqueos, desbloqueos y el apagado de un equipo si alguna vez se arma. Todo queda auditado, y desde el encabezado puedes exportarlo a CSV por fechas.",
       position: "bottom",
       icon: Usb,
     },
@@ -88,7 +88,7 @@ export const adminTour: TourDefinition = {
       target: "[data-tour='computers-main']",
       title: "Equipos",
       description:
-        "Cada equipo aparece solo cuando su agente hace el primer contacto. Su estado sale de la última señal del agente: «En ejecución» o «Sin señal», sin datos duplicados. Desde aquí gestionas la credencial de cada agente (su código de enrolamiento), ves sus dispositivos USB e instalas el servicio en equipos nuevos: esas instalaciones se crean como tareas y se siguen en directo en la sección Tareas.",
+        "Cada equipo aparece solo cuando su agente hace el primer contacto, en una tabla por columnas: su estado («En ejecución» o «Sin señal», según su última señal), la versión de su agente — con aviso cuando hay una actualización disponible — y su última conexión. Con «Ver USB» ves los dispositivos que tiene conectados en ese momento, en directo; con «Reiniciar», el servicio de su agente; y desde aquí gestionas también la credencial de cada agente (su código de enrolamiento). Las instalaciones en equipos nuevos se crean como tareas y se siguen en la sección Tareas.",
       position: "bottom",
       icon: MonitorSmartphone,
     },
@@ -97,7 +97,7 @@ export const adminTour: TourDefinition = {
       target: "[data-tour='unlocks-main']",
       title: "Desbloqueos",
       description:
-        "Los bloqueos en curso y los intentos de contraseña. Ojo: el administrador NO aprueba nada aquí: la contraseña la introduce el dueño del equipo (o un administrador con la suya) en el propio equipo. Los equipos que dejan de dar señales se marcan: el silencio también es una evidencia.",
+        "Los bloqueos en curso y los intentos de contraseña, y debajo el historial de los ya cerrados, cada uno con su evidencia si el agente la recogió: la captura de pantalla y el contexto del momento del bloqueo. Ojo: el administrador NO aprueba nada aquí: la contraseña la introduce el dueño del equipo (o un administrador con la suya) en el propio equipo. Los equipos que dejan de dar señales se marcan: el silencio también es una evidencia.",
       position: "bottom",
       icon: KeyRound,
     },
@@ -115,7 +115,7 @@ export const adminTour: TourDefinition = {
       target: "[data-tour='whitelist-main']",
       title: "Lista blanca",
       description:
-        "El registro de dispositivos conocidos, por número de serie. Estar en la lista NO exime de la contraseña: solo significa que el dispositivo puede desbloquearse. Fuera de la lista no hay contraseña que valga: primero se da de alta aquí.",
+        "El registro de dispositivos conocidos, por número de serie. Solo se puede cambiar desde la PC del servidor. Al ir a escribir un serial, un desplegable te ofrece los dispositivos conectados en ese momento — también los pinchados en esta misma PC — y desde Desbloqueos o desde «Ver USB» puedes dar de alta un dispositivo con un botón, sin teclear su serial. Estar en la lista NO exime de la contraseña: solo significa que el dispositivo puede desbloquearse. Fuera de la lista no hay contraseña que valga: primero se da de alta aquí.",
       position: "bottom",
       icon: ShieldCheck,
     },
@@ -133,7 +133,7 @@ export const adminTour: TourDefinition = {
       target: "[data-tour='tasks-main']",
       title: "Tareas de instalación",
       description:
-        "Cada instalación o actualización que lanzas desde el escáner o desde Equipos vive aquí hasta que termina. Por cada destino ves su estado en directo — comprobando, copiando, instalando, esperando señal — y el detalle de qué paso falló si algo va mal. El panel trabaja con dos destinos a la vez, reintenta los fallos que pueden salir bien a la segunda y solo da un equipo por instalado cuando su agente da la primera señal: la copia terminar no basta.",
+        "Cada instalación que lanzas desde el escáner o desde Equipos vive aquí hasta que termina. Por cada destino ves su estado en directo — comprobando, copiando, instalando, esperando señal — y el detalle de qué paso falló si algo va mal. Las instalaciones van de una en una; cada PC lleva su propio usuario y su propia contraseña, y los destinos que repites se pueden guardar para la próxima vez. Solo se da un equipo por instalado cuando su agente da la primera señal: la copia terminar no basta. Y debajo quedan las órdenes del agente: las actualizaciones, los reinicios del servicio y las cancelaciones de apagado que el panel deja a cada equipo.",
       position: "bottom",
       icon: ListTodo,
     },
@@ -158,9 +158,15 @@ export const adminTour: TourDefinition = {
       target: "[data-tour='settings-main']",
       title: "Ajustes",
       description:
-        "Las políticas del sistema: desbloqueo por contraseña, emergencia sin red, bloqueo de sesión, el apagado automático ante dispositivos desconocidos (con su cuenta atrás editable) y el umbral de silencio. Abajo del todo tienes las preguntas frecuentes y el botón para repetir esta guía cuando quieras.",
+        "Las políticas del sistema: desbloqueo por contraseña, emergencia sin red, bloqueo de sesión, el apagado automático ante dispositivos desconocidos (con su cuenta atrás editable) y el umbral de silencio. Aquí vive también el «Estado del sistema» — la salud de la base de datos y de la caché, y la versión en curso — y la apariencia del panel: el tamaño de la letra y el desenfoque de fondo de los diálogos. Abajo del todo tienes las preguntas frecuentes y el botón para repetir esta guía cuando quieras.",
       position: "bottom",
       icon: Wrench,
+    },
+    {
+      title: "La bandeja, junto al reloj",
+      description:
+        "En la PC del servidor, junto al reloj de Windows, vive la bandeja del panel: la brújula con un punto de color que dice si el servicio está en marcha. Desde su menú abres el panel sin buscar la dirección, inicias, paras o reinicias el servicio, y abres su archivo de registro cuando algo falla.",
+      icon: Monitor,
     },
     {
       title: "¡Listo para empezar!",
