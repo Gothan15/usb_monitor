@@ -14,6 +14,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { AppShell, type AppShellNavItem } from "@/components/shell/AppShell";
+import { AplicadorApariencia } from "@/components/shell/AplicadorApariencia";
 import { CommandPaletteLazy } from "@/components/shell/CommandPaletteLazy";
 import { PageTransition } from "@/components/shell/PageTransition";
 import { LiveDataProvider } from "@/components/providers/LiveDataProvider";
@@ -184,6 +185,7 @@ function AdminLayoutContent({
       user={user}
     >
       <CommandPaletteLazy role="ADMIN" />
+      <AplicadorApariencia />
       <TourEngine tour={adminTour} />
       {/* Animación suave entre subrutas usando la key del pathname actual */}
       <PageTransition

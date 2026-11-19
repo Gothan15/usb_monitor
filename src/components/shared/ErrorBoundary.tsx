@@ -69,7 +69,7 @@ export class ErrorBoundary extends Component<Props, State> {
                   onClick={() =>
                     this.setState((s) => ({ showStack: !s.showStack }))
                   }
-                  className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                  className="inline-flex items-center gap-1 text-[0.625rem] text-muted-foreground hover:text-foreground transition-colors"
                 >
                   <ChevronDown
                     className={`size-3 transition-transform ${
@@ -79,7 +79,7 @@ export class ErrorBoundary extends Component<Props, State> {
                   Traza del error
                 </button>
                 {this.state.showStack && (
-                  <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-muted/40 p-3 text-left font-mono text-[10px] text-muted-foreground scrollbar-thin">
+                  <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-muted/40 p-3 text-left font-mono text-[0.625rem] text-muted-foreground scrollbar-thin">
                     {this.state.error.stack}
                   </pre>
                 )}

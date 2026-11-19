@@ -334,7 +334,7 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
                           <span className="block text-sm font-medium text-foreground">
                             {user.computer.name}
                           </span>
-                          <span className="mt-0.5 block font-mono text-[11px] text-muted-foreground">
+                          <span className="mt-0.5 block font-mono text-[0.6875rem] text-muted-foreground">
                             {user.computer.ipAddress ?? "Sin IP"}
                           </span>
                         </>

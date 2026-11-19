@@ -3,6 +3,13 @@
 import { useState, useEffect, useRef, useSyncExternalStore } from "react";
 import { HttpError } from "@/lib/http";
 import * as ajustesApi from "@/lib/api/ajustes";
+import {
+  aplicarApariencia,
+  escalaLetraValida,
+  ESCALA_LETRA_DEFECTO,
+  ESCALA_LETRA_MAX,
+  ESCALA_LETRA_MIN,
+} from "@/lib/apariencia";
 import type { EstadoPaquete, EstadoSistema } from "@/lib/api/ajustes";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -259,6 +266,14 @@ export function SettingsTab() {
   const [oleada, setOleada] = useState(3);
   const [mensajeOleada, setMensajeOleada] = useState<string | null>(null);
   const [mensajeAutoUpdate, setMensajeAutoUpdate] = useState<string | null>(null);
+  // Apariencia: escala de la letra y desenfoque de los diálogos.
+  // Se aplican en vivo sobre el documento al tocarlos (la raíz y
+  // las variables de los diálogos) y se guardan como ajustes
+  // del panel, para que valgan en cualquier navegador.
+  const [escala, setEscala] = useState(ESCALA_LETRA_DEFECTO);
+  const [mensajeEscala, setMensajeEscala] = useState<string | null>(null);
+  const [desenfoque, setDesenfoque] = useState(true);
+  const [mensajeDesenfoque, setMensajeDesenfoque] = useState<string | null>(null);
   const [errorPaquete, setErrorPaquete] = useState<string | null>(null);
   const inputPaqueteRef = useRef<HTMLInputElement>(null);
 
@@ -296,6 +311,8 @@ export function SettingsTab() {
         setUnlockInicial(unlockCargado);
         setAutoUpdate(Boolean(data.agentAutoUpdate));
         setOleada(Math.max(1, Math.floor(Number(data.agentUpdateWaveSize) || 3)));
+        setEscala(escalaLetraValida(data.escalaLetra));
+        setDesenfoque(data.desenfoqueDialogos ?? true);
       })
       .catch((err) => console.error("Failed to load settings", err));
   }, []);
@@ -341,6 +358,51 @@ export function SettingsTab() {
     } catch {
       setAutoUpdate(!activo);
       setMensajeAutoUpdate("No se pudo guardar el ajuste.");
+    }
+  };
+
+  // La escala se aplica en vivo mientras se mueve el control
+  // (el panel entero crece o encoge al momento) y se guarda al
+  // soltarlo o al salir del campo del valor, ya acotada.
+  const cambiarEscala = (valor: number) => {
+    setEscala(valor);
+    setMensajeEscala(null);
+    aplicarApariencia({
+      escalaLetra: escalaLetraValida(valor),
+      desenfoqueDialogos: desenfoque,
+    });
+  };
+
+  const guardarEscala = async (valor: number) => {
+    const n = escalaLetraValida(valor);
+    setEscala(n);
+    aplicarApariencia({ escalaLetra: n, desenfoqueDialogos: desenfoque });
+    try {
+      await ajustesApi.guardar({ escalaLetra: n });
+      setMensajeEscala(`Tamaño de letra guardado: ${n} %.`);
+    } catch {
+      setMensajeEscala("No se pudo guardar el ajuste.");
+    }
+  };
+
+  const cambiarDesenfoque = async (activo: boolean) => {
+    setDesenfoque(activo);
+    setMensajeDesenfoque(null);
+    aplicarApariencia({ escalaLetra: escala, desenfoqueDialogos: activo });
+    try {
+      await ajustesApi.guardar({ desenfoqueDialogos: activo });
+      setMensajeDesenfoque(
+        activo
+          ? "Desenfoque activado: los diálogos vuelven a desenfocar el fondo."
+          : "Desenfoque desactivado: los diálogos abren sin desenfocar (más ligero para la gráfica).",
+      );
+    } catch {
+      setDesenfoque(!activo);
+      aplicarApariencia({
+        escalaLetra: escala,
+        desenfoqueDialogos: !activo,
+      });
+      setMensajeDesenfoque("No se pudo guardar el ajuste.");
     }
   };
 
@@ -752,6 +814,71 @@ export function SettingsTab() {
               pantallas pequeñas se usa siempre la cabecera.
             </p>
           </div>
+
+          <div className="mt-10">
+            <Label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+              Tamaño de la letra
+            </Label>
+            <div className="mt-3 flex max-w-xl flex-wrap items-center gap-4">
+              <input
+                type="range"
+                min={ESCALA_LETRA_MIN}
+                max={ESCALA_LETRA_MAX}
+                step={2.5}
+                value={escala}
+                aria-label="Tamaño de la letra"
+                onChange={(event) => cambiarEscala(Number(event.target.value))}
+                onPointerUp={() => void guardarEscala(escala)}
+                onKeyUp={() => void guardarEscala(escala)}
+                className="min-w-48 flex-1 accent-[var(--acero)]"
+              />
+              <div className="flex items-center gap-1.5">
+                <Input
+                  type="number"
+                  min={ESCALA_LETRA_MIN}
+                  max={ESCALA_LETRA_MAX}
+                  step={2.5}
+                  value={escala}
+                  aria-label="Tamaño de la letra, en porcentaje"
+                  onChange={(event) => cambiarEscala(Number(event.target.value))}
+                  onBlur={() => void guardarEscala(escala)}
+                  className="w-24"
+                />
+                <span className="text-sm text-muted-foreground">%</span>
+              </div>
+            </div>
+            <p className="mt-3 max-w-xl text-xs leading-relaxed text-muted-foreground">
+              Escala todo el panel (letra, espacios y componentes) entre
+              el {ESCALA_LETRA_MIN} % y el {ESCALA_LETRA_MAX} %. Se aplica
+              en vivo mientras lo mueves y se guarda como ajuste del
+              panel: vale en cualquier navegador, no solo en este. El
+              valor de fábrica es {ESCALA_LETRA_DEFECTO} %.
+            </p>
+            {mensajeEscala && (
+              <p className="mt-2 text-sm text-success">{mensajeEscala}</p>
+            )}
+          </div>
+
+          <div className="mt-10 flex flex-row items-center justify-between gap-6">
+            <div className="max-w-[80%] space-y-0.5">
+              <Label className="text-base font-medium">
+                Desenfoque de fondo en los diálogos
+              </Label>
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                Al abrir un diálogo, el fondo se desenfoca. Es lo bonito,
+                pero a pantalla completa es trabajo extra para la
+                gráfica en cada apertura: en una PC con gráfica integrada
+                floja, apagarlo hace que los diálogos abran más ligeros.
+              </p>
+            </div>
+            <Switch
+              checked={desenfoque}
+              onCheckedChange={(activo) => void cambiarDesenfoque(activo)}
+            />
+          </div>
+          {mensajeDesenfoque && (
+            <p className="mt-2 text-sm text-success">{mensajeDesenfoque}</p>
+          )}
         </section>
 
         <section

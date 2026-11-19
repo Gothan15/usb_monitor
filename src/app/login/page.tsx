@@ -122,7 +122,7 @@ export default function LoginPage() {
               Centro de control
             </span>
           </div>
-          <span className="ml-auto inline-flex items-center gap-2 rounded-full border border-[#F5F3EF]/25 px-3 py-1.5 text-[11px] font-medium text-[#F5F3EF]/85">
+          <span className="ml-auto inline-flex items-center gap-2 rounded-full border border-[#F5F3EF]/25 px-3 py-1.5 text-[0.6875rem] font-medium text-[#F5F3EF]/85">
             <span className="dot-pulse size-1.5 rounded-full bg-emerald-300" />
             Sistema activo
           </span>

@@ -537,7 +537,7 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
                       </span>
                       {computer.actualizacionDisponible && (
                         <>
-                          <span className="inline-flex items-center border border-amber-600/50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-500">
+                          <span className="inline-flex items-center border border-amber-600/50 px-1.5 py-0.5 text-[0.6875rem] font-medium text-amber-700 dark:text-amber-500">
                             Actualización disponible
                             {computer.versionPaquete
                               ? ` · v${computer.versionPaquete}`
@@ -564,7 +564,7 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
                         </>
                       )}
                     </div>
-                    <p className="mt-1 text-[11px] text-muted-foreground">
+                    <p className="mt-1 text-[0.6875rem] text-muted-foreground">
                       {computer.lastConfigAt
                         ? `Ajustes pedidos ${haceCuanto(computer.lastConfigAt)}`
                         : "Ajustes sin pedir aún"}
@@ -587,7 +587,7 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
 
                   {/* Contador de USB conectados: su propia columna */}
                   <span
-                    className={`inline-flex min-w-6 items-center justify-center justify-self-center border px-1.5 py-0.5 text-[11px] font-semibold tabular-nums ${
+                    className={`inline-flex min-w-6 items-center justify-center justify-self-center border px-1.5 py-0.5 text-[0.6875rem] font-semibold tabular-nums ${
                         (computer.usbConectados ?? 0) > 0
                           ? "border-[var(--acero)]/60 text-[var(--acero)]"
                           : "border-border text-muted-foreground"
@@ -602,7 +602,7 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
                   <div className="flex items-center gap-1 md:justify-end">
                     {computer.apagadoEnCurso && (
                       <>
-                        <span className="mr-1 inline-flex items-center border border-rose-600/60 px-1.5 py-0.5 text-[11px] font-semibold text-rose-700 dark:text-rose-500">
+                        <span className="mr-1 inline-flex items-center border border-rose-600/60 px-1.5 py-0.5 text-[0.6875rem] font-semibold text-rose-700 dark:text-rose-500">
                           Apagado en curso
                         </span>
                         <Button

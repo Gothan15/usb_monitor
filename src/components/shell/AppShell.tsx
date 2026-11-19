@@ -141,7 +141,7 @@ export function AppShell({
                       transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
                       className="overflow-hidden whitespace-nowrap leading-tight"
                     >
-                      <span className="block font-display text-[15px] font-bold tracking-tight">
+                      <span className="block font-display text-[0.9375rem] font-bold tracking-tight">
                         USB Monitor
                       </span>
                       <span className="block text-[10.5px] uppercase tracking-[0.14em] text-muted-foreground">
@@ -188,7 +188,7 @@ export function AppShell({
                             )}
                           />
                           {!lateralAbierta && item.badge !== undefined && (
-                            <span className="absolute -right-2 -top-1.5 inline-flex min-w-4 items-center justify-center rounded-full border border-acero/50 bg-background px-1 py-px font-mono text-[9px] font-bold leading-none tabular-nums text-acero">
+                            <span className="absolute -right-2 -top-1.5 inline-flex min-w-4 items-center justify-center rounded-full border border-acero/50 bg-background px-1 py-px font-mono text-[0.5625rem] font-bold leading-none tabular-nums text-acero">
                               {item.badge}
                             </span>
                           )}
@@ -264,14 +264,14 @@ export function AppShell({
                 {lateralAbierta ? (
                   <div className="rounded-lg border border-border border-t-2 border-t-[#C09A3B]/70 bg-card/70 px-3 py-3 shadow-sm">
                     <div className="flex items-center gap-2.5">
-                      <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#23211D] font-display text-[13px] font-bold text-[#F5F3EF] ring-1 ring-[#C09A3B]/70">
+                      <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#23211D] font-display text-[0.8125rem] font-bold text-[#F5F3EF] ring-1 ring-[#C09A3B]/70">
                         {initials}
                       </span>
                       <div className="min-w-0 flex-1 leading-tight">
-                        <span className="block truncate font-display text-[15px] font-semibold text-foreground">
+                        <span className="block truncate font-display text-[0.9375rem] font-semibold text-foreground">
                           {user?.name ?? "Usuario"}
                         </span>
-                        <span className="smallcaps mt-0.5 block text-[10px] text-[#A8822F] dark:text-[#C9A44A]">
+                        <span className="smallcaps mt-0.5 block text-[0.625rem] text-[#A8822F] dark:text-[#C9A44A]">
                           {user?.role?.toUpperCase() === "ADMIN"
                             ? "Administrador"
                             : "Usuario"}
@@ -286,7 +286,7 @@ export function AppShell({
                     </div>
                     <p
                       className={cn(
-                        "mt-2.5 flex items-center gap-1.5 border-t border-border/70 pt-2.5 text-[11px]",
+                        "mt-2.5 flex items-center gap-1.5 border-t border-border/70 pt-2.5 text-[0.6875rem]",
                         mounted && isLiveSyncEnabled
                           ? "text-success"
                           : "text-muted-foreground",
@@ -313,7 +313,7 @@ export function AppShell({
                 ) : (
                   <div className="flex flex-col items-center gap-2">
                     <span
-                      className="relative flex size-10 shrink-0 items-center justify-center rounded-full bg-[#23211D] font-display text-[13px] font-bold text-[#F5F3EF] ring-1 ring-[#C09A3B]/70"
+                      className="relative flex size-10 shrink-0 items-center justify-center rounded-full bg-[#23211D] font-display text-[0.8125rem] font-bold text-[#F5F3EF] ring-1 ring-[#C09A3B]/70"
                       title={user?.name ?? "Usuario"}
                     >
                       {initials}
@@ -362,14 +362,14 @@ export function AppShell({
                       quality={100}
                       className="hidden size-[22px] rounded-[4px] dark:block"
                     />
-                    <span className="font-display text-[15px] font-bold tracking-tight">
+                    <span className="font-display text-[0.9375rem] font-bold tracking-tight">
                       USB Monitor
                     </span>
                   </span>
                   <div className="ml-auto flex items-center gap-0.5">
                     <span
                       className={cn(
-                        "mr-1.5 hidden items-center gap-1.5 text-[11px] sm:flex",
+                        "mr-1.5 hidden items-center gap-1.5 text-[0.6875rem] sm:flex",
                         mounted && isLiveSyncEnabled
                           ? "text-success"
                           : "text-muted-foreground",
@@ -417,7 +417,7 @@ export function AppShell({
                     <ThemeToggle className="size-8" />
                     <span className="flex items-center gap-0.5 lg:hidden">
                       <span className="mx-1 h-5 w-px bg-border" />
-                      <span className="flex size-8 items-center justify-center rounded-full bg-[#23211D] font-display text-[11px] font-bold text-[#F5F3EF] ring-1 ring-[#C09A3B]/70">
+                      <span className="flex size-8 items-center justify-center rounded-full bg-[#23211D] font-display text-[0.6875rem] font-bold text-[#F5F3EF] ring-1 ring-[#C09A3B]/70">
                         {initials}
                       </span>
                       <LogoutButton
@@ -458,7 +458,7 @@ export function AppShell({
                         />
                         {item.label}
                         {item.badge !== undefined && (
-                          <span className="inline-flex items-center justify-center rounded-full border border-acero/40 bg-acero/10 px-1.5 py-px font-mono text-[10px] font-semibold tabular-nums text-acero">
+                          <span className="inline-flex items-center justify-center rounded-full border border-acero/40 bg-acero/10 px-1.5 py-px font-mono text-[0.625rem] font-semibold tabular-nums text-acero">
                             {item.badge}
                           </span>
                         )}
@@ -507,7 +507,7 @@ export function AppShell({
                   <div className="ml-auto flex shrink-0 items-center">
                     <span
                       className={cn(
-                        "hidden items-center gap-1.5 text-[11px] md:flex",
+                        "hidden items-center gap-1.5 text-[0.6875rem] md:flex",
                         mounted && isLiveSyncEnabled
                           ? "text-success"
                           : "text-muted-foreground",
@@ -573,13 +573,13 @@ export function AppShell({
 
                     <div className="flex items-center gap-2.5">
                       <span
-                        className="hidden size-9 items-center justify-center rounded-full bg-[#23211D] font-display text-[12px] font-bold text-[#F5F3EF] ring-1 ring-[#C09A3B]/70 sm:flex"
+                        className="hidden size-9 items-center justify-center rounded-full bg-[#23211D] font-display text-xs font-bold text-[#F5F3EF] ring-1 ring-[#C09A3B]/70 sm:flex"
                         title={user?.name ?? "Usuario"}
                       >
                         {initials}
                       </span>
                       <div className="hidden min-w-0 leading-tight lg:block">
-                        <span className="block max-w-[140px] truncate font-display text-[14px] font-semibold text-foreground">
+                        <span className="block max-w-[140px] truncate font-display text-sm font-semibold text-foreground">
                           {user?.name ?? "Usuario"}
                         </span>
                         <span className="smallcaps block text-[9.5px] text-[#A8822F] dark:text-[#C9A44A]">
@@ -615,7 +615,7 @@ export function AppShell({
                         {indice > 0 && (
                           <span
                             aria-hidden
-                            className="hidden select-none items-center text-[13px] font-light text-muted-foreground/40 xl:flex"
+                            className="hidden select-none items-center text-[0.8125rem] font-light text-muted-foreground/40 xl:flex"
                           >
                             |
                           </span>
@@ -640,7 +640,7 @@ export function AppShell({
                           />
                           {item.label}
                           {item.badge !== undefined && (
-                            <span className="inline-flex items-center justify-center rounded-full border border-acero/40 bg-acero/10 px-1.5 py-px font-mono text-[10px] font-semibold tabular-nums text-acero">
+                            <span className="inline-flex items-center justify-center rounded-full border border-acero/40 bg-acero/10 px-1.5 py-px font-mono text-[0.625rem] font-semibold tabular-nums text-acero">
                               {item.badge}
                             </span>
                           )}
@@ -664,7 +664,7 @@ export function AppShell({
           <div className="relative flex min-h-full w-full flex-col px-4 pb-10 pt-8 lg:px-8 lg:pt-10">
             {children}
 
-            <footer className="mt-14 flex items-center justify-between border-t border-border pt-4 text-[11px] text-muted-foreground/80">
+            <footer className="mt-14 flex items-center justify-between border-t border-border pt-4 text-[0.6875rem] text-muted-foreground/80">
               <span>USB Monitor</span>
               {lastUpdateLabel && <span>Sincronizado: {lastUpdateLabel}</span>}
             </footer>
