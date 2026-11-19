@@ -7,6 +7,8 @@
 //  da gobierno rápido sin abrir services.msc:
 //
 //    · Abrir el panel en el navegador (doble clic también).
+//    · Abrir el registro del panel (el .log más reciente del
+//      servicio, el de WinSW en la carpeta de datos).
 //    · Iniciar, parar y reiniciar el servicio.
 //    · «Iniciar con Windows»: el servicio en automático o
 //      manual, a elección.
@@ -132,6 +134,60 @@ internal static class Program
         {
             return "localhost";
         }
+    }
+
+    // La carpeta de datos del panel, de la misma clave del
+    // instalador que ya se lee para el puerto; si la clave no
+    // está, la de serie de ProgramData.
+    internal static string CarpetaDatos()
+    {
+        using var clave = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\USBMonitor\Panel");
+        return clave?.GetValue("DataDir") is string datos && datos.Length > 0
+            ? datos
+            : Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                "USBMonitor");
+    }
+
+    // El archivo de registro más reciente del servicio del
+    // panel: WinSW escribe en <Datos>\Registros los
+    // USBMonitorPanel.out.log y .err.log y va rotando los
+    // viejos con sufijo numérico. Se elige por fecha de
+    // escritura, que es el que está recibiendo líneas ahora.
+    // Null si aún no hay ninguno (el servicio nunca arrancó).
+    internal static string? RutaRegistroPanel()
+    {
+        try
+        {
+            var carpeta = Path.Combine(CarpetaDatos(), "Registros");
+            return Directory.EnumerateFiles(carpeta, "USBMonitorPanel*.log")
+                .OrderByDescending(f => File.GetLastWriteTime(f))
+                .FirstOrDefault();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    // Abre el registro del panel con el visor asociado a los
+    // .log (el Bloc de notas, de serie). Si todavía no hay
+    // archivo, se avisa en un cuadro en vez de no hacer nada:
+    // quien pide el registro suele estar persiguiendo un
+    // fallo y el silencio no le dice nada.
+    internal static void AbrirRegistroPanel()
+    {
+        var ruta = RutaRegistroPanel();
+        if (ruta is null)
+        {
+            MessageBox.Show(
+                "Todavía no hay archivo de registro del panel: el servicio no ha arrancado nunca en este equipo.",
+                "USB Monitor — Bandeja",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return;
+        }
+        Process.Start(new ProcessStartInfo(ruta) { UseShellExecute = true });
     }
 
     // Abre el panel en el navegador predeterminado.
@@ -261,6 +317,7 @@ internal sealed class ContextoBandeja : ApplicationContext
     private readonly ToolStripMenuItem _itemParar;
     private readonly ToolStripMenuItem _itemReiniciar;
     private readonly ToolStripMenuItem _itemArranque;
+    private readonly ToolStripMenuItem _itemRegistro;
     private readonly Icon _iconoBase;
     private readonly Dictionary<Program.EstadoPanel, Icon> _iconosPorEstado = new();
     private Program.EstadoPanel _estado = Program.EstadoPanel.NoInstalado;
@@ -274,6 +331,7 @@ internal sealed class ContextoBandeja : ApplicationContext
 
         _itemEstado = new ToolStripMenuItem("Panel: …") { Enabled = false };
         var itemAbrir = new ToolStripMenuItem("Abrir el panel", null, (_, _) => Program.AbrirPanel());
+        _itemRegistro = new ToolStripMenuItem("Abrir el registro del panel", null, (_, _) => Program.AbrirRegistroPanel());
         _itemIniciar = new ToolStripMenuItem("Iniciar", null, (_, _) => Program.LanzarElevado("--iniciar"));
         _itemParar = new ToolStripMenuItem("Parar", null, (_, _) => Program.LanzarElevado("--parar"));
         _itemReiniciar = new ToolStripMenuItem("Reiniciar", null, (_, _) => Program.LanzarElevado("--reiniciar"));
@@ -284,6 +342,7 @@ internal sealed class ContextoBandeja : ApplicationContext
         menu.Items.Add(_itemEstado);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(itemAbrir);
+        menu.Items.Add(_itemRegistro);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_itemIniciar);
         menu.Items.Add(_itemParar);
@@ -344,6 +403,7 @@ internal sealed class ContextoBandeja : ApplicationContext
         _itemParar.Enabled = _estado == Program.EstadoPanel.Corriendo;
         _itemReiniciar.Enabled = _estado is Program.EstadoPanel.Corriendo or Program.EstadoPanel.Detenido;
         _itemArranque.Enabled = _estado != Program.EstadoPanel.NoInstalado;
+        _itemRegistro.Enabled = _estado != Program.EstadoPanel.NoInstalado;
         _itemArranque.Checked = Program.ArranqueConWindows();
     }
 
