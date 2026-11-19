@@ -19,7 +19,14 @@ export async function GET(req: NextRequest) {
 
     let bdOk = false;
     try {
-      await db.$queryRaw`SELECT 1`;
+      // La prueba de vida va por el constructor de consultas, no
+      // con SQL crudo: el cliente compartido tiene el SQL crudo
+      // prohibido a propósito (db.ts lo bloquea), y el antiguo
+      // $queryRaw`SELECT 1` chocaba con ese bloqueo SIEMPRE — el
+      // parte salía «sin conexión» con la base de datos sana y el
+      // panel guardando sin problema. findFirst con solo el id es
+      // la lectura más barata y vale igual como prueba.
+      await db.user.findFirst({ select: { id: true } });
       bdOk = true;
     } catch {
       bdOk = false;

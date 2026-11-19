@@ -673,6 +673,17 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
               asociado.
             </DialogDescription>
           </DialogHeader>
+          {/* Formulario de verdad, aunque sea con display:contents
+              para no tocar el layout: así Enter en cualquier campo
+              envía (crear el usuario), igual que Escape cierra. Sin
+              el form, Enter no hacía nada. */}
+          <form
+            className="contents"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleCreateUser();
+            }}
+          >
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label htmlFor="create-username">Usuario</Label>
@@ -767,14 +778,11 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
             >
               Cancelar
             </Button>
-            <Button
-              type="button"
-              onClick={handleCreateUser}
-              disabled={creating}
-            >
+            <Button type="submit" disabled={creating}>
               {creating ? "Creando..." : "Crear usuario"}
             </Button>
           </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
@@ -795,6 +803,15 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
               contraseña vacía para mantenerla.
             </DialogDescription>
           </DialogHeader>
+          {/* Como el de crear: form con display:contents para que
+              Enter envíe los cambios sin tocar el layout. */}
+          <form
+            className="contents"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleUpdateUser();
+            }}
+          >
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label htmlFor="edit-username">Usuario</Label>
@@ -897,14 +914,11 @@ function UsersTabComponent({ onSummaryChange, computers = [] }: UsersTabProps) {
             >
               Cancelar
             </Button>
-            <Button
-              type="button"
-              onClick={handleUpdateUser}
-              disabled={updating}
-            >
+            <Button type="submit" disabled={updating}>
               {updating ? "Guardando..." : "Guardar cambios"}
             </Button>
           </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 

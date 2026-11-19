@@ -227,6 +227,19 @@ export function InstallTaskDialog({
           </DialogDescription>
         </DialogHeader>
 
+        {/* Formulario con display:contents (sin tocar el layout):
+            Enter en cualquier campo crea la tarea, como Escape
+            cierra. El botón de crear es el submit y queda
+            deshabilitado mientras falten datos, así que Enter
+            tampoco puede lanzar una tarea incompleta. Todos los
+            demás botones del diálogo ya llevan type="button". */}
+        <form
+          className="contents"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void crear();
+          }}
+        >
         <div className="space-y-4">
           <div>
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -494,16 +507,14 @@ export function InstallTaskDialog({
 
         <DialogFooter>
           <Button
+            type="button"
             variant="outline"
             onClick={() => cerrar(false)}
             disabled={creando}
           >
             Cancelar
           </Button>
-          <Button
-            onClick={() => void crear()}
-            disabled={creando || !completo}
-          >
+          <Button type="submit" disabled={creando || !completo}>
             {creando ? (
               <Spinner size={14} />
             ) : (
@@ -512,6 +523,7 @@ export function InstallTaskDialog({
             Crear tarea e instalar
           </Button>
         </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

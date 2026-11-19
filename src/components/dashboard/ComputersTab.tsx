@@ -1036,6 +1036,17 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
               código.
             </DialogDescription>
           </DialogHeader>
+          {/* Formulario con display:contents (sin tocar el layout):
+              Enter en el nombre genera el código, como Escape
+              cierra. El botón «Generar código» es el submit; los
+              demás (Copiar, Revocar, Cerrar) ya son type="button". */}
+          <form
+            className="contents"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void llamarProvision("POST");
+            }}
+          >
           <div className="flex flex-col gap-2">
             <label className="smallcaps text-muted-foreground">
               Nombre del equipo
@@ -1185,14 +1196,14 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
               Revocar credencial
             </Button>
             <Button
-              type="button"
+              type="submit"
               className="rounded-none"
               disabled={tokenOcupado}
-              onClick={() => void llamarProvision("POST")}
             >
               {tokenOcupado ? "Trabajando..." : "Generar código"}
             </Button>
           </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
