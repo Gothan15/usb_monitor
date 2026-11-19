@@ -21,14 +21,13 @@ import {
  *   { destinos: [{pcName, ip}], usuario, clave,
  *     omitirSiInstalado?, intentosMaximos?,
  *     credenciales?: [{pcName, ip, usuario?, clave}] }
- *   `credenciales` trae la credencial PROPIA de los destinos
- *   que no usan la general (equipos con otra contraseña de
- *   administrador); manda sobre la general solo en su equipo.
- *   La general es la cuenta de RESERVA: usuario y clave
- *   pueden venir vacíos si CADA destino trae la suya
- *   completa — hay redes donde ningún equipo comparte
- *   cuenta con otro. Lo que no puede faltar es que todo
- *   destino resuelva a usuario y contraseña.
+ *   `credenciales` trae la credencial PROPIA de cada destino
+ *   (su usuario y su contraseña de administrador): en la red
+ *   de Gothan ningún equipo comparte cuenta con otro, y el
+ *   panel ya no ofrece cuenta general ni de reserva — los
+ *   campos usuario/clave se aceptan por compatibilidad, pero
+ *   el panel los manda vacíos. Lo que no puede faltar es que
+ *   todo destino resuelva a usuario y contraseña.
  * GET (admin): las tareas recientes con sus destinos.
  */
 
@@ -151,10 +150,10 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  // Cobertura: con la cuenta de reserva y las propias, TODO
-  // destino tiene que resolver a usuario y contraseña. Si a
-  // alguno le falta una pieza, su empujón nacería condenado:
-  // la tarea no se crea.
+  // Cobertura: TODO destino tiene que traer su credencial
+  // propia completa (usuario y contraseña). Si a alguno le
+  // falta una pieza, su empujón nacería condenado: la tarea
+  // no se crea.
   const entradaPorDestino = new Map(
     (credenciales ?? []).map((c) => [c.destinoKey, c]),
   );
@@ -169,7 +168,7 @@ export async function POST(req: Request) {
       {
         ok: false,
         error:
-          "Falta credencial: dale a cada equipo la suya (usuario y contraseña), o escribe una cuenta de reserva completa para los que no tengan.",
+          "Falta credencial: dale a cada equipo la suya (usuario y contraseña).",
       },
       { status: 400 },
     );

@@ -77,7 +77,6 @@ export function InstallTasksTab() {
   const [error, setError] = useState<string | null>(null);
   const [expandida, setExpandida] = useState<ReadonlySet<string>>(new Set());
   const [reintentando, setReintentando] = useState<string | null>(null);
-  const [claveReintento, setClaveReintento] = useState("");
   // Credencial propia por destino al reintentar (clave del
   // registro: el id del destino), para los equipos con la
   // suya: cada PC tiene su usuario y su contraseña.
@@ -238,44 +237,36 @@ export function InstallTasksTab() {
   };
 
   // ¿Puede lanzarse el reintento de esta tarea? Cada destino
-  // a reintentar tiene que resolver a usuario y contraseña
-  // entre la suya y la de reserva (el usuario de la tarea y
-  // la clave escrita arriba): la misma regla pura que al
-  // crear la tarea y que el servidor vuelve a comprobar.
+  // a reintentar tiene que traer SU credencial completa
+  // (usuario y contraseña en su fila): ya no hay cuenta de
+  // reserva que lo cubra. La misma regla pura que al crear
+  // la tarea y que el servidor vuelve a comprobar.
   const coberturaReintento = (tarea: TareaVista) =>
     credencialesCompletas(
-      { usuario: tarea.username, clave: claveReintento },
+      { usuario: "", clave: "" },
       tarea.targets
         .filter((d) => d.status === "ERROR" || d.status === "INTERRUMPIDO")
         .map((d) => ajustesReintento[d.id]),
     );
 
   const reintentar = async (tarea: TareaVista) => {
-    // Las credenciales propias escritas para destinos que se
-    // van a reintentar (los demás van con la de reserva).
+    // La credencial propia de cada destino a reintentar: es
+    // lo único que viaja (ya no hay clave de reserva).
     const credenciales = tarea.targets
       .filter((d) => d.status === "ERROR" || d.status === "INTERRUMPIDO")
       .map((d) => {
         const propia = ajustesReintento[d.id];
-        if (!propia?.clave) return null;
         return {
           pcName: d.pcName,
           ip: d.ipAddress,
-          ...(propia.usuario.trim()
-            ? { usuario: propia.usuario.trim() }
-            : {}),
-          clave: propia.clave,
+          usuario: (propia?.usuario ?? "").trim(),
+          clave: propia?.clave ?? "",
         };
-      })
-      .filter(Boolean);
+      });
     try {
       setEnviando(true);
       setAvisoReintento(null);
-      await tareasApi.reintentar(tarea.id, {
-        clave: claveReintento,
-        ...(credenciales.length > 0 ? { credenciales } : {}),
-      });
-      setClaveReintento("");
+      await tareasApi.reintentar(tarea.id, { credenciales });
       setAjustesReintento({});
       setReintentando(null);
       void load();
@@ -505,18 +496,8 @@ export function InstallTasksTab() {
                 <div className="mt-3 flex flex-wrap items-center gap-3 border border-border/60 bg-background px-3 py-3">
                   <p className="text-sm text-muted-foreground">
                     Las claves no se guardaron: escribe la de cada
-                    equipo en su fila. La de reserva solo hace falta
-                    si algún equipo va con ella.
+                    equipo en su fila.
                   </p>
-                  <Input
-                    type="password"
-                    value={claveReintento}
-                    onChange={(e) => setClaveReintento(e.target.value)}
-                    placeholder="Contraseña de reserva (opcional)"
-                    className="w-64"
-                    autoComplete="off"
-                    aria-label="Contraseña de reserva para el reintento"
-                  />
                   <Button
                     size="sm"
                     disabled={enviando || !coberturaReintento(tarea)}
@@ -529,7 +510,6 @@ export function InstallTasksTab() {
                     size="sm"
                     onClick={() => {
                       setReintentando(null);
-                      setClaveReintento("");
                       setAjustesReintento({});
                     }}
                   >
@@ -541,9 +521,8 @@ export function InstallTasksTab() {
                     <div className="w-full space-y-2 border-t border-border/60 pt-3">
                       <p className="text-xs text-muted-foreground">
                         Cada equipo se reintenta con la suya: su
-                        usuario y su contraseña. Los que dejes en
-                        blanco van con la cuenta de reserva (el
-                        usuario de la tarea y la clave de arriba).
+                        usuario y su contraseña, escritos en su
+                        fila.
                       </p>
                       {tarea.targets
                         .filter(
