@@ -123,6 +123,17 @@ Name: "{autodesktop}\USB Monitor — Panel"; Filename: "{app}\AbrirPanel.cmd"; I
 ; uninsdeletevalue: al desinstalar, la entrada se retira sola.
 Root: HKLM; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "USBMonitorBandeja"; ValueData: """{app}\USBMonitorBandeja.exe"""; Flags: uninsdeletevalue
 
+[UninstallDelete]
+; Lo que el programa crea en marcha dentro de {app} (registros
+; y cachés de la app, la copia de la app de escritorio del modo
+; dedicado) no consta en el registro de instalación de Inno y
+; sin esto quedaba detrás al desinstalar. Los procesos que
+; podrían tener archivos bloqueados ya están cerrados para
+; cuando se llega aquí: el script de desinstalación los cierra
+; en el paso usUninstall, antes de que se retire ningún archivo.
+Type: filesandordirs; Name: "{app}\*"
+Type: filesandordirs; Name: "{app}"
+
 [Code]
 // ================================================================
 // Asistente, configuración y pasos de la instalación.
@@ -855,8 +866,10 @@ var
 begin
   if CurUninstallStep = usUninstall then
   begin
-    // Antes de que se retire ningún archivo: parar y quitar los
-    // tres servicios (el mismo script que usaba el MSI).
+    // Antes de que se retire ningún archivo: cerrar la bandeja
+    // y la app de escritorio, deshacer el modo dedicado si lo
+    // hay, y parar y quitar los tres servicios (el mismo script
+    // que usaba el MSI).
     Ruta := ExpandConstant('{app}\scripts\Desinstalar-Servicios.ps1');
     Exec('powershell.exe',
       '-NoProfile -ExecutionPolicy Bypass -File "' + Ruta + '"',
