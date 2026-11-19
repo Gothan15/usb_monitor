@@ -14,6 +14,7 @@ import {
   Users,
   Wrench,
   ListTodo,
+  Clock,
 } from "lucide-react";
 
 export interface TourStep {
@@ -185,22 +186,60 @@ export const userTour: TourDefinition = {
     {
       title: "Bienvenido a tu panel",
       description:
-        "Desde aquí puedes ver tus dispositivos USB conectados y revisar tu historial. Tu equipo se identifica con un token propio: no necesitas ninguna clave.",
-      icon: Monitor,
+        "Desde aquí ves los dispositivos USB de tu equipo y su historial. Entras con tu cuenta del panel y solo desde tu equipo asignado: tu cuenta no abre desde otra PC. Te enseño las dos vistas; la guía se mueve sola.",
+      icon: Rocket,
     },
     {
-      target: "[data-tour='devices']",
+      view: "/user",
+      target: "[data-tour='devices-main']",
       title: "Tus dispositivos",
       description:
-        "Aquí verás los dispositivos USB actualmente conectados a tu equipo asignado, con su estado y detalles.",
+        "Los USB que tu equipo tiene conectados ahora mismo. La lista se actualiza sola cada pocos segundos: no hay botón de actualizar porque no hace falta.",
       position: "bottom",
       icon: Usb,
     },
     {
-      target: "[data-tour='whitelist-status']",
-      title: "Estado de lista blanca",
+      view: "/user",
+      target: "[data-tour='user-computer']",
+      title: "Tu equipo asignado",
       description:
-        "Los dispositivos autorizados aparecen con una insignia verde. Si un dispositivo no está en la lista blanca, puedes solicitar su autorización.",
+        "El equipo ligado a tu cuenta, con su dirección y si está activo. Solo verás dispositivos de este equipo, nunca los de los demás.",
+      position: "bottom",
+      icon: MonitorSmartphone,
+    },
+    {
+      view: "/user",
+      target: "[data-tour='user-devices']",
+      title: "Conectados ahora",
+      description:
+        "Cada dispositivo con su unidad, su modelo, su número de serie y su tamaño, y desde cuándo lleva conectado. Si conectas uno nuevo, aparece aquí solo, sin recargar la página.",
+      position: "bottom",
+      icon: Usb,
+    },
+    {
+      view: "/user",
+      target: "[data-tour='user-devices']",
+      title: "Bloqueos y contraseña",
+      description:
+        "Si un USB está en la lista blanca, al conectarlo sale un cartel en tu PC pidiendo tu contraseña del panel, y queda abierto hasta que lo extraigas. Si no está en la lista, el cartel solo avisa de que quedó bloqueado: esos no se abren con contraseña.",
+      position: "bottom",
+      icon: KeyRound,
+    },
+    {
+      view: "/user/history",
+      target: "[data-tour='history-main']",
+      title: "Tu historial",
+      description:
+        "Todo lo que ha pasado con los USB de tu equipo: conexiones, desconexiones, bloqueos y desbloqueos, de más reciente a más antiguo. También se actualiza solo.",
+      position: "bottom",
+      icon: Clock,
+    },
+    {
+      view: "/user/history",
+      target: "[data-tour='user-history']",
+      title: "Eventos de seguridad",
+      description:
+        "Los marcados como evento de seguridad son los de dispositivos fuera de la lista blanca; los autorizados salen con su etiqueta de desbloqueado o conectado. Si ves algo que no reconoces, avisa al administrador.",
       position: "bottom",
       icon: ShieldCheck,
     },
