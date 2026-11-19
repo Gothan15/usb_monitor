@@ -21,6 +21,11 @@ const ETIQUETAS_EVENTO: Record<string, string> = {
   SHUTDOWN_ORPHANED: "Apagado sin el agente",
   ESCALATION_WARNING: "Escalera: aviso",
   ESCALATION_LOCK: "Escalera: sesión bloqueada",
+  // No lo manda el agente: lo deja el propio panel cuando una
+  // cuenta queda bloqueada por intentos fallidos de inicio de
+  // sesión (la fila lleva el panel como equipo, la IP de quien
+  // lo intentó y la cuenta como usuario).
+  LOGIN_BLOCKED: "Cuenta bloqueada (inicio de sesión)",
 };
 
 /** La familia de eventos que abre o cierra una cuenta atrás de apagado. */
