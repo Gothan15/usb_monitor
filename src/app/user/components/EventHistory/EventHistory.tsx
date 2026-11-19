@@ -3,19 +3,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
-  Calendar,
   Clock,
   Shield,
   Usb,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Separator } from "@/components/ui/separator";
 import { useAmbientScrollbar } from "@/hooks/useAmbientScrollbar";
 import { formatDateTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
+import { etiquetaEventoUsb } from "@/lib/eventosUsb";
 import { fetchBasicUserSnapshot } from "../../utils";
 import type { UsbConnection, UsbEvent } from "../../types";
 import { Spinner } from "@/components/ui/spinner";
@@ -123,7 +119,10 @@ export const EventHistory = ({ userId }: EventHistoryProps) => {
       title: event.whitelisted
         ? "Dispositivo autorizado"
         : "Evento de seguridad",
-      description: event.message,
+      // La descripción llega como el código crudo del evento
+      // (BLOCKED, UNLOCKED…): se enseña con la misma etiqueta
+      // en español que usa el panel de administración.
+      description: etiquetaEventoUsb(event.message),
       status: event.whitelisted
         ? "Autorizado"
         : event.readonlyStatus || "Pendiente",
@@ -139,14 +138,21 @@ export const EventHistory = ({ userId }: EventHistoryProps) => {
   }, [events, history]);
 
   return (
-    <Card className="border-border/60 bg-card/80 shadow-sm backdrop-blur-xl">
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
-          <Clock className="h-5 w-5 text-muted-foreground" />
-          Historial de eventos
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <section className="w-full" data-tour="history-main">
+      {/* ── Cabecera, como las del panel de administración ── */}
+      <div className="flex flex-col">
+        <p className="smallcaps text-acero">Tu actividad</p>
+        <h2 className="font-display mt-2 text-2xl font-bold text-foreground">
+          Historial de tu equipo
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Las conexiones, desconexiones y eventos de seguridad de los
+          USB de tu equipo, de más reciente a más antiguo. Se actualiza
+          solo cada pocos segundos.
+        </p>
+      </div>
+
+      <div className="mt-8 space-y-4">
         {loading && (
           <div className="flex h-48 items-center justify-center">
             <Spinner />
@@ -154,58 +160,57 @@ export const EventHistory = ({ userId }: EventHistoryProps) => {
         )}
 
         {!loading && error && (
-          <Alert className="border-red-200 bg-red-50 text-red-900 dark:border-red-700 dark:bg-red-950/20 dark:text-red-100">
-            <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
-              <span>{error}</span>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => void loadHistory()}
-              >
-                Reintentar
-              </Button>
-            </AlertDescription>
-          </Alert>
+          <div className="flex flex-wrap items-center justify-between gap-3 border border-[#B3382E]/40 bg-[#B3382E]/[0.06] px-4 py-3 text-sm text-foreground">
+            <span>{error}</span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => void loadHistory()}
+            >
+              Reintentar
+            </Button>
+          </div>
         )}
 
         {!loading && !error && !timeline.length && (
-          <div className="flex h-48 flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground">
-            <Clock className="h-10 w-10 text-muted-foreground/40" />
-            <span>No hay eventos registrados todavía.</span>
-            <span className="text-xs text-muted-foreground/60">
-              Los eventos aparecerán aquí cuando se registre actividad USB.
-            </span>
+          <div className="flex items-start gap-3 border-t border-border pt-6 text-sm text-muted-foreground">
+            <Clock className="mt-0.5 size-4 shrink-0 text-[var(--acero)]" />
+            <div>
+              <p>No hay eventos registrados todavía.</p>
+              <p className="mt-1 text-xs">
+                Los eventos aparecerán aquí cuando se registre actividad
+                USB.
+              </p>
+            </div>
           </div>
         )}
 
         {!loading && !error && warnings.length > 0 && (
-          <Alert className="border-[oklch(0.80_0.10_85/0.40)] bg-[oklch(0.95_0.03_85)] text-[oklch(0.45_0.10_85)] dark:border-[oklch(0.65_0.08_85/0.30)] dark:bg-[oklch(0.80_0.10_85/0.10)] dark:text-[oklch(0.90_0.04_85)]">
-            <AlertDescription className="space-y-2">
-              {warnings.map((warning, index) => (
-                <p key={index}>{warning}</p>
-              ))}
-            </AlertDescription>
-          </Alert>
+          <div className="space-y-2 border border-[#C09A3B]/50 bg-[#C09A3B]/10 px-4 py-3 text-sm text-foreground">
+            {warnings.map((warning, index) => (
+              <p key={index}>{warning}</p>
+            ))}
+          </div>
         )}
 
         {!loading && !error && !!timeline.length && (
           <div
             {...timelineScrollProps}
             className={cn(
-              "max-h-[520px] space-y-3 overflow-y-auto pr-2 scroll-smooth",
+              "max-h-[520px] overflow-y-auto pr-2 scroll-smooth",
               timelineScrollbarClassName
             )}
+            data-tour="user-history"
           >
-            {timeline.map((item, index) => (
-              <div
-                key={item.id}
-                className="group animate-in fade-in-50 slide-in-from-bottom-2 duration-300 rounded-xl border border-border/40 bg-card/80 p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md backdrop-blur-sm"
-                style={{ animationDelay: `${index * 70}ms` }}
-              >
-                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div className="border-t border-border">
+              {timeline.map((item) => (
+                <article
+                  key={item.id}
+                  className="flex flex-col gap-2 border-b border-border py-4 md:flex-row md:items-start md:justify-between"
+                >
                   <div className="flex items-start gap-3">
-                    <div className="rounded-lg bg-muted/40 p-3 text-muted-foreground transition-colors group-hover:bg-muted/60">
+                    <span className="mt-0.5 text-[var(--acero)]">
                       {item.kind === "event" ? (
                         <Shield className="h-5 w-5" />
                       ) : item.kind === "connected" ? (
@@ -213,55 +218,49 @@ export const EventHistory = ({ userId }: EventHistoryProps) => {
                       ) : (
                         <Activity className="h-5 w-5" />
                       )}
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-base font-semibold text-foreground">
+                    </span>
+                    <div>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <h3 className="text-[0.95rem] font-semibold text-foreground">
                           {item.title}
                         </h3>
                         {item.kind === "event" && item.status && (
-                          <Badge
-                            variant="outline"
-                            className="border-border/40 text-xs text-muted-foreground"
-                          >
+                          <span className="smallcaps text-acero">
                             {item.status}
-                          </Badge>
-                        )}
-                        {item.serialNumber && (
-                          <Badge
-                            variant="outline"
-                            className="border-border/40 text-xs font-mono uppercase text-muted-foreground"
-                          >
-                            {item.serialNumber}
-                          </Badge>
-                        )}
-                        {item.driveLetter && (
-                          <Badge
-                            variant="secondary"
-                            className="text-xs uppercase tracking-[0.18em]"
-                          >
-                            {item.driveLetter}
-                          </Badge>
+                          </span>
                         )}
                       </div>
                       {item.description && (
-                        <p className="text-sm text-muted-foreground">
+                        <p className="mt-1 text-sm text-muted-foreground">
                           {item.description}
+                        </p>
+                      )}
+                      {(item.serialNumber || item.driveLetter) && (
+                        <p className="mt-1 flex flex-wrap gap-x-2 text-xs text-muted-foreground">
+                          {item.serialNumber && (
+                            <span className="font-mono uppercase">
+                              {item.serialNumber}
+                            </span>
+                          )}
+                          {item.serialNumber && item.driveLetter && (
+                            <span aria-hidden>·</span>
+                          )}
+                          {item.driveLetter && (
+                            <span>Unidad {item.driveLetter}</span>
+                          )}
                         </p>
                       )}
                     </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-2 rounded-lg border border-border/40 bg-muted/30 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors">
-                    <Calendar className="h-4 w-4" />
+                  <p className="shrink-0 pl-8 text-xs text-muted-foreground md:pl-0 md:pt-1 md:text-right">
                     {formatDateTime(item.timestamp)}
-                  </div>
-                </div>
-                {index < timeline.length - 1 && <Separator className="mt-3" />}
-              </div>
-            ))}
+                  </p>
+                </article>
+              ))}
+            </div>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 };

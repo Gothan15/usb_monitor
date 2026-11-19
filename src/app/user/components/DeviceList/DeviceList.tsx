@@ -1,11 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Usb, HardDrive, Activity, Calendar } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Usb, HardDrive } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { formatDateTime, getCurrentDate } from "@/lib/time";
 import { fetchBasicUserSnapshot, formatBytes, etiquetaTipoDispositivo } from "../../utils";
 import type { AssignedComputer, UsbConnection } from "../../types";
@@ -95,158 +92,164 @@ export const DeviceList = ({ userId }: DeviceListProps) => {
 
     if (error) {
       return (
-        <Alert className="border-red-200 bg-red-50 text-red-900 dark:border-red-700 dark:bg-red-950/20 dark:text-red-100">
-          <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
-            <span>{error}</span>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => void loadDevices()}
-            >
-              Reintentar
-            </Button>
-          </AlertDescription>
-        </Alert>
+        <div className="flex flex-wrap items-center justify-between gap-3 border border-[#B3382E]/40 bg-[#B3382E]/[0.06] px-4 py-3 text-sm text-foreground">
+          <span>{error}</span>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => void loadDevices()}
+          >
+            Reintentar
+          </Button>
+        </div>
       );
     }
 
     if (!state.devices.length) {
       return (
-        <div className="flex min-h-48 flex-1 flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground">
-          <Usb className="h-10 w-10 text-muted-foreground/40" />
-          <span>No hay dispositivos USB conectados en este momento.</span>
-          <span className="text-xs text-muted-foreground/60">
-            Conecta un dispositivo autorizado para verlo aquí.
-          </span>
+        <div className="flex items-start gap-3 border-t border-border pt-6 text-sm text-muted-foreground">
+          <Usb className="mt-0.5 size-4 shrink-0 text-[var(--acero)]" />
+          <div>
+            <p>No hay dispositivos USB conectados en este momento.</p>
+            <p className="mt-1 text-xs">
+              Conecta un dispositivo autorizado para verlo aquí.
+            </p>
+          </div>
         </div>
       );
     }
 
     return (
-      <div className="grid gap-3">
-        {state.devices.map((device, index) => (
-          <div
+      <div className="border-t border-border">
+        {state.devices.map((device) => (
+          <article
             key={device.id}
-            className="group animate-in fade-in-50 zoom-in-95 duration-300 rounded-xl border border-border/40 bg-card/80 p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md backdrop-blur-sm"
-            style={{ animationDelay: `${index * 80}ms` }}
+            className="flex flex-col gap-3 border-b border-border py-5 md:flex-row md:items-start md:justify-between"
           >
-            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-              <div className="flex flex-1 items-start gap-3">
-                <div className="rounded-lg bg-muted/40 p-3 text-muted-foreground transition-colors group-hover:bg-muted/60">
-                  <Usb className="h-6 w-6 text-muted-foreground transition-colors group-hover:text-foreground" />
+            <div className="flex items-start gap-3">
+              <Usb className="mt-1 h-6 w-6 shrink-0 text-[var(--acero)]" />
+              <div>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <h3 className="font-display text-lg font-bold leading-none text-foreground">
+                    {device.volumeName}
+                  </h3>
+                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <span className="size-1.5 rounded-full bg-[#3FA34D]" />
+                    Conectado
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    Unidad {device.driveLetter}
+                  </span>
+                  {etiquetaTipoDispositivo(device.deviceKind) && (
+                    <span className="text-xs text-muted-foreground">
+                      {etiquetaTipoDispositivo(device.deviceKind)}
+                    </span>
+                  )}
                 </div>
-                <div className="space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-lg font-semibold text-foreground">
-                      {device.volumeName}
-                    </h3>
-                    <Badge className="bg-green-600 text-white shadow-sm">
-                      Activo
-                    </Badge>
-                    <Badge
-                      variant="outline"
-                      className="border-border/40 text-xs text-muted-foreground"
-                    >
-                      {device.driveLetter}
-                    </Badge>
-                    {etiquetaTipoDispositivo(device.deviceKind) && (
-                      <Badge
-                        variant="outline"
-                        className="border-border/40 text-xs text-muted-foreground"
-                      >
-                        {etiquetaTipoDispositivo(device.deviceKind)}
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-                    <span className="flex items-center gap-1 font-medium">
-                      <HardDrive className="h-3.5 w-3.5" />
-                      {device.model}
-                    </span>
-                    <span className="text-muted-foreground/50">•</span>
-                    <span className="font-mono text-xs uppercase">
-                      {device.serialNumber}
-                    </span>
-                    <span className="text-muted-foreground/50">•</span>
-                    <span className="font-semibold">
-                      {formatBytes(device.size)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <div className="flex flex-col gap-2 rounded-lg border border-border/40 bg-muted/30 p-3 text-sm text-muted-foreground transition-colors">
-                <span className="flex items-center gap-2">
-                  <Activity className="h-4 w-4" />
-                  Último ping: {formatDateTime(device.lastSeen)}
-                </span>
-                <span className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4" />
-                  Conectado desde: {formatDateTime(device.connectedAt)}
-                </span>
+                <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <HardDrive className="h-3.5 w-3.5" />
+                    {device.model}
+                  </span>
+                  <span aria-hidden>·</span>
+                  <span className="font-mono text-xs uppercase">
+                    {device.serialNumber}
+                  </span>
+                  <span aria-hidden>·</span>
+                  <span>{formatBytes(device.size)}</span>
+                </p>
               </div>
             </div>
-          </div>
+            <div className="flex gap-8 pl-9 md:pl-0 md:text-right">
+              <div>
+                <p className="smallcaps text-muted-foreground">
+                  Conectado desde
+                </p>
+                <p className="mt-1 text-sm text-foreground">
+                  {formatDateTime(device.connectedAt)}
+                </p>
+              </div>
+              <div>
+                <p className="smallcaps text-muted-foreground">Última señal</p>
+                <p className="mt-1 text-sm text-foreground">
+                  {formatDateTime(device.lastSeen)}
+                </p>
+              </div>
+            </div>
+          </article>
         ))}
       </div>
     );
   }, [error, loading, loadDevices, state.devices]);
 
   return (
-    <Card className="flex flex-1 flex-col border-border/60 bg-card/80 shadow-sm backdrop-blur-xl">
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
-          <Usb className="h-5 w-5 text-muted-foreground" />
-          Dispositivos activos
-        </CardTitle>
-        <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-muted-foreground/50">
-          {state.lastUpdated && (
-            <span className="hidden md:inline">
-              Última actualización: {formatDateTime(state.lastUpdated)}
-            </span>
-          )}
+    <section className="w-full" data-tour="devices-main">
+      {/* ── Cabecera, como las del panel de administración ── */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-1 flex-col">
+          <p className="smallcaps text-acero">Tu equipo</p>
+          <h2 className="font-display mt-2 text-2xl font-bold text-foreground">
+            Dispositivos conectados
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Los dispositivos USB que tu equipo tiene conectados ahora
+            mismo. La lista se actualiza sola cada pocos segundos.
+          </p>
         </div>
-      </CardHeader>
-      <CardContent className="flex-1 space-y-4">
-        {state.warnings.length > 0 && (
-          <Alert className="border-[oklch(0.80_0.10_85/0.40)] bg-[oklch(0.95_0.03_85)] text-[oklch(0.45_0.10_85)] dark:border-[oklch(0.65_0.08_85/0.30)] dark:bg-[oklch(0.80_0.10_85/0.10)] dark:text-[oklch(0.90_0.04_85)]">
-            <AlertDescription className="space-y-2">
-              {state.warnings.map((warning, index) => (
-                <p key={index}>{warning}</p>
-              ))}
-            </AlertDescription>
-          </Alert>
+        {state.lastUpdated && (
+          <p className="text-xs text-muted-foreground">
+            Actualizado:{" "}
+            <span className="font-semibold text-foreground">
+              {formatDateTime(state.lastUpdated)}
+            </span>
+          </p>
         )}
-        {state.computer && (
-          <div className="flex flex-wrap gap-4 rounded-lg border border-border/40 bg-muted/30 p-4 text-sm text-muted-foreground shadow-sm transition-colors">
-            <div className="flex items-center gap-2">
-              <HardDrive className="h-4 w-4" />
-              <span className="font-semibold text-foreground">
+      </div>
+
+      {/* ── Tu equipo asignado, en tira como las del panel ── */}
+      {state.computer && (
+        <div
+          className="mt-8 flex flex-wrap items-center gap-x-12 gap-y-4 border-t border-border pt-5"
+          data-tour="user-computer"
+        >
+          <div>
+            <div className="flex items-baseline gap-3">
+              <span className="font-display text-[1.55rem] font-bold leading-none text-foreground">
                 {state.computer.name}
               </span>
+              <span className="smallcaps text-muted-foreground">
+                Tu equipo asignado
+              </span>
             </div>
-            <span className="text-muted-foreground/40">•</span>
-            <div className="flex items-center gap-2">
-              <Activity className="h-4 w-4" />
+            <p className="mt-1.5 text-xs text-muted-foreground">
               IP {state.computer.ipAddress}
-            </div>
-            <span className="text-muted-foreground/40">•</span>
-            <div className="flex items-center gap-2">
-              <Badge
-                variant="outline"
-                className={`border ${
-                  state.computer.isActive
-                    ? "border-green-600/50 text-green-700 dark:border-green-500/60 dark:text-green-300"
-                    : "border-red-600/50 text-red-700 dark:border-red-500/60 dark:text-red-300"
-                }`}
-              >
-                {state.computer.isActive ? "Equipo activo" : "Equipo inactivo"}
-              </Badge>
-            </div>
+            </p>
           </div>
-        )}
+          <p className="flex items-center gap-2 text-sm text-foreground">
+            <span
+              className={`size-2 rounded-full ${
+                state.computer.isActive ? "bg-[#3FA34D]" : "bg-[#B3382E]"
+              }`}
+            />
+            {state.computer.isActive ? "Equipo activo" : "Equipo inactivo"}
+          </p>
+        </div>
+      )}
+
+      {/* ── Avisos del panel para este equipo ── */}
+      {state.warnings.length > 0 && (
+        <div className="mt-6 space-y-2 border border-[#C09A3B]/50 bg-[#C09A3B]/10 px-4 py-3 text-sm text-foreground">
+          {state.warnings.map((warning, index) => (
+            <p key={index}>{warning}</p>
+          ))}
+        </div>
+      )}
+
+      {/* ── La lista de dispositivos ── */}
+      <div className="mt-8" data-tour="user-devices">
         {content}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 };
