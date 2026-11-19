@@ -15,12 +15,12 @@ import {
  * de una tarea. La clave se pide otra vez a propósito: nunca
  * quedó guardada, así que un reintento es también una
  * confirmación de credenciales frescas.
- *   { clave, credenciales?: [{pcName, ip, usuario?, clave}] }
- *   `credenciales` trae la clave propia de los destinos que no
- *   usan la general, igual que al crear la tarea. La clave
- *   general es la de RESERVA: puede venir vacía si cada
- *   destino a reintentar trae la suya completa (su usuario o
- *   el de la tarea, y su clave).
+ *   { clave?, credenciales?: [{pcName, ip, usuario?, clave}] }
+ *   `credenciales` trae la credencial propia de cada destino
+ *   a reintentar, igual que al crear la tarea: cada uno con
+ *   la suya completa (su usuario y su clave). La clave
+ *   general se acepta por compatibilidad, pero el panel ya
+ *   no la manda: no hay cuenta de reserva.
  */
 export async function POST(
   req: Request,
@@ -110,10 +110,13 @@ export async function POST(
       }
     }
     // Cobertura del reintento: cada destino a reintentar
-    // tiene que resolver a usuario y contraseña entre la
-    // cuenta de reserva (el usuario de la tarea y la clave
-    // que llega) y la suya. Si a alguno le falta una pieza,
-    // su empujón nacería condenado: no se lanza.
+    // tiene que resolver a usuario y contraseña. Desde el
+    // panel solo llega la credencial propia de cada uno; la
+    // regla compartida sigue admitiendo la general (el
+    // usuario guardado de la tarea y la clave que llegue)
+    // por las tareas creadas cuando había cuenta de reserva.
+    // Si a alguno le falta una pieza, su empujón nacería
+    // condenado: no se lanza.
     const reintentables = tarea.targets.filter(
       (t) =>
         t.status === ESTADO_DESTINO.ERROR ||
@@ -130,7 +133,7 @@ export async function POST(
         {
           ok: false,
           error:
-            "Falta credencial para reintentar: escribe la propia de cada equipo (su contraseña y, si difiere, su usuario), o una clave de reserva completa.",
+            "Falta credencial para reintentar: escribe la propia de cada equipo (su usuario y su contraseña).",
         },
         { status: 400 },
       );
