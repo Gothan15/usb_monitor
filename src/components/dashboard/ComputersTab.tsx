@@ -718,7 +718,7 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
                       </span>
                       {computer.actualizacionDisponible && (
                         <>
-                          <span className="inline-flex items-center border border-amber-600/50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-500">
+                          <span className="inline-flex items-center border border-amber-600/50 px-1.5 py-0.5 text-[0.6875rem] font-medium text-amber-700 dark:text-amber-500">
                             Actualización disponible
                             {computer.versionPaquete
                               ? ` · v${computer.versionPaquete}`
@@ -745,7 +745,7 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
                         </>
                       )}
                     </div>
-                    <p className="mt-1 text-[11px] text-muted-foreground">
+                    <p className="mt-1 text-[0.6875rem] text-muted-foreground">
                       {computer.lastConfigAt
                         ? `Ajustes pedidos ${haceCuanto(computer.lastConfigAt)}`
                         : "Ajustes sin pedir aún"}
@@ -768,7 +768,7 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
 
                   {/* Contador de USB conectados: su propia columna */}
                   <span
-                    className={`inline-flex min-w-6 items-center justify-center justify-self-center border px-1.5 py-0.5 text-[11px] font-semibold tabular-nums ${
+                    className={`inline-flex min-w-6 items-center justify-center justify-self-center border px-1.5 py-0.5 text-[0.6875rem] font-semibold tabular-nums ${
                         (computer.usbConectados ?? 0) > 0
                           ? "border-[var(--acero)]/60 text-[var(--acero)]"
                           : "border-border text-muted-foreground"
@@ -783,7 +783,7 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
                   <div className="flex items-center gap-1 md:justify-end">
                     {computer.apagadoEnCurso && (
                       <>
-                        <span className="mr-1 inline-flex items-center border border-rose-600/60 px-1.5 py-0.5 text-[11px] font-semibold text-rose-700 dark:text-rose-500">
+                        <span className="mr-1 inline-flex items-center border border-rose-600/60 px-1.5 py-0.5 text-[0.6875rem] font-semibold text-rose-700 dark:text-rose-500">
                           Apagado en curso
                         </span>
                         <Button
@@ -1064,7 +1064,7 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
               ))}
             </datalist>
             {/^\d{1,3}(\.\d{1,3}){3}$/.test(tokenPc.trim()) && (
-              <p className="text-[11px] font-medium leading-relaxed text-destructive">
+              <p className="text-[0.6875rem] font-medium leading-relaxed text-destructive">
                 Eso que has escrito es una dirección IP, no el nombre
                 de la PC. El código quedaría atado a una fila que el
                 agente nunca usará —se presenta con su nombre— y el
@@ -1131,7 +1131,7 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-[11px] leading-relaxed text-muted-foreground">
+            <p className="text-[0.6875rem] leading-relaxed text-muted-foreground">
               Si eliges uno, al generar el código ese usuario queda como
               dueño de este equipo: podrá desbloquear sus dispositivos
               con su contraseña, sin pasar por la pestaña Usuarios.
@@ -1166,7 +1166,7 @@ export function ComputersTab({ computers, loading, onDelete, onBulkDelete }: Pro
                     Copiar
                   </Button>
                 </div>
-                <p className="text-[11px] leading-relaxed text-muted-foreground">
+                <p className="text-[0.6875rem] leading-relaxed text-muted-foreground">
                   Llévalo a la PC de arriba y pégalo en el asistente
                   de su agente, campo «Código de enrolamiento», antes
                   de 30 minutos. Se gasta al primer uso que salga

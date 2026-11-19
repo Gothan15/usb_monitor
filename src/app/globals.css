@@ -243,6 +243,12 @@
   }
   html {
     scroll-behavior: smooth;
+    /* Escala general del panel: a 1080p la letra de serie
+       (rem de 16 px) se quedaba chica y obligaba a forzar la
+       vista. Todo el panel está en rem (tamaños, espacios y
+       anchos), así que subir la raíz un 12,5 % lo agranda
+       entero y en proporción, sin romper ningún layout. */
+    font-size: 112.5%;
   }
   body {
     background: var(--background);

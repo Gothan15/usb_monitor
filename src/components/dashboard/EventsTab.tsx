@@ -220,12 +220,12 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
           <h2 className="font-display text-[1.45rem] font-bold leading-tight">
             Registro de eventos
           </h2>
-          <p className="mt-1 text-[13px] text-muted-foreground">
+          <p className="mt-1 text-[0.8125rem] text-muted-foreground">
             Cada conexión, bloqueo y desbloqueo, en orden de llegada.
           </p>
         </div>
         <div className="flex items-center gap-5">
-          <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5 text-[0.6875rem] text-muted-foreground">
             <span className="dot-pulse size-1.5 rounded-full bg-success" />
             Sincronizado
           </span>
@@ -268,12 +268,12 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
       {destinoPendiente && (
         <div className="mt-8 flex flex-wrap items-center gap-x-4 gap-y-2 border border-border border-l-2 border-l-[var(--acero)] bg-primary/[0.04] px-4 py-3">
           <div className="min-w-0 flex-1">
-            <p className="text-[13px] font-semibold text-foreground">
+            <p className="text-[0.8125rem] font-semibold text-foreground">
               Viendo el evento de la notificación:{" "}
               {etiquetaEventoUsb(destinoPendiente.tipo)} en{" "}
               {destinoPendiente.pcName}
             </p>
-            <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+            <p className="mt-0.5 font-mono text-[0.6875rem] text-muted-foreground">
               {formatDate(destinoPendiente.createdAt)} ·{" "}
               {formatTime(destinoPendiente.createdAt)}
               {destinoPendiente.serialNumber &&
@@ -346,11 +346,11 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                             : "Info"}
                       </span>
                     </div>
-                    <p className="mt-1 text-[13px] text-muted-foreground">
+                    <p className="mt-1 text-[0.8125rem] text-muted-foreground">
                       {etiquetaEventoUsb(event.event)}
                       {event.unlockedBy && <> · por {event.unlockedBy}</>}
                     </p>
-                    <p className="mt-2 font-mono text-[11px] leading-relaxed text-muted-foreground/80">
+                    <p className="mt-2 font-mono text-[0.6875rem] leading-relaxed text-muted-foreground/80">
                       {event.pcUser} · {event.pcIp}
                       {event.serialNumber && (
                         <>
@@ -360,14 +360,14 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                       )}
                       {event.driveLetter && <> · Unidad {event.driveLetter}</>}
                     </p>
-                    <p className="mt-1 text-[11px] text-muted-foreground/70">
+                    <p className="mt-1 text-[0.6875rem] text-muted-foreground/70">
                       {formatDate(occurredAt)} · {formatTime(occurredAt)} · {haceCuanto(occurredAt)} ·{" "}
                       {event.whitelisted ? "En lista blanca" : "Fuera de la lista blanca"}
                     </p>
                     {event.serialNumber && (
                       <Link
                         href={`/admin/unlocks?pc=${encodeURIComponent(event.pcName)}`}
-                        className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-primary underline-offset-4 transition-colors hover:text-foreground hover:underline"
+                        className="mt-2 inline-flex items-center gap-1 text-[0.6875rem] font-semibold uppercase tracking-[0.14em] text-primary underline-offset-4 transition-colors hover:text-foreground hover:underline"
                       >
                         <ArrowUpRight className="size-3.5" />
                         Ver en Desbloqueos
@@ -417,7 +417,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                             {event.serialNumber && (
                               <Link
                                 href={`/admin/unlocks?pc=${encodeURIComponent(event.pcName)}`}
-                                className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-primary underline-offset-4 transition-colors hover:text-foreground hover:underline"
+                                className="mt-0.5 inline-flex items-center gap-1 text-[0.6875rem] font-semibold uppercase tracking-[0.14em] text-primary underline-offset-4 transition-colors hover:text-foreground hover:underline"
                               >
                                 <ArrowUpRight className="size-3.5" />
                                 Ver en Desbloqueos
@@ -480,7 +480,7 @@ export function EventsTab({ events, loading, onClear, clearing }: Props) {
                             </Tooltip>
                           </TableCell>
                           <TableCell>
-                            <span className="inline-flex items-center gap-1.5 text-[13px]">
+                            <span className="inline-flex items-center gap-1.5 text-[0.8125rem]">
                               <span
                                 className={cn(
                                   "size-1.5 rounded-full",

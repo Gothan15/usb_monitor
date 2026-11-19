@@ -67,12 +67,12 @@ export function DashboardPagination({
   if (totalItems === 0 || totalPages <= 1) return null;
 
   const pasoClase =
-    "inline-flex items-center gap-1 text-[12px] font-medium text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-35";
+    "inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-35";
 
   return (
     <div
       className={cn(
-        "mt-auto flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-border pt-4 text-[12px]",
+        "mt-auto flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-border pt-4 text-xs",
         className,
       )}
     >

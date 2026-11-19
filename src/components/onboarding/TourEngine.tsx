@@ -414,7 +414,7 @@ export function TourEngine({
 
               {/* Footer */}
               <div className="mt-4 flex items-center justify-between">
-                <span className="text-[10px] font-medium text-muted-foreground/60">
+                <span className="text-[0.625rem] font-medium text-muted-foreground/60">
                   {stepIndex + 1} de {totalSteps}
                 </span>
                 <div className="flex items-center gap-1.5">
