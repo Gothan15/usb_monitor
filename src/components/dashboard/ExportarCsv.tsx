@@ -2,7 +2,14 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, Download } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Download } from "lucide-react";
 
 /**
  * Botón de exportar a CSV con rango rápido: hoy, 7 días,
@@ -34,22 +41,25 @@ export function ExportarCsv({ ruta }: { ruta: string }) {
 
   return (
     <span className="inline-flex items-center gap-2">
-      {/* El mismo estilo que el desplegable de ordenación:
-          sin caja, solo el subrayado y la flecha del panel. */}
-      <div className="relative">
-        <select
-          value={rango}
-          onChange={(e) => setRango(e.target.value)}
+      {/* El mismo desplegable que el de ordenación y que el
+          selector de adaptadores del Escáner: el Select (Radix)
+          con caja en tamaño sm, no el <select> nativo con
+          subrayado de antes. */}
+      <Select value={rango} onValueChange={setRango}>
+        <SelectTrigger
+          size="sm"
+          className="min-w-[160px]"
           aria-label="Rango de la exportación"
-          className="appearance-none border-b border-border bg-transparent py-1.5 pl-0.5 pr-6 text-xs text-foreground transition-colors focus:border-[var(--acero)] focus:outline-none"
         >
-          <option value="hoy">Hoy</option>
-          <option value="7d">Últimos 7 días</option>
-          <option value="30d">Últimos 30 días</option>
-          <option value="todo">Todo</option>
-        </select>
-        <ChevronDown className="pointer-events-none absolute right-0.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-      </div>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="hoy">Hoy</SelectItem>
+          <SelectItem value="7d">Últimos 7 días</SelectItem>
+          <SelectItem value="30d">Últimos 30 días</SelectItem>
+          <SelectItem value="todo">Todo</SelectItem>
+        </SelectContent>
+      </Select>
       <Button
         type="button"
         variant="outline"
