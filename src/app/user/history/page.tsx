@@ -11,7 +11,7 @@ const EventHistory = dynamic(
     ),
   {
     loading: () => (
-      <div className="rounded-xl border border-border/40 bg-card/80 p-8 text-center text-sm text-muted-foreground shadow-sm">
+      <div className="border-t border-border pt-6 text-sm text-muted-foreground">
         Cargando historial de eventos…
       </div>
     ),

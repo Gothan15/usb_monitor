@@ -73,7 +73,7 @@ function UserLayoutContent({
   if (!user) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="rounded-2xl border border-red-200/70 bg-red-50 px-6 py-4 text-sm text-red-700 shadow-sm dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-100">
+        <div className="border border-[#B3382E]/40 bg-[#B3382E]/[0.06] px-6 py-4 text-sm text-foreground">
           {error || "No se pudo cargar la información del usuario."}
         </div>
       </div>
