@@ -17,10 +17,13 @@
 # máquina Windows de GitHub. Las etiquetas del agente son
 # «agente-v*» y las del panel «panel-v*»: no se pisan.
 #
-# Cada Release del panel lleva TRES archivos: el instalador
+# Cada Release del panel lleva CUATRO archivos: el instalador
 # ligero de siempre, el «completo» (con el paquete del agente
 # vigente dentro: su ejecutable, el empujador y el manifiesto,
-# colocados en las carpetas del panel) y el paquete de
+# colocados en las carpetas del panel), el «servidor» (el
+# completo más la app de escritorio y el modo servidor
+# dedicado: al terminar de instalar, activa la cuenta dedicada
+# y cierra la sesión) y el paquete de
 # actualización ligero (-actualizacion.exe: solo el programa,
 # para aplicar sobre una instalación existente; lo compila el
 # mismo Construir-Instalador.ps1 en cada pasada). El paso de
@@ -91,7 +94,7 @@ jobs:
           Write-Host "Release del agente elegida: $($rel.tag_name)"
           $versionAgente = $rel.tag_name -replace '^agente-v', ''
           gh release download $rel.tag_name --pattern 'USBMonitorService-agente-v*.zip' --dir "$env:RUNNER_TEMP\paquete-zip"
-          Expand-Archive -Path "$env:RUNNER_TEMP\paquete-zip\USBMonitorService-agente-v$versionAgente.zip" -DestinationPath "$env:RUNNER_TEMP\paquete-desc" -Force
+          Expand-Archive -Path "$env:RUNNER_TEMP\paquete-desc\USBMonitorService-agente-v$versionAgente.zip" -DestinationPath "$env:RUNNER_TEMP\paquete-desc" -Force
           $dir = 'salida-instalador\paquete'
           New-Item -ItemType Directory -Force $dir | Out-Null
           Copy-Item "$env:RUNNER_TEMP\paquete-desc\USBMonitorService.exe" $dir
@@ -115,6 +118,10 @@ jobs:
         shell: pwsh
         run: ./instalador/Construir-Instalador.ps1 -Version ${{ steps.version.outputs.version }} -Completo -PaqueteDir ${{ steps.paquete.outputs.dir }}
 
+      - name: Construir el instalador (servidor, con el modo dedicado)
+        shell: pwsh
+        run: ./instalador/Construir-Instalador.ps1 -Version ${{ steps.version.outputs.version }} -Completo -Servidor -PaqueteDir ${{ steps.paquete.outputs.dir }}
+
       - name: Guardar los instaladores como artefacto de la ejecución
         uses: actions/upload-artifact@v6
         with:
@@ -122,6 +129,7 @@ jobs:
           path: |
             salida-instalador/USBMonitor-Panel-${{ steps.version.outputs.version }}.exe
             salida-instalador/USBMonitor-Panel-${{ steps.version.outputs.version }}-completo.exe
+            salida-instalador/USBMonitor-Panel-${{ steps.version.outputs.version }}-servidor.exe
             salida-instalador/USBMonitor-Panel-${{ steps.version.outputs.version }}-actualizacion.exe
           retention-days: 30
 
@@ -132,5 +140,6 @@ jobs:
           files: |
             salida-instalador/USBMonitor-Panel-${{ steps.version.outputs.version }}.exe
             salida-instalador/USBMonitor-Panel-${{ steps.version.outputs.version }}-completo.exe
+            salida-instalador/USBMonitor-Panel-${{ steps.version.outputs.version }}-servidor.exe
             salida-instalador/USBMonitor-Panel-${{ steps.version.outputs.version }}-actualizacion.exe
           generate_release_notes: true
