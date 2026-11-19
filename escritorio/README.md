@@ -57,6 +57,14 @@ Publica un único exe autocontenido en `dist\USBMonitorEscritorio.exe`
 
 ## Modo servidor dedicado
 
+> **La vía de fábrica:** el instalador del panel tiene una variante
+> «servidor» (`Construir-Instalador.ps1 -Completo -Servidor`) que ya
+> trae esta app y estos scripts, pide la cuenta dedicada en su
+> asistente y, al terminar de instalar desde la cuenta de
+> administrador, activa el modo y cierra la sesión para entrar con
+> la cuenta nueva. Lo de abajo es la misma activación, a mano, para
+> una instalación que ya existe.
+
 La misma app, con los scripts de `dedicado/`, convierte una PC en un
 servidor del panel y nada más — el modo «totalitario»:
 

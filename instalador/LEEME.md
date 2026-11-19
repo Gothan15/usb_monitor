@@ -110,6 +110,29 @@ Sin `-Completo`, el comportamiento y el nombre de salida son los de siempre. Con
 
 En GitHub no hay que preparar nada de esto: el workflow de la Release del panel descarga él solo la Release vigente del agente, genera el manifiesto, construye las dos variantes con este mismo script y publica **ambos instaladores en la misma Release**.
 
+### La variante «servidor»: el modo servidor dedicado, de fábrica
+
+```powershell
+.\Construir-Instalador.ps1 -Version 1.3.0 -Completo -Servidor -PaqueteDir D:\paquete-1.0.11
+```
+
+Sale como `USBMonitor-Panel-<versión>-servidor.exe` y es el completo **más** el modo servidor dedicado (la app de escritorio de `escritorio/`): pensado para instalarse **desde la cuenta de administrador** de la PC que va a ser el servidor, y dejarla convertida en un equipo de una sola función.
+
+- El árbol preparado suma `USBMonitorEscritorio.exe` en la raíz y los dos scripts de `escritorio\dedicado\` en `scripts\` (con el BOM garantizado, como los demás).
+- El asistente trae una página más, la última: **la cuenta del servidor dedicado** (usuario `PanelUSB` por defecto y su contraseña, obligatoria y de al menos 8 caracteres). Su contraseña viaja con el mismo relevo cerrado que la del administrador del panel: `servidor-dedicado.ini` en la carpeta de datos, que el script de activación lee y destruye.
+- Como paso final, tras dejar el panel en marcha, el instalador ejecuta `Activar-ModoDedicado.ps1 -CerrarSesion`: crea la cuenta (sin privilegios de administrador), le sustituye el shell por el vigilante de la app, activa su inicio de sesión automático y **cierra la sesión del administrador**. La PC vuelve a entrar sola con la cuenta dedicada, enseñando únicamente el panel a pantalla completa.
+- En actualización (instalación ya existente) la página no se pide y la activación no se repite: el modo dedicado queda como estaba.
+- Para deshacerlo queda instalado `Desactivar-ModoDedicado.ps1` en `scripts\`, y la salida de emergencia es la de siempre: Ctrl+Alt+Supr → Cambiar de usuario → la cuenta administradora, que no se toca.
+
+El workflow de la Release **todavía no** construye esta variante: falta añadirle la tercera pasada, igual que las otras dos, y los archivos de `.github/workflows/` los sube Gothan a mano por la web de GitHub (la app de GitHub de Muse no tiene ese permiso). La pasada sería:
+
+```yaml
+      - name: Construir el instalador servidor (con el paquete del agente y el modo dedicado)
+        run: ./instalador/Construir-Instalador.ps1 -Version ${{ steps.version.outputs.version }} -Completo -Servidor -PaqueteDir ${{ steps.paquete.outputs.dir }}
+```
+
+y el servidor saldría publicado en la misma Release si se suma `salida-instalador/USBMonitor-Panel-*-servidor.exe` a los archivos que el workflow adjunta.
+
 ## También sale por GitHub Actions (Releases)
 
 Igual que el agente: el workflow `.github/workflows/panel-instalador.yml` corre **el mismo** `Construir-Instalador.ps1` en una máquina Windows de GitHub.

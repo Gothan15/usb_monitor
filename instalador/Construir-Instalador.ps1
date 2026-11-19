@@ -23,6 +23,12 @@
 #         sale como USBMonitor-Panel-<versión>-completo.exe.
 #         -PaqueteDir es la carpeta con USBMonitorService.exe,
 #         USBMonitorEmpujador.exe y manifiesto.json (ver LEEME.md).
+#   .\Construir-Instalador.ps1 -Version 1.1.0 -Completo -Servidor -PaqueteDir D:\paquete-agente-1.0.11
+#       → variante «servidor»: todo lo del completo, más la app de
+#         escritorio y los scripts del modo servidor dedicado, y
+#         sale como USBMonitor-Panel-<versión>-servidor.exe. Su
+#         asistente pide además la cuenta dedicada y, al terminar,
+#         la activa y cierra la sesión para entrar con ella.
 #
 # Las versiones de PostgreSQL/Node/WinSW se leen de versiones.wxi
 # (única fuente). Si en $HashEsperado fijas los SHA-256, cada
@@ -32,6 +38,7 @@
 param(
     [string]$Version = '1.0.0',
     [switch]$Completo,
+    [switch]$Servidor,
     [string]$PaqueteDir = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -70,6 +77,16 @@ if ($Completo) {
         }
     }
     Write-Host 'Variante COMPLETO: el paquete del agente viajará dentro del instalador.'
+}
+
+# Variante «servidor»: es el completo MÁS el modo dedicado,
+# así que sin -Completo no tiene sentido (y sin su paquete,
+# tampoco). Se comprueba aquí, antes de descargar nada.
+if ($Servidor -and -not $Completo) {
+    throw 'La variante -Servidor necesita -Completo -PaqueteDir …: el instalador de servidor dedicado lleva el panel completo, el paquete del agente y la app de escritorio.'
+}
+if ($Servidor) {
+    Write-Host 'Variante SERVIDOR: modo servidor dedicado incluido (app de escritorio + activación al final).'
 }
 
 # Versiones fijadas (desde versiones.wxi).
@@ -176,7 +193,7 @@ foreach ($carpeta in @('app', 'node', 'pgsql', 'redis', 'servicio', 'scripts', '
 # estricta lanzaría en cuanto copiara algo, así que también va en pausa.
 $PSNativeCommandUseErrorActionPreference = $false
 robocopy $raiz (Join-Path $prep 'app') /E `
-    /XD .git instalador agente bandeja salida-instalador `
+    /XD .git instalador agente bandeja escritorio salida-instalador `
     /XF .env *.log *.zip | Out-Null
 $PSNativeCommandUseErrorActionPreference = $true
 if ($LASTEXITCODE -ge 8) { throw "robocopy del panel falló ($LASTEXITCODE)" }
@@ -212,6 +229,15 @@ Copy-Item (Join-Path $inst 'servicio\USBMonitorPanel.xml') (Join-Path $prep 'ser
 Copy-Item $exeWinSw (Join-Path $prep 'servicio\USBMonitorRedis.exe')
 Copy-Item (Join-Path $inst 'servicio\USBMonitorRedis.xml') (Join-Path $prep 'servicio\')
 Copy-Item (Join-Path $inst 'scripts\*') (Join-Path $prep 'scripts\')
+# Variante «servidor»: los scripts del modo dedicado viajan
+# con los demás scripts del instalador (Panel.iss los deja en
+# {app}\scripts y el paso final de la instalación ejecuta el
+# de activación). Entran antes del bucle del BOM de abajo,
+# así que salen también en UTF-8 con BOM garantizado.
+if ($Servidor) {
+    Copy-Item (Join-Path $raiz 'escritorio\dedicado\Activar-ModoDedicado.ps1') (Join-Path $prep 'scripts\')
+    Copy-Item (Join-Path $raiz 'escritorio\dedicado\Desactivar-ModoDedicado.ps1') (Join-Path $prep 'scripts\')
+}
 # Los scripts del instalador corren con Windows PowerShell 5.1,
 # que lee los .ps1 SIN BOM como ANSI: un guion largo («—») dentro
 # de una cadena se convierte al leerlo en una comilla tipografica
@@ -243,6 +269,18 @@ $pubBandeja = Join-Path $prep 'bandeja-pub'
 Exigir 'dotnet publish (bandeja)'
 Copy-Item (Join-Path $pubBandeja 'USBMonitorBandeja.exe') (Join-Path $prep 'raiz\')
 Remove-Item $pubBandeja -Recurse -Force
+# Variante «servidor»: la app de escritorio (escritorio/,
+# WinForms + WebView2) se publica igual que la bandeja y
+# viaja también en la raíz del árbol; Panel.iss la deja en
+# la raíz de la instalación y el script de activación la
+# coloca en su carpeta del modo dedicado.
+if ($Servidor) {
+    $pubEscritorio = Join-Path $prep 'escritorio-pub'
+    & $dotnet publish (Join-Path $raiz 'escritorio\Escritorio.csproj') -c Release -r win-x64 --self-contained true -o $pubEscritorio
+    Exigir 'dotnet publish (escritorio)'
+    Copy-Item (Join-Path $pubEscritorio 'USBMonitorEscritorio.exe') (Join-Path $prep 'raiz\')
+    Remove-Item $pubEscritorio -Recurse -Force
+}
 # Variante «completo»: el paquete del agente, tal cual llegó en
 # -PaqueteDir, a sus dos carpetas del árbol. Panel.iss lo recoge de
 # ahí, solo cuando la construcción define IncluirPaquete.
@@ -262,16 +300,18 @@ Write-Host '== 5/5 Construir el instalador =='
 # la Release conviven los dos instaladores de la misma versión
 # del panel y nadie debe tener que abrirlos para saber cuál es
 # cuál.
-$nombreExe = if ($Completo) { "USBMonitor-Panel-$Version-completo" } else { "USBMonitor-Panel-$Version" }
+$nombreExe = if ($Servidor) { "USBMonitor-Panel-$Version-servidor" } elseif ($Completo) { "USBMonitor-Panel-$Version-completo" } else { "USBMonitor-Panel-$Version" }
 $exe = Join-Path $salida "$nombreExe.exe"
 Push-Location $inst
 try {
     # /D…: las definiciones que Panel.iss consume (versión, árbol
-    # preparado y, en la variante completo, el paquete del agente).
+    # preparado y, en la variante completo, el paquete del agente;
+    # en la de servidor, además, la activación del modo dedicado).
     # /O y /F: la carpeta y el nombre del instalador resultante.
     $argsIscc = @("/DPanelVersion=$Version", "/DPreparado=$prep",
                   "/O$salida", "/F$nombreExe")
     if ($Completo) { $argsIscc += '/DIncluirPaquete=1' }
+    if ($Servidor) { $argsIscc += '/DIncluirServidor=1' }
     $argsIscc += 'Panel.iss'
     & $iscc @argsIscc
     Exigir 'ISCC'

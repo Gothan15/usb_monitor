@@ -26,12 +26,24 @@
 #    -OrigenExe  Ruta del exe compilado. Por defecto se
 #                busca en escritorio\dist, junto al proyecto.
 #    -Destino    Carpeta de instalacion de la app.
+#    -ClaveInicial Ruta de un ini con las lineas usuario= y
+#                clave= (el relevo que deja el instalador
+#                «servidor» en la carpeta de datos, con la
+#                ACL cerrada). Si viene, no se pregunta nada:
+#                se lee, se usa y el ini se destruye, igual
+#                que el acceso inicial del panel.
+#    -CerrarSesion Al terminar bien, cierra la sesion actual
+#                tras avisar: la PC vuelve a entrar sola,
+#                ya con la cuenta dedicada. Lo usa el
+#                instalador «servidor»; a mano, no hace falta.
 
 #Requires -Version 5.1
 param(
     [string]$Cuenta = 'PanelUSB',
     [string]$OrigenExe = '',
-    [string]$Destino = 'C:\Program Files\USBMonitor\Escritorio'
+    [string]$Destino = 'C:\Program Files\USBMonitor\Escritorio',
+    [string]$ClaveInicial = '',
+    [switch]$CerrarSesion
 )
 
 $ErrorActionPreference = 'Stop'
@@ -72,23 +84,46 @@ if (-not (Test-Path $OrigenExe)) {
 }
 
 # --- 2. Copiar el exe a su carpeta fija -------------------
+# Si el origen ya ES el destino (el instalador lo dejo en
+# su sitio y solo se le cambia la carpeta logica), no hay
+# copia que hacer: copiar un archivo sobre si mismo falla.
 New-Item -ItemType Directory -Path $Destino -Force | Out-Null
 $exeDestino = Join-Path $Destino 'USBMonitorEscritorio.exe'
-Copy-Item $OrigenExe $exeDestino -Force
+if ([IO.Path]::GetFullPath($OrigenExe) -ne [IO.Path]::GetFullPath($exeDestino)) {
+    Copy-Item $OrigenExe $exeDestino -Force
+}
 Write-Host "App instalada en: $exeDestino"
 
 # --- 3. La contrasena de la cuenta dedicada ---------------
-# Se pide dos veces y se comparan en memoria. La cuenta no
+# Dos caminos: el ini que deja el instalador (sin preguntas)
+# o preguntar dos veces y comparar en memoria. La cuenta no
 # es administradora y no guarda datos: su unico trabajo es
 # ensenar el panel. Aun asi, que sea una contrasena de
 # verdad, no el nombre del equipo.
-$clave1 = Read-Host "Contrasena para la cuenta $Cuenta" -AsSecureString
-$clave2 = Read-Host 'Repitela' -AsSecureString
-$plana1 = Convertir-APlano $clave1
-$plana2 = Convertir-APlano $clave2
-if ($plana1 -ne $plana2) {
-    Write-Host 'Las contrasenas no coinciden. No se ha creado nada mas.'
-    exit 1
+$plana1 = $null
+if ($ClaveInicial -and (Test-Path $ClaveInicial)) {
+    foreach ($linea in Get-Content $ClaveInicial) {
+        if ($linea -match '^usuario=(.+)$') { $Cuenta = $Matches[1].Trim() }
+        if ($linea -match '^clave=(.+)$') { $plana1 = $Matches[1] }
+    }
+    # El ini cumplio: se destruye, como el acceso inicial.
+    Remove-Item $ClaveInicial -Force -ErrorAction SilentlyContinue
+    if (-not $plana1) {
+        Write-Host "El ini $ClaveInicial no traia la linea clave=: no se puede crear la cuenta sin contrasena."
+        exit 1
+    }
+    $clave1 = ConvertTo-SecureString $plana1 -AsPlainText -Force
+    Write-Host "Cuenta y contrasena tomadas del instalador para $Cuenta."
+}
+else {
+    $clave1 = Read-Host "Contrasena para la cuenta $Cuenta" -AsSecureString
+    $clave2 = Read-Host 'Repitela' -AsSecureString
+    $plana1 = Convertir-APlano $clave1
+    $plana2 = Convertir-APlano $clave2
+    if ($plana1 -ne $plana2) {
+        Write-Host 'Las contrasenas no coinciden. No se ha creado nada mas.'
+        exit 1
+    }
 }
 if ($plana1.Length -lt 8) {
     Write-Host 'Minimo 8 caracteres, por la politica de Windows y por sentido comun.'
@@ -171,3 +206,18 @@ Write-Host 'Modo dedicado ACTIVADO.'
 Write-Host "Al reiniciar, la PC entrara sola como $Cuenta y abrira el panel a pantalla completa."
 Write-Host 'Para mantener la PC: Ctrl+Alt+Supr, Cambiar de usuario, y entra con tu cuenta administradora.'
 Write-Host 'Para deshacerlo: Desactivar-ModoDedicado.ps1'
+
+# --- 7. Cierre de sesion (solo si se pidio) ----------------
+# El instalador «servidor» lo pide: terminada la activacion,
+# la sesion del administrador se cierra y el inicio
+# automatico recien configurado hace el resto: la PC entra
+# sola con la cuenta dedicada y el panel aparece a pantalla
+# completa. Los servicios del panel no se tocan: viven en
+# otra sesion y siguen corriendo.
+if ($CerrarSesion) {
+    Write-Host ''
+    Write-Host 'La sesion actual se cerrara en 15 segundos para entrar con la cuenta dedicada.'
+    Write-Host 'Guarda lo que tengas abierto en otras ventanas.'
+    Start-Sleep -Seconds 15
+    & logoff.exe
+}
